@@ -1,0 +1,15 @@
+Aufbau:
+
+D:\Datenbank\Objekt X\
+ ├─ Fundort.txt (Beschreibt Fundort wenn möglich, Koordinaten aus Bilddateien nur bei "Sonderaufnahmen" relevant.)
+ ├─ Kamera\ (Fotos der Objekten mittels Handy Kamera: (Belichtung: Tageslicht, Handy Blitz, UV 395nm und Kombo LED & UV)*1
+ ├─ Mikroskop\ (Fotos sind  Makroaufnahmen der Objekte. Meistens ein von weiter weg, dann 0-2 cm abstand und noch 0 mm*2
+ ├─ UV 395 nm\ (Explizite UV Aufnahmen und Ansichten)
+ ├─ UV 365 nm\ (Explizite UV Aufnahmen und Ansichten)
+ └─ Sonderaufnahmen\ (Spezielle stellen oder Ansichten)
+ │    └─ Infos.txt (Zu Eigenheiten auf Fotos)
+ └─ Übersicht\ (Nummeriertes Übersichtsfoto und alle dazugehörigen (nur wenn mehrere Objekte Aufgenommen und nummeriert wurden oder Einzelfoto das als Objekt x Ordneransicht genutzt werden soll.)
+
+
+*1 Lichtquelle automatisch erkennen falls nicht im Angegeben. Für Vermassung Schwarze Unterlage (11cm x 13cm), Kariertes Papier (Block Papier) Quadrate mit Linie (5 mm x 5mm), Lineal oder andere Vermassung beachten)
+*2 Es sollte immer eine Foto mit Massstab dabei sein. z.B. Digitales Kreuz (kalibriert), Kariertes Papier mit 5mmx5mm Quadraten, ein Lineal oder andere Gegenstände. Fals keine Angaben vorhanden Grösse abschätzen. 

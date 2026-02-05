@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>UV-Mineralien Fundorte Schweiz</name>
+  <description>Fundorte von fluoreszierenden Mineralien, Fossilien und Edelsteinen</description>
+
+  <Placemark>
+    <name>Holenstein Nagelfluh (Sitterdorf TG)</name>
+    <description>Nagelfluhwand mit Calcitadern, UV-aktive Schichten möglich</description>
+    <Point>
+      <coordinates>9.2611,47.5276,0</coordinates>
+    </Point>
+  </Placemark>
+    
+  <Placemark>
+    <name>Tobel bei Märstetten TG</name>
+    <description>Rutschzone mit Sickerwasser, Calcit, Quarz, evtl. Aragonit</description>
+    <Point>
+      <coordinates>8.9086,47.5869,0</coordinates>
+    </Point>
+  </Placemark>
+    
+  <Placemark>
+    <name>Wasserfall bei Zihlschlacht TG</name>
+    <description>Lehmige Sedimente, evtl. Aragonit oder fluoreszierende Einschlüsse</description>
+    <Point>
+      <coordinates>9.2812,47.5171,0</coordinates>
+    </Point>
+  </Placemark>
+    
+  <Placemark>
+    <name>Seitenbach bei Bischofszell TG</name>
+    <description>Kiesbänke bei Niedrigwasser, Fluoritgerölle</description>
+    <Point>
+      <coordinates>9.2373,47.4929,0</coordinates>
+    </Point>
+  </Placemark>
+    
+  <Placemark>
+    <name>Entwässerungsgraben bei Amriswil TG</name>
+    <description>Quarz- und Schlufffragmente, UV-Test möglich</description>
+    <Point>
+      <coordinates>9.2902,47.5483,0</coordinates>
+    </Point>
+  </Placemark>
+    
+  <Placemark>
+    <name>Schlucht bei Trogen AR</name>
+    <description>Verwachsene Mergelzone, fossile Reste und Opal möglich</description>
+    <Point>
+      <coordinates>9.4611,47.3987,0</coordinates>
+    </Point>
+  </Placemark>
+    
+  <Placemark>
+    <name>Kalkwand bei Andwil SG</name>
+    <description>Mergel und Kalkknollen, UV-C-Flecken beobachtet</description>
+    <Point>
+      <coordinates>9.2894,47.4381,0</coordinates>
+    </Point>
+  </Placemark>
+    
+</Document>
+</kml>

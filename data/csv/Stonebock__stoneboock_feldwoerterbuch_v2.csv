@@ -1,0 +1,44 @@
+﻿Feld,Typ,Beschreibung
+ID,string,Eindeutige Objekt-ID (OBJ-###)
+Name,string,Kurzname/Label
+Kategorie,enum,"z.B. Mineral-Korn, Handstück, Dünnschliff"
+Mineral_Primaer,string,Hauptmineral
+Varietaet,string,"z.B. Milchquarz, Jaspis"
+Gesteinsart,string,Petrologischer Zusammenhang
+Kristallsystem,enum,"trigonal, kubisch, etc."
+Mohs_Haerte_min,float,Untere Mohs-Härtegrenze
+Mohs_Haerte_max,float,Obere Mohs-Härtegrenze
+Dichte_min_gcm3,float,Mindestdichte
+Dichte_max_gcm3,float,Maximaldichte
+Spaltbarkeit,string,vollkommen / gut / keine
+Bruch,string,"muschelig, uneben, splittrig"
+Glanz,string,"glasig, wachsig, matt, metallisch"
+Transparenz,string,"durchsichtig, durchscheinend, opak"
+Farbe_beobachtet,string,tatsächlich gesehene Farbe(n)
+Strichfarbe,string,Farbe des Pulvers auf Porzellantäfelchen
+UV_365nm,string,Fluoreszenzreaktion bei 365 nm
+UV_254nm,string,Fluoreszenzreaktion bei 254 nm
+Magnetismus,bool/string,magnetisch ja/nein/schwach
+HCl_Reaktion,string,keine/schwach/stark; kalt/warm
+Reaktionshinweis,string,Erklärender Kommentar
+Fundort,string,Ort/Koordinate
+Funddatum,date,YYYY-MM-DD
+Foto_Uebersicht,path/url,Pfad/Link zum Bild
+Foto_UV395,path/url,Bild unter 395 nm
+Foto_UV365,path/url,Bild unter 365 nm
+Laenge_mm,float,Maximale Ausdehnung
+Breite_mm,float,Zweite Ausdehnung
+Hoehe_mm,float,Dritte Ausdehnung
+Gewicht_g,float,Masse
+Seltenheit_global_1_10,int,"1=häufig, 10=sehr selten global"
+Seltenheit_Fundort_1_10,int,bezogen auf Standort
+Nachfrage_1_10,int,Marktnachfrage
+Wert_CHF_roh,float,Schätzwert roh
+Wert_CHF_poliert,float,Schätzwert poliert
+Wert_CHF_Schmuck,float,Schätzwert Schmuck
+Wert_USD_Talisman,float,Schätzwert Talisman (USD)
+Marktwert_Industrie,float,Industrieller Marktwert
+Wissenschaftlicher_Wert_CHF,float,Einschätzung in CHF
+Beste_Verwendung,string,"Schmuck, Sammlung, Forschung, Industrie"
+Pruefempfehlungen,string,Empfohlene Bestätigungstests
+Confidence_Prozent,int,Sicherheitsgrad der Bestimmung
