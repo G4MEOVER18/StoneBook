@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import gzip
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Iterable
@@ -82,6 +83,52 @@ def read_backup_meta(path: Path) -> dict:
     data = json.loads(_read_text(Path(path)))
     meta = data.get(_META_KEY)
     return dict(meta) if isinstance(meta, dict) else {}
+
+
+BACKUP_PREFIX = "stonebook_backup_"
+# Erkennt sowohl .json als auch .json.gz mit ISO-Datumstempel im Dateinamen
+_BACKUP_RE = re.compile(
+    rf"^{re.escape(BACKUP_PREFIX)}(\d{{8}}_\d{{6}})\.json(?:\.gz)?$"
+)
+
+
+def list_backups(backup_dir: Path) -> list[Path]:
+    """Listet vorhandene Backup-Dateien aus :func:`write_rotated_backup` (sortiert, aelteste zuerst)."""
+    if not backup_dir.is_dir():
+        return []
+    matches = [p for p in backup_dir.iterdir() if _BACKUP_RE.match(p.name)]
+    matches.sort(key=lambda p: p.name)
+    return matches
+
+
+def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
+                         keep: int = 10, compress: bool = True,
+                         now: datetime.datetime | None = None) -> Path:
+    """Schreibt ein Vollbackup mit Zeitstempel und entfernt alte Backups.
+
+    Dateiname: ``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``. Aeltere Dateien
+    nach Stand des Aufrufs werden geloescht, sodass hoechstens ``keep``
+    Backups uebrig bleiben. ``compress=True`` (Default) schreibt gzip-komprimiert.
+    Greift in nichts anderes ein als Dateien, die zum Backup-Namensschema passen.
+    """
+    if keep < 1:
+        raise ValueError("keep muss >= 1 sein")
+    now = now or datetime.datetime.now()
+    stamp = now.strftime("%Y%m%d_%H%M%S")
+    suffix = ".json.gz" if compress else ".json"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / f"{BACKUP_PREFIX}{stamp}{suffix}"
+    export_json(conn, target)
+    existing = list_backups(backup_dir)
+    # Aelteste Backups loeschen, bis nur noch `keep` uebrig sind
+    while len(existing) > keep:
+        oldest = existing.pop(0)
+        try:
+            oldest.unlink()
+        except OSError:
+            # Datei ist evtl. lock/parallel geloescht — Rotation darf nicht crashen
+            pass
+    return target
 
 
 def import_json(conn: sqlite3.Connection, path: Path, *, replace: bool = True) -> dict[str, int]:

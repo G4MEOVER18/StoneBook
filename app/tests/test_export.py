@@ -1,4 +1,5 @@
 import csv
+import datetime
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,8 @@ from stonebook.db.database import connect, open_db
 from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION, export_json,
-                                          import_json, read_backup_meta)
+                                          import_json, list_backups,
+                                          read_backup_meta, write_rotated_backup)
 from stonebook.migration.migrate import migrate
 
 REPO = Path(__file__).resolve().parents[2]
@@ -326,3 +328,97 @@ def test_docx_batch_export(conn, tmp_path):
 
 def test_docx_batch_export_leer(conn, tmp_path):
     assert export_docx_batch(conn, REPO, [], tmp_path) == []
+
+
+def test_rotated_backup_schreibt_und_rotiert(tmp_path):
+    """Vier aufeinanderfolgende Backups mit keep=2 belassen nur die 2 neuesten."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id, Name) VALUES ('OBJ_0001', 'Test')")
+    db.commit()
+    backups_dir = tmp_path / "backups"
+    base = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    written = [
+        write_rotated_backup(db, backups_dir, keep=2,
+                             now=base + datetime.timedelta(minutes=i))
+        for i in range(4)
+    ]
+    # Alle 4 Aufrufe melden ihren Zieldateipfad
+    assert all(p.is_file() or i < 2 for i, p in enumerate(written))
+    # Nach Rotation: nur die 2 juengsten Backups bleiben uebrig
+    remaining = list_backups(backups_dir)
+    assert len(remaining) == 2
+    assert remaining == sorted(remaining, key=lambda p: p.name)
+    # Die juengsten beiden Stempel
+    assert "20240613_100200" in remaining[0].name
+    assert "20240613_100300" in remaining[1].name
+    db.close()
+
+
+def test_rotated_backup_compress_false(tmp_path):
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    target = write_rotated_backup(db, tmp_path / "b", compress=False)
+    assert target.name.endswith(".json") and not target.name.endswith(".gz")
+    # gzip-Magic darf NICHT am Anfang stehen
+    assert target.read_bytes()[:2] != b"\x1f\x8b"
+    db.close()
+
+
+def test_rotated_backup_compress_true_ist_default(tmp_path):
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    target = write_rotated_backup(db, tmp_path / "b")
+    assert target.name.endswith(".json.gz")
+    assert target.read_bytes()[:2] == b"\x1f\x8b"
+    db.close()
+
+
+def test_rotated_backup_inhalt_ist_restaurierbar(tmp_path):
+    """Eine rotierte Backup-Datei ist ein vollwertiges import_json-Backup."""
+    src = open_db(tmp_path / "src.sqlite3")
+    src.execute("INSERT INTO objects (obj_id, Name) VALUES ('OBJ_0042', 'Rot')")
+    src.commit()
+    target = write_rotated_backup(src, tmp_path / "bk")
+    src.close()
+    # Frische DB mit identischen Daten?
+    fresh = open_db(tmp_path / "fresh.sqlite3")
+    counts = import_json(fresh, target)
+    assert counts["objects"] == 1
+    row = fresh.execute("SELECT obj_id, Name FROM objects").fetchone()
+    assert row["obj_id"] == "OBJ_0042"
+    assert row["Name"] == "Rot"
+    fresh.close()
+
+
+def test_rotated_backup_ignoriert_fremde_dateien(tmp_path):
+    """Rotation laesst andere Dateien im Backup-Ordner unangetastet."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    backups_dir.mkdir()
+    fremd = backups_dir / "wichtige_notizen.txt"
+    fremd.write_text("nicht anfassen", encoding="utf-8")
+    for i in range(3):
+        write_rotated_backup(db, backups_dir, keep=1,
+                             now=datetime.datetime(2024, 6, 13, 10, i, 0))
+    assert fremd.is_file()
+    assert fremd.read_text(encoding="utf-8") == "nicht anfassen"
+    assert len(list_backups(backups_dir)) == 1
+    db.close()
+
+
+def test_rotated_backup_keep_zu_klein_raises(tmp_path):
+    db = open_db(tmp_path / "x.sqlite3")
+    with pytest.raises(ValueError):
+        write_rotated_backup(db, tmp_path / "b", keep=0)
+    db.close()
+
+
+def test_list_backups_leerer_ordner(tmp_path):
+    assert list_backups(tmp_path / "nichtda") == []
+    leer = tmp_path / "leer"
+    leer.mkdir()
+    assert list_backups(leer) == []
