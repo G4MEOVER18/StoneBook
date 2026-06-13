@@ -1,0 +1,74 @@
+from stonebook.migration.validators import parse_coordinates, parse_iso_date
+
+
+def test_parse_iso_date_iso_unchanged():
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+
+
+def test_parse_iso_date_german():
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("1.1.2020") == "2020-01-01"
+
+
+def test_parse_iso_date_slash_dot():
+    assert parse_iso_date("2024/06/13") == "2024-06-13"
+    assert parse_iso_date("2024.06.13") == "2024-06-13"
+
+
+def test_parse_iso_date_year_only():
+    assert parse_iso_date("2024") == "2024-01-01"
+    assert parse_iso_date("1999") == "1999-01-01"
+
+
+def test_parse_iso_date_year_month():
+    assert parse_iso_date("2024-06") == "2024-06-01"
+    assert parse_iso_date("2024/6") == "2024-06-01"
+
+
+def test_parse_iso_date_invalid():
+    assert parse_iso_date("") is None
+    assert parse_iso_date(None) is None
+    assert parse_iso_date("   ") is None
+    assert parse_iso_date("k. A.") is None
+    assert parse_iso_date("unbekannt") is None
+    assert parse_iso_date("32.13.2024") is None  # ungueltiger Tag
+    assert parse_iso_date("2024-13-01") is None  # ungueltiger Monat
+    assert parse_iso_date("1700") is None        # vor 1800
+    assert parse_iso_date("foo") is None
+
+
+def test_parse_coordinates_decimal():
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
+    assert parse_coordinates("46,5 7,5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_with_direction():
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° O") == (46.5, 7.5)
+    assert parse_coordinates("46.5° S, 7.5° W") == (-46.5, -7.5)
+    # Reihenfolge lon, lat mit Hinweis → korrekt sortiert
+    assert parse_coordinates("7.5° E, 46.5° N") == (46.5, 7.5)
+
+
+def test_parse_coordinates_prefix():
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("S46.5 W7.5") == (-46.5, -7.5)
+
+
+def test_parse_coordinates_dms():
+    lat, lon = parse_coordinates('46°30\'15"N 7°30\'0"E')
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+    lat, lon = parse_coordinates("46°30' S 7°30' W")
+    assert round(lat, 4) == -46.5
+    assert round(lon, 4) == -7.5
+
+
+def test_parse_coordinates_invalid():
+    assert parse_coordinates("") is None
+    assert parse_coordinates(None) is None
+    assert parse_coordinates("foo") is None
+    assert parse_coordinates("95.0, 7.5") is None     # lat out of range
+    assert parse_coordinates("46.5, 200.0") is None   # lon out of range
+    assert parse_coordinates("46.5") is None          # nur eine Zahl

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from stonebook.fields import DATA_FIELDS, NUMERIC_TYPES, FIELD_BY_NAME
 from stonebook.migration.id_utils import normalize_id
+from stonebook.migration.validators import parse_iso_date
 
 _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 
@@ -86,6 +87,10 @@ def load_v2(path: Path) -> dict[str, dict]:
             fdef = FIELD_BY_NAME[col]
             if fdef.ftype in NUMERIC_TYPES:
                 fields[col] = _int(raw) if fdef.ftype in ("int", "scale") else _num(raw)
+            elif fdef.ftype == "date":
+                iso = parse_iso_date(raw)
+                if iso is not None:
+                    fields[col] = iso
             else:
                 fields[col] = str(raw).strip()
         result[obj_id] = fields
