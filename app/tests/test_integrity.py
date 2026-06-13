@@ -66,6 +66,57 @@ def test_alias_collision_wird_erkannt(tmp_path):
     c.close()
 
 
+def test_numeric_out_of_range_wird_erkannt(tmp_path):
+    c = open_db(tmp_path / "x.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, Gewicht_g, "
+        "Seltenheit_global_1_10, Mohs_Haerte_min) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 150, 10.0, 5, 7.0),    # Confidence > 100
+            ("OBJ_0002", 80, -2.5, 5, 7.0),     # negatives Gewicht
+            ("OBJ_0003", 80, 10.0, 11, 7.0),    # Seltenheit > 10
+            ("OBJ_0004", 80, 10.0, 5, 7.0),     # alles ok
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    fields = {(oid, f) for oid, f, _ in rep.numeric_out_of_range}
+    assert ("OBJ_0001", "Confidence_Prozent") in fields
+    assert ("OBJ_0002", "Gewicht_g") in fields
+    assert ("OBJ_0003", "Seltenheit_global_1_10") in fields
+    assert not any(oid == "OBJ_0004" for oid, _, _ in rep.numeric_out_of_range)
+    assert not rep.is_clean
+    c.close()
+
+
+def test_range_inverted_wird_erkannt(tmp_path):
+    c = open_db(tmp_path / "x.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max, "
+        "Dichte_min_gcm3, Dichte_max_gcm3) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 7.0, 5.0, 2.6, 2.7),   # Mohs invertiert
+            ("OBJ_0002", 5.0, 7.0, 3.0, 2.5),   # Dichte invertiert
+            ("OBJ_0003", 5.0, 7.0, 2.6, 2.7),   # ok
+            ("OBJ_0004", None, 7.0, 2.6, None), # halb leer → ueberspringen
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    inverted = {(oid, p) for oid, p in rep.range_inverted}
+    assert ("OBJ_0001", "Mohs_Haerte_min>Mohs_Haerte_max") in inverted
+    assert ("OBJ_0002", "Dichte_min_gcm3>Dichte_max_gcm3") in inverted
+    assert not any(oid == "OBJ_0003" for oid, _ in rep.range_inverted)
+    assert not any(oid == "OBJ_0004" for oid, _ in rep.range_inverted)
+    c.close()
+
+
+def test_migrierte_db_keine_numerischen_ausreisser(migrated_conn):
+    rep = check_integrity(migrated_conn)
+    assert rep.numeric_out_of_range == []
+    assert rep.range_inverted == []
+
+
 def test_as_dict_ist_serialisierbar(migrated_conn):
     import json
 
