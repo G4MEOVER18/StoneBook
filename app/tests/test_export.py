@@ -6,7 +6,8 @@ import pytest
 from stonebook.db.database import connect, open_db
 from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
-from stonebook.export.json_export import export_json, import_json
+from stonebook.export.json_export import (BACKUP_FORMAT_VERSION, export_json,
+                                          import_json, read_backup_meta)
 from stonebook.migration.migrate import migrate
 
 REPO = Path(__file__).resolve().parents[2]
@@ -74,6 +75,52 @@ def test_json_export_selektive_obj_ids(conn, tmp_path):
     alias_canons = {r["canonical_id"] for r in data["aliases"]}
     assert alias_canons <= {"OBJ_0001", "OBJ_0043"}
     assert "OBJ_0001" in alias_canons
+
+
+def test_json_export_meta_und_read_backup_meta(conn, tmp_path):
+    """export_json schreibt _meta mit Schema-Version; read_backup_meta liest es aus."""
+    out = tmp_path / "meta.json"
+    export_json(conn, out, obj_ids=["OBJ_0043"])
+    meta = read_backup_meta(out)
+    assert meta["format_version"] == BACKUP_FORMAT_VERSION
+    assert meta["selektion"] == ["OBJ_0043"]
+    assert "erstellt_am" in meta and meta["erstellt_am"]
+
+
+def test_json_export_meta_vollexport_hat_selektion_none(conn, tmp_path):
+    out = tmp_path / "voll.json"
+    export_json(conn, out)
+    meta = read_backup_meta(out)
+    assert meta["selektion"] is None
+
+
+def test_read_backup_meta_altes_format(tmp_path):
+    """Backups ohne _meta-Sektion liefern ein leeres Meta-Dict (keine Crashs)."""
+    p = tmp_path / "alt.json"
+    p.write_text(
+        '{"objects": [{"obj_id": "OBJ_0001"}], "images": [], "aliases": []}',
+        encoding="utf-8",
+    )
+    assert read_backup_meta(p) == {}
+
+
+def test_json_import_ignoriert_meta_sektion(tmp_path):
+    """import_json ueberspringt _meta sauber, importiert nur Tabellen."""
+    from stonebook.db.database import open_db
+    src = tmp_path / "mit_meta.json"
+    src.write_text(
+        '{"_meta": {"format_version": 1, "erstellt_am": "2026-01-01 00:00:00"},'
+        ' "objects": [{"obj_id": "OBJ_0001", "Name": "Mit Meta"}],'
+        ' "images": [], "aliases": []}',
+        encoding="utf-8",
+    )
+    c = open_db(tmp_path / "x.sqlite3")
+    counts = import_json(c, src)
+    assert counts["objects"] == 1
+    row = c.execute("SELECT obj_id, Name FROM objects").fetchone()
+    assert row["obj_id"] == "OBJ_0001"
+    assert row["Name"] == "Mit Meta"
+    c.close()
 
 
 def test_json_export_obj_ids_leer(conn, tmp_path):
