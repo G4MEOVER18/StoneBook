@@ -29,6 +29,7 @@ class Statistik:
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
+    bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -53,6 +54,7 @@ class Statistik:
             "by_kategorie": dict(self.by_kategorie),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
+            "bilder_by_kategorie": dict(self.bilder_by_kategorie),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -129,6 +131,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
+
+    st.bilder_by_kategorie = {
+        r["kategorie"]: r["n"]
+        for r in conn.execute(
+            "SELECT kategorie, COUNT(*) AS n FROM images "
+            "GROUP BY kategorie ORDER BY n DESC, kategorie ASC"
+        ).fetchall()
+    }
 
     st.objekte_mit_bildern = conn.execute(
         "SELECT COUNT(DISTINCT obj_id) FROM images"

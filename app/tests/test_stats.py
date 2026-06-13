@@ -192,6 +192,41 @@ def test_durchschnitt_confidence_ohne_werte(tmp_path):
     assert st.wert_roh_summe_chf == 0.0
 
 
+def test_bilder_by_kategorie_aus_migrierter_db(conn):
+    st = compute_statistics(conn)
+    # Migrierte DB hat 63 Bilder verteilt auf Kategorien
+    assert sum(st.bilder_by_kategorie.values()) == st.bilder_total == 63
+    # OBJ_0001 hat u.a. Kamera, Mikroskop, UV395, Sonderaufnahmen
+    assert {"Kamera", "Mikroskop", "UV395", "Sonderaufnahmen"} <= set(st.bilder_by_kategorie)
+
+
+def test_bilder_by_kategorie_seed(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bilder.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg"),
+            ("OBJ_0001", "Kamera", "b.jpg"),
+            ("OBJ_0001", "Mikroskop", "c.jpg"),
+            ("OBJ_0001", "UV365", "d.jpg"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.bilder_by_kategorie == {"Kamera": 2, "Mikroskop": 1, "UV365": 1}
+    c.close()
+
+
+def test_bilder_by_kategorie_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.bilder_by_kategorie == {}
+    c.close()
+
+
 def test_wert_kennzahlen_bei_leerer_db(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "leer.sqlite3")
