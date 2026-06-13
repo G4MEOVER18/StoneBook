@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from stonebook.db.database import connect
+from stonebook.migration.image_indexer import folder_category
 from stonebook.migration.migrate import migrate
 
 REPO = Path(__file__).resolve().parents[2]
@@ -66,6 +67,20 @@ def test_fts_suche(migrated):
         "(SELECT rowid FROM objects_fts WHERE objects_fts MATCH '\"Jaspis\"*')").fetchall()
     ids = {r[0] for r in rows}
     assert "OBJ_0001" in ids
+
+
+def test_folder_category_mapping():
+    assert folder_category("Übersicht") == "Uebersicht"
+    assert folder_category("uebersicht") == "Uebersicht"
+    assert folder_category("Kamera") == "Kamera"
+    assert folder_category("UV 365 nm") == "UV365"
+    assert folder_category("UV365") == "UV365"
+    assert folder_category("UV 395 nm") == "UV395"
+    assert folder_category("Sonderaufnahmen") == "Sonderaufnahmen"
+    assert folder_category("  Mikroskop  ") == "Mikroskop"
+    assert folder_category("blabla") == "Sonstige"
+    # Mojibake-Form aus dem Repo
+    assert folder_category("├£bersicht") == "Uebersicht"
 
 
 def test_platzhalter_status(migrated):
