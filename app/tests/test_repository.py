@@ -141,6 +141,31 @@ def test_sort_by_gesamtwert_chf_desc(tmp_path):
     c.close()
 
 
+def test_kristallsystem_und_beste_verwendung_filter(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "k.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Beste_Verwendung) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "trigonal", "Sammlung"),
+            ("OBJ_0002", "trigonal", "Schmuck"),
+            ("OBJ_0003", "kubisch", "Sammlung"),
+            ("OBJ_0004", "kubisch", "Industrie"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(kristallsystem="trigonal")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(beste_verwendung="Sammlung")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0003"]
+    # Beide kombiniert
+    rows = repo.list_objects(kristallsystem="kubisch", beste_verwendung="Sammlung")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    c.close()
+
+
 def test_gewicht_min_max_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "g.sqlite3")

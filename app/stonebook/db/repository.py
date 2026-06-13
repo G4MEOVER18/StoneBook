@@ -54,6 +54,8 @@ class ObjectRepo:
                      wert_max: float | None = None,
                      gewicht_min: float | None = None,
                      gewicht_max: float | None = None,
+                     kristallsystem: str = "",
+                     beste_verwendung: str = "",
                      sort_by: str | None = None,
                      sort_desc: bool = False) -> list[sqlite3.Row]:
         from stonebook.db.stats import wert_pro_objekt_sql
@@ -110,6 +112,12 @@ class ObjectRepo:
         if gewicht_max is not None:
             where.append("o.Gewicht_g <= ?")
             params.append(float(gewicht_max))
+        if kristallsystem:
+            where.append("o.Kristallsystem = ?")
+            params.append(kristallsystem)
+        if beste_verwendung:
+            where.append("o.Beste_Verwendung = ?")
+            params.append(beste_verwendung)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += _order_by_clause(sort_by, sort_desc)
