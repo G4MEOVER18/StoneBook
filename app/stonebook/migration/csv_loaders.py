@@ -40,6 +40,22 @@ def _read_csv(path: Path) -> list[dict]:
 
 
 _COMMON_DELIMS = (",", ";", "\t", "|")
+_ENCODING_FALLBACKS = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
+
+
+def _read_text_any_encoding(path: Path) -> str:
+    """Liest Text mit UTF-8/BOM-bevorzugt; faellt auf cp1252/latin-1 zurueck.
+
+    Excel-Exporte aus aelteren Windows-Versionen sind oft cp1252-kodiert.
+    Latin-1 als letzter Schritt ist verlustfrei fuer Single-Byte-Streams.
+    """
+    raw = path.read_bytes()
+    for enc in _ENCODING_FALLBACKS:
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 def _detect_delimiter(header_line: str) -> str:
@@ -62,8 +78,7 @@ def _read_csv_robust(path: Path) -> list[dict]:
     Spaltennamen und überspringt komplett leere Zeilen. Für die historischen
     Repo-CSVs nicht nötig; gedacht für ``load_standard``.
     """
-    with path.open(encoding="utf-8-sig", newline="") as f:
-        text = f.read()
+    text = _read_text_any_encoding(path)
     if not text.strip():
         return []
     # Erste nicht-leere Zeile als Header für die Delimiter-Erkennung

@@ -159,6 +159,46 @@ def test_load_standard_bom_und_crlf(tmp_path):
     assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
 
 
+def test_load_standard_cp1252_fallback(tmp_path):
+    """Excel-Export auf alten Windows-Systemen ist oft cp1252; muss lesbar bleiben."""
+    csv_path = tmp_path / "win.csv"
+    # Umlaute in Daten + Header werden als cp1252 geschrieben (kein BOM, kein UTF-8)
+    csv_path.write_bytes(
+        "ID,Mineral_Primaer,Fundort\nOBJ_0001,Quarz,Zürich\n".encode("cp1252")
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+    assert data["OBJ_0001"]["Fundort"] == "Zürich"
+
+
+def test_load_standard_latin1_fallback(tmp_path):
+    csv_path = tmp_path / "latin.csv"
+    csv_path.write_bytes(
+        "ID,Mineral_Primaer\nOBJ_0001,Calcít\n".encode("latin-1")
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Calcít"
+
+
+def test_load_standard_quoted_multiline(tmp_path):
+    """Zellen mit eingebetteten Zeilenumbruechen (quoted) werden korrekt geparst."""
+    csv_path = tmp_path / "multi.csv"
+    csv_path.write_text(
+        'ID,Mineral_Primaer,notizen\n'
+        'OBJ_0001,Quarz,"Zeile 1\nZeile 2"\n'
+        'OBJ_0002,Calcit,einzeilig\n',
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert set(data.keys()) == {"OBJ_0001", "OBJ_0002"}
+    assert "Zeile 1" in data["OBJ_0001"]["notizen"]
+    assert "Zeile 2" in data["OBJ_0001"]["notizen"]
+    assert data["OBJ_0002"]["notizen"] == "einzeilig"
+
+
 def test_load_obj043():
     data = csv_loaders.load_obj043(
         CSV_DIR / "Stonebock__StoneBoock_Objekt_043_FULL__StoneBoock_Objekt_043.csv")
