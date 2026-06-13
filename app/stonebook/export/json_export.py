@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import gzip
 import json
 import sqlite3
 from pathlib import Path
@@ -16,13 +17,33 @@ BACKUP_FORMAT_VERSION: int = 1
 _META_KEY = "_meta"
 
 
+def _is_gzip_path(path: Path) -> bool:
+    return path.suffix.lower() == ".gz"
+
+
+def _write_text(path: Path, text: str) -> None:
+    if _is_gzip_path(path):
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            f.write(text)
+    else:
+        path.write_text(text, encoding="utf-8")
+
+
+def _read_text(path: Path) -> str:
+    if _is_gzip_path(path):
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            return f.read()
+    return Path(path).read_text(encoding="utf-8")
+
+
 def export_json(conn: sqlite3.Connection, path: Path,
                 obj_ids: Iterable[str] | None = None) -> dict[str, int]:
     """Schreibt objects/images/aliases als JSON.
 
     Mit ``obj_ids`` werden nur die genannten Objekte exportiert; ``images``
     werden auf diese IDs gefiltert, ``aliases`` nur, wenn ihr ``canonical_id``
-    enthalten ist.
+    enthalten ist. Endet ``path`` auf ``.gz``, wird transparent gzip-komprimiert
+    geschrieben (geeignet fuer grosse Backups).
     """
     wanted: set[str] | None = None if obj_ids is None else set(obj_ids)
 
@@ -45,7 +66,7 @@ def export_json(conn: sqlite3.Connection, path: Path,
         "selektion": sorted(wanted) if wanted is not None else None,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    _write_text(path, json.dumps(data, ensure_ascii=False, indent=1))
     return {k: len(data[k]) for k in TABLES}
 
 
@@ -54,8 +75,11 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 
 def read_backup_meta(path: Path) -> dict:
-    """Liefert die ``_meta``-Sektion eines Backups (oder ``{}`` bei aelteren Formaten)."""
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    """Liefert die ``_meta``-Sektion eines Backups (oder ``{}`` bei aelteren Formaten).
+
+    Akzeptiert ``.json`` und gzipte ``.json.gz``-Backups.
+    """
+    data = json.loads(_read_text(Path(path)))
     meta = data.get(_META_KEY)
     return dict(meta) if isinstance(meta, dict) else {}
 
@@ -71,7 +95,7 @@ def import_json(conn: sqlite3.Connection, path: Path, *, replace: bool = True) -
     uebersprungen; ihre Inhalte koennen ueber :func:`read_backup_meta`
     separat ausgelesen werden.
     """
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    data = json.loads(_read_text(Path(path)))
     mode = "REPLACE" if replace else "IGNORE"
     counts: dict[str, int] = {}
     for table in TABLES:

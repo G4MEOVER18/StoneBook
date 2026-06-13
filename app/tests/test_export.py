@@ -123,6 +123,34 @@ def test_json_import_ignoriert_meta_sektion(tmp_path):
     c.close()
 
 
+def test_json_export_gzip(conn, tmp_path):
+    """Pfade mit .gz-Endung werden transparent gzip-komprimiert geschrieben."""
+    import gzip
+    out = tmp_path / "backup.json.gz"
+    counts = export_json(conn, out, obj_ids=["OBJ_0043"])
+    assert counts["objects"] == 1
+    # gzip-Magic 1f 8b am Dateianfang
+    assert out.read_bytes()[:2] == b"\x1f\x8b"
+    # Inhalt lesbar
+    with gzip.open(out, "rt", encoding="utf-8") as f:
+        data = f.read()
+    assert "OBJ_0043" in data
+    # read_backup_meta funktioniert auch fuer .gz
+    meta = read_backup_meta(out)
+    assert meta["format_version"] == BACKUP_FORMAT_VERSION
+    assert meta["selektion"] == ["OBJ_0043"]
+
+
+def test_json_gzip_roundtrip(conn, tmp_path):
+    """Vollbackup als .json.gz schreiben und in frische DB importieren."""
+    dump = tmp_path / "voll.json.gz"
+    export_json(conn, dump)
+    fresh = open_db(tmp_path / "fresh.sqlite3")
+    counts = import_json(fresh, dump)
+    assert counts == {"objects": 546, "images": 63, "aliases": 54}
+    fresh.close()
+
+
 def test_json_export_obj_ids_leer(conn, tmp_path):
     out = tmp_path / "leer.json"
     counts = export_json(conn, out, obj_ids=[])
