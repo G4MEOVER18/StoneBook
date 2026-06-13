@@ -2,7 +2,7 @@
 import datetime
 import sqlite3
 
-from stonebook.fields import DATA_FIELDS
+from stonebook.fields import DATA_FIELDS, is_empty
 
 DATA_COLS = [f.name for f in DATA_FIELDS]
 
@@ -111,10 +111,10 @@ class ObjectRepo:
             return []
         conflicts, updates = [], {}
         for k, v in fields.items():
-            if v is None or (isinstance(v, str) and not v.strip()):
+            if is_empty(v):
                 continue
             old = current[k]
-            if old is not None and str(old).strip() and str(old) != str(v):
+            if not is_empty(old) and str(old) != str(v):
                 conflicts.append(k)
                 continue
             updates[k] = v
@@ -134,7 +134,7 @@ class ObjectRepo:
         row = self.get(obj_id)
         if row is None or row["status"] == "archiviert":
             return
-        has_data = any(row[c] is not None and str(row[c]).strip() for c in DATA_COLS)
+        has_data = any(not is_empty(row[c]) for c in DATA_COLS)
         has_images = self.conn.execute(
             "SELECT 1 FROM images WHERE obj_id = ? LIMIT 1", (obj_id,)).fetchone() is not None
         status = "aktiv" if (has_data or has_images) else "platzhalter"

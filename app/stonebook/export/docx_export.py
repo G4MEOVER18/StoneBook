@@ -4,7 +4,7 @@ from pathlib import Path
 from docx import Document
 from docx.shared import Cm
 
-from stonebook.fields import CATEGORY_LABELS, DATA_FIELDS, FIELD_GROUPS, IMAGE_CATEGORIES
+from stonebook.fields import CATEGORY_LABELS, DATA_FIELDS, FIELD_GROUPS, IMAGE_CATEGORIES, is_empty
 from stonebook.migration.id_utils import display_name
 
 MAX_IMG_WIDTH_CM = 12.0
@@ -37,7 +37,7 @@ def export_docx(conn, root: Path, obj_id: str, out_path: Path | None = None) -> 
             if fdef.group != group:
                 continue
             v = row[fdef.name]
-            if v is None or (isinstance(v, str) and not v.strip()):
+            if is_empty(v):
                 continue
             entries.append((fdef.label, str(v)))
         if not entries:

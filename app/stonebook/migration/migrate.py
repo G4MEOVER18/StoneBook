@@ -9,6 +9,7 @@ from pathlib import Path
 
 from stonebook.db.database import open_db
 from stonebook.db.repository import AliasRepo, ImageRepo, ObjectRepo
+from stonebook.fields import is_empty
 from stonebook.migration import csv_loaders
 from stonebook.migration.id_utils import normalize_id
 from stonebook.migration.image_indexer import index_images
@@ -64,8 +65,7 @@ def migrate(root: Path, db_file: Path, log=print) -> dict:
             if not objects.exists(obj_id):
                 objects.create(obj_id, folder_path=f"objects/{obj_id}")
             # Schichtprinzip: spätere (verlässlichere) Quelle überschreibt
-            clean = {k: v for k, v in fields.items()
-                     if v is not None and (not isinstance(v, str) or v.strip())}
+            clean = {k: v for k, v in fields.items() if not is_empty(v)}
             objects.update_fields(obj_id, clean)
             applied += 1
         log(f"   Schicht {name}: {applied} Objekte aktualisiert")

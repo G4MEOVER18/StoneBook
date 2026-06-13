@@ -12,7 +12,7 @@ from stonebook import config
 from stonebook.ai.analysis_schema import AI_FIELDS
 from stonebook.ai.image_prep import default_selection
 from stonebook.db.repository import AnalysisRepo, ImageRepo, ObjectRepo
-from stonebook.fields import CATEGORY_LABELS, FIELD_BY_NAME
+from stonebook.fields import CATEGORY_LABELS, FIELD_BY_NAME, is_empty
 
 CONF_GREEN = QColor("#d1e7dd")
 CONF_YELLOW = QColor("#fff3cd")
@@ -154,7 +154,7 @@ class AIPanel(QWidget):
             if not isinstance(entry, dict):
                 continue
             wert = entry.get("wert")
-            if wert is None or (isinstance(wert, str) and not wert.strip()):
+            if is_empty(wert):
                 continue
             conf = int(entry.get("confidence_prozent") or 0)
             old = current[fdef.name] if current else None
@@ -177,7 +177,7 @@ class AIPanel(QWidget):
             self.table.setItem(r, 3, conf_item)
             check_item = QTableWidgetItem()
             check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-            empty_before = old is None or not str(old).strip()
+            empty_before = is_empty(old)
             check_item.setCheckState(
                 Qt.CheckState.Checked if (empty_before and conf >= 70)
                 else Qt.CheckState.Unchecked)

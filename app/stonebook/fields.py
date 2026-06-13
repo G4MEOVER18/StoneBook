@@ -88,6 +88,15 @@ FIELD_BY_NAME: dict[str, FieldDef] = {f.name: f for f in FIELDS}
 
 NUMERIC_TYPES = {"float", "int", "scale"}
 
+
+def is_empty(value) -> bool:
+    """True für None und für Strings, die nach trim() leer sind."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    return False
+
 IMAGE_CATEGORIES = ["Uebersicht", "Kamera", "Mikroskop", "UV365", "UV395", "Sonderaufnahmen", "Sonstige"]
 CATEGORY_LABELS = {
     "Uebersicht": "Übersicht",

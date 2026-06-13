@@ -1,10 +1,21 @@
 from pathlib import Path
 
+from stonebook.fields import is_empty
 from stonebook.migration import csv_loaders
 from stonebook.migration.id_utils import normalize_id, display_name
 
 REPO = Path(__file__).resolve().parents[2]
 CSV_DIR = REPO / "data" / "csv"
+
+
+def test_is_empty():
+    assert is_empty(None)
+    assert is_empty("")
+    assert is_empty("   ")
+    assert not is_empty("x")
+    assert not is_empty(0)        # 0 ist ein gültiger Wert
+    assert not is_empty(0.0)
+    assert not is_empty(False)
 
 
 def test_normalize_id():
