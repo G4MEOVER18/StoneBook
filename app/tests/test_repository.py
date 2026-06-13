@@ -55,6 +55,29 @@ def test_min_confidence_high_eliminates_all_platzhalter(repo):
     assert rows == []
 
 
+def test_max_confidence_filter(tmp_path):
+    """max_confidence findet Objekte zum Nachpruefen (NULL-Confidence faellt raus)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 95),
+            ("OBJ_0002", 50),
+            ("OBJ_0003", 30),
+            ("OBJ_0004", None),  # ohne Bewertung → faellt aus <=-Filter raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(max_confidence=60)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Bereich 40..60
+    rows = repo.list_objects(min_confidence=40, max_confidence=60)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []
