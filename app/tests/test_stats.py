@@ -246,6 +246,60 @@ def test_durchschnitt_confidence_ohne_werte(tmp_path):
     assert st.wert_roh_summe_chf == 0.0
 
 
+def test_wert_pro_mineral_aus_seed_db(tmp_path):
+    """Wertsumme pro Hauptmineral, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Wert_CHF_roh, "
+        "Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Quarz", 100.0, 200.0),     # 300
+            ("OBJ_0002", "Quarz", 50.0, None),       # 50 → Quarz total 350
+            ("OBJ_0003", "Calcit", 1000.0, None),    # 1000
+            ("OBJ_0004", "Calcit", None, None),      # 0
+            ("OBJ_0005", "Achat", 10.0, None),       # 10
+            ("OBJ_0006", "", 999.0, None),           # leeres Mineral → ignoriert
+            ("OBJ_0007", None, 999.0, None),         # NULL Mineral → ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_mineral == [
+        ("Calcit", 1000.0),
+        ("Quarz", 350.0),
+        ("Achat", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_mineral"] == [
+        ("Calcit", 1000.0), ("Quarz", 350.0), ("Achat", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_mineral_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpm_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Min{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_mineral=3)
+    assert len(st.wert_pro_mineral) == 3
+    werte = [w for _, w in st.wert_pro_mineral]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_mineral_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_mineral == []
+    c.close()
+
+
 def test_by_kristallsystem_aus_seed_db(tmp_path):
     """Verteilung nach Kristallsystem ignoriert leere Eintraege."""
     from stonebook.db.database import open_db

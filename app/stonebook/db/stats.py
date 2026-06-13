@@ -38,6 +38,7 @@ class Statistik:
     wert_median_chf: float = 0.0
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
+    wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     durchschnitt_confidence_prozent: float | None = None
 
@@ -83,6 +84,9 @@ class Statistik:
             "objekte_mit_wert": self.objekte_mit_wert,
             "top_wert_objekte": [
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
+            ],
+            "wert_pro_mineral": [
+                (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "durchschnitt_confidence_prozent": (
@@ -141,7 +145,8 @@ _wert_pro_objekt_sql = wert_pro_objekt_sql
 
 
 def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
-                       top_wert: int = 10, top_jahre: int | None = None) -> Statistik:
+                       top_wert: int = 10, top_jahre: int | None = None,
+                       top_wert_mineral: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -216,6 +221,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             f"SELECT obj_id, Name, {wert_sql} AS w FROM objects "
             f"WHERE {wert_sql} > 0 ORDER BY w DESC, obj_id LIMIT ?",
             (int(top_wert),),
+        ).fetchall()
+    ]
+    st.wert_pro_mineral = [
+        (r["mineral"], float(r["w"]))
+        for r in conn.execute(
+            f"SELECT Mineral_Primaer AS mineral, SUM({wert_sql}) AS w FROM objects "
+            "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != '' "
+            f"GROUP BY Mineral_Primaer HAVING w > 0 "
+            "ORDER BY w DESC, Mineral_Primaer ASC LIMIT ?",
+            (int(top_wert_mineral),),
         ).fetchall()
     ]
     return st
