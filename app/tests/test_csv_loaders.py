@@ -55,6 +55,39 @@ def test_load_v2():
     assert o1["Varietaet"] == "Jaspis"
 
 
+def test_load_standard_roundtrip(tmp_path):
+    """export_csv → load_standard ergibt identische Werte für nichtleere Zellen."""
+    from stonebook.db.database import connect
+    from stonebook.export.csv_export import export_csv
+    from stonebook.migration.csv_loaders import load_standard
+    from stonebook.migration.migrate import migrate
+
+    db_file = tmp_path / "stonebook.sqlite3"
+    migrate(REPO, db_file, log=lambda *_: None)
+    csv_path = tmp_path / "export.csv"
+    export_csv(connect(db_file), csv_path)
+    data = load_standard(csv_path)
+    assert "OBJ_0043" in data
+    o43 = data["OBJ_0043"]
+    assert "Quarz" in o43["Mineral_Primaer"]
+    assert o43["Gewicht_g"] == 41.0
+    assert o43["Mohs_Haerte_min"] == 7.0
+    assert o43.get("status") == "aktiv"
+
+
+def test_load_standard_ignoriert_ungueltige_datumswerte(tmp_path):
+    csv_path = tmp_path / "x.csv"
+    csv_path.write_text(
+        "ID,Funddatum,Mineral_Primaer\nOBJ_0001,32.13.2024,Quarz\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    o1 = data["OBJ_0001"]
+    assert o1["Mineral_Primaer"] == "Quarz"
+    assert "Funddatum" not in o1  # ungueltiges Datum wird verworfen
+
+
 def test_load_obj043():
     data = csv_loaders.load_obj043(
         CSV_DIR / "Stonebock__StoneBoock_Objekt_043_FULL__StoneBoock_Objekt_043.csv")

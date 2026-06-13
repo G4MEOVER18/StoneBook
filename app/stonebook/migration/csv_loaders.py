@@ -72,26 +72,63 @@ def load_v1(path: Path) -> dict[str, dict]:
     return result
 
 
+_STANDARD_COLS = frozenset(f.name for f in DATA_FIELDS)
+
+
+def _convert_standard(col: str, raw) -> tuple[bool, object]:
+    """Konvertiert eine Rohzelle gemaess Feldwörterbuch-Typ.
+
+    Gibt (übernehmen?, wert) zurück; übernehmen=False für ungueltige Datumsangaben.
+    """
+    fdef = FIELD_BY_NAME[col]
+    if fdef.ftype in NUMERIC_TYPES:
+        return True, _int(raw) if fdef.ftype in ("int", "scale") else _num(raw)
+    if fdef.ftype == "date":
+        iso = parse_iso_date(raw)
+        return (iso is not None), iso
+    return True, str(raw).strip()
+
+
 def load_v2(path: Path) -> dict[str, dict]:
     """41 Spalten ≈ Feldwörterbuch-Standard, 1:1-Übernahme mit Typkonvertierung."""
     result = {}
-    standard_cols = {f.name for f in DATA_FIELDS}
     for row in _read_csv(path):
         obj_id = normalize_id(row.get("ID"))
         if not obj_id:
             continue
-        fields = {}
+        fields: dict = {}
         for col, raw in row.items():
-            if col not in standard_cols or raw is None:
+            if col not in _STANDARD_COLS or raw is None:
                 continue
-            fdef = FIELD_BY_NAME[col]
-            if fdef.ftype in NUMERIC_TYPES:
-                fields[col] = _int(raw) if fdef.ftype in ("int", "scale") else _num(raw)
-            elif fdef.ftype == "date":
-                iso = parse_iso_date(raw)
-                if iso is not None:
-                    fields[col] = iso
-            else:
+            take, val = _convert_standard(col, raw)
+            if take:
+                fields[col] = val
+        result[obj_id] = fields
+    return result
+
+
+def load_standard(path: Path) -> dict[str, dict]:
+    """Liest eine CSV im aktuellen Export-Schema (ID + 43 Standardfelder + status + notizen).
+
+    Gegenstück zu :func:`stonebook.export.csv_export.export_csv` und für externes
+    Re-Import gedacht. Im Gegensatz zu load_v2 werden auch ``status`` und
+    ``notizen`` übernommen, sofern in der Quelle vorhanden.
+    """
+    result = {}
+    extra_cols = {"status", "notizen"}
+    for row in _read_csv(path):
+        obj_id = normalize_id(row.get("ID"))
+        if not obj_id:
+            continue
+        fields: dict = {}
+        for col, raw in row.items():
+            if raw is None:
+                continue
+            if col in _STANDARD_COLS:
+                take, val = _convert_standard(col, raw)
+                if take:
+                    fields[col] = val
+            elif col in extra_cols:
                 fields[col] = str(raw).strip()
         result[obj_id] = fields
     return result
