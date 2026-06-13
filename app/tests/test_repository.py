@@ -141,6 +141,32 @@ def test_sort_by_gesamtwert_chf_desc(tmp_path):
     c.close()
 
 
+def test_gewicht_min_max_filter(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 5.0),
+            ("OBJ_0002", 50.0),
+            ("OBJ_0003", 500.0),
+            ("OBJ_0004", None),     # ohne Gewicht → faellt aus min-Filter raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # nur Min: alles ab 10g
+    rows = repo.list_objects(gewicht_min=10.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # nur Max: alles bis 100g (NULL ist nicht <= 100)
+    rows = repo.list_objects(gewicht_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Kombination: 10 <= g <= 100
+    rows = repo.list_objects(gewicht_min=10.0, gewicht_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_fundort_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "f.sqlite3")
