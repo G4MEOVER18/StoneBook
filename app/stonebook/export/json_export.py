@@ -4,14 +4,33 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Iterable
 
 # Schreib-/Leseordnung respektiert die Foreign-Key-Beziehungen
 TABLES: tuple[str, ...] = ("objects", "images", "aliases")
 
 
-def export_json(conn: sqlite3.Connection, path: Path) -> dict[str, int]:
+def export_json(conn: sqlite3.Connection, path: Path,
+                obj_ids: Iterable[str] | None = None) -> dict[str, int]:
+    """Schreibt objects/images/aliases als JSON.
+
+    Mit ``obj_ids`` werden nur die genannten Objekte exportiert; ``images``
+    werden auf diese IDs gefiltert, ``aliases`` nur, wenn ihr ``canonical_id``
+    enthalten ist.
+    """
+    wanted: set[str] | None = None if obj_ids is None else set(obj_ids)
+
     def rows(table: str) -> list[dict]:
-        return [dict(r) for r in conn.execute(f"SELECT * FROM {table}").fetchall()]
+        all_rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table}").fetchall()]
+        if wanted is None:
+            return all_rows
+        if table == "objects":
+            return [r for r in all_rows if r["obj_id"] in wanted]
+        if table == "images":
+            return [r for r in all_rows if r["obj_id"] in wanted]
+        if table == "aliases":
+            return [r for r in all_rows if r["canonical_id"] in wanted]
+        return all_rows
 
     data = {table: rows(table) for table in TABLES}
     path.parent.mkdir(parents=True, exist_ok=True)

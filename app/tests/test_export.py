@@ -39,6 +39,28 @@ def test_json_export(conn, tmp_path):
     assert counts == {"objects": 546, "images": 63, "aliases": 54}
 
 
+def test_json_export_selektive_obj_ids(conn, tmp_path):
+    """obj_ids-Filter exportiert nur die genannten Objekte; Bilder/Aliase werden mitgefiltert."""
+    out = tmp_path / "sel.json"
+    counts = export_json(conn, out, obj_ids=["OBJ_0001", "OBJ_0043"])
+    assert counts["objects"] == 2
+    # Bilder werden nach obj_id gefiltert
+    import json as _json
+    data = _json.loads(out.read_text(encoding="utf-8"))
+    bilder_ids = {r["obj_id"] for r in data["images"]}
+    assert bilder_ids <= {"OBJ_0001", "OBJ_0043"}
+    # OBJ_0001 hat Aliase mit canonical_id=OBJ_0001 → muessen drin sein
+    alias_canons = {r["canonical_id"] for r in data["aliases"]}
+    assert alias_canons <= {"OBJ_0001", "OBJ_0043"}
+    assert "OBJ_0001" in alias_canons
+
+
+def test_json_export_obj_ids_leer(conn, tmp_path):
+    out = tmp_path / "leer.json"
+    counts = export_json(conn, out, obj_ids=[])
+    assert counts == {"objects": 0, "images": 0, "aliases": 0}
+
+
 def test_json_roundtrip(conn, tmp_path):
     dump = tmp_path / "export.json"
     export_json(conn, dump)
