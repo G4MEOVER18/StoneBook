@@ -6,6 +6,12 @@ from stonebook.fields import DATA_FIELDS
 
 DATA_COLS = [f.name for f in DATA_FIELDS]
 
+# Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
+SORTABLE_COLUMNS: frozenset[str] = frozenset({
+    "obj_id", "Name", "Mineral_Primaer", "Fundort", "status",
+    "Confidence_Prozent", "Funddatum", "Gewicht_g", "geaendert_am", "bilder",
+})
+
 
 def _now() -> str:
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -16,15 +22,32 @@ def _fts_query(text: str) -> str:
     return " ".join(f'"{t}"*' for t in tokens)
 
 
+def _order_by_clause(sort_by: str | None, sort_desc: bool) -> str:
+    if not sort_by:
+        return " ORDER BY o.obj_id"
+    if sort_by not in SORTABLE_COLUMNS:
+        raise ValueError(f"Unzulaessige Sortierspalte: {sort_by}")
+    direction = "DESC" if sort_desc else "ASC"
+    # 'bilder' ist ein berechneter Alias, ohne o.-Prefix
+    prefix = "" if sort_by == "bilder" else "o."
+    # NULLs hinten + stabile Zweitsortierung nach ID
+    return (f" ORDER BY ({prefix}{sort_by} IS NULL), "
+            f"{prefix}{sort_by} {direction}, o.obj_id")
+
+
 class ObjectRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
     def list_objects(self, search: str = "", status: str = "", mineral: str = "",
-                     kategorie: str = "", only_images: bool = False) -> list[sqlite3.Row]:
+                     kategorie: str = "", only_images: bool = False,
+                     min_confidence: int | None = None,
+                     has_funddatum: bool | None = None,
+                     sort_by: str | None = None,
+                     sort_desc: bool = False) -> list[sqlite3.Row]:
         sql = """
             SELECT o.obj_id, o.Name, o.Mineral_Primaer, o.Fundort, o.status,
-                   o.Confidence_Prozent,
+                   o.Confidence_Prozent, o.Funddatum,
                    (SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) AS bilder
             FROM objects o
         """
@@ -43,9 +66,16 @@ class ObjectRepo:
             params.append(kategorie)
         if only_images:
             where.append("EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
+        if min_confidence is not None:
+            where.append("o.Confidence_Prozent >= ?")
+            params.append(int(min_confidence))
+        if has_funddatum is True:
+            where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != ''")
+        elif has_funddatum is False:
+            where.append("(o.Funddatum IS NULL OR TRIM(o.Funddatum) = '')")
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY o.obj_id"
+        sql += _order_by_clause(sort_by, sort_desc)
         return self.conn.execute(sql, params).fetchall()
 
     def get(self, obj_id: str) -> sqlite3.Row | None:
