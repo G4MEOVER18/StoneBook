@@ -164,6 +164,34 @@ def test_by_funddatum_jahr_leer(tmp_path):
     c.close()
 
 
+def test_durchschnitt_confidence_und_wert_roh(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, Wert_CHF_roh, "
+        "Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 80, 100.0, 50.0),
+            ("OBJ_0002", 60, 200.0, None),
+            ("OBJ_0003", None, None, 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.durchschnitt_confidence_prozent == 70.0   # (80+60)/2, NULL ignoriert
+    assert st.wert_roh_summe_chf == 300.0               # nur Wert_CHF_roh
+    assert st.wert_summe_chf == 1349.0                  # alle Wertfelder
+    c.close()
+
+
+def test_durchschnitt_confidence_ohne_werte(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.durchschnitt_confidence_prozent is None
+    assert st.wert_roh_summe_chf == 0.0
+
+
 def test_wert_kennzahlen_bei_leerer_db(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "leer.sqlite3")

@@ -30,11 +30,13 @@ class Statistik:
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     wert_summe_chf: float = 0.0
+    wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
     wert_durchschnitt_chf: float = 0.0
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
+    durchschnitt_confidence_prozent: float | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -52,6 +54,7 @@ class Statistik:
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
+            "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
             "wert_durchschnitt_chf": round(self.wert_durchschnitt_chf, 2),
             "objekte_mit_wert": self.objekte_mit_wert,
@@ -59,6 +62,10 @@ class Statistik:
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
+            "durchschnitt_confidence_prozent": (
+                round(self.durchschnitt_confidence_prozent, 1)
+                if self.durchschnitt_confidence_prozent is not None else None
+            ),
         }
 
 
@@ -134,10 +141,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     sums = conn.execute(
         "SELECT "
         + ", ".join(f"COALESCE(SUM({c}), 0) AS {c}" for c in WERT_FELDER)
-        + ", COALESCE(SUM(Gewicht_g), 0) AS gewicht FROM objects"
+        + ", COALESCE(SUM(Gewicht_g), 0) AS gewicht, "
+        "AVG(Confidence_Prozent) AS conf_avg FROM objects"
     ).fetchone()
     st.wert_summe_chf = float(sum(sums[c] for c in WERT_FELDER))
+    st.wert_roh_summe_chf = float(sums["Wert_CHF_roh"])
     st.gewicht_summe_g = float(sums["gewicht"])
+    st.durchschnitt_confidence_prozent = (
+        float(sums["conf_avg"]) if sums["conf_avg"] is not None else None
+    )
 
     wert_sql = _wert_pro_objekt_sql()
     row = conn.execute(
