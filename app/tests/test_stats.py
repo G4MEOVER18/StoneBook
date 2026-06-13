@@ -112,6 +112,58 @@ def test_top_wert_limit_respektiert(tmp_path):
     c.close()
 
 
+def test_by_funddatum_jahr_aus_seed_db(tmp_path):
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "jahr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2021-05-13"),
+            ("OBJ_0002", "2021-08-01"),
+            ("OBJ_0003", "2023-01-01"),
+            ("OBJ_0004", "2019-11-30"),
+            ("OBJ_0005", ""),          # leer
+            ("OBJ_0006", None),        # NULL
+            ("OBJ_0007", "Fruehling"), # ungueltig - kein Jahres-Praefix
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_jahr == {"2019": 1, "2021": 2, "2023": 1}
+    c.close()
+
+
+def test_by_funddatum_jahr_limit(tmp_path):
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "jahr_limit.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2018-01-01"),
+            ("OBJ_0002", "2020-01-01"),
+            ("OBJ_0003", "2020-06-01"),
+            ("OBJ_0004", "2021-01-01"),
+            ("OBJ_0005", "2021-03-01"),
+            ("OBJ_0006", "2021-12-01"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c, top_jahre=2)
+    # Top 2 nach Haeufigkeit: 2021 (3) und 2020 (2); aufsteigend nach Jahr ausgegeben
+    assert list(st.by_funddatum_jahr.items()) == [("2020", 2), ("2021", 3)]
+    c.close()
+
+
+def test_by_funddatum_jahr_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_jahr == {}
+    c.close()
+
+
 def test_wert_kennzahlen_bei_leerer_db(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "leer.sqlite3")

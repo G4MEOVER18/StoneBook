@@ -28,6 +28,7 @@ class Statistik:
     by_mineral: dict[str, int] = field(default_factory=dict)
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
+    by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     wert_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
     wert_durchschnitt_chf: float = 0.0
@@ -49,6 +50,7 @@ class Statistik:
             "by_mineral": dict(self.by_mineral),
             "by_kategorie": dict(self.by_kategorie),
             "by_fundort": dict(self.by_fundort),
+            "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
             "wert_durchschnitt_chf": round(self.wert_durchschnitt_chf, 2),
@@ -71,13 +73,34 @@ def _count_by(conn: sqlite3.Connection, column: str, limit: int | None = None) -
     return {r["k"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
+def _count_funddatum_jahr(conn: sqlite3.Connection, limit: int | None = None) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Jahr (Substring 1..4 von ISO YYYY-MM-DD).
+
+    Nur Werte mit vier Ziffern am Anfang werden beruecksichtigt; ungueltige
+    Funddaten werden ignoriert (siehe check_integrity).
+    """
+    sql = (
+        "SELECT substr(Funddatum, 1, 4) AS jahr, COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "GROUP BY jahr ORDER BY jahr ASC"
+    )
+    rows = conn.execute(sql).fetchall()
+    pairs = [(r["jahr"], r["n"]) for r in rows]
+    if limit is not None:
+        pairs.sort(key=lambda p: (-p[1], p[0]))
+        pairs = pairs[:int(limit)]
+        pairs.sort(key=lambda p: p[0])
+    return {j: n for j, n in pairs}
+
+
 def _wert_pro_objekt_sql() -> str:
     """Per-Row-Summe der CHF-Wertfelder (für Sortierung/Aggregation)."""
     return "(" + " + ".join(f"COALESCE({c}, 0)" for c in WERT_FELDER) + ")"
 
 
 def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
-                       top_wert: int = 10) -> Statistik:
+                       top_wert: int = 10, top_jahre: int | None = None) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -97,6 +120,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_mineral = _count_by(conn, "Mineral_Primaer")
     st.by_kategorie = _count_by(conn, "Kategorie")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
+
+    st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
 
     st.objekte_mit_bildern = conn.execute(
         "SELECT COUNT(DISTINCT obj_id) FROM images"
