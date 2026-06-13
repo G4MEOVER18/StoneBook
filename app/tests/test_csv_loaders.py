@@ -1,0 +1,55 @@
+from pathlib import Path
+
+from stonebook.migration import csv_loaders
+from stonebook.migration.id_utils import normalize_id, display_name
+
+REPO = Path(__file__).resolve().parents[2]
+CSV_DIR = REPO / "data" / "csv"
+
+
+def test_normalize_id():
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("OBJ_0043") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id(43) == "OBJ_0043"
+    assert normalize_id("") is None
+    assert normalize_id("Quatsch") is None
+    assert display_name("OBJ_0043") == "Objekt 43"
+
+
+def test_parse_range():
+    assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
+    assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
+    assert csv_loaders.parse_range("ca. 2.65") == (2.65, 2.65)
+    assert csv_loaders.parse_range("7") == (7.0, 7.0)
+    assert csv_loaders.parse_range("2,55") == (2.55, 2.55)
+    assert csv_loaders.parse_range("") == (None, None)
+    assert csv_loaders.parse_range(None) == (None, None)
+
+
+def test_load_v1():
+    data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
+    assert "OBJ_0001" in data
+    o1 = data["OBJ_0001"]
+    assert "Jaspis" in o1["Mineral_Primaer"]
+    assert "Rötlich" in o1["notizen"]
+
+
+def test_load_v2():
+    data = csv_loaders.load_v2(CSV_DIR / "Stonebock__stoneboock_daten_v2_objekte_1-42.csv")
+    o1 = data["OBJ_0001"]
+    assert o1["Mohs_Haerte_min"] == 6.5
+    assert o1["Mohs_Haerte_max"] == 7.0
+    assert o1["Confidence_Prozent"] == 80
+    assert o1["Varietaet"] == "Jaspis"
+
+
+def test_load_obj043():
+    data = csv_loaders.load_obj043(
+        CSV_DIR / "Stonebock__StoneBoock_Objekt_043_FULL__StoneBoock_Objekt_043.csv")
+    o43 = data["OBJ_0043"]
+    assert o43["Gewicht_g"] == 41.0
+    assert "Quarz" in o43["Mineral_Primaer"]
+    assert o43["Dichte_min_gcm3"] == 2.65
+    assert o43["Dichte_max_gcm3"] == 2.65
+    assert o43["Mohs_Haerte_min"] == 7.0

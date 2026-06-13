@@ -1,0 +1,7 @@
+data/db/
+data/thumbs/
+app/build/build/
+app/build/dist/
+__pycache__/
+*.pyc
+.pytest_cache/
