@@ -1,4 +1,5 @@
 """Konsistenzprüfungen über die DB."""
+import datetime
 from pathlib import Path
 
 import pytest
@@ -170,3 +171,33 @@ def test_as_dict_ist_serialisierbar(migrated_conn):
 
     rep = check_integrity(migrated_conn)
     json.dumps(rep.as_dict())
+
+
+def test_future_funddatum_wird_erkannt(tmp_path):
+    """Funddaten, die nach 'today' liegen, sind verdaechtig (Tippfehler/Vorgriff)."""
+    c = open_db(tmp_path / "fut.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2020-06-13"),   # Vergangenheit → ok
+            ("OBJ_0002", "2024-06-13"),   # heute → ok
+            ("OBJ_0003", "2024-06-14"),   # Zukunft → flag
+            ("OBJ_0004", "2099-12-31"),   # weit in der Zukunft → flag
+            ("OBJ_0005", ""),             # leer → uebergangen
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c, today=datetime.date(2024, 6, 13))
+    flagged = {oid for oid, _ in rep.future_funddatum}
+    assert flagged == {"OBJ_0003", "OBJ_0004"}
+    assert ("OBJ_0004", "2099-12-31") in rep.future_funddatum
+    # Zukunftsdaten zaehlen nicht als 'invalid' (parseable ISO)
+    assert rep.invalid_funddatum == []
+    assert not rep.is_clean
+    c.close()
+
+
+def test_future_funddatum_default_today_keine_falsch_positiven(migrated_conn):
+    """Die echte DB enthaelt keine Zukunftsdaten (Default-today reicht aus)."""
+    rep = check_integrity(migrated_conn)
+    assert rep.future_funddatum == []

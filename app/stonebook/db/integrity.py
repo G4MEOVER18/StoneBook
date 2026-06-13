@@ -1,6 +1,7 @@
 """Konsistenzprüfungen über die Objekt-DB (für Wartung/Diagnose)."""
 from __future__ import annotations
 
+import datetime
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,6 +46,7 @@ class IntegrityReport:
     alias_id_collisions: list[str] = field(default_factory=list)    # alias_id existiert auch als Objekt
     alias_self_referencing: list[str] = field(default_factory=list) # alias_id == canonical_id
     invalid_funddatum: list[str] = field(default_factory=list)      # obj_id
+    future_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, iso)
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
     range_inverted: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, feldpaar)
@@ -54,7 +56,7 @@ class IntegrityReport:
     def is_clean(self) -> bool:
         return not (self.orphan_images or self.alias_to_missing
                     or self.alias_id_collisions or self.alias_self_referencing
-                    or self.invalid_funddatum
+                    or self.invalid_funddatum or self.future_funddatum
                     or self.missing_image_files or self.numeric_out_of_range
                     or self.range_inverted or self.unknown_image_kategorie)
 
@@ -65,6 +67,7 @@ class IntegrityReport:
             "alias_id_collisions": list(self.alias_id_collisions),
             "alias_self_referencing": list(self.alias_self_referencing),
             "invalid_funddatum": list(self.invalid_funddatum),
+            "future_funddatum": [list(t) for t in self.future_funddatum],
             "missing_image_files": [list(t) for t in self.missing_image_files],
             "numeric_out_of_range": [list(t) for t in self.numeric_out_of_range],
             "range_inverted": [list(t) for t in self.range_inverted],
@@ -74,13 +77,18 @@ class IntegrityReport:
 
 
 def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
-                    check_files: bool = False) -> IntegrityReport:
+                    check_files: bool = False,
+                    today: datetime.date | None = None) -> IntegrityReport:
     """Sammelt typische Inkonsistenzen.
 
     ``check_files=True`` und ``root`` gesetzt → prüft zusätzlich, ob die in
     ``images.rel_path`` referenzierten Dateien auf der Platte existieren.
+    ``today`` setzt das Referenzdatum fuer die Zukunfts-Pruefung des Funddatums
+    (Default: ``datetime.date.today()``); explizit setzen macht den Test
+    deterministisch.
     """
     rep = IntegrityReport()
+    today_iso = (today or datetime.date.today()).isoformat()
 
     rep.orphan_images = [r[0] for r in conn.execute(
         "SELECT i.id FROM images i "
@@ -114,8 +122,11 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         "SELECT obj_id, Funddatum FROM objects "
         "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != ''"
     ).fetchall():
-        if parse_iso_date(row["Funddatum"]) is None:
+        iso = parse_iso_date(row["Funddatum"])
+        if iso is None:
             rep.invalid_funddatum.append(row["obj_id"])
+        elif iso > today_iso:
+            rep.future_funddatum.append((row["obj_id"], iso))
 
     cols = ", ".join(NUMERIC_RANGES)
     for row in conn.execute(f"SELECT obj_id, {cols} FROM objects").fetchall():
