@@ -5,7 +5,7 @@ import pytest
 
 from stonebook.db.database import connect, open_db
 from stonebook.export.csv_export import export_csv
-from stonebook.export.docx_export import export_docx
+from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import export_json, import_json
 from stonebook.migration.migrate import migrate
 
@@ -89,3 +89,22 @@ def test_docx_export(conn, tmp_path):
     assert "OBJ_0043" in text
     # Bilder eingebettet (OBJ_0043 hat Fotos)
     assert doc.inline_shapes is not None and len(doc.inline_shapes) > 0
+
+
+def test_docx_batch_export(conn, tmp_path):
+    out_dir = tmp_path / "berichte"
+    progress_calls = []
+    paths = export_docx_batch(
+        conn, REPO, ["OBJ_0001", "OBJ_0043"], out_dir,
+        progress=lambda done, total, obj: progress_calls.append((done, total, obj)),
+    )
+    assert len(paths) == 2
+    assert all(p.is_file() and p.parent == out_dir for p in paths)
+    assert {p.name for p in paths} == {
+        "Objekt_001_Analysebericht.docx", "Objekt_043_Analysebericht.docx"
+    }
+    assert progress_calls == [(1, 2, "OBJ_0001"), (2, 2, "OBJ_0043")]
+
+
+def test_docx_batch_export_leer(conn, tmp_path):
+    assert export_docx_batch(conn, REPO, [], tmp_path) == []

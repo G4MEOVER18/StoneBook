@@ -75,8 +75,39 @@ def export_docx(conn, root: Path, obj_id: str, out_path: Path | None = None) -> 
                 doc.add_paragraph(f"[nicht einbettbar] {r['rel_path']}")
 
     if out_path is None:
-        num = int(obj_id.split("_")[1])
-        out_path = root / "objects" / obj_id / f"Objekt_{num:03d}_Analysebericht.docx"
+        out_path = _default_report_path(root, obj_id)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
     return out_path
+
+
+def _default_report_path(root: Path, obj_id: str) -> Path:
+    num = int(obj_id.split("_")[1])
+    return root / "objects" / obj_id / f"Objekt_{num:03d}_Analysebericht.docx"
+
+
+def export_docx_batch(conn, root: Path, obj_ids: list[str] | None = None,
+                      out_dir: Path | None = None, progress=None) -> list[Path]:
+    """Schreibt Analyseberichte fuer mehrere Objekte.
+
+    ``obj_ids=None`` exportiert alle aktiven Objekte. ``out_dir`` legt alle
+    Berichte in denselben Ordner (Dateiname ``Objekt_NNN_Analysebericht.docx``);
+    ohne ``out_dir`` landet jeder Bericht unter ``objects/<obj_id>/`` wie beim
+    Einzelexport. ``progress(done, total, obj_id)`` wird optional pro Objekt
+    aufgerufen.
+    """
+    if obj_ids is None:
+        obj_ids = [r[0] for r in conn.execute(
+            "SELECT obj_id FROM objects WHERE status='aktiv' ORDER BY obj_id"
+        ).fetchall()]
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    total = len(obj_ids)
+    for i, obj_id in enumerate(obj_ids, 1):
+        target = (out_dir / _default_report_path(root, obj_id).name
+                  if out_dir is not None else None)
+        written.append(export_docx(conn, root, obj_id, target))
+        if progress is not None:
+            progress(i, total, obj_id)
+    return written
