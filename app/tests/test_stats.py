@@ -291,3 +291,58 @@ def test_wert_kennzahlen_bei_leerer_db(tmp_path):
     assert st.objekte_mit_wert == 0
     assert st.top_wert_objekte == []
     c.close()
+
+
+def test_quoten_aus_seed_db(tmp_path):
+    """Coverage-Quoten = Anteil der Objekte mit Bildern/Funddatum/Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "q.sqlite3")
+    # 4 Objekte: zwei mit Wert (50%), eines mit Funddatum (25%), zwei mit Bildern (50%)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "2024-06-13", 100.0),
+            ("OBJ_0002", None, 50.0),
+            ("OBJ_0003", None, None),
+            ("OBJ_0004", None, None),
+        ],
+    )
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg"),
+            ("OBJ_0002", "Kamera", "b.jpg"),
+            ("OBJ_0002", "Mikroskop", "c.jpg"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.quote_mit_bildern_prozent == 50.0
+    assert st.quote_mit_funddatum_prozent == 25.0
+    assert st.quote_mit_wert_prozent == 50.0
+    d = st.as_dict()
+    assert d["quote_mit_bildern_prozent"] == 50.0
+    assert d["quote_mit_funddatum_prozent"] == 25.0
+    assert d["quote_mit_wert_prozent"] == 50.0
+    c.close()
+
+
+def test_quoten_bei_leerer_db_sind_none(tmp_path):
+    """Bei 0 Objekten gibt es keine Quote (nicht 0%, sondern undefiniert)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_bildern_prozent is None
+    assert st.quote_mit_funddatum_prozent is None
+    assert st.quote_mit_wert_prozent is None
+    d = st.as_dict()
+    assert d["quote_mit_bildern_prozent"] is None
+    c.close()
+
+
+def test_quoten_auf_migrierter_db_plausibel(conn):
+    st = compute_statistics(conn)
+    # 546 Objekte, einige mit Bildern → Quote zwischen 0 und 100, Rundung 1 Stelle
+    assert 0.0 < st.quote_mit_bildern_prozent <= 100.0
+    # Migrierte DB hat kein Funddatum gesetzt
+    assert st.quote_mit_funddatum_prozent == 0.0

@@ -40,6 +40,23 @@ class Statistik:
     gewicht_summe_g: float = 0.0
     durchschnitt_confidence_prozent: float | None = None
 
+    def _quote(self, n: int) -> float | None:
+        if self.objekte_total <= 0:
+            return None
+        return n / self.objekte_total * 100.0
+
+    @property
+    def quote_mit_bildern_prozent(self) -> float | None:
+        return self._quote(self.objekte_mit_bildern)
+
+    @property
+    def quote_mit_funddatum_prozent(self) -> float | None:
+        return self._quote(self.objekte_mit_funddatum)
+
+    @property
+    def quote_mit_wert_prozent(self) -> float | None:
+        return self._quote(self.objekte_mit_wert)
+
     def as_dict(self) -> dict:
         return {
             "objekte_total": self.objekte_total,
@@ -70,7 +87,14 @@ class Statistik:
                 round(self.durchschnitt_confidence_prozent, 1)
                 if self.durchschnitt_confidence_prozent is not None else None
             ),
+            "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
+            "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
+            "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
         }
+
+
+def _round_or_none(value: float | None, digits: int = 1) -> float | None:
+    return round(value, digits) if value is not None else None
 
 
 def _count_by(conn: sqlite3.Connection, column: str, limit: int | None = None) -> dict[str, int]:
