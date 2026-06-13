@@ -25,6 +25,25 @@ def test_parse_iso_date_year_month():
     assert parse_iso_date("2024/6") == "2024-06-01"
 
 
+def test_parse_iso_date_deutsche_monatsnamen():
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("1. Januar 2020") == "2020-01-01"
+    assert parse_iso_date("3 Mai 2019") == "2019-05-03"
+    assert parse_iso_date("31. Dezember 1999") == "1999-12-31"
+    # Kurzformen
+    assert parse_iso_date("13. Jun 2024") == "2024-06-13"
+    assert parse_iso_date("13. Sept 2024") == "2024-09-13"
+    # Mit Umlaut: März → maerz
+    assert parse_iso_date("5. März 2022") == "2022-03-05"
+
+
+def test_parse_iso_date_monat_jahr():
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Mai, 2024") == "2024-05-01"
+    assert parse_iso_date("Dezember 1999") == "1999-12-01"
+    assert parse_iso_date("März 2022") == "2022-03-01"
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None
@@ -35,6 +54,8 @@ def test_parse_iso_date_invalid():
     assert parse_iso_date("2024-13-01") is None  # ungueltiger Monat
     assert parse_iso_date("1700") is None        # vor 1800
     assert parse_iso_date("foo") is None
+    assert parse_iso_date("32. Juni 2024") is None    # ungueltiger Tag
+    assert parse_iso_date("13. Foomonat 2024") is None  # unbekannter Monat
 
 
 def test_parse_coordinates_decimal():

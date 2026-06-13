@@ -15,6 +15,35 @@ _DATE_FORMATS = (
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
+
+# Deutsche Monatsnamen (lang + kurz, ohne Punkt; "Maerz"/"März" via Normalisierung)
+_GERMAN_MONTHS: dict[str, int] = {
+    "januar": 1, "jan": 1,
+    "februar": 2, "feb": 2,
+    "maerz": 3, "marz": 3, "mar": 3, "mrz": 3,
+    "april": 4, "apr": 4,
+    "mai": 5,
+    "juni": 6, "jun": 6,
+    "juli": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "oktober": 10, "okt": 10,
+    "november": 11, "nov": 11,
+    "dezember": 12, "dez": 12,
+}
+# "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024"
+_DAY_MONTH_YEAR = re.compile(
+    r"^\s*(\d{1,2})\.?\s*([A-Za-zÄÖÜäöü]+)\.?\s*(\d{4})\s*$",
+)
+# "Juni 2024" / "Juni, 2024"
+_MONTH_YEAR = re.compile(
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]\s*(\d{4})\s*$",
+)
+
+
+def _normalize_month_name(name: str) -> int | None:
+    key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+    return _GERMAN_MONTHS.get(key)
 # DMS: 46°30'15" N  /  7° 30' 0'' O  /  46°30'15.5"S
 _DMS = re.compile(
     r"""(\d+(?:[.,]\d+)?)\s*°               # Grad
@@ -71,6 +100,23 @@ def parse_iso_date(text) -> str | None:
         if 1800 <= d.year <= 2999:
             return d.isoformat()
         return None
+    # Deutsche Monatsnamen ("13. Juni 2024", "Juni 2024")
+    m = _DAY_MONTH_YEAR.match(s)
+    if m:
+        day = int(m.group(1))
+        month = _normalize_month_name(m.group(2))
+        year = int(m.group(3))
+        if month and 1 <= day <= 31 and 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
+    m = _MONTH_YEAR.match(s)
+    if m:
+        month = _normalize_month_name(m.group(1))
+        year = int(m.group(2))
+        if month and 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
     return None
 
 
