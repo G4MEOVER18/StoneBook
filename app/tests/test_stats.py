@@ -97,6 +97,60 @@ def test_wert_kennzahlen_aus_seed_db(tmp_path):
     c.close()
 
 
+def test_wert_median_ungerade_anzahl(tmp_path):
+    """Median bei 3 Werten = mittlerer Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "med.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 100.0), ("OBJ_0003", 1000.0)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_median_chf == 100.0
+    c.close()
+
+
+def test_wert_median_gerade_anzahl(tmp_path):
+    """Median bei 4 Werten = Mittel der beiden mittleren."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "med2.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 20.0),
+         ("OBJ_0003", 30.0), ("OBJ_0004", 40.0)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_median_chf == 25.0  # (20+30)/2
+    c.close()
+
+
+def test_wert_median_ignoriert_nullwerte(tmp_path):
+    """Objekte ohne Wert (alles NULL) zaehlen nicht in den Median."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "med3.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 50.0),
+         ("OBJ_0003", None), ("OBJ_0004", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Nur 10 und 50 zaehlen; Median = (10+50)/2 = 30
+    assert st.wert_median_chf == 30.0
+    assert st.objekte_mit_wert == 2
+    c.close()
+
+
+def test_wert_median_leere_db(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_median_chf == 0.0
+    c.close()
+
+
 def test_top_wert_limit_respektiert(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "limit.sqlite3")

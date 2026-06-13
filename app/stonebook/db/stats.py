@@ -34,6 +34,7 @@ class Statistik:
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
     wert_durchschnitt_chf: float = 0.0
+    wert_median_chf: float = 0.0
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
@@ -59,6 +60,7 @@ class Statistik:
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
             "wert_durchschnitt_chf": round(self.wert_durchschnitt_chf, 2),
+            "wert_median_chf": round(self.wert_median_chf, 2),
             "objekte_mit_wert": self.objekte_mit_wert,
             "top_wert_objekte": [
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
@@ -174,6 +176,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_wert = int(row["n"])
     if st.objekte_mit_wert:
         st.wert_durchschnitt_chf = st.wert_summe_chf / st.objekte_mit_wert
+        werte = [float(r["w"]) for r in conn.execute(
+            f"SELECT {wert_sql} AS w FROM objects "
+            f"WHERE {wert_sql} > 0 ORDER BY w"
+        ).fetchall()]
+        n = len(werte)
+        st.wert_median_chf = (werte[n // 2] if n % 2
+                              else (werte[n // 2 - 1] + werte[n // 2]) / 2)
     st.top_wert_objekte = [
         (r["obj_id"], r["Name"] or "", float(r["w"]))
         for r in conn.execute(
