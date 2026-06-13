@@ -67,3 +67,49 @@ def test_only_images_filter(repo):
     assert rows
     for r in rows:
         assert r["bilder"] >= 1
+
+
+def test_funddatum_jahr_range_filter(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "y.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2018-05-13"),
+            ("OBJ_0002", "2020-08-01"),
+            ("OBJ_0003", "2022-01-01"),
+            ("OBJ_0004", "2024-11-30"),
+            ("OBJ_0005", ""),          # ohne Funddatum → faellt raus
+            ("OBJ_0006", "kein-datum"),# ungueltig → faellt raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(funddatum_jahr_min=2020, funddatum_jahr_max=2022)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+
+    rows = repo.list_objects(funddatum_jahr_min=2023)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+
+    rows = repo.list_objects(funddatum_jahr_max=2018)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
+def test_fundort_filter(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "f.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Davos"),
+            ("OBJ_0002", "Davos"),
+            ("OBJ_0003", "Zermatt"),
+            ("OBJ_0004", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(fundort="Davos")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()

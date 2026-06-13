@@ -43,6 +43,9 @@ class ObjectRepo:
                      kategorie: str = "", only_images: bool = False,
                      min_confidence: int | None = None,
                      has_funddatum: bool | None = None,
+                     funddatum_jahr_min: int | None = None,
+                     funddatum_jahr_max: int | None = None,
+                     fundort: str = "",
                      sort_by: str | None = None,
                      sort_desc: bool = False) -> list[sqlite3.Row]:
         sql = """
@@ -73,6 +76,17 @@ class ObjectRepo:
             where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != ''")
         elif has_funddatum is False:
             where.append("(o.Funddatum IS NULL OR TRIM(o.Funddatum) = '')")
+        if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
+            where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+            if funddatum_jahr_min is not None:
+                where.append("CAST(substr(o.Funddatum, 1, 4) AS INTEGER) >= ?")
+                params.append(int(funddatum_jahr_min))
+            if funddatum_jahr_max is not None:
+                where.append("CAST(substr(o.Funddatum, 1, 4) AS INTEGER) <= ?")
+                params.append(int(funddatum_jahr_max))
+        if fundort:
+            where.append("o.Fundort = ?")
+            params.append(fundort)
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += _order_by_clause(sort_by, sort_desc)
