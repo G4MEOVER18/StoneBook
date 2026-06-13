@@ -29,6 +29,10 @@ class Statistik:
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     wert_summe_chf: float = 0.0
+    wert_max_chf: float = 0.0
+    wert_durchschnitt_chf: float = 0.0
+    objekte_mit_wert: int = 0
+    top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
 
     def as_dict(self) -> dict:
@@ -46,6 +50,12 @@ class Statistik:
             "by_kategorie": dict(self.by_kategorie),
             "by_fundort": dict(self.by_fundort),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
+            "wert_max_chf": round(self.wert_max_chf, 2),
+            "wert_durchschnitt_chf": round(self.wert_durchschnitt_chf, 2),
+            "objekte_mit_wert": self.objekte_mit_wert,
+            "top_wert_objekte": [
+                (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
+            ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
         }
 
@@ -61,7 +71,13 @@ def _count_by(conn: sqlite3.Connection, column: str, limit: int | None = None) -
     return {r["k"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
-def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10) -> Statistik:
+def _wert_pro_objekt_sql() -> str:
+    """Per-Row-Summe der CHF-Wertfelder (für Sortierung/Aggregation)."""
+    return "(" + " + ".join(f"COALESCE({c}, 0)" for c in WERT_FELDER) + ")"
+
+
+def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
+                       top_wert: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -97,4 +113,22 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10) -> Stat
     ).fetchone()
     st.wert_summe_chf = float(sum(sums[c] for c in WERT_FELDER))
     st.gewicht_summe_g = float(sums["gewicht"])
+
+    wert_sql = _wert_pro_objekt_sql()
+    row = conn.execute(
+        f"SELECT COALESCE(MAX({wert_sql}), 0) AS wmax, "
+        f"COUNT(*) AS n FROM objects WHERE {wert_sql} > 0"
+    ).fetchone()
+    st.wert_max_chf = float(row["wmax"])
+    st.objekte_mit_wert = int(row["n"])
+    if st.objekte_mit_wert:
+        st.wert_durchschnitt_chf = st.wert_summe_chf / st.objekte_mit_wert
+    st.top_wert_objekte = [
+        (r["obj_id"], r["Name"] or "", float(r["w"]))
+        for r in conn.execute(
+            f"SELECT obj_id, Name, {wert_sql} AS w FROM objects "
+            f"WHERE {wert_sql} > 0 ORDER BY w DESC, obj_id LIMIT ?",
+            (int(top_wert),),
+        ).fetchall()
+    ]
     return st
