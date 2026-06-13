@@ -48,6 +48,9 @@ class AIPanel(QWidget):
         self.status_label = QLabel("")
         btns.addWidget(self.status_label)
         btns.addStretch()
+        self.backend_label = QLabel("")
+        self.backend_label.setStyleSheet("color: #6c757d;")
+        btns.addWidget(self.backend_label)
         top_lay.addLayout(btns)
         split.addWidget(top)
 
@@ -73,11 +76,15 @@ class AIPanel(QWidget):
         self._update_key_state()
 
     def _update_key_state(self):
-        has_key = bool(config.get_api_key())
+        configured = config.ai_is_configured()
         running = self.worker is not None and self.worker.isRunning()
-        self.start_btn.setEnabled(has_key and not running and self.obj_id is not None)
+        self.start_btn.setEnabled(configured and not running and self.obj_id is not None)
         self.start_btn.setToolTip(
-            "" if has_key else "API-Key in den Einstellungen hinterlegen")
+            "" if configured else "KI-Backend in den Einstellungen konfigurieren")
+        if configured:
+            self.backend_label.setText(f"Backend: {config.backend_label()}")
+        else:
+            self.backend_label.setText("Kein KI-Backend konfiguriert")
 
     def load_object(self, obj_id: str) -> None:
         self.obj_id = obj_id
@@ -123,12 +130,16 @@ class AIPanel(QWidget):
             return
         row = self.objects.get(self.obj_id)
         object_data = {f.name: row[f.name] for f in AI_FIELDS}
+        try:
+            provider = config.build_provider()
+        except Exception as e:
+            QMessageBox.warning(self, "KI-Analyse", str(e))
+            return
         from stonebook.ai.client import AnalysisWorker
-        self.worker = AnalysisWorker(
-            config.get_api_key(), config.get_model(), self.root, images, object_data)
+        self.worker = AnalysisWorker(provider, self.root, images, object_data)
         self.worker.finished_ok.connect(self._on_result)
         self.worker.failed.connect(self._on_error)
-        self.status_label.setText(f"Analyse läuft ({config.get_model()}) …")
+        self.status_label.setText(f"Analyse läuft ({config.backend_label()}) …")
         self._update_key_state()
         self.worker.start()
 
@@ -142,7 +153,7 @@ class AIPanel(QWidget):
         self._update_key_state()
         if self.obj_id:
             self._analysis_id = self.analyses.add(
-                self.obj_id, config.get_model(), json.dumps(result, ensure_ascii=False))
+                self.obj_id, config.backend_label(), json.dumps(result, ensure_ascii=False))
         self.summary_label.setText(
             f"Gesamt-Confidence: {result.get('gesamt_confidence', '–')} %\n"
             f"{result.get('zusammenfassung', '')}")

@@ -6,8 +6,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (QMainWindow, QMessageBox, QPlainTextEdit,
-                               QSplitter, QToolBar, QVBoxLayout, QDialog,
-                               QDialogButtonBox)
+                               QSplitter, QStackedWidget, QToolBar, QVBoxLayout,
+                               QDialog, QDialogButtonBox)
 
 from stonebook import config
 from stonebook.db.repository import ObjectRepo
@@ -47,6 +47,16 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
+        self.action_browse = QAction("Sammlung", self)
+        self.action_browse.triggered.connect(lambda: self._show_page(0))
+        toolbar.addAction(self.action_browse)
+
+        self.action_dashboard = QAction("Dashboard", self)
+        self.action_dashboard.triggered.connect(lambda: self._show_page(1))
+        toolbar.addAction(self.action_dashboard)
+
+        toolbar.addSeparator()
+
         self.action_new = QAction("Neues Objekt", self)
         self.action_new.triggered.connect(self.new_object)
         toolbar.addAction(self.action_new)
@@ -63,6 +73,7 @@ class MainWindow(QMainWindow):
         self.action_settings.triggered.connect(self.open_settings)
         toolbar.addAction(self.action_settings)
 
+        self.stack = QStackedWidget()
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.object_list = ObjectListWidget(self.objects)
         self.detail = ObjectDetail(conn, root)
@@ -73,9 +84,19 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.object_list)
         splitter.addWidget(self.detail)
         splitter.setSizes([520, 880])
-        self.setCentralWidget(splitter)
+        self.stack.addWidget(splitter)
+
+        from stonebook.gui.dashboard import DashboardWidget
+        self.dashboard = DashboardWidget(self.objects)
+        self.stack.addWidget(self.dashboard)
+        self.setCentralWidget(self.stack)
 
         self._update_status()
+
+    def _show_page(self, index: int):
+        if index == 1:
+            self.dashboard.refresh()
+        self.stack.setCurrentIndex(index)
 
     # --- Navigation -------------------------------------------------------
 
@@ -137,6 +158,7 @@ class MainWindow(QMainWindow):
         d.aliases.conn = conn
         d.analyses.conn = conn
         d.reports.conn = conn
+        self.dashboard.objects.conn = conn
 
     def show_export_menu(self):
         from PySide6.QtGui import QCursor

@@ -164,6 +164,34 @@ class ObjectRepo:
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
 
+    def statistics(self) -> dict:
+        c = self.conn
+        status = {r[0]: r[1] for r in c.execute(
+            "SELECT status, COUNT(*) FROM objects GROUP BY status")}
+        top_minerals = c.execute(
+            "SELECT Mineral_Primaer, COUNT(*) AS n FROM objects "
+            "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != '' "
+            "GROUP BY Mineral_Primaer ORDER BY n DESC, Mineral_Primaer LIMIT 10").fetchall()
+        with_images = c.execute(
+            "SELECT COUNT(DISTINCT obj_id) FROM images").fetchone()[0]
+        total_value = c.execute(
+            "SELECT COALESCE(SUM(COALESCE(Wert_CHF_roh,0)),0) FROM objects").fetchone()[0]
+        image_total = c.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+        alias_total = c.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+        avg_conf = c.execute(
+            "SELECT AVG(Confidence_Prozent) FROM objects "
+            "WHERE Confidence_Prozent IS NOT NULL").fetchone()[0]
+        return {
+            "gesamt": self.count(),
+            "status": status,
+            "top_minerals": [(r[0], r[1]) for r in top_minerals],
+            "mit_bildern": with_images,
+            "bilder_gesamt": image_total,
+            "aliase": alias_total,
+            "wert_roh_chf": round(total_value, 2),
+            "durchschnitt_confidence": round(avg_conf, 1) if avg_conf is not None else None,
+        }
+
 
 class ImageRepo:
     def __init__(self, conn: sqlite3.Connection):

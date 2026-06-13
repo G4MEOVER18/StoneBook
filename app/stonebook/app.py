@@ -30,6 +30,9 @@ def main() -> int:
     app.setApplicationName("StoneBook")
     app.setOrganizationName(config.ORG)
 
+    from stonebook.gui.theme import QSS
+    app.setStyleSheet(QSS)
+
     root = config.repo_root()
     if root is None:
         root = _ask_repo_root()
