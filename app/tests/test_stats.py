@@ -246,6 +246,36 @@ def test_durchschnitt_confidence_ohne_werte(tmp_path):
     assert st.wert_roh_summe_chf == 0.0
 
 
+def test_by_kristallsystem_aus_seed_db(tmp_path):
+    """Verteilung nach Kristallsystem ignoriert leere Eintraege."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "kris.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "trigonal"),
+            ("OBJ_0002", "trigonal"),
+            ("OBJ_0003", "kubisch"),
+            ("OBJ_0004", "hexagonal"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_kristallsystem == {"trigonal": 2, "hexagonal": 1, "kubisch": 1}
+    assert st.as_dict()["by_kristallsystem"] == {"trigonal": 2, "hexagonal": 1, "kubisch": 1}
+    c.close()
+
+
+def test_by_kristallsystem_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_kristallsystem == {}
+    c.close()
+
+
 def test_bilder_by_kategorie_aus_migrierter_db(conn):
     st = compute_statistics(conn)
     # Migrierte DB hat 63 Bilder verteilt auf Kategorien
