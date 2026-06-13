@@ -111,6 +111,54 @@ def test_range_inverted_wird_erkannt(tmp_path):
     c.close()
 
 
+def test_alias_self_referencing_wird_erkannt(tmp_path):
+    """Ein Alias auf sich selbst ist eine Inkonsistenz (Migration produziert das nie)."""
+    c = open_db(tmp_path / "self.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0002')")
+    # Self-Alias: OBJ_0002 → OBJ_0002 (manuell, simuliert Edit-Fehler)
+    c.execute(
+        "INSERT INTO aliases (alias_id, canonical_id) VALUES (?, ?)",
+        ("OBJ_0002", "OBJ_0002"),
+    )
+    c.commit()
+    rep = check_integrity(c)
+    assert rep.alias_self_referencing == ["OBJ_0002"]
+    # Self-Alias kollidiert auch zwangslaeufig mit dem Objekt
+    assert "OBJ_0002" in rep.alias_id_collisions
+    assert not rep.is_clean
+    c.close()
+
+
+def test_unknown_image_kategorie_wird_erkannt(tmp_path):
+    c = open_db(tmp_path / "cat.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg"),
+            ("OBJ_0001", "TypoKat", "b.jpg"),  # unbekannt
+            ("OBJ_0001", "Mikroskop", "c.jpg"),
+            ("OBJ_0001", "", "d.jpg"),  # leer
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    kats = {kat for _, kat in rep.unknown_image_kategorie}
+    assert "TypoKat" in kats
+    assert "" in kats
+    assert "Kamera" not in kats
+    assert "Mikroskop" not in kats
+    assert not rep.is_clean
+    c.close()
+
+
+def test_migrierte_db_alle_image_kategorien_bekannt(migrated_conn):
+    rep = check_integrity(migrated_conn)
+    assert rep.unknown_image_kategorie == []
+    assert rep.alias_self_referencing == []
+
+
 def test_migrierte_db_keine_numerischen_ausreisser(migrated_conn):
     rep = check_integrity(migrated_conn)
     assert rep.numeric_out_of_range == []

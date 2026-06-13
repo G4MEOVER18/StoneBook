@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from stonebook.fields import IMAGE_CATEGORIES
 from stonebook.migration.validators import parse_iso_date
 
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
@@ -42,27 +43,32 @@ class IntegrityReport:
     orphan_images: list[int] = field(default_factory=list)          # image.id
     alias_to_missing: list[str] = field(default_factory=list)       # alias_id
     alias_id_collisions: list[str] = field(default_factory=list)    # alias_id existiert auch als Objekt
+    alias_self_referencing: list[str] = field(default_factory=list) # alias_id == canonical_id
     invalid_funddatum: list[str] = field(default_factory=list)      # obj_id
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
     range_inverted: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, feldpaar)
+    unknown_image_kategorie: list[tuple[int, str]] = field(default_factory=list)  # (id, kategorie)
 
     @property
     def is_clean(self) -> bool:
         return not (self.orphan_images or self.alias_to_missing
-                    or self.alias_id_collisions or self.invalid_funddatum
+                    or self.alias_id_collisions or self.alias_self_referencing
+                    or self.invalid_funddatum
                     or self.missing_image_files or self.numeric_out_of_range
-                    or self.range_inverted)
+                    or self.range_inverted or self.unknown_image_kategorie)
 
     def as_dict(self) -> dict:
         return {
             "orphan_images": list(self.orphan_images),
             "alias_to_missing": list(self.alias_to_missing),
             "alias_id_collisions": list(self.alias_id_collisions),
+            "alias_self_referencing": list(self.alias_self_referencing),
             "invalid_funddatum": list(self.invalid_funddatum),
             "missing_image_files": [list(t) for t in self.missing_image_files],
             "numeric_out_of_range": [list(t) for t in self.numeric_out_of_range],
             "range_inverted": [list(t) for t in self.range_inverted],
+            "unknown_image_kategorie": [list(t) for t in self.unknown_image_kategorie],
             "is_clean": self.is_clean,
         }
 
@@ -92,6 +98,17 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         "SELECT a.alias_id FROM aliases a "
         "JOIN objects o ON o.obj_id = a.alias_id ORDER BY a.alias_id"
     ).fetchall()]
+
+    rep.alias_self_referencing = [r[0] for r in conn.execute(
+        "SELECT alias_id FROM aliases WHERE alias_id = canonical_id ORDER BY alias_id"
+    ).fetchall()]
+
+    known_categories = set(IMAGE_CATEGORIES)
+    rep.unknown_image_kategorie = [
+        (r["id"], r["kategorie"])
+        for r in conn.execute("SELECT id, kategorie FROM images ORDER BY id").fetchall()
+        if r["kategorie"] not in known_categories
+    ]
 
     for row in conn.execute(
         "SELECT obj_id, Funddatum FROM objects "
