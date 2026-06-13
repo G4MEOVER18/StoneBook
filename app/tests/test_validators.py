@@ -44,6 +44,24 @@ def test_parse_iso_date_monat_jahr():
     assert parse_iso_date("März 2022") == "2022-03-01"
 
 
+def test_parse_iso_date_iso_datetime():
+    """ISO 8601 mit Zeitanteil (T oder Space) wird auf das Datum reduziert."""
+    assert parse_iso_date("2024-06-13T10:00:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 10:00:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00Z") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00.123") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00+02:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00-0500") == "2024-06-13"
+
+
+def test_parse_iso_date_exif_datetime():
+    """EXIF DateTimeOriginal nutzt Doppelpunkte im Datumsteil (Foto-Metadaten)."""
+    assert parse_iso_date("2024:06:13 10:00:00") == "2024-06-13"
+    assert parse_iso_date("1999:12:31 23:59:59") == "1999-12-31"
+    # Ungueltiges EXIF-Datum (Monat 13) → None
+    assert parse_iso_date("2024:13:01 10:00:00") is None
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

@@ -15,6 +15,13 @@ _DATE_FORMATS = (
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
+# ISO 8601 mit Zeitanteil: "2024-06-13T10:00:00", "2024-06-13 10:00:00Z",
+# auch EXIF-Stil "2024:06:13 10:00:00" → Zeit wird verworfen, nur Datum bleibt.
+_ISO_DATETIME = re.compile(
+    r"^\s*(\d{4})[-:/.](\d{1,2})[-:/.](\d{1,2})"
+    r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
+    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
+)
 
 # Deutsche Monatsnamen (lang + kurz, ohne Punkt; "Maerz"/"März" via Normalisierung)
 _GERMAN_MONTHS: dict[str, int] = {
@@ -92,6 +99,14 @@ def parse_iso_date(text) -> str | None:
         if 1800 <= year <= 2999 and 1 <= month <= 12:
             return f"{year:04d}-{month:02d}-01"
         return None
+    m = _ISO_DATETIME.match(s)
+    if m:
+        year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
     for fmt in _DATE_FORMATS:
         try:
             d = datetime.datetime.strptime(s, fmt).date()
