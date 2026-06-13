@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from stonebook.db.database import connect, open_db
-from stonebook.export.csv_export import export_csv
+from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import export_json, import_json
 from stonebook.migration.migrate import migrate
@@ -76,6 +76,58 @@ def test_json_import_ignoriert_unbekannte_spalten(tmp_path):
     assert row["obj_id"] == "OBJ_0999"
     assert row["Name"] == "Test"
     c.close()
+
+
+def test_csv_import_roundtrip(conn, tmp_path):
+    """export_csv → import_csv in eine frische DB ergibt dieselben Felder."""
+    dump = tmp_path / "export.csv"
+    export_csv(conn, dump, obj_ids=["OBJ_0043"])
+    fresh_db = tmp_path / "fresh.sqlite3"
+    fresh = open_db(fresh_db)
+    rep = import_csv(fresh, dump)
+    assert rep.angelegt == ["OBJ_0043"]
+    assert rep.aktualisiert == []
+    o43 = fresh.execute("SELECT * FROM objects WHERE obj_id='OBJ_0043'").fetchone()
+    assert o43["Gewicht_g"] == 41.0
+    assert "Quarz" in o43["Mineral_Primaer"]
+    assert o43["status"] == "aktiv"
+    fresh.close()
+
+
+def test_csv_import_aktualisiert_bestehend(tmp_path):
+    src = tmp_path / "src.csv"
+    src.write_text(
+        "ID,Mineral_Primaer,Gewicht_g\nOBJ_0001,Quarz,12.0\n",
+        encoding="utf-8",
+    )
+    db = open_db(tmp_path / "x.sqlite3")
+    rep1 = import_csv(db, src)
+    assert rep1.angelegt == ["OBJ_0001"]
+
+    # Update: neuer Wert für Gewicht
+    src2 = tmp_path / "src2.csv"
+    src2.write_text(
+        "ID,Gewicht_g\nOBJ_0001,15.5\n",
+        encoding="utf-8",
+    )
+    rep2 = import_csv(db, src2)
+    assert rep2.angelegt == []
+    assert rep2.aktualisiert == ["OBJ_0001"]
+    row = db.execute("SELECT * FROM objects WHERE obj_id='OBJ_0001'").fetchone()
+    assert row["Gewicht_g"] == 15.5
+    assert row["Mineral_Primaer"] == "Quarz"  # alter Wert bleibt erhalten
+    db.close()
+
+
+def test_csv_import_create_missing_false(tmp_path):
+    src = tmp_path / "src.csv"
+    src.write_text("ID,Mineral_Primaer\nOBJ_0999,Calcit\n", encoding="utf-8")
+    db = open_db(tmp_path / "x.sqlite3")
+    rep = import_csv(db, src, create_missing=False)
+    assert rep.uebersprungen == ["OBJ_0999"]
+    assert rep.angelegt == []
+    assert db.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 0
+    db.close()
 
 
 def test_docx_export(conn, tmp_path):
