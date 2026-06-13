@@ -119,6 +119,54 @@ def test_csv_import_aktualisiert_bestehend(tmp_path):
     db.close()
 
 
+def test_csv_import_merge_only_konflikt(tmp_path):
+    """merge_only: vorhandene Werte werden NICHT ueberschrieben, Konflikte gemeldet."""
+    db = open_db(tmp_path / "x.sqlite3")
+    src1 = tmp_path / "src.csv"
+    src1.write_text(
+        "ID,Mineral_Primaer,Gewicht_g\nOBJ_0001,Quarz,10.0\n",
+        encoding="utf-8",
+    )
+    import_csv(db, src1)
+
+    src2 = tmp_path / "src2.csv"
+    src2.write_text(
+        "ID,Mineral_Primaer,Gewicht_g,Farbe_beobachtet\n"
+        "OBJ_0001,Calcit,10.0,gruen\n",  # Mineral abweichend, Gewicht identisch, Farbe neu
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src2, merge_only=True)
+    assert rep.aktualisiert == ["OBJ_0001"]
+    assert rep.konflikte == {"OBJ_0001": ["Mineral_Primaer"]}
+    row = db.execute("SELECT * FROM objects WHERE obj_id='OBJ_0001'").fetchone()
+    assert row["Mineral_Primaer"] == "Quarz"   # alter Wert bleibt
+    assert row["Gewicht_g"] == 10.0
+    assert row["Farbe_beobachtet"] == "gruen"  # leeres Feld wurde gefuellt
+    db.close()
+
+
+def test_csv_import_merge_only_legt_neue_an(tmp_path):
+    """merge_only erlaubt das Neuanlegen unbekannter IDs (keine Konflikte moeglich)."""
+    db = open_db(tmp_path / "y.sqlite3")
+    src = tmp_path / "src.csv"
+    src.write_text("ID,Mineral_Primaer\nOBJ_0042,Calcit\n", encoding="utf-8")
+    rep = import_csv(db, src, merge_only=True)
+    assert rep.angelegt == ["OBJ_0042"]
+    assert rep.konflikte == {}
+    db.close()
+
+
+def test_import_report_as_dict_serialisierbar(tmp_path):
+    import json
+    db = open_db(tmp_path / "z.sqlite3")
+    src = tmp_path / "src.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\n", encoding="utf-8")
+    rep = import_csv(db, src)
+    json.dumps(rep.as_dict())  # darf nicht crashen
+    db.close()
+
+
 def test_csv_import_create_missing_false(tmp_path):
     src = tmp_path / "src.csv"
     src.write_text("ID,Mineral_Primaer\nOBJ_0999,Calcit\n", encoding="utf-8")

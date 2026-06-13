@@ -37,23 +37,27 @@ class ImportReport:
     angelegt: list[str] = field(default_factory=list)
     aktualisiert: list[str] = field(default_factory=list)
     uebersprungen: list[str] = field(default_factory=list)  # leere/unbekannte IDs
+    konflikte: dict[str, list[str]] = field(default_factory=dict)  # obj_id → Feldnamen
 
     def as_dict(self) -> dict:
         return {
             "angelegt": list(self.angelegt),
             "aktualisiert": list(self.aktualisiert),
             "uebersprungen": list(self.uebersprungen),
+            "konflikte": {k: list(v) for k, v in self.konflikte.items()},
         }
 
 
 def import_csv(conn: sqlite3.Connection, path: Path, *,
-               create_missing: bool = True) -> ImportReport:
+               create_missing: bool = True, merge_only: bool = False) -> ImportReport:
     """Liest eine Standard-CSV (Format von :func:`export_csv`) zurück in die DB.
 
     Bestehende Objekte werden mit den nicht-leeren Spalten aktualisiert
     (Upsert). Mit ``create_missing=False`` werden unbekannte obj_ids
-    übersprungen statt neu angelegt. Toleriert Auto-Delimiter (siehe
-    ``load_standard``).
+    übersprungen statt neu angelegt. Mit ``merge_only=True`` werden bei
+    bestehenden Objekten nur leere Felder gefuellt; abweichende vorhandene
+    Werte bleiben erhalten und landen in ``report.konflikte``. Toleriert
+    Auto-Delimiter (siehe ``load_standard``).
     """
     data = load_standard(path)
     objects = ObjectRepo(conn)
@@ -61,7 +65,12 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
     for obj_id, fields_ in data.items():
         clean = {k: v for k, v in fields_.items() if not is_empty(v)}
         if objects.exists(obj_id):
-            objects.update_fields(obj_id, clean)
+            if merge_only:
+                conflicts = objects.merge_nonempty(obj_id, clean)
+                if conflicts:
+                    rep.konflikte[obj_id] = conflicts
+            else:
+                objects.update_fields(obj_id, clean)
             rep.aktualisiert.append(obj_id)
         elif create_missing:
             objects.create(obj_id, **clean)
