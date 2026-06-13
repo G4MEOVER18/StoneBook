@@ -199,6 +199,19 @@ def test_load_standard_quoted_multiline(tmp_path):
     assert data["OBJ_0002"]["notizen"] == "einzeilig"
 
 
+def test_load_standard_obj_id_alias(tmp_path):
+    """JSON-/DB-Konvention 'obj_id' wird als ID-Spalte akzeptiert."""
+    csv_path = tmp_path / "json_like.csv"
+    csv_path.write_text(
+        "obj_id,Mineral_Primaer,Gewicht_g\nOBJ_0001,Quarz,12.5\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+    assert data["OBJ_0001"]["Gewicht_g"] == 12.5
+
+
 def test_load_obj043():
     data = csv_loaders.load_obj043(
         CSV_DIR / "Stonebock__StoneBoock_Objekt_043_FULL__StoneBoock_Objekt_043.csv")

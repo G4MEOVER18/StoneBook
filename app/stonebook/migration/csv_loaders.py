@@ -169,12 +169,14 @@ def load_standard(path: Path) -> dict[str, dict]:
 
     Gegenstück zu :func:`stonebook.export.csv_export.export_csv` und für externes
     Re-Import gedacht. Im Gegensatz zu load_v2 werden auch ``status`` und
-    ``notizen`` übernommen, sofern in der Quelle vorhanden.
+    ``notizen`` übernommen, sofern in der Quelle vorhanden. Als ID-Spalte werden
+    sowohl ``ID`` (CSV-Standard) als auch ``obj_id`` (DB-/JSON-Format)
+    akzeptiert, damit JSON-Exporte ohne Spaltenumbenennung re-importierbar sind.
     """
     result = {}
     extra_cols = {"status", "notizen"}
     for row in _read_csv_robust(path):
-        obj_id = normalize_id(row.get("ID"))
+        obj_id = normalize_id(row.get("ID") or row.get("obj_id"))
         if not obj_id:
             continue
         fields: dict = {}
