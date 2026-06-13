@@ -12,12 +12,20 @@ COLUMNS = [f.name for f in FIELDS]  # beginnt mit ID
 _IMPORT_EXTRA = {"status", "notizen"}
 
 
-def export_csv(conn, path: Path, obj_ids: list[str] | None = None) -> int:
+def export_csv(conn, path: Path, obj_ids: list[str] | None = None,
+               status: str | None = None) -> int:
+    """Schreibt alle Standardfelder + status/notizen als CSV.
+
+    ``obj_ids`` schraenkt auf die genannten IDs ein; ``status`` (z.B. ``'aktiv'``)
+    schraenkt auf einen Lebenszyklusstatus ein. Beide kombinierbar.
+    """
     sql = "SELECT * FROM objects ORDER BY obj_id"
     rows = conn.execute(sql).fetchall()
     if obj_ids is not None:
         wanted = set(obj_ids)
         rows = [r for r in rows if r["obj_id"] in wanted]
+    if status is not None:
+        rows = [r for r in rows if r["status"] == status]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)

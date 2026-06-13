@@ -33,6 +33,27 @@ def test_csv_export(conn, tmp_path):
     assert "Quarz" in o43["Mineral_Primaer"]
 
 
+def test_csv_export_status_filter(conn, tmp_path):
+    """status-Filter beschraenkt den CSV-Export auf einen Lebenszyklusstatus."""
+    out = tmp_path / "aktiv.csv"
+    n_aktiv = export_csv(conn, out, status="aktiv")
+    assert 0 < n_aktiv < 546
+    with out.open(encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == n_aktiv
+    assert all(r["status"] == "aktiv" for r in rows)
+
+
+def test_csv_export_obj_ids_und_status_kombiniert(conn, tmp_path):
+    out = tmp_path / "combo.csv"
+    n = export_csv(conn, out, obj_ids=["OBJ_0043", "OBJ_0500"], status="aktiv")
+    # OBJ_0500 ist platzhalter, faellt durch Status-Filter raus
+    assert n == 1
+    with out.open(encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert [r["ID"] for r in rows] == ["OBJ_0043"]
+
+
 def test_json_export(conn, tmp_path):
     out = tmp_path / "export.json"
     counts = export_json(conn, out)
