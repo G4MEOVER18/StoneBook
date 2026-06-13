@@ -5,7 +5,7 @@ from docx import Document
 from docx.shared import Cm
 
 from stonebook.fields import CATEGORY_LABELS, DATA_FIELDS, FIELD_GROUPS, IMAGE_CATEGORIES, is_empty
-from stonebook.migration.id_utils import display_name
+from stonebook.migration.id_utils import display_name, obj_number
 
 MAX_IMG_WIDTH_CM = 12.0
 
@@ -82,8 +82,7 @@ def export_docx(conn, root: Path, obj_id: str, out_path: Path | None = None) -> 
 
 
 def _default_report_path(root: Path, obj_id: str) -> Path:
-    num = int(obj_id.split("_")[1])
-    return root / "objects" / obj_id / f"Objekt_{num:03d}_Analysebericht.docx"
+    return root / "objects" / obj_id / f"Objekt_{obj_number(obj_id):03d}_Analysebericht.docx"
 
 
 def export_docx_batch(conn, root: Path, obj_ids: list[str] | None = None,
