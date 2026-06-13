@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from stonebook.fields import IMAGE_CATEGORIES
+from stonebook.fields import DATA_FIELDS, IMAGE_CATEGORIES
 from stonebook.migration.validators import parse_iso_date
 
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
@@ -51,6 +51,7 @@ class IntegrityReport:
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
     range_inverted: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, feldpaar)
     unknown_image_kategorie: list[tuple[int, str]] = field(default_factory=list)  # (id, kategorie)
+    aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
 
     @property
     def is_clean(self) -> bool:
@@ -58,7 +59,8 @@ class IntegrityReport:
                     or self.alias_id_collisions or self.alias_self_referencing
                     or self.invalid_funddatum or self.future_funddatum
                     or self.missing_image_files or self.numeric_out_of_range
-                    or self.range_inverted or self.unknown_image_kategorie)
+                    or self.range_inverted or self.unknown_image_kategorie
+                    or self.aktiv_ohne_inhalt)
 
     def as_dict(self) -> dict:
         return {
@@ -72,6 +74,7 @@ class IntegrityReport:
             "numeric_out_of_range": [list(t) for t in self.numeric_out_of_range],
             "range_inverted": [list(t) for t in self.range_inverted],
             "unknown_image_kategorie": [list(t) for t in self.unknown_image_kategorie],
+            "aktiv_ohne_inhalt": list(self.aktiv_ohne_inhalt),
             "is_clean": self.is_clean,
         }
 
@@ -150,6 +153,21 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
                 continue
             if float(lo) > float(hi):
                 rep.range_inverted.append((row["obj_id"], f"{lo_field}>{hi_field}"))
+
+    # 'aktiv' impliziert: irgendwo Daten oder mindestens ein Bild. Wenn beides
+    # fehlt, ist der Status verkettet falsch (typischerweise nachtraegliches
+    # Loeschen aller Bilder/Felder ohne Statusrueckfuehrung). refresh_status
+    # repariert das pro Objekt; hier nur erkennen.
+    data_check = " OR ".join(
+        f"(TRIM(COALESCE({f.name}, '')) != '')" for f in DATA_FIELDS
+    )
+    rep.aktiv_ohne_inhalt = [r[0] for r in conn.execute(
+        f"SELECT o.obj_id FROM objects o "
+        f"WHERE o.status = 'aktiv' "
+        f"AND NOT ({data_check}) "
+        f"AND NOT EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id) "
+        f"ORDER BY o.obj_id"
+    ).fetchall()]
 
     if check_files and root is not None:
         for row in conn.execute("SELECT id, rel_path FROM images").fetchall():

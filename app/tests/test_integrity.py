@@ -203,6 +203,41 @@ def test_future_funddatum_default_today_keine_falsch_positiven(migrated_conn):
     assert rep.future_funddatum == []
 
 
+def test_aktiv_ohne_inhalt_wird_erkannt(tmp_path):
+    """status='aktiv' ohne Daten und ohne Bilder ist eine Inkonsistenz."""
+    c = open_db(tmp_path / "leer_aktiv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, status, Name) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "aktiv", "Vollstaendig"),         # ok: hat Name
+            ("OBJ_0002", "aktiv", None),                    # leer + aktiv → flag
+            ("OBJ_0003", "platzhalter", None),              # leer + platzhalter → ok
+            ("OBJ_0004", "archiviert", None),               # leer + archiviert → ok
+            ("OBJ_0005", "aktiv", "   "),                   # nur Whitespace → flag
+        ],
+    )
+    # OBJ_0006 ist aktiv, hat keine Daten, aber ein Bild → ok
+    c.execute("INSERT INTO objects (obj_id, status) VALUES ('OBJ_0006', 'aktiv')")
+    c.execute(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        ("OBJ_0006", "Kamera", "a.jpg"),
+    )
+    c.commit()
+    rep = check_integrity(c)
+    assert rep.aktiv_ohne_inhalt == ["OBJ_0002", "OBJ_0005"]
+    assert not rep.is_clean
+    # as_dict serialisierbar
+    import json
+    json.dumps(rep.as_dict())
+    c.close()
+
+
+def test_aktiv_ohne_inhalt_migrierte_db_clean(migrated_conn):
+    """Die migrierte DB darf keine inkonsistenten 'aktiv'-Objekte enthalten."""
+    rep = check_integrity(migrated_conn)
+    assert rep.aktiv_ohne_inhalt == []
+
+
 def test_find_duplicate_image_sha256(tmp_path):
     """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
     from stonebook.db.integrity import find_duplicate_image_sha256
