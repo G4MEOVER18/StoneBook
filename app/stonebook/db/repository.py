@@ -9,8 +9,12 @@ DATA_COLS = [f.name for f in DATA_FIELDS]
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
     "obj_id", "Name", "Mineral_Primaer", "Fundort", "status",
-    "Confidence_Prozent", "Funddatum", "Gewicht_g", "geaendert_am", "bilder",
+    "Confidence_Prozent", "Funddatum", "Gewicht_g", "geaendert_am",
+    "bilder", "gesamtwert_chf",
 })
+
+# Berechnete Aliase im SELECT (kein o.-Prefix beim ORDER BY).
+_COMPUTED_COLUMNS: frozenset[str] = frozenset({"bilder", "gesamtwert_chf"})
 
 
 def _now() -> str:
@@ -28,8 +32,8 @@ def _order_by_clause(sort_by: str | None, sort_desc: bool) -> str:
     if sort_by not in SORTABLE_COLUMNS:
         raise ValueError(f"Unzulaessige Sortierspalte: {sort_by}")
     direction = "DESC" if sort_desc else "ASC"
-    # 'bilder' ist ein berechneter Alias, ohne o.-Prefix
-    prefix = "" if sort_by == "bilder" else "o."
+    # Berechnete Aliase (z.B. 'bilder', 'gesamtwert_chf') stehen ohne o.-Prefix.
+    prefix = "" if sort_by in _COMPUTED_COLUMNS else "o."
     # NULLs hinten + stabile Zweitsortierung nach ID
     return (f" ORDER BY ({prefix}{sort_by} IS NULL), "
             f"{prefix}{sort_by} {direction}, o.obj_id")
@@ -46,12 +50,17 @@ class ObjectRepo:
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      fundort: str = "",
+                     wert_min: float | None = None,
+                     wert_max: float | None = None,
                      sort_by: str | None = None,
                      sort_desc: bool = False) -> list[sqlite3.Row]:
-        sql = """
+        from stonebook.db.stats import wert_pro_objekt_sql
+        wert_sql = wert_pro_objekt_sql()
+        sql = f"""
             SELECT o.obj_id, o.Name, o.Mineral_Primaer, o.Fundort, o.status,
                    o.Confidence_Prozent, o.Funddatum,
-                   (SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) AS bilder
+                   (SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) AS bilder,
+                   {wert_sql} AS gesamtwert_chf
             FROM objects o
         """
         where, params = [], []
@@ -87,6 +96,12 @@ class ObjectRepo:
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
+        if wert_min is not None:
+            where.append(f"{wert_sql} >= ?")
+            params.append(float(wert_min))
+        if wert_max is not None:
+            where.append(f"{wert_sql} <= ?")
+            params.append(float(wert_max))
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += _order_by_clause(sort_by, sort_desc)

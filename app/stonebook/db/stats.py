@@ -103,9 +103,13 @@ def _count_funddatum_jahr(conn: sqlite3.Connection, limit: int | None = None) ->
     return {j: n for j, n in pairs}
 
 
-def _wert_pro_objekt_sql() -> str:
-    """Per-Row-Summe der CHF-Wertfelder (für Sortierung/Aggregation)."""
+def wert_pro_objekt_sql() -> str:
+    """Per-Row-Summe der CHF-Wertfelder (für Sortierung/Aggregation/Filter)."""
     return "(" + " + ".join(f"COALESCE({c}, 0)" for c in WERT_FELDER) + ")"
+
+
+# Backwards-Kompatibilitaet: vorheriger Privatname.
+_wert_pro_objekt_sql = wert_pro_objekt_sql
 
 
 def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
@@ -161,7 +165,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         float(sums["conf_avg"]) if sums["conf_avg"] is not None else None
     )
 
-    wert_sql = _wert_pro_objekt_sql()
+    wert_sql = wert_pro_objekt_sql()
     row = conn.execute(
         f"SELECT COALESCE(MAX({wert_sql}), 0) AS wmax, "
         f"COUNT(*) AS n FROM objects WHERE {wert_sql} > 0"

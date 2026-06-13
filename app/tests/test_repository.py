@@ -96,6 +96,51 @@ def test_funddatum_jahr_range_filter(tmp_path):
     c.close()
 
 
+def test_wert_min_max_filter(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh, Wert_CHF_poliert) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 10.0, 20.0),   # 30
+            ("OBJ_0002", 100.0, None),  # 100
+            ("OBJ_0003", None, 500.0),  # 500
+            ("OBJ_0004", None, None),   # 0
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(wert_min=50.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+
+    rows = repo.list_objects(wert_min=1.0, wert_max=200.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
+def test_sort_by_gesamtwert_chf_desc(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "s.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 50.0),
+            ("OBJ_0002", 200.0),
+            ("OBJ_0003", None),
+            ("OBJ_0004", 100.0),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="gesamtwert_chf", sort_desc=True)
+    # NULL/0 wandert (via COALESCE) auf Wert 0; SELECT-Alias gesamtwert_chf
+    # ist niemals NULL durch COALESCE, also alle gleichwertig im NULL-Check.
+    werte = [r["gesamtwert_chf"] for r in rows]
+    assert werte == sorted(werte, reverse=True)
+    assert rows[0]["obj_id"] == "OBJ_0002"
+    c.close()
+
+
 def test_fundort_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "f.sqlite3")
