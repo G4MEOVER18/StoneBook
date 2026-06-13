@@ -39,6 +39,48 @@ def _read_csv(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+_COMMON_DELIMS = (",", ";", "\t", "|")
+
+
+def _detect_delimiter(header_line: str) -> str:
+    """Wählt das Trennzeichen mit den meisten Treffern in der Headerzeile.
+
+    Fällt auf Komma zurück, wenn keines der gängigen Zeichen vorkommt.
+    """
+    best, best_n = ",", 0
+    for d in _COMMON_DELIMS:
+        n = header_line.count(d)
+        if n > best_n:
+            best, best_n = d, n
+    return best
+
+
+def _read_csv_robust(path: Path) -> list[dict]:
+    """Toleranter CSV-Reader für nutzer-editierte/externe Quellen.
+
+    Erkennt Delimiter (``,`` / ``;`` / Tab / ``|``), strippt Whitespace aus den
+    Spaltennamen und überspringt komplett leere Zeilen. Für die historischen
+    Repo-CSVs nicht nötig; gedacht für ``load_standard``.
+    """
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        text = f.read()
+    if not text.strip():
+        return []
+    # Erste nicht-leere Zeile als Header für die Delimiter-Erkennung
+    header_line = next((ln for ln in text.splitlines() if ln.strip()), "")
+    delim = _detect_delimiter(header_line)
+    reader = csv.DictReader(text.splitlines(), delimiter=delim)
+    if reader.fieldnames:
+        reader.fieldnames = [(h or "").strip() for h in reader.fieldnames]
+    rows: list[dict] = []
+    for row in reader:
+        # Leere Zeilen / "alle Zellen leer" überspringen
+        if not any((v or "").strip() for v in row.values() if v is not None):
+            continue
+        rows.append(row)
+    return rows
+
+
 def load_v1(path: Path) -> dict[str, dict]:
     """21 Spalten, Objekte 1-42."""
     result = {}
@@ -116,7 +158,7 @@ def load_standard(path: Path) -> dict[str, dict]:
     """
     result = {}
     extra_cols = {"status", "notizen"}
-    for row in _read_csv(path):
+    for row in _read_csv_robust(path):
         obj_id = normalize_id(row.get("ID"))
         if not obj_id:
             continue

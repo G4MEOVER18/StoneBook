@@ -88,6 +88,77 @@ def test_load_standard_ignoriert_ungueltige_datumswerte(tmp_path):
     assert "Funddatum" not in o1  # ungueltiges Datum wird verworfen
 
 
+def test_load_standard_semicolon_delimiter(tmp_path):
+    """Excel-DE-Export mit ; als Trennzeichen wird automatisch erkannt."""
+    csv_path = tmp_path / "semi.csv"
+    csv_path.write_text(
+        "ID;Mineral_Primaer;Gewicht_g\nOBJ_0001;Quarz;12.5\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+    assert data["OBJ_0001"]["Gewicht_g"] == 12.5
+
+
+def test_load_standard_tab_delimiter(tmp_path):
+    csv_path = tmp_path / "tab.tsv"
+    csv_path.write_text(
+        "ID\tMineral_Primaer\tGewicht_g\nOBJ_0001\tCalcit\t7\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Calcit"
+    assert data["OBJ_0001"]["Gewicht_g"] == 7.0
+
+
+def test_load_standard_header_whitespace(tmp_path):
+    """Spaltennamen mit fuehrenden/abschliessenden Leerzeichen werden getrimmt."""
+    csv_path = tmp_path / "ws.csv"
+    csv_path.write_text(
+        " ID , Mineral_Primaer ,Gewicht_g \nOBJ_0001,Quarz,5\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+    assert data["OBJ_0001"]["Gewicht_g"] == 5.0
+
+
+def test_load_standard_skip_blank_rows(tmp_path):
+    csv_path = tmp_path / "blank.csv"
+    csv_path.write_text(
+        "ID,Mineral_Primaer\n"
+        "OBJ_0001,Quarz\n"
+        ",\n"
+        "\n"
+        "OBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert set(data.keys()) == {"OBJ_0001", "OBJ_0002"}
+
+
+def test_load_standard_empty_file(tmp_path):
+    csv_path = tmp_path / "empty.csv"
+    csv_path.write_text("", encoding="utf-8")
+    from stonebook.migration.csv_loaders import load_standard
+    assert load_standard(csv_path) == {}
+
+
+def test_load_standard_bom_und_crlf(tmp_path):
+    """BOM + Windows-Zeilenenden werden korrekt verarbeitet."""
+    csv_path = tmp_path / "bom.csv"
+    csv_path.write_bytes(
+        b"\xef\xbb\xbfID,Mineral_Primaer\r\nOBJ_0001,Quarz\r\n"
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+
+
 def test_load_obj043():
     data = csv_loaders.load_obj043(
         CSV_DIR / "Stonebock__StoneBoock_Objekt_043_FULL__StoneBoock_Objekt_043.csv")
