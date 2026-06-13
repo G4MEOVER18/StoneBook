@@ -158,3 +158,25 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
                 rep.missing_image_files.append((row["id"], row["rel_path"]))
 
     return rep
+
+
+def find_duplicate_image_sha256(conn: sqlite3.Connection) -> list[tuple[str, list[int]]]:
+    """Findet Bilder mit identischem SHA-256 (gleicher Inhalt mehrfach gespeichert).
+
+    Ergebnis: Liste von ``(sha256, [image_ids])`` absteigend nach Gruppengroesse,
+    aufsteigend nach sha256 als Tie-Break. NULL/leere SHA-Werte werden ignoriert.
+
+    Duplikate sind nicht zwingend ein Fehler (z.B. dasselbe Bild legitim als
+    Uebersicht UND Kamera abgelegt) — die Funktion liefert reine Information
+    und gehoert daher nicht in :func:`check_integrity`.
+    """
+    rows = conn.execute(
+        "SELECT sha256, GROUP_CONCAT(id) AS ids, COUNT(*) AS n FROM images "
+        "WHERE sha256 IS NOT NULL AND TRIM(sha256) != '' "
+        "GROUP BY sha256 HAVING n > 1 "
+        "ORDER BY n DESC, sha256 ASC"
+    ).fetchall()
+    return [
+        (r["sha256"], sorted(int(x) for x in r["ids"].split(",")))
+        for r in rows
+    ]

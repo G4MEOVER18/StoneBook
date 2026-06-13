@@ -201,3 +201,63 @@ def test_future_funddatum_default_today_keine_falsch_positiven(migrated_conn):
     """Die echte DB enthaelt keine Zukunftsdaten (Default-today reicht aus)."""
     rep = check_integrity(migrated_conn)
     assert rep.future_funddatum == []
+
+
+def test_find_duplicate_image_sha256(tmp_path):
+    """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
+    from stonebook.db.integrity import find_duplicate_image_sha256
+    c = open_db(tmp_path / "dup.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0002')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path, sha256) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg", "aaaa"),
+            ("OBJ_0002", "Kamera", "b.jpg", "aaaa"),     # Dublette zu a.jpg
+            ("OBJ_0001", "Mikroskop", "c.jpg", "bbbb"),  # einmalig
+            ("OBJ_0001", "UV365", "d.jpg", "cccc"),
+            ("OBJ_0002", "UV365", "e.jpg", "cccc"),
+            ("OBJ_0002", "UV395", "f.jpg", "cccc"),      # Dreifach-Gruppe
+            ("OBJ_0001", "Sonstige", "g.jpg", None),     # NULL → ignoriert
+            ("OBJ_0001", "Sonstige", "h.jpg", ""),       # leer → ignoriert
+        ],
+    )
+    c.commit()
+    dups = find_duplicate_image_sha256(c)
+    assert len(dups) == 2
+    # Groesste Gruppe zuerst (cccc mit 3), danach aaaa mit 2
+    assert dups[0][0] == "cccc"
+    assert len(dups[0][1]) == 3
+    assert dups[1][0] == "aaaa"
+    assert len(dups[1][1]) == 2
+    # id-Listen sind aufsteigend sortiert
+    assert dups[0][1] == sorted(dups[0][1])
+    c.close()
+
+
+def test_find_duplicate_image_sha256_keine_dubletten(tmp_path):
+    from stonebook.db.integrity import find_duplicate_image_sha256
+    c = open_db(tmp_path / "k.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path, sha256) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg", "aaaa"),
+            ("OBJ_0001", "Mikroskop", "b.jpg", "bbbb"),
+        ],
+    )
+    c.commit()
+    assert find_duplicate_image_sha256(c) == []
+    c.close()
+
+
+def test_find_duplicate_image_sha256_in_migrierter_db(migrated_conn):
+    """Auf der echten DB darf der Aufruf nicht crashen und liefert eine Liste."""
+    from stonebook.db.integrity import find_duplicate_image_sha256
+    dups = find_duplicate_image_sha256(migrated_conn)
+    assert isinstance(dups, list)
+    # Format-Sanity: jede Gruppe ist (str, list[int])
+    for sha, ids in dups:
+        assert isinstance(sha, str) and sha
+        assert all(isinstance(i, int) for i in ids)
+        assert len(ids) > 1
