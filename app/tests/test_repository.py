@@ -315,6 +315,44 @@ def test_gewicht_min_max_filter(tmp_path):
     c.close()
 
 
+def test_refresh_status_all_setzt_aktiv_und_platzhalter(tmp_path):
+    """Bulk-refresh ist semantisch identisch zu pro-Objekt-refresh_status."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "rs.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, status) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Quarz",   "platzhalter"),  # → aktiv (hat Daten)
+            ("OBJ_0002", "",        "aktiv"),        # → platzhalter (keine Daten/Bilder)
+            ("OBJ_0003", "Calcit",  "aktiv"),        # unveraendert
+            ("OBJ_0004", "",        "archiviert"),   # unangetastet
+            ("OBJ_0005", "",        "platzhalter"),  # unveraendert (kein Bild, keine Daten)
+        ],
+    )
+    # OBJ_0006: platzhalter, aber mit Bild → aktiv
+    c.execute("INSERT INTO objects (obj_id, status) VALUES ('OBJ_0006', 'platzhalter')")
+    c.execute("INSERT INTO images (obj_id, kategorie, rel_path) "
+              "VALUES ('OBJ_0006', 'Kamera', 'a.jpg')")
+    c.commit()
+    repo = ObjectRepo(c)
+    changed = repo.refresh_status_all()
+    assert changed == 3  # OBJ_0001, OBJ_0002, OBJ_0006
+
+    statuses = {r["obj_id"]: r["status"] for r in
+                c.execute("SELECT obj_id, status FROM objects").fetchall()}
+    assert statuses == {
+        "OBJ_0001": "aktiv",
+        "OBJ_0002": "platzhalter",
+        "OBJ_0003": "aktiv",
+        "OBJ_0004": "archiviert",
+        "OBJ_0005": "platzhalter",
+        "OBJ_0006": "aktiv",
+    }
+    # Erneuter Aufruf aendert nichts
+    assert repo.refresh_status_all() == 0
+    c.close()
+
+
 def test_fundort_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "f.sqlite3")

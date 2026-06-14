@@ -217,6 +217,32 @@ class ObjectRepo:
             self.conn.execute("UPDATE objects SET status = ? WHERE obj_id = ?", (status, obj_id))
             self.conn.commit()
 
+    def refresh_status_all(self) -> int:
+        """Setzt status fuer alle nicht-archivierten Objekte in einem SQL-Statement.
+
+        Aequivalent zu :meth:`refresh_status` ueber alle Objekte, aber O(1)
+        Roundtrips statt O(N). Liefert die Anzahl tatsaechlich geaenderter
+        Zeilen. ``archiviert`` bleibt erhalten.
+        """
+        data_check = " OR ".join(
+            f"(TRIM(COALESCE({c}, '')) != '')" for c in DATA_COLS
+        )
+        # Ziel-Status berechnen; nur schreiben, wenn er sich aendert (sonst
+        # erzeugt das UPDATE unnoetige FTS-Trigger-Aktivitaet).
+        sql = (
+            "UPDATE objects SET status = CASE "
+            f"WHEN ({data_check}) OR EXISTS("
+            "  SELECT 1 FROM images i WHERE i.obj_id = objects.obj_id"
+            ") THEN 'aktiv' ELSE 'platzhalter' END "
+            "WHERE status != 'archiviert' "
+            f"  AND status != CASE WHEN ({data_check}) OR EXISTS("
+            "    SELECT 1 FROM images i WHERE i.obj_id = objects.obj_id"
+            "  ) THEN 'aktiv' ELSE 'platzhalter' END"
+        )
+        cur = self.conn.execute(sql)
+        self.conn.commit()
+        return cur.rowcount
+
     def next_free_id(self) -> str:
         rows = self.conn.execute(
             "SELECT obj_id FROM objects UNION SELECT alias_id FROM aliases").fetchall()
