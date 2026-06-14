@@ -34,6 +34,8 @@ class Statistik:
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
+    funddatum_frueheste: str | None = None
+    funddatum_spaeteste: str | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -90,6 +92,8 @@ class Statistik:
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
+            "funddatum_frueheste": self.funddatum_frueheste,
+            "funddatum_spaeteste": self.funddatum_spaeteste,
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -173,6 +177,23 @@ def _count_funddatum_jahr(conn: sqlite3.Connection, limit: int | None = None) ->
     return {j: n for j, n in pairs}
 
 
+def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
+    """Liefert (fruehestes, spaetestes) Funddatum als ISO-String.
+
+    Beruecksichtigt nur Werte, die mit vier Ziffern beginnen (siehe
+    :func:`_count_funddatum_jahr`); ISO YYYY-MM-DD ist lexikographisch
+    sortierbar. Reine Jahresangaben (``"2024"``) werden mit einbezogen
+    und tauchen so als Grenze auf, sofern keine spezifischere Angabe da ist.
+    Leere DB → ``(None, None)``.
+    """
+    row = conn.execute(
+        "SELECT MIN(Funddatum) AS lo, MAX(Funddatum) AS hi FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
+    ).fetchone()
+    return (row["lo"], row["hi"])
+
+
 def wert_pro_objekt_sql() -> str:
     """Per-Row-Summe der CHF-Wertfelder (für Sortierung/Aggregation/Filter)."""
     return "(" + " + ".join(f"COALESCE({c}, 0)" for c in WERT_FELDER) + ")"
@@ -235,6 +256,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.fundorte_total = _count_distinct(conn, "Fundort")
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
+    st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

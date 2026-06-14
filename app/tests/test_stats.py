@@ -218,6 +218,47 @@ def test_by_funddatum_jahr_leer(tmp_path):
     c.close()
 
 
+def test_funddatum_spanne_aus_seed_db(tmp_path):
+    """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "spanne.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2021-05-13"),
+            ("OBJ_0002", "2019-01-01"),
+            ("OBJ_0003", "2024-12-31"),
+            ("OBJ_0004", ""),           # ignoriert
+            ("OBJ_0005", "Fruehling"),  # ignoriert (kein Jahres-Praefix)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.funddatum_frueheste == "2019-01-01"
+    assert st.funddatum_spaeteste == "2024-12-31"
+    d = st.as_dict()
+    assert d["funddatum_frueheste"] == "2019-01-01"
+    assert d["funddatum_spaeteste"] == "2024-12-31"
+    c.close()
+
+
+def test_funddatum_spanne_leer(tmp_path):
+    """Ohne gueltige Funddatum-Werte sind beide Grenzen None."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", ""), ("OBJ_0002", None), ("OBJ_0003", "unbekannt")],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.funddatum_frueheste is None
+    assert st.funddatum_spaeteste is None
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")
