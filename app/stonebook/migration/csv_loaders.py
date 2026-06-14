@@ -16,10 +16,15 @@ def parse_range(text) -> tuple[float | None, float | None]:
     Wenn die letzte gefundene Zahl kleiner als die erste ist (z.B.
     Unsicherheitsnotation ``'5.5(3)'`` oder Tippfehler ``'7-5'``), wird ein
     inverted Range vermieden: es zaehlt nur der erste Wert als (n, n).
+
+    Schweizer Tausendertrenner ``'`` (z.B. ``1'500.00``) werden entfernt, damit
+    Excel-/Buchhaltungsexporte mit CHF-Betraegen nicht in Einzelziffern zerfallen.
     """
     if text is None:
         return None, None
-    nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(str(text))]
+    # Apostroph als Tausendertrenner (CH-Locale) vor dem Tokenisieren entfernen.
+    s = str(text).replace("'", "").replace("’", "")
+    nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
     if not nums:
         return None, None
     lo, hi = nums[0], nums[-1]

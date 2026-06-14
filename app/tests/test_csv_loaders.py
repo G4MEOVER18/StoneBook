@@ -48,6 +48,17 @@ def test_parse_range_keine_invertierten_paare():
     assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
 
 
+def test_parse_range_schweizer_apostroph_tausender():
+    """Schweizer Tausendertrenner ''' wird ignoriert (CHF-Betraege aus Excel)."""
+    # Ohne Fix waere "1'000.00" als (1, 0) gelesen worden.
+    assert csv_loaders.parse_range("1'000.00") == (1000.0, 1000.0)
+    assert csv_loaders.parse_range("1'500'000.50") == (1500000.5, 1500000.5)
+    # Range mit Apostroph auf beiden Seiten
+    assert csv_loaders.parse_range("1'000-2'000") == (1000.0, 2000.0)
+    # Typografischer Apostroph (U+2019) wird ebenso entfernt
+    assert csv_loaders.parse_range("1’000") == (1000.0, 1000.0)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data
