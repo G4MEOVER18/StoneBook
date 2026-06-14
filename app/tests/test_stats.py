@@ -424,6 +424,59 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     c.close()
 
 
+def test_wert_pro_fundort_aus_seed_db(tmp_path):
+    """Wertsumme pro Fundort, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort, Wert_CHF_roh) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Davos", 100.0),
+            ("OBJ_0002", "Davos", 50.0),       # Davos total 150
+            ("OBJ_0003", "Zermatt", 1000.0),   # Zermatt total 1000
+            ("OBJ_0004", "Zermatt", None),     # NULL → 0
+            ("OBJ_0005", "Andermatt", 10.0),
+            ("OBJ_0006", "", 999.0),           # leerer Fundort → ignoriert
+            ("OBJ_0007", None, 999.0),         # NULL Fundort → ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_fundort == [
+        ("Zermatt", 1000.0),
+        ("Davos", 150.0),
+        ("Andermatt", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_fundort"] == [
+        ("Zermatt", 1000.0), ("Davos", 150.0), ("Andermatt", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_fundort_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpf_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Ort{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_fundort=3)
+    assert len(st.wert_pro_fundort) == 3
+    w = [v for _, v in st.wert_pro_fundort]
+    assert w == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_fundort_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_fundort == []
+    c.close()
+
+
 def test_gewicht_pro_mineral_aus_seed_db(tmp_path):
     """Gewichtsumme pro Hauptmineral, absteigend sortiert."""
     from stonebook.db.database import open_db

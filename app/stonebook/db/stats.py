@@ -39,6 +39,7 @@ class Statistik:
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
@@ -92,6 +93,9 @@ class Statistik:
             ],
             "wert_pro_mineral": [
                 (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
+            ],
+            "wert_pro_fundort": [
+                (ort, round(w, 2)) for ort, w in self.wert_pro_fundort
             ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
@@ -159,7 +163,8 @@ _wert_pro_objekt_sql = wert_pro_objekt_sql
 def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert: int = 10, top_jahre: int | None = None,
                        top_wert_mineral: int = 10,
-                       top_gewicht_mineral: int = 10) -> Statistik:
+                       top_gewicht_mineral: int = 10,
+                       top_wert_fundort: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -267,6 +272,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             "GROUP BY Mineral_Primaer HAVING g > 0 "
             "ORDER BY g DESC, Mineral_Primaer ASC LIMIT ?",
             (int(top_gewicht_mineral),),
+        ).fetchall()
+    ]
+    st.wert_pro_fundort = [
+        (r["ort"], float(r["w"]))
+        for r in conn.execute(
+            f"SELECT Fundort AS ort, SUM({wert_sql}) AS w FROM objects "
+            "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
+            "GROUP BY Fundort HAVING w > 0 "
+            "ORDER BY w DESC, Fundort ASC LIMIT ?",
+            (int(top_wert_fundort),),
         ).fetchall()
     ]
     return st
