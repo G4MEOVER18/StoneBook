@@ -11,13 +11,21 @@ _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 
 
 def parse_range(text) -> tuple[float | None, float | None]:
-    """'6.5–7' → (6.5, 7.0); 'ca. 2.65' → (2.65, 2.65); '' → (None, None)."""
+    """'6.5–7' → (6.5, 7.0); 'ca. 2.65' → (2.65, 2.65); '' → (None, None).
+
+    Wenn die letzte gefundene Zahl kleiner als die erste ist (z.B.
+    Unsicherheitsnotation ``'5.5(3)'`` oder Tippfehler ``'7-5'``), wird ein
+    inverted Range vermieden: es zaehlt nur der erste Wert als (n, n).
+    """
     if text is None:
         return None, None
     nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(str(text))]
     if not nums:
         return None, None
-    return nums[0], nums[-1]
+    lo, hi = nums[0], nums[-1]
+    if hi < lo:
+        return lo, lo
+    return lo, hi
 
 
 def _num(text) -> float | None:

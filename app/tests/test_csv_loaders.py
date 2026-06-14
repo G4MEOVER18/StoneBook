@@ -38,6 +38,16 @@ def test_parse_range():
     assert csv_loaders.parse_range(None) == (None, None)
 
 
+def test_parse_range_keine_invertierten_paare():
+    """Unsicherheitsnotation '5.5(3)' oder umgedrehte Eingabe '7-5' sind keine Ranges."""
+    # "5.5(3)" - Unsicherheit, nicht 5.5..3
+    assert csv_loaders.parse_range("5.5(3)") == (5.5, 5.5)
+    # Tippfehler "7-5" → soll nicht (7, 5) liefern
+    assert csv_loaders.parse_range("7-5") == (7.0, 7.0)
+    # Echter Range bleibt korrekt
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data
