@@ -424,6 +424,59 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     c.close()
 
 
+def test_gewicht_kennzahlen_aus_seed_db(tmp_path):
+    """Avg/Median/Max ueber Gewicht_g; NULL und 0 zaehlen nicht mit."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 10.0),
+            ("OBJ_0002", 50.0),
+            ("OBJ_0003", 200.0),
+            ("OBJ_0004", None),  # ignoriert
+            ("OBJ_0005", 0.0),   # ignoriert (kein echtes Gewicht)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_gewicht == 3
+    assert st.gewicht_summe_g == 260.0
+    assert st.gewicht_max_g == 200.0
+    assert st.gewicht_median_g == 50.0           # mittlerer von [10, 50, 200]
+    assert st.gewicht_durchschnitt_g == pytest.approx(260.0 / 3)
+    d = st.as_dict()
+    assert d["objekte_mit_gewicht"] == 3
+    assert d["gewicht_max_g"] == 200.0
+    assert d["gewicht_median_g"] == 50.0
+    c.close()
+
+
+def test_gewicht_median_gerade_anzahl(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g2.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 20.0),
+         ("OBJ_0003", 30.0), ("OBJ_0004", 40.0)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_median_g == 25.0           # (20+30)/2
+    c.close()
+
+
+def test_gewicht_kennzahlen_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_gewicht == 0
+    assert st.gewicht_max_g == 0.0
+    assert st.gewicht_median_g == 0.0
+    assert st.gewicht_durchschnitt_g == 0.0
+    c.close()
+
+
 def test_quoten_auf_migrierter_db_plausibel(conn):
     st = compute_statistics(conn)
     # 546 Objekte, einige mit Bildern → Quote zwischen 0 und 100, Rundung 1 Stelle

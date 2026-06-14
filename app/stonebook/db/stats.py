@@ -40,6 +40,10 @@ class Statistik:
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
+    gewicht_durchschnitt_g: float = 0.0
+    gewicht_median_g: float = 0.0
+    gewicht_max_g: float = 0.0
+    objekte_mit_gewicht: int = 0
     durchschnitt_confidence_prozent: float | None = None
 
     def _quote(self, n: int) -> float | None:
@@ -89,6 +93,10 @@ class Statistik:
                 (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
+            "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
+            "gewicht_median_g": round(self.gewicht_median_g, 2),
+            "gewicht_max_g": round(self.gewicht_max_g, 2),
+            "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "durchschnitt_confidence_prozent": (
                 round(self.durchschnitt_confidence_prozent, 1)
                 if self.durchschnitt_confidence_prozent is not None else None
@@ -198,6 +206,18 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.durchschnitt_confidence_prozent = (
         float(sums["conf_avg"]) if sums["conf_avg"] is not None else None
     )
+
+    gewichte = [float(r["g"]) for r in conn.execute(
+        "SELECT Gewicht_g AS g FROM objects "
+        "WHERE Gewicht_g IS NOT NULL AND Gewicht_g > 0 ORDER BY g"
+    ).fetchall()]
+    st.objekte_mit_gewicht = len(gewichte)
+    if gewichte:
+        st.gewicht_max_g = gewichte[-1]
+        st.gewicht_durchschnitt_g = sum(gewichte) / len(gewichte)
+        n = len(gewichte)
+        st.gewicht_median_g = (gewichte[n // 2] if n % 2
+                               else (gewichte[n // 2 - 1] + gewichte[n // 2]) / 2)
 
     wert_sql = wert_pro_objekt_sql()
     row = conn.execute(
