@@ -40,6 +40,7 @@ class Statistik:
     wert_median_chf: float = 0.0
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
+    top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
@@ -95,6 +96,9 @@ class Statistik:
             "objekte_mit_wert": self.objekte_mit_wert,
             "top_wert_objekte": [
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
+            ],
+            "top_gewicht_objekte": [
+                (oid, name, round(g, 2)) for oid, name, g in self.top_gewicht_objekte
             ],
             "wert_pro_mineral": [
                 (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
@@ -201,7 +205,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert_mineral: int = 10,
                        top_gewicht_mineral: int = 10,
                        top_wert_fundort: int = 10,
-                       top_gewicht_fundort: int = 10) -> Statistik:
+                       top_gewicht_fundort: int = 10,
+                       top_gewicht: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -291,6 +296,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             f"SELECT obj_id, Name, {wert_sql} AS w FROM objects "
             f"WHERE {wert_sql} > 0 ORDER BY w DESC, obj_id LIMIT ?",
             (int(top_wert),),
+        ).fetchall()
+    ]
+    st.top_gewicht_objekte = [
+        (r["obj_id"], r["Name"] or "", float(r["g"]))
+        for r in conn.execute(
+            "SELECT obj_id, Name, Gewicht_g AS g FROM objects "
+            "WHERE Gewicht_g IS NOT NULL AND Gewicht_g > 0 "
+            "ORDER BY g DESC, obj_id LIMIT ?",
+            (int(top_gewicht),),
         ).fetchall()
     ]
     st.wert_pro_mineral = _sum_by(conn, "Mineral_Primaer", wert_sql, top_wert_mineral)

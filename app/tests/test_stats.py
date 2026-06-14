@@ -666,3 +666,56 @@ def test_quoten_auf_migrierter_db_plausibel(conn):
     assert 0.0 < st.quote_mit_bildern_prozent <= 100.0
     # Migrierte DB hat kein Funddatum gesetzt
     assert st.quote_mit_funddatum_prozent == 0.0
+
+
+def test_top_gewicht_objekte_aus_seed_db(tmp_path):
+    """Schwerste Objekte absteigend nach Gewicht_g (NULL/0 ignoriert)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Leicht", 10.0),
+            ("OBJ_0002", "Mittel", 100.0),
+            ("OBJ_0003", "Schwer", 500.0),
+            ("OBJ_0004", "OhneMasse", None),
+            ("OBJ_0005", "NullMasse", 0.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.top_gewicht_objekte == [
+        ("OBJ_0003", "Schwer", 500.0),
+        ("OBJ_0002", "Mittel", 100.0),
+        ("OBJ_0001", "Leicht", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["top_gewicht_objekte"] == [
+        ("OBJ_0003", "Schwer", 500.0),
+        ("OBJ_0002", "Mittel", 100.0),
+        ("OBJ_0001", "Leicht", 10.0),
+    ]
+    c.close()
+
+
+def test_top_gewicht_objekte_limit_respektiert(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tg_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?,?)",
+        [(f"OBJ_{i:04d}", float(i)) for i in range(1, 21)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht=3)
+    assert len(st.top_gewicht_objekte) == 3
+    gewichte = [g for _, _, g in st.top_gewicht_objekte]
+    assert gewichte == [20.0, 19.0, 18.0]
+    c.close()
+
+
+def test_top_gewicht_objekte_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.top_gewicht_objekte == []
+    c.close()
