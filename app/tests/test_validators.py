@@ -54,6 +54,17 @@ def test_parse_iso_date_iso_datetime():
     assert parse_iso_date("2024-06-13T10:00:00-0500") == "2024-06-13"
 
 
+def test_parse_iso_date_deutsche_zeitangaben():
+    """DE-Datum mit Zeit (Excel/Logbuch) - Zeitanteil wird ignoriert."""
+    assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30:00") == "2024-06-13"
+    assert parse_iso_date("1.1.2020 0:00") == "2020-01-01"
+    # Auch mit deutschem Monatsnamen
+    assert parse_iso_date("13. Juni 2024 14:30") == "2024-06-13"
+    # ungueltiger Datumsteil bleibt None, auch wenn Zeit korrekt aussieht
+    assert parse_iso_date("32.13.2024 14:30") is None
+
+
 def test_parse_iso_date_exif_datetime():
     """EXIF DateTimeOriginal nutzt Doppelpunkte im Datumsteil (Foto-Metadaten)."""
     assert parse_iso_date("2024:06:13 10:00:00") == "2024-06-13"

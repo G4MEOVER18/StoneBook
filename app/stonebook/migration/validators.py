@@ -15,6 +15,12 @@ _DATE_FORMATS = (
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
+# Trailing time component (T/space getrennt) inkl. optionaler Zonenangabe.
+# Wird vor dem Re-Parsing gestrichen, damit auch "13.06.2024 14:30" funktioniert.
+_TRAILING_TIME = re.compile(
+    r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
+    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
+)
 # ISO 8601 mit Zeitanteil: "2024-06-13T10:00:00", "2024-06-13 10:00:00Z",
 # auch EXIF-Stil "2024:06:13 10:00:00" → Zeit wird verworfen, nur Datum bleibt.
 _ISO_DATETIME = re.compile(
@@ -132,6 +138,11 @@ def parse_iso_date(text) -> str | None:
         year = int(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
+    # Faengt nicht-ISO-Eingaben wie "13.06.2024 14:30" oder "13. Juni 2024 10:00" ab.
+    stripped = _TRAILING_TIME.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
     return None
 
 
