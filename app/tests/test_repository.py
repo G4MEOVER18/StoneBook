@@ -122,6 +122,31 @@ def test_has_confidence_filter(tmp_path):
     c.close()
 
 
+def test_has_mineral_filter(tmp_path):
+    """has_mineral findet noch nicht mineralogisch identifizierte Objekte."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Quarz"),
+            ("OBJ_0002", "Calcit"),
+            ("OBJ_0003", None),
+            ("OBJ_0004", ""),       # leer zaehlt wie None
+            ("OBJ_0005", "   "),    # nur Whitespace zaehlt wie None
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_mineral=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_mineral=False)] \
+        == ["OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    # None laesst alle durch
+    assert len(repo.list_objects(has_mineral=None)) == 5
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []

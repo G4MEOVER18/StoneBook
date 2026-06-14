@@ -51,6 +51,7 @@ class ObjectRepo:
                      max_confidence: int | None = None,
                      has_confidence: bool | None = None,
                      has_funddatum: bool | None = None,
+                     has_mineral: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_min: str | None = None,
@@ -111,6 +112,10 @@ class ObjectRepo:
             where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != ''")
         elif has_funddatum is False:
             where.append("(o.Funddatum IS NULL OR TRIM(o.Funddatum) = '')")
+        if has_mineral is True:
+            where.append("o.Mineral_Primaer IS NOT NULL AND TRIM(o.Mineral_Primaer) != ''")
+        elif has_mineral is False:
+            where.append("(o.Mineral_Primaer IS NULL OR TRIM(o.Mineral_Primaer) = '')")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
