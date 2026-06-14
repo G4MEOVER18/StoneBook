@@ -397,6 +397,62 @@ def test_fundort_filter(tmp_path):
     c.close()
 
 
+def test_fundort_contains_filter(tmp_path):
+    """Substring-Filter findet Sammel-Regionen mit unterschiedlichen Detail-Ortsangaben."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "fc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "St. Gallen, Sitter"),
+            ("OBJ_0002", "St. Gallen, Bahnhof"),
+            ("OBJ_0003", "Zermatt"),
+            ("OBJ_0004", "Davos, Schwarzhorn"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring matched alle St.-Gallen-Eintraege
+    rows = repo.list_objects(fundort_contains="St. Gallen")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(fundort_contains="sitter")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Anderer Ort
+    rows = repo.list_objects(fundort_contains="Davos")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # Kombinierbar mit anderen Filtern
+    rows = repo.list_objects(fundort_contains="St.", status="platzhalter")
+    assert len(rows) == 2  # Default-Status, beide Test-Objekte sind platzhalter
+    c.close()
+
+
+def test_fundort_contains_escaped_metacharacters(tmp_path):
+    """LIKE-Metazeichen %%/_ in der Suche treffen wortwoertlich, nicht als Wildcards."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "esc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Halde 50% Rest"),
+            ("OBJ_0002", "Mine_42"),
+            ("OBJ_0003", "Davos"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # '%' im Suchstring trifft nur den wortwoertlichen Eintrag
+    rows = repo.list_objects(fundort_contains="50%")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # '_' im Suchstring trifft nur den wortwoertlichen Eintrag
+    rows = repo.list_objects(fundort_contains="Mine_4")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Ohne Escape wuerde '_' als beliebiges Zeichen interpretiert
+    rows = repo.list_objects(fundort_contains="MineX4")
+    assert rows == []
+    c.close()
+
+
 def test_varietaet_und_gesteinsart_filter(tmp_path):
     """Strukturierter Filter fuer Varietaet und Gesteinsart (exakter Match)."""
     from stonebook.db.database import open_db

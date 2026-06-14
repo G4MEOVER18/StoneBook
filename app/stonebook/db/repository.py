@@ -27,6 +27,11 @@ def _fts_query(text: str) -> str:
     return " ".join(f'"{t}"*' for t in tokens)
 
 
+def _like_escape(text: str) -> str:
+    """Escapt SQL-LIKE-Metazeichen (``%``/``_``/``\\``) im Nutzereingabe-Pattern."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _order_by_clause(sort_by: str | None, sort_desc: bool) -> str:
     if not sort_by:
         return " ORDER BY o.obj_id"
@@ -57,6 +62,7 @@ class ObjectRepo:
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
                      fundort: str = "",
+                     fundort_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      gewicht_min: float | None = None,
@@ -137,6 +143,11 @@ class ObjectRepo:
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
+        if fundort_contains:
+            # Substring-Filter fuer Sammel-Regionen ("St. Gallen, Sitter" + "St. Gallen, Bahnhof").
+            # LIKE ist case-insensitive fuer ASCII; fuer Umlaute reicht das in der CH-Praxis aus.
+            where.append("o.Fundort LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(fundort_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))
