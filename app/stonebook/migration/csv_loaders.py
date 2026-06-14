@@ -9,6 +9,39 @@ from stonebook.migration.validators import parse_iso_date
 
 _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 
+# Eindeutig erkennbare Tausender-Strukturen (Komma+Punkt oder Punkt+Komma in einer Zahl,
+# oder mehrere Trenner desselben Typs in Folge). ``(?<!\d)``/``(?!\d)`` stellen sicher,
+# dass die Zahl als Ganzes erkannt wird (kein Anschnitt einer laengeren Ziffernfolge).
+_EN_THOUSANDS_WITH_DECIMAL = re.compile(
+    r"(?<!\d)(\d{1,3}(?:,\d{3})+\.\d+)(?!\d)"
+)
+_DE_THOUSANDS_WITH_DECIMAL = re.compile(
+    r"(?<!\d)(\d{1,3}(?:\.\d{3})+,\d+)(?!\d)"
+)
+_EN_THOUSANDS_PURE = re.compile(
+    r"(?<!\d)(\d{1,3}(?:,\d{3}){2,})(?!\d)"
+)
+_DE_THOUSANDS_PURE = re.compile(
+    r"(?<!\d)(\d{1,3}(?:\.\d{3}){2,})(?!\d)"
+)
+
+
+def _strip_locale_thousands(s: str) -> str:
+    """Entfernt eindeutig erkennbare Tausender-Trenner aus EN/DE-Excel-Exporten.
+
+    Beruehrt nur Zahl-Token, deren Struktur unmissverstaendlich ist:
+    ``1,000.50``/``1.000,50`` (gemischte Trenner ⇒ rechter ist Dezimal) oder
+    ``1,000,000``/``1.000.000`` (≥2 gleichartige Trennergruppen ⇒ Tausender).
+    Mehrdeutige Faelle wie ``1,000`` oder ``1.000`` (eine Trennergruppe) werden
+    nicht angetastet, damit ``2,55`` weiterhin als Dezimal-2.55 gelesen wird.
+    """
+    s = _EN_THOUSANDS_WITH_DECIMAL.sub(lambda m: m.group(1).replace(",", ""), s)
+    s = _DE_THOUSANDS_WITH_DECIMAL.sub(
+        lambda m: m.group(1).replace(".", "").replace(",", "."), s)
+    s = _EN_THOUSANDS_PURE.sub(lambda m: m.group(1).replace(",", ""), s)
+    s = _DE_THOUSANDS_PURE.sub(lambda m: m.group(1).replace(".", ""), s)
+    return s
+
 
 def parse_range(text) -> tuple[float | None, float | None]:
     """'6.5–7' → (6.5, 7.0); 'ca. 2.65' → (2.65, 2.65); '' → (None, None).
@@ -19,11 +52,15 @@ def parse_range(text) -> tuple[float | None, float | None]:
 
     Schweizer Tausendertrenner ``'`` (z.B. ``1'500.00``) werden entfernt, damit
     Excel-/Buchhaltungsexporte mit CHF-Betraegen nicht in Einzelziffern zerfallen.
+    Eindeutige EN/DE-Tausender (``1,000.50`` / ``1.000,50`` / ``1,000,000``) werden
+    ebenfalls normalisiert; ambivalente Faelle wie ``2,55`` bleiben Dezimalwerte.
     """
     if text is None:
         return None, None
-    # Apostroph als Tausendertrenner (CH-Locale) vor dem Tokenisieren entfernen.
+    # Apostroph als Tausendertrenner (CH-Locale) vor dem Tokenisieren entfernen,
+    # dann EN/DE-Tausender strukturell erkennen.
     s = str(text).replace("'", "").replace("’", "")
+    s = _strip_locale_thousands(s)
     nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
     if not nums:
         return None, None

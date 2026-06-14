@@ -48,6 +48,37 @@ def test_parse_range_keine_invertierten_paare():
     assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
 
 
+def test_parse_range_en_tausendertrenner_mit_dezimal():
+    """Englische Excel-Exporte: '1,000.50' (Komma=Tausender, Punkt=Dezimal)."""
+    assert csv_loaders.parse_range("1,000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1,000,000.50") == (1000000.5, 1000000.5)
+    assert csv_loaders.parse_range("1,000.00-2,000.00") == (1000.0, 2000.0)
+
+
+def test_parse_range_de_tausendertrenner_mit_dezimal():
+    """Deutsche Excel-Exporte: '1.000,50' (Punkt=Tausender, Komma=Dezimal)."""
+    assert csv_loaders.parse_range("1.000,50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1.000.000,75") == (1000000.75, 1000000.75)
+
+
+def test_parse_range_reine_tausendergruppen():
+    """Mehrere gleichartige Trenner sind eindeutig Tausender (kein Dezimal)."""
+    assert csv_loaders.parse_range("1.000.000") == (1000000.0, 1000000.0)
+    assert csv_loaders.parse_range("1,000,000") == (1000000.0, 1000000.0)
+    # 3 Gruppen
+    assert csv_loaders.parse_range("1.000.000.000") == (1000000000.0, 1000000000.0)
+
+
+def test_parse_range_ambivalente_einzeltrenner_bleiben_dezimal():
+    """'1,000' und '1.000' sind ambivalent - bestehende Dezimal-Lesart beibehalten."""
+    # Diese Faelle bleiben Dezimal (Regression-Test fuer bestehende Tests).
+    assert csv_loaders.parse_range("1,000") == (1.0, 1.0)
+    assert csv_loaders.parse_range("1.000") == (1.0, 1.0)
+    # Range-Tokens mit Komma als DE-Dezimal duerfen nicht zu Tausendern werden
+    assert csv_loaders.parse_range("6,5-7,0") == (6.5, 7.0)
+    assert csv_loaders.parse_range("2,55") == (2.55, 2.55)
+
+
 def test_parse_range_schweizer_apostroph_tausender():
     """Schweizer Tausendertrenner ''' wird ignoriert (CHF-Betraege aus Excel)."""
     # Ohne Fix waere "1'000.00" als (1, 0) gelesen worden.
