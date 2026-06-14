@@ -85,6 +85,6 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
             rep.angelegt.append(obj_id)
         else:
             rep.uebersprungen.append(obj_id)
-    for obj_id in rep.angelegt + rep.aktualisiert:
-        objects.refresh_status(obj_id)
+    if rep.angelegt or rep.aktualisiert:
+        objects.refresh_status_all()
     return rep
