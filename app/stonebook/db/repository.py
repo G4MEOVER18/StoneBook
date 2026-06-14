@@ -48,6 +48,7 @@ class ObjectRepo:
                      has_bilder: bool | None = None,
                      min_confidence: int | None = None,
                      max_confidence: int | None = None,
+                     has_confidence: bool | None = None,
                      has_funddatum: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
@@ -99,6 +100,10 @@ class ObjectRepo:
         if max_confidence is not None:
             where.append("o.Confidence_Prozent <= ?")
             params.append(int(max_confidence))
+        if has_confidence is True:
+            where.append("o.Confidence_Prozent IS NOT NULL")
+        elif has_confidence is False:
+            where.append("o.Confidence_Prozent IS NULL")
         if has_funddatum is True:
             where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != ''")
         elif has_funddatum is False:

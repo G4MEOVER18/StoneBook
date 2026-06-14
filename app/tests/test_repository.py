@@ -78,6 +78,28 @@ def test_max_confidence_filter(tmp_path):
     c.close()
 
 
+def test_has_confidence_filter(tmp_path):
+    """has_confidence=False findet noch nicht analysierte Objekte."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 85),
+            ("OBJ_0002", 50),
+            ("OBJ_0003", None),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_confidence=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_confidence=False)] \
+        == ["OBJ_0003", "OBJ_0004"]
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []
