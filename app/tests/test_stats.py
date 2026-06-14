@@ -552,6 +552,60 @@ def test_wert_pro_fundort_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_kategorie_aus_seed_db(tmp_path):
+    """Wertsumme pro Objekt-Kategorie, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpk.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Kristall", 100.0, 200.0),    # 300
+            ("OBJ_0002", "Kristall", 50.0, None),      # 50 -> Kristall 350
+            ("OBJ_0003", "Handstück", 1000.0, None),   # 1000
+            ("OBJ_0004", "Handstück", None, None),     # 0
+            ("OBJ_0005", "Geröll", 10.0, None),        # 10
+            ("OBJ_0006", "", 999.0, None),             # leere Kategorie -> ignoriert
+            ("OBJ_0007", None, 999.0, None),           # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_kategorie == [
+        ("Handstück", 1000.0),
+        ("Kristall", 350.0),
+        ("Geröll", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_kategorie"] == [
+        ("Handstück", 1000.0), ("Kristall", 350.0), ("Geröll", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_kategorie_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpk_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Kat{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_kategorie=3)
+    assert len(st.wert_pro_kategorie) == 3
+    werte = [w for _, w in st.wert_pro_kategorie]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_kategorie_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_kategorie == []
+    c.close()
+
+
 def test_gewicht_pro_fundort_aus_seed_db(tmp_path):
     """Gewichtsumme pro Fundort, absteigend sortiert."""
     from stonebook.db.database import open_db
