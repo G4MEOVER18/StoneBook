@@ -74,16 +74,16 @@ _DMS = re.compile(
     re.VERBOSE,
 )
 _DECIMAL_PAIR = re.compile(
-    r"""(-?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # erste Zahl + opt. Richtung
+    r"""([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # erste Zahl + opt. Richtung
         \s*[ ,;/]\s*
-        (-?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # zweite Zahl + opt. Richtung
+        ([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # zweite Zahl + opt. Richtung
     """,
     re.VERBOSE,
 )
 _PREFIX_PAIR = re.compile(
-    r"""([NSnsEWOew])\s*(-?\d+(?:[.,]\d+)?)\s*°?  # Richtung + Zahl
+    r"""([NSnsEWOew])\s*([-+]?\d+(?:[.,]\d+)?)\s*°?  # Richtung + Zahl
         \s*[ ,;/]?\s*
-        ([NSnsEWOew])\s*(-?\d+(?:[.,]\d+)?)\s*°?  # Richtung + Zahl
+        ([NSnsEWOew])\s*([-+]?\d+(?:[.,]\d+)?)\s*°?  # Richtung + Zahl
     """,
     re.VERBOSE,
 )

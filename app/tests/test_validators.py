@@ -147,6 +147,16 @@ def test_parse_coordinates_dms():
     assert round(lon, 4) == -7.5
 
 
+def test_parse_coordinates_plus_prefix():
+    """Explizit positives Vorzeichen (z.B. aus GPS-Exporten) wird akzeptiert."""
+    assert parse_coordinates("+46.5, +7.5") == (46.5, 7.5)
+    assert parse_coordinates("+46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("+46.5, -7.5") == (46.5, -7.5)
+    assert parse_coordinates("-46.5, +7.5") == (-46.5, 7.5)
+    # Auch in der Praefix-Variante (N/S/E/W vorne, Plus an der Zahl)
+    assert parse_coordinates("N+46.5 E+7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None
