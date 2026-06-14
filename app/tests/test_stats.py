@@ -606,6 +606,59 @@ def test_wert_pro_kategorie_leer(tmp_path):
     c.close()
 
 
+def test_gewicht_pro_kategorie_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Objekt-Kategorie, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpk.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Kristall", 100.0),
+            ("OBJ_0002", "Kristall", 50.0),       # Kristall total 150
+            ("OBJ_0003", "Handstück", 1000.0),    # Handstück total 1000
+            ("OBJ_0004", "Handstück", None),      # NULL → ignoriert
+            ("OBJ_0005", "Geröll", 10.0),
+            ("OBJ_0006", "", 999.0),              # leere Kategorie → ignoriert
+            ("OBJ_0007", None, 999.0),            # NULL Kategorie → ignoriert
+            ("OBJ_0008", "Mineral-Korn", 0.0),    # 0 zaehlt nicht
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_kategorie == [
+        ("Handstück", 1000.0),
+        ("Kristall", 150.0),
+        ("Geröll", 10.0),
+    ]
+    assert st.as_dict()["gewicht_pro_kategorie"] == [
+        ("Handstück", 1000.0), ("Kristall", 150.0), ("Geröll", 10.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_kategorie_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpk_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Kat{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_kategorie=3)
+    assert len(st.gewicht_pro_kategorie) == 3
+    g = [v for _, v in st.gewicht_pro_kategorie]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_kategorie_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_kategorie == []
+    c.close()
+
+
 def test_gewicht_pro_fundort_aus_seed_db(tmp_path):
     """Gewichtsumme pro Fundort, absteigend sortiert."""
     from stonebook.db.database import open_db

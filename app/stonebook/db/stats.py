@@ -49,6 +49,7 @@ class Statistik:
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -121,6 +122,9 @@ class Statistik:
             ],
             "gewicht_pro_fundort": [
                 (ort, round(g, 2)) for ort, g in self.gewicht_pro_fundort
+            ],
+            "gewicht_pro_kategorie": [
+                (kat, round(g, 2)) for kat, g in self.gewicht_pro_kategorie
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -234,6 +238,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert_fundort: int = 10,
                        top_gewicht_fundort: int = 10,
                        top_wert_kategorie: int = 10,
+                       top_gewicht_kategorie: int = 10,
                        top_gewicht: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
@@ -346,5 +351,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         extra_where=gewicht_where)
     st.gewicht_pro_fundort = _sum_by(
         conn, "Fundort", "Gewicht_g", top_gewicht_fundort,
+        extra_where=gewicht_where)
+    st.gewicht_pro_kategorie = _sum_by(
+        conn, "Kategorie", "Gewicht_g", top_gewicht_kategorie,
         extra_where=gewicht_where)
     return st
