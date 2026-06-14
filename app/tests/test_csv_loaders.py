@@ -222,6 +222,27 @@ def test_load_standard_obj_id_alias(tmp_path):
     assert data["OBJ_0001"]["Gewicht_g"] == 12.5
 
 
+def test_load_standard_raises_bei_fehlender_id_spalte(tmp_path):
+    """CSV ohne ID/obj_id-Spalte ist kein gueltiger Standard-Import - klarer Fehler."""
+    import pytest
+    csv_path = tmp_path / "fremd.csv"
+    csv_path.write_text(
+        "Name,Mineralart,Fundort\nFoo,Quarz,Davos\n",
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    with pytest.raises(ValueError, match="ID-Spalte"):
+        load_standard(csv_path)
+
+
+def test_load_standard_leere_csv_ohne_id_spalte_ist_ok(tmp_path):
+    """Leere CSV (nur Header) loest keinen Fehler aus - return {} ist sinnvoll."""
+    csv_path = tmp_path / "leer.csv"
+    csv_path.write_text("Name,Mineralart\n", encoding="utf-8")
+    from stonebook.migration.csv_loaders import load_standard
+    assert load_standard(csv_path) == {}
+
+
 def test_load_obj043():
     data = csv_loaders.load_obj043(
         CSV_DIR / "Stonebock__StoneBoock_Objekt_043_FULL__StoneBoock_Objekt_043.csv")

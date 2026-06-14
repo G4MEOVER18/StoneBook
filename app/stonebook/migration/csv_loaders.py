@@ -172,6 +172,9 @@ def load_v2(path: Path) -> dict[str, dict]:
     return result
 
 
+_ID_COLUMNS = ("ID", "obj_id")
+
+
 def load_standard(path: Path) -> dict[str, dict]:
     """Liest eine CSV im aktuellen Export-Schema (ID + 43 Standardfelder + status + notizen).
 
@@ -180,10 +183,19 @@ def load_standard(path: Path) -> dict[str, dict]:
     ``notizen`` übernommen, sofern in der Quelle vorhanden. Als ID-Spalte werden
     sowohl ``ID`` (CSV-Standard) als auch ``obj_id`` (DB-/JSON-Format)
     akzeptiert, damit JSON-Exporte ohne Spaltenumbenennung re-importierbar sind.
+
+    Wirft ``ValueError`` wenn die CSV Zeilen enthaelt, aber weder eine Spalte
+    ``ID`` noch ``obj_id`` -- so faellt eine falsch zugeordnete Datei (z.B.
+    ``load_standard`` auf einer v1/v2-CSV mit Header ``Name,Mineralart,...``)
+    nicht stillschweigend leer durch.
     """
+    rows = _read_csv_robust(path)
+    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+        raise ValueError(
+            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
     result = {}
     extra_cols = {"status", "notizen"}
-    for row in _read_csv_robust(path):
+    for row in rows:
         obj_id = normalize_id(row.get("ID") or row.get("obj_id"))
         if not obj_id:
             continue
