@@ -11,6 +11,7 @@ _DATE_FORMATS = (
     "%d.%m.%Y",
     "%d/%m/%Y",
     "%d-%m-%Y",
+    "%Y%m%d",   # ISO 8601 compact YYYYMMDD (Dateinamen, Logs)
 )
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")

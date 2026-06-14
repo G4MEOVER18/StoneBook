@@ -44,6 +44,14 @@ def test_parse_iso_date_monat_jahr():
     assert parse_iso_date("März 2022") == "2022-03-01"
 
 
+def test_parse_iso_date_compact_iso():
+    """ISO 8601 compact YYYYMMDD (kommt in Dateinamen/Log-Stempeln vor)."""
+    assert parse_iso_date("20240613") == "2024-06-13"
+    assert parse_iso_date("19990101") == "1999-01-01"
+    assert parse_iso_date("20240230") is None    # Februar 30 → ungueltig
+    assert parse_iso_date("17000101") is None    # vor 1800 → ausserhalb
+
+
 def test_parse_iso_date_iso_datetime():
     """ISO 8601 mit Zeitanteil (T oder Space) wird auf das Datum reduziert."""
     assert parse_iso_date("2024-06-13T10:00:00") == "2024-06-13"
