@@ -52,6 +52,7 @@ class IntegrityReport:
     range_inverted: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, feldpaar)
     unknown_image_kategorie: list[tuple[int, str]] = field(default_factory=list)  # (id, kategorie)
     aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
+    platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
 
     @property
     def is_clean(self) -> bool:
@@ -60,7 +61,8 @@ class IntegrityReport:
                     or self.invalid_funddatum or self.future_funddatum
                     or self.missing_image_files or self.numeric_out_of_range
                     or self.range_inverted or self.unknown_image_kategorie
-                    or self.aktiv_ohne_inhalt)
+                    or self.aktiv_ohne_inhalt
+                    or self.platzhalter_mit_inhalt)
 
     def as_dict(self) -> dict:
         return {
@@ -75,6 +77,7 @@ class IntegrityReport:
             "range_inverted": [list(t) for t in self.range_inverted],
             "unknown_image_kategorie": [list(t) for t in self.unknown_image_kategorie],
             "aktiv_ohne_inhalt": list(self.aktiv_ohne_inhalt),
+            "platzhalter_mit_inhalt": list(self.platzhalter_mit_inhalt),
             "is_clean": self.is_clean,
         }
 
@@ -166,6 +169,15 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         f"WHERE o.status = 'aktiv' "
         f"AND NOT ({data_check}) "
         f"AND NOT EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id) "
+        f"ORDER BY o.obj_id"
+    ).fetchall()]
+    # Spiegelbild: 'platzhalter' mit tatsaechlichem Inhalt (Daten oder Bild).
+    # Tritt auf, wenn nach Datenpflege/Bilder-Import refresh_status nie lief.
+    rep.platzhalter_mit_inhalt = [r[0] for r in conn.execute(
+        f"SELECT o.obj_id FROM objects o "
+        f"WHERE o.status = 'platzhalter' "
+        f"AND (({data_check}) "
+        f"  OR EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)) "
         f"ORDER BY o.obj_id"
     ).fetchall()]
 

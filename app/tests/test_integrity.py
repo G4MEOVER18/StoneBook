@@ -238,6 +238,56 @@ def test_aktiv_ohne_inhalt_migrierte_db_clean(migrated_conn):
     assert rep.aktiv_ohne_inhalt == []
 
 
+def test_platzhalter_mit_inhalt_wird_erkannt(tmp_path):
+    """status='platzhalter' bei vorhandenen Daten/Bildern ist eine Inkonsistenz."""
+    c = open_db(tmp_path / "ph.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, status, Name) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "platzhalter", None),         # ok: leer + platzhalter
+            ("OBJ_0002", "platzhalter", "Mit Name"),   # flag: hat Name
+            ("OBJ_0003", "aktiv", "Aktiv mit Name"),   # ok: aktiv + Inhalt
+            ("OBJ_0004", "archiviert", "Archiv"),      # archiviert ist neutral
+        ],
+    )
+    # OBJ_0005: platzhalter, ohne Felddaten, aber MIT Bild → flag
+    c.execute("INSERT INTO objects (obj_id, status) VALUES ('OBJ_0005', 'platzhalter')")
+    c.execute(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        ("OBJ_0005", "Kamera", "a.jpg"),
+    )
+    c.commit()
+    rep = check_integrity(c)
+    assert rep.platzhalter_mit_inhalt == ["OBJ_0002", "OBJ_0005"]
+    assert not rep.is_clean
+    import json
+    json.dumps(rep.as_dict())
+    c.close()
+
+
+def test_platzhalter_mit_inhalt_migrierte_db_clean(migrated_conn):
+    """Migrierte DB ist konsistent: kein 'platzhalter' hat tatsaechlichen Inhalt."""
+    rep = check_integrity(migrated_conn)
+    assert rep.platzhalter_mit_inhalt == []
+
+
+def test_platzhalter_mit_inhalt_repariert_durch_refresh_status(tmp_path):
+    """refresh_status_all entfernt die Inkonsistenz (Statusrueckfuehrung)."""
+    from stonebook.db.repository import ObjectRepo
+    c = open_db(tmp_path / "ph_fix.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, status, Mineral_Primaer) VALUES (?, ?, ?)",
+        ("OBJ_0001", "platzhalter", "Quarz"),
+    )
+    c.commit()
+    rep = check_integrity(c)
+    assert rep.platzhalter_mit_inhalt == ["OBJ_0001"]
+    ObjectRepo(c).refresh_status_all()
+    rep2 = check_integrity(c)
+    assert rep2.platzhalter_mit_inhalt == []
+    c.close()
+
+
 def test_find_duplicate_image_sha256(tmp_path):
     """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
     from stonebook.db.integrity import find_duplicate_image_sha256
