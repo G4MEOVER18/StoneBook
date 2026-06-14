@@ -141,6 +141,30 @@ def list_backups(backup_dir: Path) -> list[Path]:
     return matches
 
 
+def prune_old_backups(backup_dir: Path, keep: int) -> list[Path]:
+    """Loescht aelteste Backups im Verzeichnis bis nur noch ``keep`` uebrig sind.
+
+    Beruehrt ausschliesslich Dateien, die zum :func:`write_rotated_backup`-Schema
+    passen (``stonebook_backup_*.json[.gz]``); andere Dateien im Ordner bleiben
+    unangetastet. Liefert die geloeschten Pfade zurueck.
+
+    ``keep < 1`` wirft ``ValueError``. Nicht-loeschbare Dateien (Lock, Parallel-
+    Loeschung) werden uebersprungen statt zu crashen.
+    """
+    if keep < 1:
+        raise ValueError("keep muss >= 1 sein")
+    existing = list_backups(backup_dir)
+    deleted: list[Path] = []
+    while len(existing) > keep:
+        oldest = existing.pop(0)
+        try:
+            oldest.unlink()
+            deleted.append(oldest)
+        except OSError:
+            pass
+    return deleted
+
+
 def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
                          keep: int = 10, compress: bool = True,
                          now: datetime.datetime | None = None) -> Path:
@@ -159,15 +183,7 @@ def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
     backup_dir.mkdir(parents=True, exist_ok=True)
     target = backup_dir / f"{BACKUP_PREFIX}{stamp}{suffix}"
     export_json(conn, target)
-    existing = list_backups(backup_dir)
-    # Aelteste Backups loeschen, bis nur noch `keep` uebrig sind
-    while len(existing) > keep:
-        oldest = existing.pop(0)
-        try:
-            oldest.unlink()
-        except OSError:
-            # Datei ist evtl. lock/parallel geloescht — Rotation darf nicht crashen
-            pass
+    prune_old_backups(backup_dir, keep)
     return target
 
 

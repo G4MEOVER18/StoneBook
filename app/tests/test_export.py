@@ -9,7 +9,8 @@ from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION, export_json,
                                           import_json, inspect_backup,
-                                          list_backups, read_backup_meta,
+                                          list_backups, prune_old_backups,
+                                          read_backup_meta,
                                           write_rotated_backup)
 from stonebook.migration.migrate import migrate
 
@@ -508,3 +509,42 @@ def test_list_backups_leerer_ordner(tmp_path):
     leer = tmp_path / "leer"
     leer.mkdir()
     assert list_backups(leer) == []
+
+
+def test_prune_old_backups_loescht_alte(tmp_path):
+    """prune_old_backups laesst nur die juengsten ``keep`` Backups uebrig."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for i in range(5):
+        write_rotated_backup(db, backups_dir, keep=99,
+                             now=base + datetime.timedelta(minutes=i))
+    assert len(list_backups(backups_dir)) == 5
+    # Auf 2 reduzieren
+    deleted = prune_old_backups(backups_dir, keep=2)
+    assert len(deleted) == 3
+    remaining = list_backups(backups_dir)
+    assert len(remaining) == 2
+    assert "20240613_100300" in remaining[0].name
+    assert "20240613_100400" in remaining[1].name
+    db.close()
+
+
+def test_prune_old_backups_nichts_zu_tun(tmp_path):
+    """Wenn weniger Backups als keep da sind, wird nichts geloescht."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    write_rotated_backup(db, backups_dir, keep=99)
+    deleted = prune_old_backups(backups_dir, keep=10)
+    assert deleted == []
+    assert len(list_backups(backups_dir)) == 1
+    db.close()
+
+
+def test_prune_old_backups_keep_zu_klein_raises(tmp_path):
+    with pytest.raises(ValueError):
+        prune_old_backups(tmp_path / "b", keep=0)
