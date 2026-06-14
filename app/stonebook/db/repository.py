@@ -9,7 +9,8 @@ DATA_COLS = [f.name for f in DATA_FIELDS]
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
     "obj_id", "Name", "Mineral_Primaer", "Fundort", "status",
-    "Confidence_Prozent", "Funddatum", "Gewicht_g", "geaendert_am",
+    "Confidence_Prozent", "Funddatum", "Gewicht_g",
+    "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })
 

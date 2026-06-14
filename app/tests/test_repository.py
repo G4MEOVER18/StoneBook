@@ -43,6 +43,28 @@ def test_sort_invalid_column_raises(repo):
         repo.list_objects(sort_by="; DROP TABLE objects --")
 
 
+def test_sort_by_erstellt_am_desc(tmp_path):
+    """Sortierung nach Erstellzeit liefert neueste Objekte zuerst."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ea.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-01-01 10:00:00"),
+            ("OBJ_0002", "2024-06-13 10:00:00"),
+            ("OBJ_0003", "2024-03-15 10:00:00"),
+            ("OBJ_0004", None),  # NULL → ans Ende
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="erstellt_am", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0002", "OBJ_0003", "OBJ_0001"]
+    # NULL bleibt am Ende
+    assert rows[-1]["obj_id"] == "OBJ_0004"
+    c.close()
+
+
 def test_min_confidence_filter(repo):
     rows = repo.list_objects(min_confidence=70)
     assert rows
