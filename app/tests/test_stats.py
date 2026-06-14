@@ -719,3 +719,36 @@ def test_top_gewicht_objekte_leer(tmp_path):
     st = compute_statistics(c)
     assert st.top_gewicht_objekte == []
     c.close()
+
+
+def test_by_beste_verwendung_aus_seed_db(tmp_path):
+    """Verteilung nach 'Beste Verwendung' (Enum); leere Werte ignoriert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Sammlung"),
+            ("OBJ_0002", "Sammlung"),
+            ("OBJ_0003", "Schmuck"),
+            ("OBJ_0004", "Forschung"),
+            ("OBJ_0005", ""),       # leer → ignoriert
+            ("OBJ_0006", None),     # NULL → ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_beste_verwendung == {
+        "Sammlung": 2, "Forschung": 1, "Schmuck": 1,
+    }
+    d = st.as_dict()
+    assert d["by_beste_verwendung"]["Sammlung"] == 2
+    c.close()
+
+
+def test_by_beste_verwendung_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_beste_verwendung == {}
+    c.close()

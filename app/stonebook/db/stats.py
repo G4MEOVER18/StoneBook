@@ -30,6 +30,7 @@ class Statistik:
     by_mineral: dict[str, int] = field(default_factory=dict)
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_kristallsystem: dict[str, int] = field(default_factory=dict)
+    by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
@@ -85,6 +86,7 @@ class Statistik:
             "by_mineral": dict(self.by_mineral),
             "by_kategorie": dict(self.by_kategorie),
             "by_kristallsystem": dict(self.by_kristallsystem),
+            "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
@@ -226,6 +228,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_mineral = _count_by(conn, "Mineral_Primaer")
     st.by_kategorie = _count_by(conn, "Kategorie")
     st.by_kristallsystem = _count_by(conn, "Kristallsystem")
+    st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.
     st.mineral_arten_total = _count_distinct(conn, "Mineral_Primaer")
