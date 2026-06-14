@@ -131,6 +131,36 @@ def test_inspect_backup_altes_format_ohne_meta(tmp_path):
     assert info["meta"] == {}
 
 
+def test_backup_funktionen_werfen_valueerror_bei_kaputter_datei(tmp_path):
+    """import_json/inspect_backup/read_backup_meta liefern Klartext-Fehler bei Muell."""
+    from stonebook.db.database import open_db
+    bad = tmp_path / "kaputt.json"
+    bad.write_text("{not json}", encoding="utf-8")
+    db = open_db(tmp_path / "x.sqlite3")
+    with pytest.raises(ValueError, match="kein gueltiges JSON"):
+        import_json(db, bad)
+    with pytest.raises(ValueError, match="kein gueltiges JSON"):
+        inspect_backup(bad)
+    with pytest.raises(ValueError, match="kein gueltiges JSON"):
+        read_backup_meta(bad)
+    db.close()
+
+
+def test_backup_funktionen_werfen_valueerror_bei_falschem_format(tmp_path):
+    """Top-Level muss ein Objekt sein - JSON-Array wird klar abgewiesen."""
+    from stonebook.db.database import open_db
+    p = tmp_path / "array.json"
+    p.write_text("[]", encoding="utf-8")
+    db = open_db(tmp_path / "x.sqlite3")
+    with pytest.raises(ValueError, match="falsches Format"):
+        import_json(db, p)
+    with pytest.raises(ValueError, match="falsches Format"):
+        inspect_backup(p)
+    with pytest.raises(ValueError, match="falsches Format"):
+        read_backup_meta(p)
+    db.close()
+
+
 def test_read_backup_meta_altes_format(tmp_path):
     """Backups ohne _meta-Sektion liefern ein leeres Meta-Dict (keine Crashs)."""
     p = tmp_path / "alt.json"

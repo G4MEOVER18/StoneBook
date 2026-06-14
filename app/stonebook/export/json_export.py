@@ -37,6 +37,24 @@ def _read_text(path: Path) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+def _load_backup_dict(path: Path) -> dict:
+    """Liest und parst eine Backup-Datei; garantiert ein dict am Top-Level.
+
+    Wirft ``ValueError`` mit Pfad-Kontext, wenn die Datei kein JSON ist oder
+    nicht das Backup-Format (Top-Level-Objekt) hat. So sieht der Aufrufer
+    sofort, welche Datei das Problem ist statt eines abstrakten AttributeError.
+    """
+    p = Path(path)
+    try:
+        data = json.loads(_read_text(p))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Backup-Datei ist kein gueltiges JSON: {p} ({e.msg})") from e
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Backup-Datei hat falsches Format (erwartet JSON-Objekt am Top-Level): {p}")
+    return data
+
+
 def export_json(conn: sqlite3.Connection, path: Path,
                 obj_ids: Iterable[str] | None = None) -> dict[str, int]:
     """Schreibt objects/images/aliases als JSON.
@@ -78,9 +96,10 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 def read_backup_meta(path: Path) -> dict:
     """Liefert die ``_meta``-Sektion eines Backups (oder ``{}`` bei aelteren Formaten).
 
-    Akzeptiert ``.json`` und gzipte ``.json.gz``-Backups.
+    Akzeptiert ``.json`` und gzipte ``.json.gz``-Backups. Wirft ``ValueError``
+    bei beschaedigten oder format-fremden Dateien.
     """
-    data = json.loads(_read_text(Path(path)))
+    data = _load_backup_dict(path)
     meta = data.get(_META_KEY)
     return dict(meta) if isinstance(meta, dict) else {}
 
@@ -91,9 +110,10 @@ def inspect_backup(path: Path) -> dict:
     Liefert ``{"counts": {...}, "meta": {...}}`` mit den Tabellen-Zeilenanzahlen
     und der Meta-Sektion (leer bei aelteren Backups). Geeignet fuer Backup-Browser
     / Wiederherstellungs-Dialog: zeigt dem User vorher, was drin ist. Akzeptiert
-    ``.json`` und gzipte ``.json.gz``-Backups.
+    ``.json`` und gzipte ``.json.gz``-Backups. Wirft ``ValueError`` bei
+    beschaedigten Dateien.
     """
-    data = json.loads(_read_text(Path(path)))
+    data = _load_backup_dict(path)
     counts = {}
     for table in TABLES:
         rows = data.get(table, [])
@@ -162,7 +182,7 @@ def import_json(conn: sqlite3.Connection, path: Path, *, replace: bool = True) -
     uebersprungen; ihre Inhalte koennen ueber :func:`read_backup_meta`
     separat ausgelesen werden.
     """
-    data = json.loads(_read_text(Path(path)))
+    data = _load_backup_dict(path)
     mode = "REPLACE" if replace else "IGNORE"
     counts: dict[str, int] = {}
     for table in TABLES:
