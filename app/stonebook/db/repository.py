@@ -51,6 +51,8 @@ class ObjectRepo:
                      has_funddatum: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
+                     funddatum_min: str | None = None,
+                     funddatum_max: str | None = None,
                      fundort: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
@@ -109,6 +111,16 @@ class ObjectRepo:
             if funddatum_jahr_max is not None:
                 where.append("CAST(substr(o.Funddatum, 1, 4) AS INTEGER) <= ?")
                 params.append(int(funddatum_jahr_max))
+        # Funddatum-Bereich auf Tagesgenauigkeit: ISO YYYY-MM-DD lexikographisch
+        # vergleichbar. Akzeptiert auch YYYY-MM oder YYYY allein.
+        if funddatum_min is not None:
+            where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                         "AND o.Funddatum >= ?")
+            params.append(str(funddatum_min))
+        if funddatum_max is not None:
+            where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                         "AND o.Funddatum <= ?")
+            params.append(str(funddatum_max))
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)

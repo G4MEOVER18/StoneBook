@@ -120,6 +120,34 @@ def test_has_bilder_ueberschreibt_only_images(tmp_path):
     c.close()
 
 
+def test_funddatum_iso_range_filter(tmp_path):
+    """Tagesgenauer Funddatum-Filter ueber ISO-Strings (lexikographisch)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "fd.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-03-15"),
+            ("OBJ_0002", "2024-06-13"),
+            ("OBJ_0003", "2024-09-30"),
+            ("OBJ_0004", "2025-01-05"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # April..August 2024
+    rows = repo.list_objects(funddatum_min="2024-04-01", funddatum_max="2024-08-31")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Alles ab 2024-09
+    rows = repo.list_objects(funddatum_min="2024-09-01")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Alles bis Ende 2024
+    rows = repo.list_objects(funddatum_max="2024-12-31")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_funddatum_jahr_range_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "y.sqlite3")
