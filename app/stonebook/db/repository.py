@@ -45,6 +45,7 @@ class ObjectRepo:
 
     def list_objects(self, search: str = "", status: str = "", mineral: str = "",
                      kategorie: str = "", only_images: bool = False,
+                     has_bilder: bool | None = None,
                      min_confidence: int | None = None,
                      max_confidence: int | None = None,
                      has_funddatum: bool | None = None,
@@ -81,8 +82,15 @@ class ObjectRepo:
         if kategorie:
             where.append("o.Kategorie = ?")
             params.append(kategorie)
-        if only_images:
+        # has_bilder ist die kanonische Form (True/False/None); only_images bleibt
+        # als Legacy-Alias erhalten und mappt auf has_bilder=True, falls dieses
+        # noch nicht gesetzt ist (kein Konflikt zwischen den beiden Flags).
+        effective_has_bilder = has_bilder if has_bilder is not None else (
+            True if only_images else None)
+        if effective_has_bilder is True:
             where.append("EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
+        elif effective_has_bilder is False:
+            where.append("NOT EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
         if min_confidence is not None:
             where.append("o.Confidence_Prozent >= ?")
             params.append(int(min_confidence))

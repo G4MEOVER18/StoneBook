@@ -92,6 +92,34 @@ def test_only_images_filter(repo):
         assert r["bilder"] >= 1
 
 
+def test_has_bilder_false_findet_objekte_ohne_bilder(repo):
+    """has_bilder=False ist der Workflow-Filter 'noch fotografieren'."""
+    rows = repo.list_objects(has_bilder=False)
+    assert rows
+    for r in rows:
+        assert r["bilder"] == 0
+    # Disjunktion mit has_bilder=True ergibt Gesamtmenge
+    with_imgs = repo.list_objects(has_bilder=True)
+    assert len(rows) + len(with_imgs) == repo.count()
+
+
+def test_has_bilder_ueberschreibt_only_images(tmp_path):
+    """Explizites has_bilder=False schlaegt only_images=True (Default-Konflikt)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hb.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.execute("INSERT INTO images (obj_id, kategorie, rel_path) "
+              "VALUES ('OBJ_0001', 'Kamera', 'a.jpg')")
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(only_images=True, has_bilder=False)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_funddatum_jahr_range_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "y.sqlite3")
