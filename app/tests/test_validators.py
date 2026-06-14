@@ -44,6 +44,30 @@ def test_parse_iso_date_monat_jahr():
     assert parse_iso_date("März 2022") == "2022-03-01"
 
 
+def test_parse_iso_date_englische_monatsnamen():
+    """Englische Monatsnamen (EXIF, Foto-Bibliotheks-Exporte): 'Month DD, YYYY'."""
+    # Kurz + lang
+    assert parse_iso_date("Jun 13, 2024") == "2024-06-13"
+    assert parse_iso_date("June 13, 2024") == "2024-06-13"
+    # Ohne Komma
+    assert parse_iso_date("June 13 2024") == "2024-06-13"
+    assert parse_iso_date("Dec 1 1999") == "1999-12-01"
+    # Englisch-spezifische Kuerzel/Formen, die im DE-Schema fehlen
+    assert parse_iso_date("May 5, 2020") == "2020-05-05"
+    assert parse_iso_date("Oct 31, 2024") == "2024-10-31"
+    assert parse_iso_date("December 24, 2023") == "2023-12-24"
+    assert parse_iso_date("March 7, 2020") == "2020-03-07"
+    assert parse_iso_date("July 15 2024") == "2024-07-15"
+    # Mit Punkt nach Kurzform (z.B. "Jun. 13, 2024")
+    assert parse_iso_date("Jun. 13, 2024") == "2024-06-13"
+
+
+def test_parse_iso_date_englische_monatsnamen_ungueltig():
+    assert parse_iso_date("Feb 30, 2024") is None  # 30. Februar
+    assert parse_iso_date("Foo 13, 2024") is None  # Unbekannter Monat
+    assert parse_iso_date("Jun 13, 1700") is None  # vor 1800
+
+
 def test_parse_iso_date_compact_iso():
     """ISO 8601 compact YYYYMMDD (kommt in Dateinamen/Log-Stempeln vor)."""
     assert parse_iso_date("20240613") == "2024-06-13"

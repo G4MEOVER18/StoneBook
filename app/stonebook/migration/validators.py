@@ -30,24 +30,30 @@ _ISO_DATETIME = re.compile(
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
 )
 
-# Deutsche Monatsnamen (lang + kurz, ohne Punkt; "Maerz"/"März" via Normalisierung)
-_GERMAN_MONTHS: dict[str, int] = {
-    "januar": 1, "jan": 1,
-    "februar": 2, "feb": 2,
-    "maerz": 3, "marz": 3, "mar": 3, "mrz": 3,
+# Monatsnamen (Deutsch + Englisch, lang/kurz, ohne Punkt; Umlaute via Normalisierung).
+# Identische Kuerzel (Jan/Feb/Mar/Apr/Jun/Jul/Aug/Sep/Nov) decken beide Sprachen ab;
+# die englisch-spezifischen Eintraege sind May/Oct/Dec sowie die vollen Formen.
+_MONTH_NAMES: dict[str, int] = {
+    "januar": 1, "january": 1, "jan": 1,
+    "februar": 2, "february": 2, "feb": 2,
+    "maerz": 3, "marz": 3, "march": 3, "mar": 3, "mrz": 3,
     "april": 4, "apr": 4,
-    "mai": 5,
-    "juni": 6, "jun": 6,
-    "juli": 7, "jul": 7,
+    "mai": 5, "may": 5,
+    "juni": 6, "june": 6, "jun": 6,
+    "juli": 7, "july": 7, "jul": 7,
     "august": 8, "aug": 8,
     "september": 9, "sep": 9, "sept": 9,
-    "oktober": 10, "okt": 10,
+    "oktober": 10, "october": 10, "okt": 10, "oct": 10,
     "november": 11, "nov": 11,
-    "dezember": 12, "dez": 12,
+    "dezember": 12, "december": 12, "dez": 12, "dec": 12,
 }
 # "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024"
 _DAY_MONTH_YEAR = re.compile(
     r"^\s*(\d{1,2})\.?\s*([A-Za-zÄÖÜäöü]+)\.?\s*(\d{4})\s*$",
+)
+# Englische Reihenfolge "Jun 13, 2024" / "June 13 2024" / "Jun. 13, 2024"
+_ENGLISH_MONTH_DAY_YEAR = re.compile(
+    r"^\s*([A-Za-z]+)\.?\s*(\d{1,2})\s*,?\s*(\d{4})\s*$",
 )
 # "Juni 2024" / "Juni, 2024"
 _MONTH_YEAR = re.compile(
@@ -57,7 +63,7 @@ _MONTH_YEAR = re.compile(
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
-    return _GERMAN_MONTHS.get(key)
+    return _MONTH_NAMES.get(key)
 # DMS: 46°30'15" N  /  7° 30' 0'' O  /  46°30'15.5"S
 _DMS = re.compile(
     r"""(\d+(?:[.,]\d+)?)\s*°               # Grad
@@ -127,6 +133,17 @@ def parse_iso_date(text) -> str | None:
     if m:
         day = int(m.group(1))
         month = _normalize_month_name(m.group(2))
+        year = int(m.group(3))
+        if month and 1 <= day <= 31 and 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
+    # Englische Reihenfolge "Jun 13, 2024" / "June 13 2024"
+    m = _ENGLISH_MONTH_DAY_YEAR.match(s)
+    if m:
+        month = _normalize_month_name(m.group(1))
+        day = int(m.group(2))
         year = int(m.group(3))
         if month and 1 <= day <= 31 and 1800 <= year <= 2999:
             try:
