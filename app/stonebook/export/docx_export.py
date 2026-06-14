@@ -86,7 +86,9 @@ def _default_report_path(root: Path, obj_id: str) -> Path:
 
 
 def export_docx_batch(conn, root: Path, obj_ids: list[str] | None = None,
-                      out_dir: Path | None = None, progress=None) -> list[Path]:
+                      out_dir: Path | None = None, progress=None,
+                      continue_on_error: bool = False,
+                      on_error=None) -> list[Path]:
     """Schreibt Analyseberichte fuer mehrere Objekte.
 
     ``obj_ids=None`` exportiert alle aktiven Objekte. ``out_dir`` legt alle
@@ -94,6 +96,11 @@ def export_docx_batch(conn, root: Path, obj_ids: list[str] | None = None,
     ohne ``out_dir`` landet jeder Bericht unter ``objects/<obj_id>/`` wie beim
     Einzelexport. ``progress(done, total, obj_id)`` wird optional pro Objekt
     aufgerufen.
+
+    ``continue_on_error=True`` faehrt nach Fehlern eines einzelnen Objekts mit
+    den restlichen weiter; betroffene IDs werden an ``on_error(obj_id, exc)``
+    gemeldet (sofern gesetzt). Default-Verhalten unveraendert: erste Exception
+    bricht den Batch ab.
     """
     if obj_ids is None:
         obj_ids = [r[0] for r in conn.execute(
@@ -106,7 +113,13 @@ def export_docx_batch(conn, root: Path, obj_ids: list[str] | None = None,
     for i, obj_id in enumerate(obj_ids, 1):
         target = (out_dir / _default_report_path(root, obj_id).name
                   if out_dir is not None else None)
-        written.append(export_docx(conn, root, obj_id, target))
+        try:
+            written.append(export_docx(conn, root, obj_id, target))
+        except Exception as exc:
+            if not continue_on_error:
+                raise
+            if on_error is not None:
+                on_error(obj_id, exc)
         if progress is not None:
             progress(i, total, obj_id)
     return written

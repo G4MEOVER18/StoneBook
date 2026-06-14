@@ -395,6 +395,27 @@ def test_docx_batch_export_leer(conn, tmp_path):
     assert export_docx_batch(conn, REPO, [], tmp_path) == []
 
 
+def test_docx_batch_default_bricht_bei_fehler_ab(conn, tmp_path):
+    """Ohne continue_on_error wirft die erste fehlgeschlagene ID."""
+    with pytest.raises(ValueError, match="nicht gefunden"):
+        export_docx_batch(conn, REPO, ["OBJ_0043", "OBJ_9999"], tmp_path)
+
+
+def test_docx_batch_continue_on_error(conn, tmp_path):
+    """continue_on_error sammelt Fehler statt Abbruch; on_error informiert."""
+    errs: list[tuple[str, Exception]] = []
+    paths = export_docx_batch(
+        conn, REPO, ["OBJ_0043", "OBJ_9999", "OBJ_0001"], tmp_path,
+        continue_on_error=True, on_error=lambda oid, exc: errs.append((oid, exc)),
+    )
+    assert len(paths) == 2  # nur die existierenden
+    assert {p.name for p in paths} == {
+        "Objekt_001_Analysebericht.docx", "Objekt_043_Analysebericht.docx"
+    }
+    assert [oid for oid, _ in errs] == ["OBJ_9999"]
+    assert isinstance(errs[0][1], ValueError)
+
+
 def test_rotated_backup_schreibt_und_rotiert(tmp_path):
     """Vier aufeinanderfolgende Backups mit keep=2 belassen nur die 2 neuesten."""
     db = open_db(tmp_path / "x.sqlite3")
