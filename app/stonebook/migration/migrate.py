@@ -103,8 +103,7 @@ def migrate(root: Path, db_file: Path, log=print) -> dict:
 
     # 5. Status aktualisieren
     log("5/5 Objektstatus berechnen …")
-    for obj_id in sorted(known_ids):
-        objects.refresh_status(obj_id)
+    objects.refresh_status_all()
     aktiv = len(objects.list_objects(status="aktiv"))
 
     report = {
