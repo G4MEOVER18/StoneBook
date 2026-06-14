@@ -197,23 +197,31 @@ def import_json(conn: sqlite3.Connection, path: Path, *, replace: bool = True) -
     ``_meta``-Sektion (Schema-Version, Erstellzeit) wird stillschweigend
     uebersprungen; ihre Inhalte koennen ueber :func:`read_backup_meta`
     separat ausgelesen werden.
+
+    Atomisch: Schlaegt eine Tabelle fehl (z.B. dangling FK in aliases/images),
+    wird die gesamte Transaktion zurueckgerollt, sodass keine Halb-Imports
+    in der DB bleiben.
     """
     data = _load_backup_dict(path)
     mode = "REPLACE" if replace else "IGNORE"
     counts: dict[str, int] = {}
-    for table in TABLES:
-        rows = data.get(table, [])
-        if not rows:
-            counts[table] = 0
-            continue
-        known = _table_columns(conn, table)
-        cols = [c for c in rows[0].keys() if c in known]
-        if not cols:
-            counts[table] = 0
-            continue
-        placeholders = ", ".join("?" * len(cols))
-        sql = f"INSERT OR {mode} INTO {table} ({', '.join(cols)}) VALUES ({placeholders})"
-        conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
-        counts[table] = len(rows)
-    conn.commit()
+    try:
+        for table in TABLES:
+            rows = data.get(table, [])
+            if not rows:
+                counts[table] = 0
+                continue
+            known = _table_columns(conn, table)
+            cols = [c for c in rows[0].keys() if c in known]
+            if not cols:
+                counts[table] = 0
+                continue
+            placeholders = ", ".join("?" * len(cols))
+            sql = f"INSERT OR {mode} INTO {table} ({', '.join(cols)}) VALUES ({placeholders})"
+            conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
+            counts[table] = len(rows)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return counts

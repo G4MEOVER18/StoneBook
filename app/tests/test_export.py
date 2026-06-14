@@ -247,6 +247,43 @@ def test_json_roundtrip(conn, tmp_path):
     fresh.close()
 
 
+def test_json_import_ist_atomar_bei_fk_fehler(tmp_path):
+    """Wenn eine Tabelle ein FK-Constraint verletzt, wird die ganze Transaktion zurueckgerollt."""
+    import sqlite3
+    src = tmp_path / "bad.json"
+    src.write_text(
+        '{"objects": [{"obj_id": "OBJ_0001", "Name": "OK"}],'
+        ' "images": [{"obj_id": "OBJ_NOPE", "kategorie": "Kamera", "rel_path": "x.jpg"}],'
+        ' "aliases": []}',
+        encoding="utf-8",
+    )
+    db = open_db(tmp_path / "x.sqlite3")
+    with pytest.raises(sqlite3.IntegrityError):
+        import_json(db, src)
+    # Keine Halbimporte: OBJ_0001 darf NICHT drin sein
+    assert db.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM images").fetchone()[0] == 0
+    db.close()
+
+
+def test_json_import_ist_atomar_bei_alias_fk_fehler(tmp_path):
+    """Auch ein FK-Verstoss in der dritten Tabelle (aliases) rollt objects mit zurueck."""
+    import sqlite3
+    src = tmp_path / "bad.json"
+    src.write_text(
+        '{"objects": [{"obj_id": "OBJ_0001", "Name": "OK"}],'
+        ' "images": [],'
+        ' "aliases": [{"alias_id": "OBJ_0042", "canonical_id": "OBJ_NOTHERE"}]}',
+        encoding="utf-8",
+    )
+    db = open_db(tmp_path / "x.sqlite3")
+    with pytest.raises(sqlite3.IntegrityError):
+        import_json(db, src)
+    assert db.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM aliases").fetchone()[0] == 0
+    db.close()
+
+
 def test_json_import_ignoriert_unbekannte_spalten(tmp_path):
     src = tmp_path / "fremd.json"
     src.write_text(
