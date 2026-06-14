@@ -39,6 +39,7 @@ class Statistik:
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -91,6 +92,9 @@ class Statistik:
             ],
             "wert_pro_mineral": [
                 (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
+            ],
+            "gewicht_pro_mineral": [
+                (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -154,7 +158,8 @@ _wert_pro_objekt_sql = wert_pro_objekt_sql
 
 def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert: int = 10, top_jahre: int | None = None,
-                       top_wert_mineral: int = 10) -> Statistik:
+                       top_wert_mineral: int = 10,
+                       top_gewicht_mineral: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -251,6 +256,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             f"GROUP BY Mineral_Primaer HAVING w > 0 "
             "ORDER BY w DESC, Mineral_Primaer ASC LIMIT ?",
             (int(top_wert_mineral),),
+        ).fetchall()
+    ]
+    st.gewicht_pro_mineral = [
+        (r["mineral"], float(r["g"]))
+        for r in conn.execute(
+            "SELECT Mineral_Primaer AS mineral, SUM(Gewicht_g) AS g FROM objects "
+            "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != '' "
+            "AND Gewicht_g IS NOT NULL AND Gewicht_g > 0 "
+            "GROUP BY Mineral_Primaer HAVING g > 0 "
+            "ORDER BY g DESC, Mineral_Primaer ASC LIMIT ?",
+            (int(top_gewicht_mineral),),
         ).fetchall()
     ]
     return st

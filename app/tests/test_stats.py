@@ -424,6 +424,60 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     c.close()
 
 
+def test_gewicht_pro_mineral_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Hauptmineral, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Quarz", 100.0),
+            ("OBJ_0002", "Quarz", 50.0),       # Quarz total 150
+            ("OBJ_0003", "Calcit", 1000.0),    # Calcit total 1000
+            ("OBJ_0004", "Calcit", None),      # NULL → ignoriert
+            ("OBJ_0005", "Achat", 10.0),
+            ("OBJ_0006", "", 999.0),           # leeres Mineral → ignoriert
+            ("OBJ_0007", None, 999.0),         # NULL Mineral → ignoriert
+            ("OBJ_0008", "Pyrit", 0.0),        # 0 → keine echte Masse
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_mineral == [
+        ("Calcit", 1000.0),
+        ("Quarz", 150.0),
+        ("Achat", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["gewicht_pro_mineral"] == [
+        ("Calcit", 1000.0), ("Quarz", 150.0), ("Achat", 10.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_mineral_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpm_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Min{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_mineral=3)
+    assert len(st.gewicht_pro_mineral) == 3
+    g = [v for _, v in st.gewicht_pro_mineral]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_mineral_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_mineral == []
+    c.close()
+
+
 def test_gewicht_kennzahlen_aus_seed_db(tmp_path):
     """Avg/Median/Max ueber Gewicht_g; NULL und 0 zaehlen nicht mit."""
     from stonebook.db.database import open_db
