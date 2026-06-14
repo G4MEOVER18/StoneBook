@@ -85,6 +85,26 @@ def read_backup_meta(path: Path) -> dict:
     return dict(meta) if isinstance(meta, dict) else {}
 
 
+def inspect_backup(path: Path) -> dict:
+    """Inspiziert ein Backup, ohne es zu restaurieren.
+
+    Liefert ``{"counts": {...}, "meta": {...}}`` mit den Tabellen-Zeilenanzahlen
+    und der Meta-Sektion (leer bei aelteren Backups). Geeignet fuer Backup-Browser
+    / Wiederherstellungs-Dialog: zeigt dem User vorher, was drin ist. Akzeptiert
+    ``.json`` und gzipte ``.json.gz``-Backups.
+    """
+    data = json.loads(_read_text(Path(path)))
+    counts = {}
+    for table in TABLES:
+        rows = data.get(table, [])
+        counts[table] = len(rows) if isinstance(rows, list) else 0
+    meta = data.get(_META_KEY)
+    return {
+        "counts": counts,
+        "meta": dict(meta) if isinstance(meta, dict) else {},
+    }
+
+
 BACKUP_PREFIX = "stonebook_backup_"
 # Erkennt sowohl .json als auch .json.gz mit ISO-Datumstempel im Dateinamen
 _BACKUP_RE = re.compile(

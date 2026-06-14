@@ -8,8 +8,9 @@ from stonebook.db.database import connect, open_db
 from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION, export_json,
-                                          import_json, list_backups,
-                                          read_backup_meta, write_rotated_backup)
+                                          import_json, inspect_backup,
+                                          list_backups, read_backup_meta,
+                                          write_rotated_backup)
 from stonebook.migration.migrate import migrate
 
 REPO = Path(__file__).resolve().parents[2]
@@ -94,6 +95,40 @@ def test_json_export_meta_vollexport_hat_selektion_none(conn, tmp_path):
     export_json(conn, out)
     meta = read_backup_meta(out)
     assert meta["selektion"] is None
+
+
+def test_inspect_backup_zeigt_counts_und_meta(conn, tmp_path):
+    """inspect_backup liefert Tabellen-Zeilen + Meta ohne Import."""
+    out = tmp_path / "in.json"
+    export_json(conn, out, obj_ids=["OBJ_0001", "OBJ_0043"])
+    info = inspect_backup(out)
+    assert info["counts"]["objects"] == 2
+    # Bilder werden auf die obj_ids gefiltert
+    assert info["counts"]["images"] >= 0
+    assert info["meta"]["format_version"] == BACKUP_FORMAT_VERSION
+    assert info["meta"]["selektion"] == ["OBJ_0001", "OBJ_0043"]
+
+
+def test_inspect_backup_gzip(conn, tmp_path):
+    out = tmp_path / "in.json.gz"
+    export_json(conn, out)
+    info = inspect_backup(out)
+    assert info["counts"]["objects"] == 546
+    assert info["counts"]["images"] == 63
+    assert info["counts"]["aliases"] == 54
+
+
+def test_inspect_backup_altes_format_ohne_meta(tmp_path):
+    """Backups ohne _meta liefern leeres Meta-Dict aber korrekte Counts."""
+    p = tmp_path / "alt.json"
+    p.write_text(
+        '{"objects": [{"obj_id": "OBJ_0001"}, {"obj_id": "OBJ_0002"}],'
+        ' "images": [], "aliases": [{"alias_id": "OBJ_0003", "canonical_id": "OBJ_0001"}]}',
+        encoding="utf-8",
+    )
+    info = inspect_backup(p)
+    assert info["counts"] == {"objects": 2, "images": 0, "aliases": 1}
+    assert info["meta"] == {}
 
 
 def test_read_backup_meta_altes_format(tmp_path):
