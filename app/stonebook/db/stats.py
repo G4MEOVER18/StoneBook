@@ -43,6 +43,7 @@ class Statistik:
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -103,6 +104,9 @@ class Statistik:
             ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
+            ],
+            "gewicht_pro_fundort": [
+                (ort, round(g, 2)) for ort, g in self.gewicht_pro_fundort
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -196,7 +200,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert: int = 10, top_jahre: int | None = None,
                        top_wert_mineral: int = 10,
                        top_gewicht_mineral: int = 10,
-                       top_wert_fundort: int = 10) -> Statistik:
+                       top_wert_fundort: int = 10,
+                       top_gewicht_fundort: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -290,7 +295,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     ]
     st.wert_pro_mineral = _sum_by(conn, "Mineral_Primaer", wert_sql, top_wert_mineral)
     st.wert_pro_fundort = _sum_by(conn, "Fundort", wert_sql, top_wert_fundort)
+    gewicht_where = "Gewicht_g IS NOT NULL AND Gewicht_g > 0"
     st.gewicht_pro_mineral = _sum_by(
         conn, "Mineral_Primaer", "Gewicht_g", top_gewicht_mineral,
-        extra_where="Gewicht_g IS NOT NULL AND Gewicht_g > 0")
+        extra_where=gewicht_where)
+    st.gewicht_pro_fundort = _sum_by(
+        conn, "Fundort", "Gewicht_g", top_gewicht_fundort,
+        extra_where=gewicht_where)
     return st

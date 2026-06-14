@@ -511,6 +511,48 @@ def test_wert_pro_fundort_leer(tmp_path):
     c.close()
 
 
+def test_gewicht_pro_fundort_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Fundort, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Davos", 100.0),
+            ("OBJ_0002", "Davos", 50.0),       # Davos total 150
+            ("OBJ_0003", "Zermatt", 1000.0),
+            ("OBJ_0004", "Zermatt", None),     # NULL → ignoriert
+            ("OBJ_0005", "Andermatt", 10.0),
+            ("OBJ_0006", "", 999.0),           # leerer Fundort
+            ("OBJ_0007", None, 999.0),         # NULL Fundort
+            ("OBJ_0008", "Davos", 0.0),        # Null-Gewicht zaehlt nicht
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_fundort == [
+        ("Zermatt", 1000.0),
+        ("Davos", 150.0),
+        ("Andermatt", 10.0),
+    ]
+    assert st.as_dict()["gewicht_pro_fundort"] == [
+        ("Zermatt", 1000.0), ("Davos", 150.0), ("Andermatt", 10.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_fundort_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpf_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Ort{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_fundort=3)
+    assert len(st.gewicht_pro_fundort) == 3
+
+
 def test_gewicht_pro_mineral_aus_seed_db(tmp_path):
     """Gewichtsumme pro Hauptmineral, absteigend sortiert."""
     from stonebook.db.database import open_db
