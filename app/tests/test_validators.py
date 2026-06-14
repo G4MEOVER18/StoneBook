@@ -138,6 +138,40 @@ def test_parse_iso_date_annaeherungs_praefix():
     assert parse_iso_date("ca. 1700") is None  # ausserhalb 1800-2999
 
 
+def test_parse_iso_date_jahreszeiten():
+    """Sammlungs-Notizen mit Jahreszeit + Jahr ergeben den meteorologischen Saison-Start."""
+    # Deutsch
+    assert parse_iso_date("Frühling 2024") == "2024-03-01"
+    assert parse_iso_date("Frühjahr 2024") == "2024-03-01"
+    assert parse_iso_date("Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("Herbst 1999") == "1999-09-01"
+    assert parse_iso_date("Winter 1985") == "1985-12-01"
+    # Englisch
+    assert parse_iso_date("Spring 2024") == "2024-03-01"
+    assert parse_iso_date("Summer 1985") == "1985-06-01"
+    assert parse_iso_date("Autumn 2020") == "2020-09-01"
+    assert parse_iso_date("Fall 1999") == "1999-09-01"
+    # Case-insensitive
+    assert parse_iso_date("sommer 2020") == "2020-06-01"
+    assert parse_iso_date("SUMMER 2020") == "2020-06-01"
+    # Mit Komma
+    assert parse_iso_date("Sommer, 1985") == "1985-06-01"
+    # Naeherung + Saison ("ca. Sommer 1985")
+    assert parse_iso_date("ca. Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("circa Summer 1985") == "1985-06-01"
+    # Monatsnamen behalten Vorrang vor Saisons (kein versehentliches Re-Mapping)
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("June 2024") == "2024-06-01"
+
+
+def test_parse_iso_date_jahreszeiten_ungueltig():
+    assert parse_iso_date("Sommer 1700") is None    # ausserhalb 1800-2999
+    assert parse_iso_date("Foosaison 2020") is None  # kein bekannter Saison-Name
+    assert parse_iso_date("Spring") is None          # Jahreszeit ohne Jahr
+    # "Winter 1999/2000" ist mehrdeutig (Jahreswechsel) → bewusst nicht parsen
+    assert parse_iso_date("Winter 1999/2000") is None
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

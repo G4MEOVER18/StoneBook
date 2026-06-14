@@ -68,10 +68,29 @@ _MONTH_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]\s*(\d{4})\s*$",
 )
 
+# Jahreszeit + Jahr ("Sommer 1985", "Spring 2024", "Frühjahr 2020").
+# Konvention: meteorologischer Saison-Start im genannten Jahr (Maerz/Juni/Sep/Dez).
+# Winter wird auf Dezember desselben Jahres gelegt; "Winter 1999/2000" o.ae. werden
+# bewusst nicht aufgeloest (Mehrdeutigkeit) und fallen auf None.
+_SEASON_MONTHS: dict[str, int] = {
+    "fruehling": 3, "fruehjahr": 3, "spring": 3,
+    "sommer": 6, "summer": 6,
+    "herbst": 9, "autumn": 9, "fall": 9,
+    "winter": 12,
+}
+_SEASON_YEAR = re.compile(
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]?\s*(\d{4})\s*$",
+)
+
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
     return _MONTH_NAMES.get(key)
+
+
+def _normalize_season_name(name: str) -> int | None:
+    key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+    return _SEASON_MONTHS.get(key)
 # DMS: 46°30'15" N  /  7° 30' 0'' O  /  46°30'15.5"S
 _DMS = re.compile(
     r"""(\d+(?:[.,]\d+)?)\s*°               # Grad
@@ -168,6 +187,15 @@ def parse_iso_date(text) -> str | None:
     m = _MONTH_YEAR.match(s)
     if m:
         month = _normalize_month_name(m.group(1))
+        year = int(m.group(2))
+        if month and 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
+    # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024"): meteorologischer
+    # Saison-Start im genannten Jahr. Ueber denselben _MONTH_YEAR-Regex
+    # gepatched, damit "Juni 2024" (Monat) Vorrang vor Seasons hat.
+    m = _SEASON_YEAR.match(s)
+    if m:
+        month = _normalize_season_name(m.group(1))
         year = int(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
