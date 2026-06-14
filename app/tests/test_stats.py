@@ -424,6 +424,40 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     c.close()
 
 
+def test_mineral_und_fundort_arten_total(tmp_path):
+    """mineral_arten_total/fundorte_total zaehlen distinct Werte (unabhaengig von Top-N)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "div.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Fundort) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Quarz", "Davos"),
+            ("OBJ_0002", "Quarz", "Davos"),
+            ("OBJ_0003", "Calcit", "Zermatt"),
+            ("OBJ_0004", "Achat", ""),         # leerer Fundort → ignoriert
+            ("OBJ_0005", "", "Andermatt"),     # leeres Mineral → ignoriert
+            ("OBJ_0006", None, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mineral_arten_total == 3   # Quarz, Calcit, Achat
+    assert st.fundorte_total == 3        # Davos, Zermatt, Andermatt
+    d = st.as_dict()
+    assert d["mineral_arten_total"] == 3
+    assert d["fundorte_total"] == 3
+    c.close()
+
+
+def test_mineral_arten_total_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.mineral_arten_total == 0
+    assert st.fundorte_total == 0
+    c.close()
+
+
 def test_wert_pro_fundort_aus_seed_db(tmp_path):
     """Wertsumme pro Fundort, absteigend sortiert."""
     from stonebook.db.database import open_db

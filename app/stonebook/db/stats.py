@@ -24,6 +24,8 @@ class Statistik:
     objekte_mit_funddatum: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
+    mineral_arten_total: int = 0
+    fundorte_total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_mineral: dict[str, int] = field(default_factory=dict)
     by_kategorie: dict[str, int] = field(default_factory=dict)
@@ -75,6 +77,8 @@ class Statistik:
             "objekte_mit_funddatum": self.objekte_mit_funddatum,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
+            "mineral_arten_total": self.mineral_arten_total,
+            "fundorte_total": self.fundorte_total,
             "by_status": dict(self.by_status),
             "by_mineral": dict(self.by_mineral),
             "by_kategorie": dict(self.by_kategorie),
@@ -117,6 +121,14 @@ class Statistik:
 
 def _round_or_none(value: float | None, digits: int = 1) -> float | None:
     return round(value, digits) if value is not None else None
+
+
+def _count_distinct(conn: sqlite3.Connection, column: str) -> int:
+    """Anzahl der verschiedenen Werte in ``column`` (NULL/leer ignoriert)."""
+    return conn.execute(
+        f"SELECT COUNT(DISTINCT {column}) FROM objects "
+        f"WHERE {column} IS NOT NULL AND TRIM({column}) != ''"
+    ).fetchone()[0]
 
 
 def _count_by(conn: sqlite3.Connection, column: str, limit: int | None = None) -> dict[str, int]:
@@ -205,6 +217,9 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_kategorie = _count_by(conn, "Kategorie")
     st.by_kristallsystem = _count_by(conn, "Kristallsystem")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
+    # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.
+    st.mineral_arten_total = _count_distinct(conn, "Mineral_Primaer")
+    st.fundorte_total = _count_distinct(conn, "Fundort")
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
 
