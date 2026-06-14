@@ -105,6 +105,39 @@ def test_parse_iso_date_exif_datetime():
     assert parse_iso_date("2024:13:01 10:00:00") is None
 
 
+def test_parse_iso_date_annaeherungs_praefix():
+    """Sammlungs-Notizen wie 'ca. 1985' / 'um 1980' / 'circa Juni 2024' ergeben das Datum."""
+    # Jahres-Naeherung (typisch fuer geerbte Sammlung)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("um 1980") == "1980-01-01"
+    assert parse_iso_date("gegen 1999") == "1999-01-01"
+    # Englische Varianten
+    assert parse_iso_date("approx. 2024") == "2024-01-01"
+    assert parse_iso_date("approx 2024") == "2024-01-01"
+    assert parse_iso_date("approximately 1995") == "1995-01-01"
+    assert parse_iso_date("around 1995") == "1995-01-01"
+    assert parse_iso_date("about 2010") == "2010-01-01"
+    # Case-insensitive
+    assert parse_iso_date("CA. 2020") == "2020-01-01"
+    assert parse_iso_date("Circa 2020") == "2020-01-01"
+    # Auf vollstaendigem Datum
+    assert parse_iso_date("ca. 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("circa 2024-06-13") == "2024-06-13"
+    # Auf Monatsnamen
+    assert parse_iso_date("ca. Juni 2024") == "2024-06-01"
+    assert parse_iso_date("circa June 2024") == "2024-06-01"
+    # Verkettete Praefixe ("ca. circa 2020") sind semantisch redundant, aber unschaedlich:
+    # die Rekursion strippt einen nach dem anderen und liefert am Ende das Datum.
+    assert parse_iso_date("ca. circa 2020") == "2020-01-01"
+    # Praefix ohne Inhalt / mit ungueltigem Rest → None
+    assert parse_iso_date("ca.") is None
+    assert parse_iso_date("circa") is None
+    assert parse_iso_date("ca. abc") is None
+    assert parse_iso_date("ca. 1700") is None  # ausserhalb 1800-2999
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

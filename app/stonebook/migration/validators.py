@@ -16,6 +16,14 @@ _DATE_FORMATS = (
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
+# Annaeherungspraefixe (DE/EN), wie sie in geerbten Sammlungs-Notizen typisch sind:
+# "ca. 1985", "circa 2020", "um 1980", "approx. 2024", "around 1995".
+# Werden gestrippt, dann wird der Rest re-parst - die Datumsbedeutung selbst bleibt
+# gleich (Vermerk "Naeherungswert" liegt in der Freitext-Spalte, nicht im ISO-Datum).
+_APPROX_PREFIX = re.compile(
+    r"^(?:ca\.?|circa|approx\.?|approximately|around|about|um|gegen)\s+",
+    re.IGNORECASE,
+)
 # Trailing time component (T/space getrennt) inkl. optionaler Zonenangabe.
 # Wird vor dem Re-Parsing gestrichen, damit auch "13.06.2024 14:30" funktioniert.
 _TRAILING_TIME = re.compile(
@@ -99,6 +107,13 @@ def parse_iso_date(text) -> str | None:
         return None
     s = str(text).strip()
     if not s or s.lower() in {"k.a.", "k. a.", "n/a", "na", "?", "-", "—", "unbekannt"}:
+        return None
+    # Annaeherungspraefix abstreifen ("ca. 1985" → "1985", "circa Juni 2024" → "Juni 2024").
+    # Genau einmal anwenden; die Rekursion uebernimmt das eigentliche Parsing.
+    if _APPROX_PREFIX.match(s):
+        rest = _APPROX_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_iso_date(rest)
         return None
     m = _YEAR_ONLY.match(s)
     if m:
