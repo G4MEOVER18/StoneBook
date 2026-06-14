@@ -45,6 +45,9 @@ class IntegrityReport:
     alias_to_missing: list[str] = field(default_factory=list)       # alias_id
     alias_id_collisions: list[str] = field(default_factory=list)    # alias_id existiert auch als Objekt
     alias_self_referencing: list[str] = field(default_factory=list) # alias_id == canonical_id
+    alias_canonical_is_alias: list[tuple[str, str]] = field(default_factory=list)
+    # (alias_id, canonical_id) - canonical_id taucht zugleich als alias_id auf
+    # (Kette A->B->C: A->B ist defekt, sollte direkt A->C zeigen)
     invalid_funddatum: list[str] = field(default_factory=list)      # obj_id
     future_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, iso)
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
@@ -58,6 +61,7 @@ class IntegrityReport:
     def is_clean(self) -> bool:
         return not (self.orphan_images or self.alias_to_missing
                     or self.alias_id_collisions or self.alias_self_referencing
+                    or self.alias_canonical_is_alias
                     or self.invalid_funddatum or self.future_funddatum
                     or self.missing_image_files or self.numeric_out_of_range
                     or self.range_inverted or self.unknown_image_kategorie
@@ -70,6 +74,7 @@ class IntegrityReport:
             "alias_to_missing": list(self.alias_to_missing),
             "alias_id_collisions": list(self.alias_id_collisions),
             "alias_self_referencing": list(self.alias_self_referencing),
+            "alias_canonical_is_alias": [list(t) for t in self.alias_canonical_is_alias],
             "invalid_funddatum": list(self.invalid_funddatum),
             "future_funddatum": [list(t) for t in self.future_funddatum],
             "missing_image_files": [list(t) for t in self.missing_image_files],
@@ -116,6 +121,19 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
     rep.alias_self_referencing = [r[0] for r in conn.execute(
         "SELECT alias_id FROM aliases WHERE alias_id = canonical_id ORDER BY alias_id"
     ).fetchall()]
+
+    # Kette A->B->C: A.canonical_id (=B) ist selbst ein Alias.
+    # Selbstreferenzen (A==B==C in einer Zeile) sind bereits in alias_self_referencing
+    # gemeldet und werden hier ausgeschlossen, um Doppelmeldung zu vermeiden.
+    rep.alias_canonical_is_alias = [
+        (r["alias_id"], r["canonical_id"])
+        for r in conn.execute(
+            "SELECT a.alias_id, a.canonical_id FROM aliases a "
+            "JOIN aliases b ON b.alias_id = a.canonical_id "
+            "WHERE a.alias_id != a.canonical_id "
+            "ORDER BY a.alias_id"
+        ).fetchall()
+    ]
 
     known_categories = set(IMAGE_CATEGORIES)
     rep.unknown_image_kategorie = [

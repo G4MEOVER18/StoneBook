@@ -131,6 +131,54 @@ def test_alias_self_referencing_wird_erkannt(tmp_path):
     c.close()
 
 
+def test_alias_canonical_is_alias_wird_erkannt(tmp_path):
+    """Kette A->B->C: A.canonical_id (B) ist selbst ein Alias - logisch defekt."""
+    c = open_db(tmp_path / "kette.sqlite3")
+    # Drei reale Objekte, damit die FK aliases.canonical_id -> objects.obj_id haelt.
+    # Szenario: OBJ_0002 wurde frueher als Kanon gefuehrt (OBJ_0003 zeigt darauf),
+    # spaeter wurde OBJ_0002 selbst in OBJ_0001 gemergt - jetzt ist die Referenz
+    # von OBJ_0003 logisch defekt: sie sollte direkt auf OBJ_0001 zeigen.
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",)],
+    )
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id) VALUES (?, ?)",
+        [
+            ("OBJ_0002", "OBJ_0001"),  # OBJ_0002 nun Alias
+            ("OBJ_0003", "OBJ_0002"),  # zeigt auf OBJ_0002 - Kette
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    assert rep.alias_canonical_is_alias == [("OBJ_0003", "OBJ_0002")]
+    assert not rep.is_clean
+    import json
+    json.dumps(rep.as_dict())
+    c.close()
+
+
+def test_alias_canonical_is_alias_selbstreferenz_nicht_doppelt(tmp_path):
+    """Selbstreferenzen (alias_id==canonical_id) gehoeren nicht in die Ketten-Liste."""
+    c = open_db(tmp_path / "self.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.execute(
+        "INSERT INTO aliases (alias_id, canonical_id) VALUES (?, ?)",
+        ("OBJ_0001", "OBJ_0001"),
+    )
+    c.commit()
+    rep = check_integrity(c)
+    assert rep.alias_self_referencing == ["OBJ_0001"]
+    # Selbstreferenz darf nicht zusaetzlich als Kette gemeldet werden
+    assert rep.alias_canonical_is_alias == []
+    c.close()
+
+
+def test_alias_canonical_is_alias_migrierte_db_clean(migrated_conn):
+    rep = check_integrity(migrated_conn)
+    assert rep.alias_canonical_is_alias == []
+
+
 def test_unknown_image_kategorie_wird_erkannt(tmp_path):
     c = open_db(tmp_path / "cat.sqlite3")
     c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
