@@ -370,3 +370,28 @@ def test_fundort_filter(tmp_path):
     rows = repo.list_objects(fundort="Davos")
     assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
     c.close()
+
+
+def test_varietaet_und_gesteinsart_filter(tmp_path):
+    """Strukturierter Filter fuer Varietaet und Gesteinsart (exakter Match)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet, Gesteinsart) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Jaspis", "Sediment"),
+            ("OBJ_0002", "Jaspis", "Vulkanit"),
+            ("OBJ_0003", "Milchquarz", "Sediment"),
+            ("OBJ_0004", "", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(varietaet="Jaspis")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(gesteinsart="Sediment")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0003"]
+    # Kombiniert: Jaspis + Sediment → nur OBJ_0001
+    rows = repo.list_objects(varietaet="Jaspis", gesteinsart="Sediment")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
