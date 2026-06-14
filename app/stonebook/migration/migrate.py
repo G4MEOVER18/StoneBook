@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import open_db
+from stonebook.db.merge import merge_into_canonical
 from stonebook.db.repository import AliasRepo, ImageRepo, ObjectRepo
 from stonebook.fields import is_empty
 from stonebook.migration import csv_loaders
@@ -82,17 +83,17 @@ def migrate(root: Path, db_file: Path, log=print) -> dict:
             if member_id == canonical:
                 continue
             alias_map[member_id] = canonical
-            row = objects.get(member_id)
-            if row is not None:
-                fields = {k: row[k] for k in row.keys()
-                          if k not in ("obj_id", "status", "folder_path",
-                                       "erstellt_am", "geaendert_am")}
-                conflicts = objects.merge_nonempty(canonical, fields)
+            if objects.exists(member_id):
+                conflicts = merge_into_canonical(
+                    objects, images, aliases, member_id, canonical,
+                    quelle="duplikat_gruppen.json")
                 if conflicts:
                     conflicts_total += len(conflicts)
                     log(f"   Konflikt {member_id} → {canonical}: {', '.join(conflicts)} (Kanon behalten)")
-                objects.delete(member_id)
-            aliases.add(member_id, canonical, "duplikat_gruppen.json")
+            else:
+                # Member existiert nicht als Objekt (kein Skelett-/CSV-Eintrag),
+                # aber Bilder/Ordner unter dieser ID koennen existieren - Alias trotzdem eintragen.
+                aliases.add(member_id, canonical, "duplikat_gruppen.json")
     log(f"   {len(groups)} Gruppen, {aliases.count()} Aliase, {conflicts_total} Feldkonflikte")
 
     # 4. Bild-Indexierung
