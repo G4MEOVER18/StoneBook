@@ -10,6 +10,11 @@ import urllib.request
 
 from stonebook.ai.analysis_schema import AI_FIELDS, build_tool, field_definitions_text
 
+# Fuehrende Zahl (mit Komma- oder Punkt-Dezimal, optional Vorzeichen) aus einem
+# Freitext-Wert extrahieren. Faengt KI-Antworten wie "41.0g", "6.5 Mohs",
+# "-12°C", "2,65 g/cm³" ab — die fruehere split()[0]-Strategie hat "41.0g" verworfen.
+_LEADING_NUMBER = re.compile(r"[-+]?\d+(?:[.,]\d+)?")
+
 SYSTEM_PROMPT = """Du bist ein erfahrener Mineraloge und bestimmst Gesteins- und \
 Mineralproben anhand von Fotos (Tageslicht, Mikroskop/Makro, UV 365/395 nm) und \
 vorhandenen Felddaten einer privaten Sammlung aus der Schweiz (v.a. Region St. Gallen, \
@@ -48,11 +53,15 @@ def coerce_result(raw: dict) -> dict:
         if isinstance(wert, str) and not wert.strip():
             wert = None
         if wert is not None and (name in num_fields or name in float_fields):
-            try:
-                num = float(str(wert).replace(",", ".").split()[0])
-                wert = int(num) if name in num_fields else num
-            except (ValueError, IndexError):
+            m = _LEADING_NUMBER.search(str(wert))
+            if m is None:
                 wert = None
+            else:
+                try:
+                    num = float(m.group(0).replace(",", "."))
+                    wert = int(num) if name in num_fields else num
+                except ValueError:
+                    wert = None
         try:
             conf = int(entry.get("confidence_prozent") or 0)
         except (ValueError, TypeError):

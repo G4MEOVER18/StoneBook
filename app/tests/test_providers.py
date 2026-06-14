@@ -55,3 +55,31 @@ def test_coerce_result_bare_value():
     out = coerce_result({"Mineral_Primaer": "Quarz", "gesamt_confidence": 0})
     assert out["Mineral_Primaer"]["wert"] == "Quarz"
     assert out["Mineral_Primaer"]["confidence_prozent"] == 0
+
+
+def test_coerce_result_zahl_mit_einheit_ohne_leerzeichen():
+    """Modelle schreiben oft 'Wert+Einheit' ohne Trennzeichen ('41.0g', '2,65g/cm³')."""
+    raw = {
+        "Gewicht_g": {"wert": "41.0g", "confidence_prozent": 80},
+        "Dichte_min_gcm3": {"wert": "2,65g/cm³", "confidence_prozent": 70},
+        "Mohs_Haerte_min": {"wert": "ca. 6.5", "confidence_prozent": 70},
+        "Seltenheit_global_1_10": {"wert": "etwa 7 von 10", "confidence_prozent": 60},
+        # Vorzeichen am Anfang darf nicht verloren gehen
+        "Wert_CHF_roh": {"wert": "+1500", "confidence_prozent": 50},
+    }
+    out = coerce_result(raw)
+    assert out["Gewicht_g"]["wert"] == 41.0
+    assert out["Dichte_min_gcm3"]["wert"] == 2.65
+    assert out["Mohs_Haerte_min"]["wert"] == 6.5
+    assert out["Seltenheit_global_1_10"]["wert"] == 7
+    assert out["Wert_CHF_roh"]["wert"] == 1500.0
+
+
+def test_coerce_result_kein_numerischer_anteil_bleibt_none():
+    raw = {
+        "Gewicht_g": {"wert": "unbekannt", "confidence_prozent": 0},
+        "Mohs_Haerte_min": {"wert": "n/a", "confidence_prozent": 0},
+    }
+    out = coerce_result(raw)
+    assert out["Gewicht_g"]["wert"] is None
+    assert out["Mohs_Haerte_min"]["wert"] is None
