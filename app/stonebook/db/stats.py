@@ -156,6 +156,26 @@ def wert_pro_objekt_sql() -> str:
     return "(" + " + ".join(f"COALESCE({c}, 0)" for c in WERT_FELDER) + ")"
 
 
+def _sum_by(conn: sqlite3.Connection, group_col: str, value_sql: str,
+            limit: int, extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``group_col`` und liefert die
+    Top-N absteigend nach Summe (Tiebreaker: Gruppenname aufsteigend).
+
+    ``group_col`` darf nur ein Spaltenname sein (Whitelist-Validierung beim
+    Aufrufer). ``extra_where`` ist optional und wird per AND angefuegt.
+    """
+    where = (f"{group_col} IS NOT NULL AND TRIM({group_col}) != ''")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT {group_col} AS k, SUM({value_sql}) AS w FROM objects "
+        f"WHERE {where} "
+        f"GROUP BY {group_col} HAVING w > 0 "
+        f"ORDER BY w DESC, {group_col} ASC LIMIT ?"
+    )
+    return [(r["k"], float(r["w"])) for r in conn.execute(sql, (int(limit),)).fetchall()]
+
+
 # Backwards-Kompatibilitaet: vorheriger Privatname.
 _wert_pro_objekt_sql = wert_pro_objekt_sql
 
@@ -253,35 +273,9 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             (int(top_wert),),
         ).fetchall()
     ]
-    st.wert_pro_mineral = [
-        (r["mineral"], float(r["w"]))
-        for r in conn.execute(
-            f"SELECT Mineral_Primaer AS mineral, SUM({wert_sql}) AS w FROM objects "
-            "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != '' "
-            f"GROUP BY Mineral_Primaer HAVING w > 0 "
-            "ORDER BY w DESC, Mineral_Primaer ASC LIMIT ?",
-            (int(top_wert_mineral),),
-        ).fetchall()
-    ]
-    st.gewicht_pro_mineral = [
-        (r["mineral"], float(r["g"]))
-        for r in conn.execute(
-            "SELECT Mineral_Primaer AS mineral, SUM(Gewicht_g) AS g FROM objects "
-            "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != '' "
-            "AND Gewicht_g IS NOT NULL AND Gewicht_g > 0 "
-            "GROUP BY Mineral_Primaer HAVING g > 0 "
-            "ORDER BY g DESC, Mineral_Primaer ASC LIMIT ?",
-            (int(top_gewicht_mineral),),
-        ).fetchall()
-    ]
-    st.wert_pro_fundort = [
-        (r["ort"], float(r["w"]))
-        for r in conn.execute(
-            f"SELECT Fundort AS ort, SUM({wert_sql}) AS w FROM objects "
-            "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
-            "GROUP BY Fundort HAVING w > 0 "
-            "ORDER BY w DESC, Fundort ASC LIMIT ?",
-            (int(top_wert_fundort),),
-        ).fetchall()
-    ]
+    st.wert_pro_mineral = _sum_by(conn, "Mineral_Primaer", wert_sql, top_wert_mineral)
+    st.wert_pro_fundort = _sum_by(conn, "Fundort", wert_sql, top_wert_fundort)
+    st.gewicht_pro_mineral = _sum_by(
+        conn, "Mineral_Primaer", "Gewicht_g", top_gewicht_mineral,
+        extra_where="Gewicht_g IS NOT NULL AND Gewicht_g > 0")
     return st
