@@ -17,7 +17,7 @@ from stonebook.db.database import connect, default_db_file
 from stonebook.db.integrity import IntegrityReport, check_integrity
 
 
-_TEXT_EXAMPLE_LIMIT = 3
+DEFAULT_EXAMPLE_LIMIT = 3
 
 
 def _format_example(item) -> str:
@@ -31,7 +31,7 @@ def _format_example(item) -> str:
     return str(item)
 
 
-def _format_text(report: IntegrityReport) -> str:
+def _format_text(report: IntegrityReport, examples: int = DEFAULT_EXAMPLE_LIMIT) -> str:
     if report.is_clean:
         return "OK: keine Inkonsistenzen gefunden."
     lines = ["FEHLER: Inkonsistenzen gefunden:"]
@@ -46,10 +46,10 @@ def _format_text(report: IntegrityReport) -> str:
             # Erste paar Beispiele anhaengen, damit man direkt sieht, welche IDs
             # konkret betroffen sind (statt "es gibt 7 Konflikte, viel Spass beim
             # Suchen"). Bei kleinen Mengen alles, sonst ``+N more``.
-            examples = ", ".join(_format_example(v) for v in value[:_TEXT_EXAMPLE_LIMIT])
-            rest = count - _TEXT_EXAMPLE_LIMIT
+            shown = ", ".join(_format_example(v) for v in value[:examples])
+            rest = count - examples
             suffix = f" (+{rest} weitere)" if rest > 0 else ""
-            lines.append(f"  - {key}: {count} [{examples}{suffix}]")
+            lines.append(f"  - {key}: {count} [{shown}{suffix}]")
         else:
             lines.append(f"  - {key}: 1")
     return "\n".join(lines)
@@ -69,6 +69,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "Dateien existieren.")
     p.add_argument("--json", action="store_true",
                    help="JSON-Bericht auf stdout statt menschenlesbarem Text.")
+    p.add_argument("--examples", type=int, default=DEFAULT_EXAMPLE_LIMIT,
+                   help=f"Anzahl Beispiel-IDs pro Befund im Text-Bericht "
+                        f"(Default: {DEFAULT_EXAMPLE_LIMIT}). JSON enthaelt immer alle.")
     return p
 
 
@@ -77,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
     db_file = args.db if args.db else default_db_file()
     if not db_file.is_file():
         print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
+        return 2
+    if args.examples < 1:
+        print(f"--examples muss >= 1 sein (war: {args.examples})", file=sys.stderr)
         return 2
     conn = connect(db_file)
     try:
@@ -88,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dump(report.as_dict(), sys.stdout, ensure_ascii=False, indent=1)
         sys.stdout.write("\n")
     else:
-        print(_format_text(report))
+        print(_format_text(report, examples=args.examples))
     return 0 if report.is_clean else 1
 
 

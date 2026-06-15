@@ -76,6 +76,38 @@ def test_text_bericht_zeigt_max_3_beispiele(tmp_path, capsys):
     assert "+4 weitere" in out
 
 
+def test_examples_flag_erweitert_beispiel_liste(tmp_path, capsys):
+    """--examples N erlaubt mehr als die Default-3 Beispiel-IDs im Text-Bericht."""
+    db_file = tmp_path / "many2.sqlite3"
+    c = open_db(db_file)
+    try:
+        c.executemany(
+            "INSERT INTO objects (obj_id, Funddatum) VALUES (?, '32.13.2024')",
+            [(f"OBJ_{i:04d}",) for i in range(1, 8)],
+        )
+        c.commit()
+    finally:
+        c.close()
+    main(["--db", str(db_file), "--examples", "5"])
+    out = capsys.readouterr().out
+    # Mit 5 Beispielen werden OBJ_0001..OBJ_0005 gezeigt, OBJ_0006 nicht
+    for i in range(1, 6):
+        assert f"OBJ_{i:04d}" in out
+    assert "OBJ_0006" not in out
+    # Rest-Zaehler stimmt
+    assert "+2 weitere" in out
+
+
+def test_examples_flag_ungueltig_exit_2(tmp_path, capsys):
+    """--examples 0 oder negativ ist ungueltig."""
+    db_file = tmp_path / "x.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["--db", str(db_file), "--examples", "0"])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "--examples" in err
+
+
 def test_text_bericht_zeigt_tuple_befunde(tmp_path, capsys):
     """Tupel-Listen (z.B. numeric_out_of_range) werden lesbar zusammengezogen."""
     db_file = tmp_path / "oor.sqlite3"
