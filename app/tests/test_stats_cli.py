@@ -298,6 +298,48 @@ def test_top_flag_steuert_wert_pro_mineral_laenge(tmp_path, capsys):
     assert "Mineral_06" not in block
 
 
+def test_text_ausgabe_zeigt_wert_pro_fundort(tmp_path, capsys):
+    """Wert-pro-Fundort-Block summiert CHF-Felder pro Fundort und sortiert absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Davos",   100.0,  50.0),  # Davos total 150
+            ("OBJ_0002", "Davos",   200.0, None),   # Davos total 350
+            ("OBJ_0003", "Zermatt", None,  800.0),  # Zermatt total 800
+            ("OBJ_0004", "St. Gallen", 25.0, None), # St. Gallen total 25
+            ("OBJ_0005", "St. Gallen", None, None), # St. Gallen bleibt 25
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Fundort (CHF):" in out
+    # Reihenfolge absteigend: Zermatt (800), Davos (350), St. Gallen (25)
+    block = out.split("Wert pro Fundort (CHF):", 1)[1]
+    assert block.index("Zermatt") < block.index("Davos") < block.index("St. Gallen")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_fundort_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Fundort-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpf0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [("OBJ_0001", "Davos"), ("OBJ_0002", "Zermatt")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Fundort" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])

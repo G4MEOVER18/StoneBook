@@ -115,6 +115,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Mineral (CHF):"]
         for mineral, wert in st.wert_pro_mineral[:top]:
             lines.append(f"  {mineral:40s} {wert:>12,.0f}")
+    if st.wert_pro_fundort:
+        # Komplementaer zu by_fundort (Anzahl): zeigt den Fundort mit dem hoechsten
+        # Sammlungs-Gesamtwert. Hilft bei Versicherungseinschaetzung pro Region und
+        # zeigt, ob viele guenstige Stuecke einen Ort dominieren oder wenige teure.
+        lines += ["", "Wert pro Fundort (CHF):"]
+        for ort, wert in st.wert_pro_fundort[:top]:
+            lines.append(f"  {ort:40s} {wert:>12,.0f}")
     return "\n".join(lines)
 
 
