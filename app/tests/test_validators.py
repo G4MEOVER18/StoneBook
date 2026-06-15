@@ -422,6 +422,36 @@ def test_parse_iso_date_slash_separator_mit_monatsname():
     assert parse_iso_date("Juni\\2024") is None
 
 
+def test_parse_iso_date_monat_jahr_bindestrich():
+    """Bindestrich zwischen Monatsname und Jahr ('Jun-2024', 'Juni-2024')."""
+    # Deutsche Kurz-/Vollformen
+    assert parse_iso_date("Juni-2024") == "2024-06-01"
+    assert parse_iso_date("Jun-2024") == "2024-06-01"
+    assert parse_iso_date("Mai-2024") == "2024-05-01"
+    assert parse_iso_date("Dezember-1999") == "1999-12-01"
+    # Englisch
+    assert parse_iso_date("Dec-1999") == "1999-12-01"
+    assert parse_iso_date("March-2024") == "2024-03-01"
+    assert parse_iso_date("May-2020") == "2020-05-01"
+    # Mit Punkt nach Kurzform ("Jun.-2024" - selten, aber unschaedlich)
+    assert parse_iso_date("Jun.-2024") == "2024-06-01"
+    # Case-insensitive (via Normalisierung)
+    assert parse_iso_date("JUN-2024") == "2024-06-01"
+    # Umlaut wird normalisiert
+    assert parse_iso_date("März-2022") == "2022-03-01"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Juni/2024") == "2024-06-01"
+    assert parse_iso_date("Juni, 2024") == "2024-06-01"
+    # Voll qualifizierte DD-Mon-YYYY-Notation bleibt erhalten
+    assert parse_iso_date("13-Jun-2024") == "2024-06-13"
+    assert parse_iso_date("Jun-13-2024") == "2024-06-13"
+    # Unbekannter Monat → None
+    assert parse_iso_date("Foo-2024") is None
+    # Jahr ausserhalb 1800-2999
+    assert parse_iso_date("Jun-1700") is None
+
+
 def test_parse_iso_date_umschliessende_klammern():
     """Zitierte Datumsangaben in Klammern/Anfuehrungszeichen werden gestrippt."""
     # ASCII-Klammern / Anfuehrungszeichen

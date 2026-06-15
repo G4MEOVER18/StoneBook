@@ -111,9 +111,14 @@ _ENGLISH_MONTH_DAY_YEAR = re.compile(
     r"^\s*([A-Za-z]+)\s*[./\-]?\s*(\d{1,2})(?:st|nd|rd|th)?\s*[,/\-]?\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
-# "Juni 2024" / "Juni, 2024" / "Juni/2024"
+# "Juni 2024" / "Juni, 2024" / "Juni/2024" / "Juni-2024" / "Jun-2024".
+# Bindestrich-Form ist symmetrisch zur DD-Mon-YYYY-Notation (Oracle/Log-Exporte):
+# Reports lassen den Tag oft weg, wenn nur eine Monatsangabe vorliegt
+# ("Jun-2024" = ganzer Juni). Die voll qualifizierte DD-Mon-YYYY-Form bleibt
+# weiterhin von _DAY_MONTH_YEAR erfasst (die Pattern kollidieren nicht, weil
+# diese hier nur exakt zwei Teile zulaesst).
 _MONTH_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[,/ ]\s*(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[,/ \-]\s*(\d{4})\s*$",
 )
 
 # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024", "Frühjahr 2020").
