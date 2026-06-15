@@ -340,6 +340,74 @@ def test_text_ausgabe_ohne_werte_keine_wert_pro_fundort_zeile(tmp_path, capsys):
     assert "Wert pro Fundort" not in out
 
 
+def test_text_ausgabe_zeigt_funde_pro_jahr(tmp_path, capsys):
+    """Funde-pro-Jahr-Block listet Jahre chronologisch mit Trefferanzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2019-06-13"),
+            ("OBJ_0002", "2019-08-01"),
+            ("OBJ_0003", "2021-05-10"),
+            ("OBJ_0004", "2024-12-31"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Jahr:" in out
+    block = out.split("Funde pro Jahr:", 1)[1]
+    # Chronologisch: 2019, 2021, 2024
+    assert block.index("2019") < block.index("2021") < block.index("2024")
+
+
+def test_text_ausgabe_ohne_funddatum_keine_jahr_zeile(tmp_path, capsys):
+    """Ohne gueltige Funddaten erscheint der Funde-pro-Jahr-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Jahr:" not in out
+
+
+def test_top_flag_begrenzt_funde_pro_jahr(tmp_path, capsys):
+    """--top N begrenzt die Jahres-Histogramm-Laenge (Top-N nach Trefferzahl)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpjt.sqlite3"
+    c = open_db(db_file)
+    # 5 Jahre mit absteigender Trefferzahl: 2024 (5), 2023 (4), 2022 (3), 2021 (2), 2020 (1)
+    rows = []
+    obj_n = 0
+    for year, count in [(2024, 5), (2023, 4), (2022, 3), (2021, 2), (2020, 1)]:
+        for _ in range(count):
+            obj_n += 1
+            rows.append((f"OBJ_{obj_n:04d}", f"{year}-06-13"))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)", rows)
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--top", "3"])
+    out = capsys.readouterr().out
+    block = out.split("Funde pro Jahr:", 1)[1]
+    # Top-3 nach Anzahl: 2024, 2023, 2022 (chronologisch sortiert).
+    assert "2022" in block
+    assert "2023" in block
+    assert "2024" in block
+    # 2020/2021 fallen heraus (nur 1/2 Treffer).
+    assert "2020" not in block
+    assert "2021" not in block
+
+
 def test_text_ausgabe_zeigt_objekte_pro_kategorie(tmp_path, capsys):
     """Objekte-pro-Kategorie-Block zaehlt absteigend nach Anzahl."""
     from stonebook.db.database import open_db

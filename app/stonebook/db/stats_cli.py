@@ -104,6 +104,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Kategorie:"]
         for name, n in list(st.by_kategorie.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_funddatum_jahr:
+        # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
+        # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen
+        # oder Schuebe bei einzelnen Exkursionen. Begrenzung erfolgt bereits in
+        # _count_funddatum_jahr (top_jahre); die Anzeige bleibt chronologisch.
+        lines += ["", "Funde pro Jahr:"]
+        for jahr, n in st.by_funddatum_jahr.items():
+            lines.append(f"  {jahr:40s} {n}")
     if st.top_wert_objekte:
         # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
         # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.
@@ -190,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         # Auspartitionierung (pro Liste) lohnt sich aus User-Sicht nicht.
         st = compute_statistics(
             conn, top_fundorte=args.top, top_wert=args.top,
+            top_jahre=args.top,
             top_wert_mineral=args.top, top_gewicht_mineral=args.top,
             top_wert_fundort=args.top, top_gewicht_fundort=args.top,
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
