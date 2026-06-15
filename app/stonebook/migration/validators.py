@@ -15,6 +15,14 @@ _DATE_FORMATS = (
 )
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
+# Jahrzehnt-Notation ("1980er", "1980s", "1980er Jahre", "1980-er").
+# Konvention: Dekaden-Start = Jahr selbst (1980er → 1980-01-01). Reichweite-Annotation
+# bleibt im Freitext (notizen). Zweistellige Kurzform "80er" ist mehrdeutig
+# (1880er vs 1980er) und wird bewusst nicht aufgeloest -- liefert None.
+_DECADE = re.compile(
+    r"^\s*(\d{4})(?:[\- ]?(?:er|s))(?:\s+jahre)?\s*$",
+    re.IGNORECASE,
+)
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
@@ -192,6 +200,15 @@ def parse_iso_date(text) -> str | None:
             return parse_iso_date(rest)
         return None
     m = _YEAR_ONLY.match(s)
+    if m:
+        year = int(m.group(1))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-01-01"
+        return None
+    # Jahrzehnt-Notation ("1980er", "1980s") → Dekaden-Startjahr. Vor _YEAR_MONTH
+    # ist nicht noetig (das Match endet auf 'er'/'s'), aber vor allen anderen
+    # Pattern-Versuchen, damit '1980er' nicht erst als Year-Month versucht wird.
+    m = _DECADE.match(s)
     if m:
         year = int(m.group(1))
         if 1800 <= year <= 2999:

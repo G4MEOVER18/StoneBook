@@ -164,6 +164,42 @@ def test_parse_iso_date_jahreszeiten():
     assert parse_iso_date("June 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_jahrzehnt():
+    """Jahrzehnt-Notation ergibt das Dekaden-Startjahr (1980er → 1980-01-01)."""
+    # Deutsch
+    assert parse_iso_date("1980er") == "1980-01-01"
+    assert parse_iso_date("1990er") == "1990-01-01"
+    assert parse_iso_date("1980er Jahre") == "1980-01-01"
+    assert parse_iso_date("1980 er") == "1980-01-01"
+    assert parse_iso_date("1980-er") == "1980-01-01"
+    # Englisch
+    assert parse_iso_date("1980s") == "1980-01-01"
+    assert parse_iso_date("1990s") == "1990-01-01"
+    assert parse_iso_date("1980 s") == "1980-01-01"
+    # Case-insensitive
+    assert parse_iso_date("1980ER") == "1980-01-01"
+    assert parse_iso_date("1980S") == "1980-01-01"
+    # Mit Annaeherungspraefix
+    assert parse_iso_date("ca. 1980er") == "1980-01-01"
+    assert parse_iso_date("circa 1980s") == "1980-01-01"
+    # Mit trailing Satzzeichen
+    assert parse_iso_date("1980er.") == "1980-01-01"
+    assert parse_iso_date("1980s,") == "1980-01-01"
+    # Bestehende Jahresangaben unveraendert (kein Regress)
+    assert parse_iso_date("1980") == "1980-01-01"
+
+
+def test_parse_iso_date_jahrzehnt_ungueltig():
+    # Zweistellige Kurzform ist mehrdeutig (1880er vs 1980er) → None
+    assert parse_iso_date("80er") is None
+    assert parse_iso_date("80s") is None
+    # Jahrzehnt vor 1800 oder nach 2999 → None
+    assert parse_iso_date("1700er") is None
+    assert parse_iso_date("3000er") is None
+    # Kein Jahrzehnt ohne Suffix
+    assert parse_iso_date("1980 j") is None
+
+
 def test_parse_iso_date_quartale():
     """Quartal + Jahr ergeben den Quartals-Startmonat (Jan/Apr/Jul/Okt)."""
     # Kurzform "Q1 2024" mit verschiedenen Separatoren
