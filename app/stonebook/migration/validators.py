@@ -35,6 +35,15 @@ _TRAILING_TIME = re.compile(
 # /Doppelpunkt-Suffix gehoert nicht zum Datum selbst und wird vor dem Re-Parsing
 # entfernt. ISO-Datumformate enden auf Ziffern, kollidieren also nicht.
 _TRAILING_PUNCT = re.compile(r"[.,;:!?]+\s*$")
+# Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
+# "(2024)", "[2024-06-13]", '"13. Juni 2024"', '„Sommer 1985"'.
+# Genau ein Paar wird gestrippt; danach Re-Parsing per Rekursion.
+_BRACKET_PAIRS: tuple[tuple[str, str], ...] = (
+    ("(", ")"), ("[", "]"), ("{", "}"),
+    ('"', '"'), ("'", "'"), ("`", "`"),
+    ("«", "»"), ("‹", "›"),
+    ("„", "\""), ("„", "“"), ("‚", "‘"),
+)
 # ISO 8601 mit Zeitanteil: "2024-06-13T10:00:00", "2024-06-13 10:00:00Z",
 # auch EXIF-Stil "2024:06:13 10:00:00" → Zeit wird verworfen, nur Datum bleibt.
 _ISO_DATETIME = re.compile(
@@ -147,6 +156,13 @@ def parse_iso_date(text) -> str | None:
     s = str(text).strip()
     if not s or s.lower() in {"k.a.", "k. a.", "n/a", "na", "?", "-", "—", "unbekannt"}:
         return None
+    # Umschliessende Klammern/Anfuehrungszeichen abstreifen ("(2024)", '"2024-06-13"').
+    # Strip + Rekursion; tiefere Schachtelung loest sich automatisch auf.
+    for op, cl in _BRACKET_PAIRS:
+        if len(s) >= len(op) + len(cl) and s.startswith(op) and s.endswith(cl):
+            inner = s[len(op):-len(cl)].strip()
+            if inner and inner != s:
+                return parse_iso_date(inner)
     # Annaeherungspraefix abstreifen ("ca. 1985" → "1985", "circa Juni 2024" → "Juni 2024").
     # Genau einmal anwenden; die Rekursion uebernimmt das eigentliche Parsing.
     if _APPROX_PREFIX.match(s):

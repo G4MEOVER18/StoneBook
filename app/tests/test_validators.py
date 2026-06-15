@@ -172,6 +172,32 @@ def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Winter 1999/2000") is None
 
 
+def test_parse_iso_date_umschliessende_klammern():
+    """Zitierte Datumsangaben in Klammern/Anfuehrungszeichen werden gestrippt."""
+    # ASCII-Klammern / Anfuehrungszeichen
+    assert parse_iso_date("(2024)") == "2024-01-01"
+    assert parse_iso_date("[2024]") == "2024-01-01"
+    assert parse_iso_date("{2024}") == "2024-01-01"
+    assert parse_iso_date("(2024-06-13)") == "2024-06-13"
+    assert parse_iso_date("(13.06.2024)") == "2024-06-13"
+    assert parse_iso_date('"2024-06-13"') == "2024-06-13"
+    assert parse_iso_date("'2024-06-13'") == "2024-06-13"
+    # Typografische Varianten (Schweizer/Deutsche Texte)
+    assert parse_iso_date("«2024-06-13»") == "2024-06-13"
+    assert parse_iso_date("‹2024-06-13›") == "2024-06-13"
+    assert parse_iso_date('„2024-06-13"') == "2024-06-13"
+    assert parse_iso_date("„2024-06-13“") == "2024-06-13"
+    # Geschachtelt mit Praefixen/Suffixen
+    assert parse_iso_date("[ca. 1985]") == "1985-01-01"
+    assert parse_iso_date("«Sommer 1985»") == "1985-06-01"
+    assert parse_iso_date("(2024-06-13.)") == "2024-06-13"
+    # Leeres Innenleben → None
+    assert parse_iso_date("()") is None
+    assert parse_iso_date('""') is None
+    # Klammer mitten im Text wird NICHT angetastet (keine falschen Treffer)
+    assert parse_iso_date("abc(def)") is None
+
+
 def test_parse_iso_date_trailing_satzzeichen():
     """Sammlungs-Notizen mit Datum am Satzende: trailing .!?,;: gehoert nicht zum Datum."""
     # Punkt nach ISO-Datum / DE-Datum / Jahr / Monat+Jahr
