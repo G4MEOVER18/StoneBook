@@ -56,6 +56,7 @@ class Statistik:
     gewicht_max_g: float = 0.0
     objekte_mit_gewicht: int = 0
     durchschnitt_confidence_prozent: float | None = None
+    confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
         if self.objekte_total <= 0:
@@ -135,6 +136,7 @@ class Statistik:
                 round(self.durchschnitt_confidence_prozent, 1)
                 if self.durchschnitt_confidence_prozent is not None else None
             ),
+            "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
@@ -200,6 +202,35 @@ def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]
         "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
     ).fetchone()
     return (row["lo"], row["hi"])
+
+
+CONFIDENCE_BUCKET_ORDER: tuple[str, ...] = ("ohne", "0-24", "25-49", "50-74", "75-100")
+
+
+def _confidence_buckets(conn: sqlite3.Connection) -> dict[str, int]:
+    """Verteilung der Confidence-Werte auf 25-Prozent-Klassen + 'ohne' (NULL).
+
+    Liefert ein Dict in fester Reihenfolge ``CONFIDENCE_BUCKET_ORDER``; Klassen
+    ohne Treffer bleiben mit 0 enthalten, damit das Dashboard eine stabile
+    Bar-Reihenfolge zeichnen kann. Out-of-Range-Werte (<0 oder >100) zaehlen
+    nicht mit; sie werden separat in :func:`check_integrity` gemeldet.
+    """
+    counts = dict.fromkeys(CONFIDENCE_BUCKET_ORDER, 0)
+    rows = conn.execute(
+        "SELECT CASE "
+        "  WHEN Confidence_Prozent IS NULL THEN 'ohne' "
+        "  WHEN Confidence_Prozent BETWEEN 0 AND 24 THEN '0-24' "
+        "  WHEN Confidence_Prozent BETWEEN 25 AND 49 THEN '25-49' "
+        "  WHEN Confidence_Prozent BETWEEN 50 AND 74 THEN '50-74' "
+        "  WHEN Confidence_Prozent BETWEEN 75 AND 100 THEN '75-100' "
+        "  ELSE NULL END AS bucket, COUNT(*) AS n "
+        "FROM objects GROUP BY bucket"
+    ).fetchall()
+    for r in rows:
+        b = r["bucket"]
+        if b in counts:
+            counts[b] = r["n"]
+    return counts
 
 
 def wert_pro_objekt_sql() -> str:
@@ -296,6 +327,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.durchschnitt_confidence_prozent = (
         float(sums["conf_avg"]) if sums["conf_avg"] is not None else None
     )
+    st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(
         "SELECT Gewicht_g AS g FROM objects "

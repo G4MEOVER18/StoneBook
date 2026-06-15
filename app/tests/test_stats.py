@@ -287,6 +287,65 @@ def test_durchschnitt_confidence_ohne_werte(tmp_path):
     assert st.wert_roh_summe_chf == 0.0
 
 
+def test_confidence_buckets_verteilung(tmp_path):
+    """Confidence-Werte landen in 25-Prozent-Klassen; NULL faellt auf 'ohne'."""
+    from stonebook.db.database import open_db
+    from stonebook.db.stats import CONFIDENCE_BUCKET_ORDER
+    c = open_db(tmp_path / "buckets.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 0),     # 0-24
+            ("OBJ_0002", 24),    # 0-24 (Grenze inklusiv)
+            ("OBJ_0003", 25),    # 25-49 (Grenze)
+            ("OBJ_0004", 49),    # 25-49 (Grenze inklusiv)
+            ("OBJ_0005", 50),    # 50-74
+            ("OBJ_0006", 74),    # 50-74 (Grenze inklusiv)
+            ("OBJ_0007", 75),    # 75-100
+            ("OBJ_0008", 100),   # 75-100 (Grenze inklusiv)
+            ("OBJ_0009", None),  # ohne
+            ("OBJ_0010", None),  # ohne
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_buckets == {
+        "ohne": 2, "0-24": 2, "25-49": 2, "50-74": 2, "75-100": 2,
+    }
+    # Reihenfolge ist stabil (Dashboard zeichnet in dieser Reihenfolge)
+    assert list(st.confidence_buckets) == list(CONFIDENCE_BUCKET_ORDER)
+    c.close()
+
+
+def test_confidence_buckets_leere_db(tmp_path):
+    """Leere DB → alle Klassen 0, Reihenfolge bleibt."""
+    from stonebook.db.database import open_db
+    from stonebook.db.stats import CONFIDENCE_BUCKET_ORDER
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.confidence_buckets == {k: 0 for k in CONFIDENCE_BUCKET_ORDER}
+    c.close()
+
+
+def test_confidence_buckets_ignoriert_out_of_range(tmp_path):
+    """Confidence < 0 oder > 100 ist out-of-range (Integrity meldet das separat) und faellt aus den Buckets."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", -5),     # out-of-range
+            ("OBJ_0002", 150),    # out-of-range
+            ("OBJ_0003", 80),     # 75-100
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_buckets["75-100"] == 1
+    # Out-of-range Werte tauchen nicht in einem Bucket auf
+    assert sum(st.confidence_buckets.values()) == 1
+
+
 def test_wert_pro_mineral_aus_seed_db(tmp_path):
     """Wertsumme pro Hauptmineral, absteigend sortiert."""
     from stonebook.db.database import open_db
