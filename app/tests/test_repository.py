@@ -147,6 +147,30 @@ def test_has_mineral_filter(tmp_path):
     c.close()
 
 
+def test_has_pruefempfehlungen_filter(tmp_path):
+    """has_pruefempfehlungen findet Objekte mit offenen Bestaetigungstests."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hp.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Pruefempfehlungen) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Strichprobe noch ausstehend"),
+            ("OBJ_0002", "Saeuretest mit HCl 10%"),
+            ("OBJ_0003", None),
+            ("OBJ_0004", ""),
+            ("OBJ_0005", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_pruefempfehlungen=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_pruefempfehlungen=False)] \
+        == ["OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_pruefempfehlungen=None)) == 5
+    c.close()
+
+
 def test_has_notizen_filter(tmp_path):
     """has_notizen unterscheidet dokumentierte von undokumentierten Objekten."""
     from stonebook.db.database import open_db

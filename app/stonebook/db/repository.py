@@ -60,6 +60,7 @@ class ObjectRepo:
                      has_funddatum: bool | None = None,
                      has_mineral: bool | None = None,
                      has_notizen: bool | None = None,
+                     has_pruefempfehlungen: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_min: str | None = None,
@@ -129,6 +130,10 @@ class ObjectRepo:
             where.append("o.notizen IS NOT NULL AND TRIM(o.notizen) != ''")
         elif has_notizen is False:
             where.append("(o.notizen IS NULL OR TRIM(o.notizen) = '')")
+        if has_pruefempfehlungen is True:
+            where.append("o.Pruefempfehlungen IS NOT NULL AND TRIM(o.Pruefempfehlungen) != ''")
+        elif has_pruefempfehlungen is False:
+            where.append("(o.Pruefempfehlungen IS NULL OR TRIM(o.Pruefempfehlungen) = '')")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
