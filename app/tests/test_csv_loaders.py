@@ -28,6 +28,35 @@ def test_normalize_id():
     assert display_name("OBJ_0043") == "Objekt 43"
 
 
+def test_normalize_id_kompaktform_und_alternative_praefixe():
+    """OBJ ohne Separator, EN-Langform, Nummer-/Hash-Praefix - in Dateinamen/Captions verbreitet."""
+    # Kompaktform OBJ + Ziffern ohne Separator (Datei-/Ordnernamen)
+    assert normalize_id("OBJ43") == "OBJ_0043"
+    assert normalize_id("OBJ001") == "OBJ_0001"
+    assert normalize_id("obj43") == "OBJ_0043"
+    # Englische Langform (Foto-Captions / EN-Notizen)
+    assert normalize_id("Object 43") == "OBJ_0043"
+    assert normalize_id("object 7") == "OBJ_0007"
+    # DE Nummerierungs-Praefix
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("Nr 43") == "OBJ_0043"
+    assert normalize_id("Nr.43") == "OBJ_0043"
+    assert normalize_id("nr. 7") == "OBJ_0007"
+    # Hash-Praefix (Tagebuch-/Foto-Notation)
+    assert normalize_id("#43") == "OBJ_0043"
+    assert normalize_id("# 43") == "OBJ_0043"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("OBJ_0043") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    # Ungueltige Formen bleiben None
+    assert normalize_id("OBJ X43") is None
+    assert normalize_id("OBJ-43X") is None
+    assert normalize_id("Objekt001") is None  # DE-Langform braucht Whitespace
+    assert normalize_id("Object43") is None   # EN-Langform braucht Whitespace
+    assert normalize_id("OBJEKT43") is None   # 'EKT' zwischen Buchstaben und Zahl
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
