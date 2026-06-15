@@ -172,6 +172,28 @@ def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Winter 1999/2000") is None
 
 
+def test_parse_iso_date_numerisches_monat_jahr():
+    """Numerisches MM/YYYY (06/2024, 6-2024, 06.2024) ist eine Monatsangabe → -01."""
+    assert parse_iso_date("06/2024") == "2024-06-01"
+    assert parse_iso_date("6/2024") == "2024-06-01"
+    assert parse_iso_date("1/2024") == "2024-01-01"
+    assert parse_iso_date("12/2024") == "2024-12-01"
+    # Andere Separatoren
+    assert parse_iso_date("06-2024") == "2024-06-01"
+    assert parse_iso_date("06.2024") == "2024-06-01"
+    # Ungueltige Monatswerte → None
+    assert parse_iso_date("13/2024") is None
+    assert parse_iso_date("0/2024") is None
+    assert parse_iso_date("00/2024") is None
+    # Jahr ausserhalb [1800, 2999]
+    assert parse_iso_date("06/1700") is None
+    # 2-stelliges Jahr ist nicht erfasst (zu mehrdeutig)
+    assert parse_iso_date("06/24") is None
+    # YYYY-MM bleibt unveraendert (kein Regress)
+    assert parse_iso_date("2024-06") == "2024-06-01"
+    assert parse_iso_date("2024/06") == "2024-06-01"
+
+
 def test_parse_iso_date_slash_separator_mit_monatsname():
     """Slash als Separator zwischen Tag/Monatsname/Jahr (gaengig in Exports)."""
     # DD/Mon/YYYY

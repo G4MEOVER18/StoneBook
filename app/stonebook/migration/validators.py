@@ -16,6 +16,10 @@ _DATE_FORMATS = (
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
+# Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
+# Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
+# fallen auf None (sind dann i.d.R. ein anderes Format, das nicht hierher gehoert).
+_MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\-](\d{4})\s*$")
 # Annaeherungspraefixe (DE/EN), wie sie in geerbten Sammlungs-Notizen typisch sind:
 # "ca. 1985", "circa 2020", "um 1980", "approx. 2024", "around 1995".
 # Werden gestrippt, dann wird der Rest re-parst - die Datumsbedeutung selbst bleibt
@@ -226,6 +230,13 @@ def parse_iso_date(text) -> str | None:
         month = _normalize_month_name(m.group(1))
         year = int(m.group(2))
         if month and 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
+    # Numerisches Monat/Jahr ("06/2024", "6-2024"). Erst nach den DD.MM.YYYY-
+    # Formaten geprueft, damit die nicht versehentlich auf MM/YYYY zurueckfallen.
+    m = _MONTH_NUMERIC_YEAR.match(s)
+    if m:
+        month, year = int(m.group(1)), int(m.group(2))
+        if 1 <= month <= 12 and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
     # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024"): meteorologischer
     # Saison-Start im genannten Jahr. Ueber denselben _MONTH_YEAR-Regex
