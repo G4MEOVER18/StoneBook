@@ -284,6 +284,39 @@ def test_json_ausgabe(migrated_db, capsys):
     assert set(payload["confidence_buckets"]) == {"ohne", "0-24", "25-49", "50-74", "75-100"}
 
 
+def test_top_flag_steuert_listenlaenge(tmp_path, capsys):
+    """--top N begrenzt sowohl by_mineral als auch top_wert_objekte gemeinsam."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "top.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Mineral_{i:02d}", float(i)) for i in range(1, 16)],
+    )
+    c.commit()
+    c.close()
+    # --top 3: Top-Listen enthalten nur 3 Eintraege
+    main(["--db", str(db_file), "--top", "3"])
+    out = capsys.readouterr().out
+    # Top-Wertobjekt: nur die drei groessten (15, 14, 13)
+    assert "OBJ_0015" in out
+    assert "OBJ_0014" in out
+    assert "OBJ_0013" in out
+    # Vierter Eintrag (OBJ_0012, Wert 12) darf nicht erscheinen
+    assert "OBJ_0012" not in out
+
+
+def test_top_flag_ungueltig_exit_2(tmp_path, capsys):
+    """--top 0 oder negativ ist ungueltig (mind. 1 Eintrag pro Liste)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "x.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["--db", str(db_file), "--top", "0"])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "--top" in err
+
+
 def test_fehlende_db_exit_2(tmp_path, capsys):
     exit_code = main(["--db", str(tmp_path / "fehlt.sqlite3")])
     assert exit_code == 2

@@ -4,6 +4,7 @@ Beispiele:
     python -m stonebook.db.stats_cli                     # Default-DB, Text
     python -m stonebook.db.stats_cli --json              # JSON-Ausgabe
     python -m stonebook.db.stats_cli --db <pfad>
+    python -m stonebook.db.stats_cli --top 20            # Top-Listen verlaengern
 """
 from __future__ import annotations
 
@@ -16,7 +17,10 @@ from stonebook.db.database import connect, default_db_file
 from stonebook.db.stats import Statistik, compute_statistics
 
 
-def _format_text(st: Statistik) -> str:
+DEFAULT_TOP_N = 10
+
+
+def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
     lines = [
         "Sammlungs-Uebersicht",
         "====================",
@@ -86,22 +90,22 @@ def _format_text(st: Statistik) -> str:
             lines.append(f"  {kat:40s} {n}")
     if st.by_mineral:
         lines += ["", "Top-Minerale:"]
-        for name, n in list(st.by_mineral.items())[:10]:
+        for name, n in list(st.by_mineral.items())[:top]:
             lines.append(f"  {name:40s} {n}")
     if st.by_fundort:
         lines += ["", "Top-Fundorte:"]
-        for name, n in list(st.by_fundort.items())[:10]:
+        for name, n in list(st.by_fundort.items())[:top]:
             lines.append(f"  {name:40s} {n}")
     if st.top_wert_objekte:
         # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
         # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.
         lines += ["", "Top-Wertobjekte (CHF):"]
-        for oid, name, wert in st.top_wert_objekte[:10]:
+        for oid, name, wert in st.top_wert_objekte[:top]:
             label = f"{oid} {name}".strip()
             lines.append(f"  {label:40s} {wert:>12,.0f}")
     if st.top_gewicht_objekte:
         lines += ["", "Top-Gewichtsobjekte (g):"]
-        for oid, name, gewicht in st.top_gewicht_objekte[:10]:
+        for oid, name, gewicht in st.top_gewicht_objekte[:top]:
             label = f"{oid} {name}".strip()
             lines.append(f"  {label:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
@@ -116,6 +120,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="Pfad zur SQLite-DB (Default: <repo>/data/db/stonebook.sqlite3).")
     p.add_argument("--json", action="store_true",
                    help="Gibt das vollstaendige Statistik-Objekt als JSON aus.")
+    p.add_argument("--top", type=int, default=DEFAULT_TOP_N,
+                   help=f"Anzahl Eintraege in den Top-Listen (Default: {DEFAULT_TOP_N}).")
     return p
 
 
@@ -125,16 +131,26 @@ def main(argv: list[str] | None = None) -> int:
     if not db_file.is_file():
         print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
         return 2
+    if args.top < 1:
+        print(f"--top muss >= 1 sein (war: {args.top})", file=sys.stderr)
+        return 2
     conn = connect(db_file)
     try:
-        st = compute_statistics(conn)
+        # ``top`` wirkt auf alle Top-Aggregate gleichzeitig; eine feinere
+        # Auspartitionierung (pro Liste) lohnt sich aus User-Sicht nicht.
+        st = compute_statistics(
+            conn, top_fundorte=args.top, top_wert=args.top,
+            top_wert_mineral=args.top, top_gewicht_mineral=args.top,
+            top_wert_fundort=args.top, top_gewicht_fundort=args.top,
+            top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
+            top_gewicht=args.top)
     finally:
         conn.close()
     if args.json:
         json.dump(st.as_dict(), sys.stdout, ensure_ascii=False, indent=1)
         sys.stdout.write("\n")
     else:
-        print(_format_text(st))
+        print(_format_text(st, top=args.top))
     return 0
 
 
