@@ -69,6 +69,41 @@ def test_text_ausgabe_ohne_confidence_keine_median_zeile(tmp_path, capsys):
     assert "Median Confidence:" not in out
 
 
+def test_text_ausgabe_zeigt_top_wert_und_gewicht(tmp_path, capsys):
+    """Top-Wertobjekte und Top-Gewichtsobjekte erscheinen im Text-Bericht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tw.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name, Wert_CHF_roh, Gewicht_g) VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "Citrindruse",  1500.0, 250.0),
+            ("OBJ_0002", "Bergkristall",   50.0,  10.0),
+            ("OBJ_0003", "Pyritrose",   None,   500.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Wertobjekte" in out
+    assert "Citrindruse" in out
+    assert "Top-Gewichtsobjekte" in out
+    assert "Pyritrose" in out
+
+
+def test_text_ausgabe_ohne_werte_keine_top_listen(tmp_path, capsys):
+    """Leere DB → keine Top-Listen (Format bleibt schlank)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "leer.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Wertobjekte" not in out
+    assert "Top-Gewichtsobjekte" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])

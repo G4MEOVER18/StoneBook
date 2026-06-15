@@ -66,6 +66,18 @@ def _format_text(st: Statistik) -> str:
         lines += ["", "Top-Fundorte:"]
         for name, n in list(st.by_fundort.items())[:10]:
             lines.append(f"  {name:40s} {n}")
+    if st.top_wert_objekte:
+        # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
+        # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.
+        lines += ["", "Top-Wertobjekte (CHF):"]
+        for oid, name, wert in st.top_wert_objekte[:10]:
+            label = f"{oid} {name}".strip()
+            lines.append(f"  {label:40s} {wert:>12,.0f}")
+    if st.top_gewicht_objekte:
+        lines += ["", "Top-Gewichtsobjekte (g):"]
+        for oid, name, gewicht in st.top_gewicht_objekte[:10]:
+            label = f"{oid} {name}".strip()
+            lines.append(f"  {label:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 
