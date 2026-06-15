@@ -172,6 +172,33 @@ def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Winter 1999/2000") is None
 
 
+def test_parse_iso_date_trailing_satzzeichen():
+    """Sammlungs-Notizen mit Datum am Satzende: trailing .!?,;: gehoert nicht zum Datum."""
+    # Punkt nach ISO-Datum / DE-Datum / Jahr / Monat+Jahr
+    assert parse_iso_date("2024-06-13.") == "2024-06-13"
+    assert parse_iso_date("13.06.2024.") == "2024-06-13"
+    assert parse_iso_date("1985.") == "1985-01-01"
+    assert parse_iso_date("Juni 2024.") == "2024-06-01"
+    assert parse_iso_date("13. Juni 2024.") == "2024-06-13"
+    assert parse_iso_date("Jun 13, 2024.") == "2024-06-13"
+    # Andere Satzzeichen
+    assert parse_iso_date("1985!") == "1985-01-01"
+    assert parse_iso_date("1985?") == "1985-01-01"
+    assert parse_iso_date("2024;") == "2024-01-01"
+    assert parse_iso_date("2024:") == "2024-01-01"
+    # Mehrere Satzzeichen am Ende
+    assert parse_iso_date("2024-06-13!?") == "2024-06-13"
+    assert parse_iso_date("13.06.2024.,;") == "2024-06-13"
+    # Kombiniert mit Annaeherungspraefix
+    assert parse_iso_date("ca. 1985.") == "1985-01-01"
+    assert parse_iso_date("circa 2024-06-13.") == "2024-06-13"
+    # Kombiniert mit Jahreszeit
+    assert parse_iso_date("Sommer 1985.") == "1985-06-01"
+    # Wenn der Rest ungueltig bleibt → None (nicht versehentlich was retten)
+    assert parse_iso_date("abc.") is None
+    assert parse_iso_date("unbekannt.") is None
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

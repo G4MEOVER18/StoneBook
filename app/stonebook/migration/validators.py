@@ -30,6 +30,11 @@ _TRAILING_TIME = re.compile(
     r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
 )
+# Trailing-Satzzeichen ("2024-06-13.", "1985!", "13. Juni 2024;").
+# Geerbte Sammlungs-Notizen sind oft ganze Saetze mit Datum am Ende; das Punkt-
+# /Doppelpunkt-Suffix gehoert nicht zum Datum selbst und wird vor dem Re-Parsing
+# entfernt. ISO-Datumformate enden auf Ziffern, kollidieren also nicht.
+_TRAILING_PUNCT = re.compile(r"[.,;:!?]+\s*$")
 # ISO 8601 mit Zeitanteil: "2024-06-13T10:00:00", "2024-06-13 10:00:00Z",
 # auch EXIF-Stil "2024:06:13 10:00:00" → Zeit wird verworfen, nur Datum bleibt.
 _ISO_DATETIME = re.compile(
@@ -202,6 +207,12 @@ def parse_iso_date(text) -> str | None:
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
     # Faengt nicht-ISO-Eingaben wie "13.06.2024 14:30" oder "13. Juni 2024 10:00" ab.
     stripped = _TRAILING_TIME.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # Trailing-Satzzeichen abstreifen ("Funddatum 2024-06-13.", "ca. 1985!").
+    # Erst nach allen strukturellen Parsern, damit "1.6.2024" o.ae. nicht
+    # vorzeitig ihren Punkt verlieren.
+    stripped = _TRAILING_PUNCT.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     return None
