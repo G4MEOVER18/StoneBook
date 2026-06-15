@@ -340,6 +340,47 @@ def test_text_ausgabe_ohne_werte_keine_wert_pro_fundort_zeile(tmp_path, capsys):
     assert "Wert pro Fundort" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
+    """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpk.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Handstueck", 600.0, 400.0),   # Handstueck 1000
+            ("OBJ_0002", "Kristall",   200.0, 150.0),   # Kristall    350
+            ("OBJ_0003", "Geroell",     10.0, None),    # Geroell      10
+            ("OBJ_0004", "Geroell",   None,  None),     # Geroell bleibt 10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Kategorie (CHF):" in out
+    # Reihenfolge absteigend nach Summe: Handstueck (1000), Kristall (350), Geroell (10)
+    block = out.split("Wert pro Kategorie (CHF):", 1)[1]
+    assert block.index("Handstueck") < block.index("Kristall") < block.index("Geroell")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_kategorie_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Kategorie-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpk0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [("OBJ_0001", "Handstueck"), ("OBJ_0002", "Kristall")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Kategorie" not in out
+
+
 def test_text_ausgabe_zeigt_gewicht_pro_mineral(tmp_path, capsys):
     """Gewicht-pro-Mineral-Block summiert g je Mineraltyp und sortiert absteigend."""
     from stonebook.db.database import open_db

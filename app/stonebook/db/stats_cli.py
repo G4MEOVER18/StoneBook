@@ -122,6 +122,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Fundort (CHF):"]
         for ort, wert in st.wert_pro_fundort[:top]:
             lines.append(f"  {ort:40s} {wert:>12,.0f}")
+    if st.wert_pro_kategorie:
+        # Drittes Schnittmuster (nach Mineral/Fundort): welche Objekt-Kategorie
+        # (Handstueck, Kristall, Geroell, ...) traegt am meisten zum Sammlungswert
+        # bei? Beantwortet "wo steckt das Geld in der Sammlungs-Typologie?".
+        lines += ["", "Wert pro Kategorie (CHF):"]
+        for kat, wert in st.wert_pro_kategorie[:top]:
+            lines.append(f"  {kat:40s} {wert:>12,.0f}")
     if st.gewicht_pro_mineral:
         # Spiegelbild zu wert_pro_mineral: welcher Mineraltyp dominiert die Sammlung
         # gewichtsmaessig? Wert und Gewicht sind oft entkoppelt (viele kleine teure
