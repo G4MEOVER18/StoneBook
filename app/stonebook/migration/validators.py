@@ -101,6 +101,22 @@ _SEASON_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]?\s*(\d{4})\s*$",
 )
 
+# Quartal + Jahr ("Q1 2024", "Q3/1985", "1. Quartal 2024", "3. Quarter 1985",
+# "1Q2024", "Quartal 1 2024"). Konvention: Quartals-Startmonat (Jan/Apr/Jul/Okt).
+# Akzeptiert sowohl deutsche ("Quartal") als auch englische ("Quarter") Schreibweise.
+_QUARTER_MONTHS: dict[int, int] = {1: 1, 2: 4, 3: 7, 4: 10}
+# "Q1 2024" / "Q1/2024" / "Q1-2024" / "1Q 2024"
+_QUARTER_SHORT = re.compile(
+    r"^\s*(?:Q\s*([1-4])|([1-4])\s*Q)\s*[/.\-,]?\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
+# "1. Quartal 2024" / "Quartal 1 2024" / "3. Quarter 1985"
+_QUARTER_LONG = re.compile(
+    r"^\s*(?:([1-4])\s*\.?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))"
+    r"\s*[/.\-, ]?\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
@@ -238,6 +254,20 @@ def parse_iso_date(text) -> str | None:
         month, year = int(m.group(1)), int(m.group(2))
         if 1 <= month <= 12 and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # Quartal + Jahr ("Q1 2024", "3. Quartal 1985"). Vor _SEASON_YEAR geprueft,
+    # damit "Q1 2024" nicht versehentlich als Saison-Notation interpretiert wird.
+    m = _QUARTER_SHORT.match(s)
+    if m:
+        q = int(m.group(1) or m.group(2))
+        year = int(m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
+    m = _QUARTER_LONG.match(s)
+    if m:
+        q = int(m.group(1) or m.group(2))
+        year = int(m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
     # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024"): meteorologischer
     # Saison-Start im genannten Jahr. Ueber denselben _MONTH_YEAR-Regex
     # gepatched, damit "Juni 2024" (Monat) Vorrang vor Seasons hat.
