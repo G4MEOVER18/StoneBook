@@ -40,6 +40,16 @@ def _format_text(st: Statistik) -> str:
         f"Gewicht (Summe, g):    {st.gewicht_summe_g:,.1f}",
         f"  Objekte mit Gewicht: {st.objekte_mit_gewicht}",
     ]
+    # Durchschnitt + Median fuer Wert/Gewicht direkt unter den Summenzeilen;
+    # nur ausgeben, wenn ueberhaupt Werte vorliegen (sonst sind die Felder 0.0
+    # und wuerden den Bericht mit nichtssagenden Nullzeilen belasten).
+    if st.objekte_mit_wert:
+        lines.append(f"  Ø Wert (CHF):        {st.wert_durchschnitt_chf:,.0f}")
+        lines.append(f"  Median Wert (CHF):   {st.wert_median_chf:,.0f}")
+    if st.objekte_mit_gewicht:
+        lines.append(f"  Ø Gewicht (g):       {st.gewicht_durchschnitt_g:,.1f}")
+        lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")
+        lines.append(f"  Maximales Gewicht:   {st.gewicht_max_g:,.1f}")
     if st.funddatum_frueheste or st.funddatum_spaeteste:
         # Spanne nur anzeigen, wenn ueberhaupt ein gueltiges Funddatum vorliegt.
         # Beide Grenzen werden gemeinsam ausgewiesen; identische Werte

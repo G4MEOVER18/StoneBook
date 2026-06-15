@@ -104,6 +104,53 @@ def test_text_ausgabe_ohne_werte_keine_top_listen(tmp_path, capsys):
     assert "Top-Gewichtsobjekte" not in out
 
 
+def test_text_ausgabe_zeigt_durchschnitt_und_median_wert_gewicht(tmp_path, capsys):
+    """Ø/Median Wert + Ø/Median/Max Gewicht stehen unter den Summenzeilen."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "avg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 100.0, 10.0),
+            ("OBJ_0002", 200.0, 30.0),
+            ("OBJ_0003", 600.0, 200.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Ø Wert (CHF):" in out
+    assert "Median Wert (CHF):" in out
+    assert "Ø Gewicht (g):" in out
+    assert "Median Gewicht (g):" in out
+    assert "Maximales Gewicht:" in out
+    # Median Wert = mittlerer von [100, 200, 600] = 200
+    assert "200" in out
+    # Max Gewicht = 200
+    assert "200.0" in out
+
+
+def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
+    """Ohne Wert/Gewicht erscheinen die Durchschnitt-/Median-Zeilen nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Ø Wert" not in out
+    assert "Median Wert" not in out
+    assert "Ø Gewicht" not in out
+    assert "Median Gewicht" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
