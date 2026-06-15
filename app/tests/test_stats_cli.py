@@ -36,6 +36,14 @@ def test_text_ausgabe_zeigt_confidence_buckets(migrated_db, capsys):
     assert "75-100" in out or "0-24" in out or "ohne" in out
 
 
+def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
+    """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
+    main(["--db", str(migrated_db)])
+    out = capsys.readouterr().out
+    assert "KI-Analysen:" in out
+    assert "uebernommen" in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0
