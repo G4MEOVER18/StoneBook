@@ -40,6 +40,13 @@ def _format_text(st: Statistik) -> str:
         f"Gewicht (Summe, g):    {st.gewicht_summe_g:,.1f}",
         f"  Objekte mit Gewicht: {st.objekte_mit_gewicht}",
     ]
+    if st.funddatum_frueheste or st.funddatum_spaeteste:
+        # Spanne nur anzeigen, wenn ueberhaupt ein gueltiges Funddatum vorliegt.
+        # Beide Grenzen werden gemeinsam ausgewiesen; identische Werte
+        # erscheinen als "X .. X" (transparent fuer den Leser).
+        lines.append(
+            f"Funddatum-Spanne:      {st.funddatum_frueheste or '?'} "
+            f".. {st.funddatum_spaeteste or '?'}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

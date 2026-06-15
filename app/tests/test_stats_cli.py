@@ -44,6 +44,40 @@ def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     assert "uebernommen" in out
 
 
+def test_text_ausgabe_zeigt_funddatum_spanne(tmp_path, capsys):
+    """Funddatum-Spanne erscheint in der Text-Ausgabe, sobald ein gueltiges Datum vorliegt."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "spanne.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", "2019-01-01"), ("OBJ_0002", "2024-12-31")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funddatum-Spanne:" in out
+    assert "2019-01-01" in out
+    assert "2024-12-31" in out
+
+
+def test_text_ausgabe_ohne_funddatum_keine_spanne_zeile(tmp_path, capsys):
+    """Bei DB ohne gueltige Funddaten erscheint die Spanne-Zeile gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funddatum-Spanne:" not in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0
