@@ -191,6 +191,44 @@ def test_text_ausgabe_ohne_objekte_keine_coverage(tmp_path, capsys):
     assert "Coverage:" not in out
 
 
+def test_text_ausgabe_zeigt_bilder_pro_kategorie(tmp_path, capsys):
+    """Bilder-pro-Kategorie-Block zeigt Foto-Coverage je Aufnahme-Art."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "bk.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg"),
+            ("OBJ_0001", "Kamera", "b.jpg"),
+            ("OBJ_0001", "Mikroskop", "c.jpg"),
+            ("OBJ_0001", "UV365", "d.jpg"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Bilder pro Kategorie:" in out
+    assert "Kamera" in out
+    assert "Mikroskop" in out
+    assert "UV365" in out
+
+
+def test_text_ausgabe_ohne_bilder_keine_kategorie_zeile(tmp_path, capsys):
+    """Ohne indexierte Bilder erscheint der Kategorie-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "nob.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Bilder pro Kategorie:" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])

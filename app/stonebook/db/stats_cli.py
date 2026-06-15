@@ -76,6 +76,14 @@ def _format_text(st: Statistik) -> str:
         lines += ["", "Confidence-Verteilung:"]
         for label, n in st.confidence_buckets.items():
             lines.append(f"  {label:>6s}              {n}")
+    if st.bilder_by_kategorie:
+        # Foto-Coverage pro Kategorie: zeigt, ob z.B. UV-/Mikroskop-Aufnahmen
+        # noch flaechig fehlen. Aufsteigende Sortierung nach Anzahl wuerde die
+        # Loecher verstecken; bleibt also bei der Default-Reihenfolge der
+        # Statistik (absteigend nach Anzahl).
+        lines += ["", "Bilder pro Kategorie:"]
+        for kat, n in st.bilder_by_kategorie.items():
+            lines.append(f"  {kat:40s} {n}")
     if st.by_mineral:
         lines += ["", "Top-Minerale:"]
         for name, n in list(st.by_mineral.items())[:10]:
