@@ -1,5 +1,6 @@
 """Loader für die drei historischen CSV-Formate → Standard-Felddicts."""
 import csv
+import io
 import re
 from pathlib import Path
 
@@ -127,14 +128,24 @@ def _read_csv_robust(path: Path) -> list[dict]:
     Erkennt Delimiter (``,`` / ``;`` / Tab / ``|``), strippt Whitespace aus den
     Spaltennamen und überspringt komplett leere Zeilen. Für die historischen
     Repo-CSVs nicht nötig; gedacht für ``load_standard``.
+
+    Multi-Line-Zellen (eingebettete Newlines in quoted Felder wie ``notizen``)
+    bleiben erhalten: der Reader bekommt einen ``StringIO``-Stream (nicht eine
+    ``splitlines``-Liste), damit ``csv.DictReader`` seine eigene Zeilenlogik
+    anwenden kann. Sonst wuerde ein langes Notiz-Feld mit ``\\n`` in nutzlose
+    Halbzeilen zerfallen.
     """
     text = _read_text_any_encoding(path)
     if not text.strip():
         return []
-    # Erste nicht-leere Zeile als Header für die Delimiter-Erkennung
+    # Erste nicht-leere Zeile als Header fuer die Delimiter-Erkennung. Hier ist
+    # splitlines unschaedlich, weil der Header nie quoted Newlines enthaelt.
     header_line = next((ln for ln in text.splitlines() if ln.strip()), "")
     delim = _detect_delimiter(header_line)
-    reader = csv.DictReader(text.splitlines(), delimiter=delim)
+    # StringIO statt splitlines(): erhaelt Multi-Line-Zellen wie "Zeile1\nZeile2"
+    # in quoted Spalten. csv.DictReader nutzt seine eigene Newline-Erkennung,
+    # die quoted Newlines beruecksichtigt.
+    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
     if reader.fieldnames:
         reader.fieldnames = [(h or "").strip() for h in reader.fieldnames]
     rows: list[dict] = []

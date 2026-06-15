@@ -207,6 +207,39 @@ def test_load_standard_header_whitespace(tmp_path):
     assert data["OBJ_0001"]["Gewicht_g"] == 5.0
 
 
+def test_load_standard_multiline_quoted_zelle(tmp_path):
+    """Eingebettete Newlines in quoted Feldern (lange notizen) bleiben erhalten."""
+    csv_path = tmp_path / "ml.csv"
+    # notizen mit eingebettetem \n in Anfuehrungszeichen (z.B. Excel-Export
+    # langer Freitext-Notizen mit Zeilenumbruechen)
+    csv_path.write_text(
+        'ID,Mineral_Primaer,notizen\n'
+        'OBJ_0001,Quarz,"Erste Zeile\nZweite Zeile\nDritte Zeile"\n'
+        'OBJ_0002,Calcit,"Einzelnotiz"\n',
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert set(data.keys()) == {"OBJ_0001", "OBJ_0002"}
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+    # Newlines im Freitext bleiben erhalten (sonst waere die Notiz zerfallen)
+    assert data["OBJ_0001"]["notizen"] == "Erste Zeile\nZweite Zeile\nDritte Zeile"
+    assert data["OBJ_0002"]["notizen"] == "Einzelnotiz"
+
+
+def test_load_standard_multiline_mit_semicolon_delimiter(tmp_path):
+    """Multiline-Zellen bleiben auch bei ;-Delimiter (Excel-DE) erhalten."""
+    csv_path = tmp_path / "ml_de.csv"
+    csv_path.write_text(
+        'ID;Mineral_Primaer;notizen\n'
+        'OBJ_0001;Quarz;"Zeile A\nZeile B"\n',
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["notizen"] == "Zeile A\nZeile B"
+
+
 def test_load_standard_skip_blank_rows(tmp_path):
     csv_path = tmp_path / "blank.csv"
     csv_path.write_text(
