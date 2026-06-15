@@ -47,6 +47,51 @@ def test_kaputte_db_exit_1(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "FEHLER" in out
     assert "invalid_funddatum" in out
+    # Text-Bericht nennt mindestens die betroffene ID direkt — User muss nicht
+    # erst die JSON-Form anschauen, um zu wissen, welches Objekt das Problem ist.
+    assert "OBJ_0001" in out
+
+
+def test_text_bericht_zeigt_max_3_beispiele(tmp_path, capsys):
+    """Bei vielen Befunden werden 3 IDs gelistet, der Rest als '+N weitere'."""
+    db_file = tmp_path / "many.sqlite3"
+    c = open_db(db_file)
+    try:
+        c.executemany(
+            "INSERT INTO objects (obj_id, Funddatum) VALUES (?, '32.13.2024')",
+            [(f"OBJ_{i:04d}",) for i in range(1, 8)],
+        )
+        c.commit()
+    finally:
+        c.close()
+    exit_code = main(["--db", str(db_file)])
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    # Erste drei IDs werden gezeigt, vierte nicht
+    assert "OBJ_0001" in out
+    assert "OBJ_0002" in out
+    assert "OBJ_0003" in out
+    assert "OBJ_0004" not in out
+    # Zaehler fuer den Rest
+    assert "+4 weitere" in out
+
+
+def test_text_bericht_zeigt_tuple_befunde(tmp_path, capsys):
+    """Tupel-Listen (z.B. numeric_out_of_range) werden lesbar zusammengezogen."""
+    db_file = tmp_path / "oor.sqlite3"
+    c = open_db(db_file)
+    try:
+        c.execute(
+            "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES ('OBJ_0001', 150)")
+        c.commit()
+    finally:
+        c.close()
+    exit_code = main(["--db", str(db_file)])
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    # ID + Feld + Wert tauchen in derselben Beispiel-Zeile auf
+    assert "OBJ_0001" in out
+    assert "Confidence_Prozent" in out
 
 
 def test_fehlende_db_exit_2(tmp_path, capsys):
