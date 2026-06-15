@@ -152,6 +152,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Kategorie (CHF):"]
         for kat, wert in st.wert_pro_kategorie[:top]:
             lines.append(f"  {kat:40s} {wert:>12,.0f}")
+    if st.wert_pro_status:
+        # Lifecycle-Sicht: wo steckt der Wert nach Pflegezustand? Beantwortet
+        # Sammler-Fragen wie "wieviel Sammlungswert habe ich schon erfasst (aktiv)
+        # vs. noch zu erfassen (platzhalter) vs. weggelegt (archiviert)?"
+        lines += ["", "Wert pro Status (CHF):"]
+        for status, wert in st.wert_pro_status:
+            lines.append(f"  {status:40s} {wert:>12,.0f}")
     if st.gewicht_pro_mineral:
         # Spiegelbild zu wert_pro_mineral: welcher Mineraltyp dominiert die Sammlung
         # gewichtsmaessig? Wert und Gewicht sind oft entkoppelt (viele kleine teure
@@ -173,6 +180,12 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Kategorie (g):"]
         for kat, gewicht in st.gewicht_pro_kategorie[:top]:
             lines.append(f"  {kat:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_status:
+        # Spiegelbild zu wert_pro_status: welche Gewichts-Masse haengt noch in
+        # platzhaltern? Komplementaer fuer Versicherungsabschaetzung pro Lifecycle.
+        lines += ["", "Gewicht pro Status (g):"]
+        for status, gewicht in st.gewicht_pro_status:
+            lines.append(f"  {status:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 

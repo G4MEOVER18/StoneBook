@@ -51,9 +51,11 @@ class Statistik:
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -127,6 +129,9 @@ class Statistik:
             "wert_pro_kategorie": [
                 (kat, round(w, 2)) for kat, w in self.wert_pro_kategorie
             ],
+            "wert_pro_status": [
+                (s, round(w, 2)) for s, w in self.wert_pro_status
+            ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
@@ -135,6 +140,9 @@ class Statistik:
             ],
             "gewicht_pro_kategorie": [
                 (kat, round(g, 2)) for kat, g in self.gewicht_pro_kategorie
+            ],
+            "gewicht_pro_status": [
+                (s, round(g, 2)) for s, g in self.gewicht_pro_status
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -437,6 +445,10 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.wert_pro_mineral = _sum_by(conn, "Mineral_Primaer", wert_sql, top_wert_mineral)
     st.wert_pro_fundort = _sum_by(conn, "Fundort", wert_sql, top_wert_fundort)
     st.wert_pro_kategorie = _sum_by(conn, "Kategorie", wert_sql, top_wert_kategorie)
+    # status: nur drei Werte (aktiv/platzhalter/archiviert); Limit von 10 reicht
+    # uebergross, damit alle vorhandenen Status durchkommen. Beantwortet die Frage
+    # "Wieviel Sammlungswert steckt im Archiv vs. aktiv vs. noch unbeschriftet?".
+    st.wert_pro_status = _sum_by(conn, "status", wert_sql, 10)
     gewicht_where = "Gewicht_g IS NOT NULL AND Gewicht_g > 0"
     st.gewicht_pro_mineral = _sum_by(
         conn, "Mineral_Primaer", "Gewicht_g", top_gewicht_mineral,
@@ -447,4 +459,6 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.gewicht_pro_kategorie = _sum_by(
         conn, "Kategorie", "Gewicht_g", top_gewicht_kategorie,
         extra_where=gewicht_where)
+    st.gewicht_pro_status = _sum_by(
+        conn, "status", "Gewicht_g", 10, extra_where=gewicht_where)
     return st

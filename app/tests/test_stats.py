@@ -848,6 +848,79 @@ def test_gewicht_pro_kategorie_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_status_aus_seed_db(tmp_path):
+    """Wertsumme pro Status (aktiv/platzhalter/archiviert), absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wps.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, status, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "aktiv", 100.0, 200.0),       # aktiv: 300
+            ("OBJ_0002", "aktiv", 50.0, None),         # aktiv: +50 -> 350
+            ("OBJ_0003", "archiviert", 1000.0, None),  # archiviert: 1000
+            ("OBJ_0004", "platzhalter", 10.0, None),   # platzhalter: 10
+            ("OBJ_0005", "platzhalter", None, None),   # 0 -> egal
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_status == [
+        ("archiviert", 1000.0),
+        ("aktiv", 350.0),
+        ("platzhalter", 10.0),
+    ]
+    assert st.as_dict()["wert_pro_status"] == [
+        ("archiviert", 1000.0), ("aktiv", 350.0), ("platzhalter", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_status_leer(tmp_path):
+    """Leere DB → leere Liste, kein Crash."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_status == []
+    c.close()
+
+
+def test_gewicht_pro_status_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Status, absteigend sortiert; 0/NULL zaehlen nicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gps.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, status, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "aktiv", 100.0),
+            ("OBJ_0002", "aktiv", 50.0),          # aktiv total 150
+            ("OBJ_0003", "archiviert", 1000.0),   # archiviert 1000
+            ("OBJ_0004", "platzhalter", 10.0),    # platzhalter 10
+            ("OBJ_0005", "platzhalter", None),    # NULL → ignoriert
+            ("OBJ_0006", "aktiv", 0.0),           # 0 zaehlt nicht
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_status == [
+        ("archiviert", 1000.0),
+        ("aktiv", 150.0),
+        ("platzhalter", 10.0),
+    ]
+    assert st.as_dict()["gewicht_pro_status"] == [
+        ("archiviert", 1000.0), ("aktiv", 150.0), ("platzhalter", 10.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_status_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_status == []
+    c.close()
+
+
 def test_gewicht_pro_fundort_aus_seed_db(tmp_path):
     """Gewichtsumme pro Fundort, absteigend sortiert."""
     from stonebook.db.database import open_db

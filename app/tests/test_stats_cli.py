@@ -659,6 +659,87 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_kategorie_zeile(tmp_path, c
     assert "Gewicht pro Kategorie" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_status(tmp_path, capsys):
+    """Wert-pro-Status-Block zeigt CHF-Summen je Status (aktiv/platzhalter/archiviert)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wps.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, status, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "aktiv",       600.0, 400.0),  # aktiv 1000
+            ("OBJ_0002", "archiviert",  200.0, 150.0),  # archiviert 350
+            ("OBJ_0003", "platzhalter",  10.0, None),   # platzhalter 10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Status (CHF):" in out
+    block = out.split("Wert pro Status (CHF):", 1)[1]
+    # Reihenfolge absteigend: aktiv (1000), archiviert (350), platzhalter (10)
+    assert block.index("aktiv") < block.index("archiviert") < block.index("platzhalter")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_status_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Wert-pro-Status-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wps0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, status) VALUES (?, ?)",
+        [("OBJ_0001", "aktiv"), ("OBJ_0002", "platzhalter")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Status" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_status(tmp_path, capsys):
+    """Gewicht-pro-Status-Block zeigt g-Summen je Status, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gps.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, status, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "archiviert",  800.0),
+            ("OBJ_0002", "aktiv",       100.0),
+            ("OBJ_0003", "aktiv",       150.0),  # aktiv total 250
+            ("OBJ_0004", "platzhalter",  20.0),
+            ("OBJ_0005", "platzhalter", None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Status (g):" in out
+    block = out.split("Gewicht pro Status (g):", 1)[1]
+    # Reihenfolge absteigend: archiviert (800), aktiv (250), platzhalter (20)
+    assert block.index("archiviert") < block.index("aktiv") < block.index("platzhalter")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_status_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Gewicht-pro-Status-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gps0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, status) VALUES (?, ?)",
+        [("OBJ_0001", "aktiv"), ("OBJ_0002", "platzhalter")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Status" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
