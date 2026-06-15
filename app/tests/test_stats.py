@@ -327,6 +327,44 @@ def test_confidence_buckets_leere_db(tmp_path):
     c.close()
 
 
+def test_ki_analysen_zaehler(tmp_path):
+    """ki_analysen_total/uebernommen/objekte_mit_analyse zaehlen die KI-Spalten korrekt."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ki.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",)],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json, uebernommen_json) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 10:00:00", "claude-opus", "{}", '{"a":1}'),
+            ("OBJ_0001", "2024-06-14 10:00:00", "claude-opus", "{}", None),
+            ("OBJ_0002", "2024-06-13 10:00:00", "claude-opus", "{}", None),
+            ("OBJ_0002", "2024-06-15 10:00:00", "claude-opus", "{}", ""),
+            # OBJ_0003: keine Analyse
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.ki_analysen_total == 4
+    assert st.ki_analysen_uebernommen == 1   # nur OBJ_0001's erste
+    assert st.objekte_mit_ki_analyse == 2    # OBJ_0001 und OBJ_0002
+    c.close()
+
+
+def test_ki_analysen_leere_db(tmp_path):
+    """Leere DB → alle KI-Zaehler 0 (kein Crash)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.ki_analysen_total == 0
+    assert st.ki_analysen_uebernommen == 0
+    assert st.objekte_mit_ki_analyse == 0
+    c.close()
+
+
 def test_confidence_buckets_ignoriert_out_of_range(tmp_path):
     """Confidence < 0 oder > 100 ist out-of-range (Integrity meldet das separat) und faellt aus den Buckets."""
     from stonebook.db.database import open_db
