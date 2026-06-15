@@ -251,6 +251,27 @@ def test_parse_coordinates_plus_prefix():
     assert parse_coordinates("N+46.5 E+7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_mit_labels():
+    """Geo-Notation mit Lat/Lon/Breite/Längen-Labels (Excel, GIS-Exports)."""
+    # Englische Labels mit/ohne Doppelpunkt/Gleichheit
+    assert parse_coordinates("Lat: 46.5, Lon: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("lat:46.5, lon:7.5") == (46.5, 7.5)
+    assert parse_coordinates("latitude=46.5, longitude=7.5") == (46.5, 7.5)
+    assert parse_coordinates("LAT 46.5 LON 7.5") == (46.5, 7.5)
+    # Long/Long. als gaengige Abkuerzung
+    assert parse_coordinates("Lat 46.5 Long 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Lat 46.5 Long. 7.5") == (46.5, 7.5)
+    # Deutsche Labels
+    assert parse_coordinates("Breite 46.5 Länge 7.5") == (46.5, 7.5)
+    assert parse_coordinates("breitengrad: 46.5 längengrad: 7.5") == (46.5, 7.5)
+    # Label + explizite Richtung (Label wird gestrippt, Richtung bleibt aktiv)
+    assert parse_coordinates("Lat 46.5° N, Lon 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("Lat 46.5° S, Lon 7.5° W") == (-46.5, -7.5)
+    # Ohne Labels weiterhin unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None

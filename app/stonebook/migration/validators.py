@@ -119,6 +119,21 @@ _PREFIX_PAIR = re.compile(
     """,
     re.VERBOSE,
 )
+# Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
+# "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
+# Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
+# in "Lon") ist nicht gemeint und wuerde sonst _PREFIX_PAIR irrefuehren.
+_COORD_LABEL = re.compile(
+    r"""\b(?:
+            latitude | lat | breitengrad | breite
+          | longitude | longitudinal | long | lon | laengengrad | laenge
+          | längengrad | länge
+        )
+        (?![A-Za-zÄÖÜäöü])     # kein Anschnitt eines laengeren Wortes ("latex")
+        \.?\s*[:=]?\s*         # optionaler Punkt + : / = + Whitespace
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 def parse_iso_date(text) -> str | None:
@@ -266,6 +281,12 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     s = str(text).strip()
     if not s:
         return None
+    # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
+    # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
+    if _COORD_LABEL.search(s):
+        s = _COORD_LABEL.sub(" ", s).strip()
+        if not s:
+            return None
 
     dms_hits = _DMS.findall(s)
     if len(dms_hits) >= 2:
