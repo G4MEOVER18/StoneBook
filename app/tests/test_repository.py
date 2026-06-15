@@ -196,6 +196,33 @@ def test_has_gewicht_filter(tmp_path):
     c.close()
 
 
+def test_has_wert_filter(tmp_path):
+    """has_wert nutzt die Summe aller CHF-Wertfelder (analog statistics.objekte_mit_wert)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hw.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh, Wert_CHF_poliert, "
+        "Wert_CHF_Schmuck, Marktwert_Industrie, Wissenschaftlicher_Wert_CHF) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 100.0, None, None, None, None),     # rein roh
+            ("OBJ_0002", None, 50.0, 200.0, None, None),     # zwei Felder gesetzt
+            ("OBJ_0003", None, None, None, None, None),      # gar nichts
+            ("OBJ_0004", 0.0, 0.0, 0.0, 0.0, 0.0),           # alles 0 zaehlt wie 'ohne Wert'
+            ("OBJ_0005", None, None, None, 10.5, None),      # nur Industrie
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_wert=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    assert [r["obj_id"] for r in repo.list_objects(has_wert=False)] \
+        == ["OBJ_0003", "OBJ_0004"]
+    # None laesst alle durch
+    assert len(repo.list_objects(has_wert=None)) == 5
+    c.close()
+
+
 def test_has_notizen_filter(tmp_path):
     """has_notizen unterscheidet dokumentierte von undokumentierten Objekten."""
     from stonebook.db.database import open_db

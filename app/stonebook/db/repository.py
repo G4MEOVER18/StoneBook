@@ -62,6 +62,7 @@ class ObjectRepo:
                      has_notizen: bool | None = None,
                      has_pruefempfehlungen: bool | None = None,
                      has_gewicht: bool | None = None,
+                     has_wert: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_min: str | None = None,
@@ -141,6 +142,13 @@ class ObjectRepo:
             where.append("o.Gewicht_g IS NOT NULL AND o.Gewicht_g > 0")
         elif has_gewicht is False:
             where.append("(o.Gewicht_g IS NULL OR o.Gewicht_g <= 0)")
+        # has_wert: tri-state Filter ueber die Summe aller CHF-Wertfelder.
+        # Selbe Definition wie objekte_mit_wert in der Statistik
+        # (wert_pro_objekt_sql() > 0). Findet Objekte, die noch geschaetzt werden muessen.
+        if has_wert is True:
+            where.append(f"{wert_sql} > 0")
+        elif has_wert is False:
+            where.append(f"{wert_sql} <= 0")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
