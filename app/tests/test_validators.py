@@ -538,6 +538,41 @@ def test_parse_iso_date_trailing_satzzeichen():
     assert parse_iso_date("unbekannt.") is None
 
 
+def test_parse_iso_date_iso_ordinaldatum():
+    """ISO 8601 Ordinal-Datum (Tag des Jahres) wird auf das Kalenderdatum projeziert."""
+    # ISO-Standard mit Bindestrich
+    assert parse_iso_date("2024-165") == "2024-06-13"
+    assert parse_iso_date("2024-001") == "2024-01-01"
+    assert parse_iso_date("2024-100") == "2024-04-09"
+    # Compact-Form (ohne Bindestrich, 7 Ziffern)
+    assert parse_iso_date("2024165") == "2024-06-13"
+    assert parse_iso_date("2024001") == "2024-01-01"
+    # Schaltjahr: Tag 366 ist gueltig in 2024 (Schalt), aber nicht in 2023
+    assert parse_iso_date("2024-366") == "2024-12-31"
+    assert parse_iso_date("2020-366") == "2020-12-31"
+    # 1999 = letzter Tag fuer "365" (nicht Schaltjahr)
+    assert parse_iso_date("1999-365") == "1999-12-31"
+    # Mit Annaeherungs-/Klammer-Praefix kombinierbar (Rekursion)
+    assert parse_iso_date("ca. 2024-165") == "2024-06-13"
+    assert parse_iso_date("(2024-165)") == "2024-06-13"
+    assert parse_iso_date("2024-165.") == "2024-06-13"
+    # YYYY-MM (8-digit YYYYMMDD) bleibt unveraendert (kein Regress)
+    assert parse_iso_date("2024-12") == "2024-12-01"
+    assert parse_iso_date("20240613") == "2024-06-13"
+
+
+def test_parse_iso_date_iso_ordinaldatum_ungueltig():
+    # Tag 0 / Tag 367 ausserhalb 1..366
+    assert parse_iso_date("2024-000") is None
+    assert parse_iso_date("2024-367") is None
+    # Tag 366 in Nicht-Schaltjahr → None (kein Ueberlauf ins Folgejahr)
+    assert parse_iso_date("2023-366") is None
+    assert parse_iso_date("1999-366") is None
+    # Jahr ausserhalb 1800..2999
+    assert parse_iso_date("1700-100") is None
+    assert parse_iso_date("3000-100") is None
+
+
 def test_parse_iso_date_iso_wochendatum():
     """ISO 8601 Wochendatum ergibt den Montag (ohne Tag) bzw. den gewuenschten Tag."""
     # ISO-Standard mit Bindestrich, ohne Tag → Montag der Woche

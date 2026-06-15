@@ -159,6 +159,15 @@ _QUARTER_LONG = re.compile(
     re.IGNORECASE,
 )
 
+# ISO 8601 Ordinal-Datum (Tag des Jahres): "2024-165", "2024165" (compact, 7 Ziffern),
+# "2024-001". Konvention: Tag 1..366 (366 nur in Schaltjahren). Verbreitet in
+# NASA-/wissenschaftlichen Exporten und Astro-Sammler-Notizen ("Julianischer Tag");
+# auch in einigen Log-Stempeln (Dateisysteme/Batch-Verarbeitung) als compact 7-Ziffer-Form.
+# Vor _YEAR_MONTH geprueft, damit "2024-001" nicht als YYYY-MM mit Monat 001 versucht wird.
+_ISO_ORDINAL_DATE = re.compile(
+    r"^\s*(\d{4})-?(\d{3})\s*$"
+)
+
 # ISO 8601 Wochendatum: "2024-W25", "2024W25" (compact), "2024-W25-3" (mit Tag).
 # Konvention: ohne expliziten Wochentag → Montag der Woche (ISO-Wochenstart).
 # Verbreitet in Log-/Build-Stempeln und manchen Sammlungs-Notizen ("KW25 2024").
@@ -323,6 +332,24 @@ def parse_iso_date(text) -> str | None:
         if 1800 <= year <= 2999:
             return f"{year:04d}-01-01"
         return None
+    # ISO 8601 Ordinal-Datum (Tag-des-Jahres): "2024-165" / "2024165" (compact 7 Ziffern).
+    # Vor _YEAR_MONTH geprueft, damit "2024-001" nicht versucht wird als YYYY-MM zu
+    # parsen (Monat 001 wuerde sowieso scheitern, aber die Reihenfolge ist klarer).
+    # Die compact 8-Ziffer-Form (YYYYMMDD) wird weiter unten in _DATE_FORMATS abgefangen
+    # und kollidiert nicht (7 vs 8 Ziffern).
+    m = _ISO_ORDINAL_DATE.match(s)
+    if m:
+        year, day_of_year = int(m.group(1)), int(m.group(2))
+        if 1800 <= year <= 2999 and 1 <= day_of_year <= 366:
+            try:
+                d = datetime.date(year, 1, 1) + datetime.timedelta(days=day_of_year - 1)
+            except (OverflowError, ValueError):
+                return None
+            # Schaltjahres-Pruefung: Tag 366 nur gueltig, wenn der Tag im selben
+            # Kalenderjahr bleibt (sonst wuerde Tag 366 in 2023 auf 2024-01-01 rutschen).
+            if d.year == year:
+                return d.isoformat()
+            return None
     m = _YEAR_MONTH.match(s)
     if m:
         year, month = int(m.group(1)), int(m.group(2))
