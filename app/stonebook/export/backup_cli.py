@@ -13,18 +13,14 @@ import json
 import sys
 from pathlib import Path
 
-from stonebook.db.database import connect, open_db
+from stonebook.db.database import connect, default_db_file, open_db
 from stonebook.export.json_export import (import_json, inspect_backup,
                                           list_backups, prune_old_backups,
                                           write_rotated_backup)
 
 
-def _default_db_file() -> Path:
-    return Path(__file__).resolve().parents[3] / "data" / "db" / "stonebook.sqlite3"
-
-
 def _cmd_write(args: argparse.Namespace) -> int:
-    db_file = args.db if args.db else _default_db_file()
+    db_file = args.db if args.db else default_db_file()
     if not db_file.is_file():
         print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
         return 2
@@ -60,7 +56,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_restore(args: argparse.Namespace) -> int:
-    target = args.db if args.db else _default_db_file()
+    target = args.db if args.db else default_db_file()
     if target.exists() and not args.force:
         print(f"Ziel-DB existiert: {target} (mit --force ueberschreiben)",
               file=sys.stderr)

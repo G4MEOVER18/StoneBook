@@ -5,6 +5,14 @@ from pathlib import Path
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 
 
+def default_db_file() -> Path:
+    """Standardpfad zur SQLite-DB (Repo-Root + ``data/db/stonebook.sqlite3``).
+
+    Gemeinsamer Default fuer alle CLIs; jede CLI darf das per ``--db`` ueberschreiben.
+    """
+    return Path(__file__).resolve().parents[3] / "data" / "db" / "stonebook.sqlite3"
+
+
 def connect(db_file: Path) -> sqlite3.Connection:
     db_file.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_file))

@@ -12,12 +12,8 @@ import json
 import sys
 from pathlib import Path
 
-from stonebook.db.database import connect
+from stonebook.db.database import connect, default_db_file
 from stonebook.db.stats import Statistik, compute_statistics
-
-
-def _default_db_file() -> Path:
-    return Path(__file__).resolve().parents[3] / "data" / "db" / "stonebook.sqlite3"
 
 
 def _format_text(st: Statistik) -> str:
@@ -73,7 +69,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
-    db_file = args.db if args.db else _default_db_file()
+    db_file = args.db if args.db else default_db_file()
     if not db_file.is_file():
         print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
         return 2
