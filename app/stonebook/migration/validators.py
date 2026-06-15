@@ -69,17 +69,18 @@ _MONTH_NAMES: dict[str, int] = {
     "november": 11, "nov": 11,
     "dezember": 12, "december": 12, "dez": 12, "dec": 12,
 }
-# "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024"
+# "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024" / "13/Jun/2024"
+# Separator zwischen den Teilen: Punkt, Slash, oder reines Whitespace.
 _DAY_MONTH_YEAR = re.compile(
-    r"^\s*(\d{1,2})\.?\s*([A-Za-zÄÖÜäöü]+)\.?\s*(\d{4})\s*$",
+    r"^\s*(\d{1,2})\s*[./]?\s*([A-Za-zÄÖÜäöü]+)\s*[./]?\s*(\d{4})\s*$",
 )
-# Englische Reihenfolge "Jun 13, 2024" / "June 13 2024" / "Jun. 13, 2024"
+# Englische Reihenfolge "Jun 13, 2024" / "June 13 2024" / "Jun. 13, 2024" / "Jun/13/2024"
 _ENGLISH_MONTH_DAY_YEAR = re.compile(
-    r"^\s*([A-Za-z]+)\.?\s*(\d{1,2})\s*,?\s*(\d{4})\s*$",
+    r"^\s*([A-Za-z]+)\s*[./]?\s*(\d{1,2})\s*[,/]?\s*(\d{4})\s*$",
 )
-# "Juni 2024" / "Juni, 2024"
+# "Juni 2024" / "Juni, 2024" / "Juni/2024"
 _MONTH_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]\s*(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[,/ ]\s*(\d{4})\s*$",
 )
 
 # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024", "Frühjahr 2020").

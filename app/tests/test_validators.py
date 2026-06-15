@@ -172,6 +172,26 @@ def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Winter 1999/2000") is None
 
 
+def test_parse_iso_date_slash_separator_mit_monatsname():
+    """Slash als Separator zwischen Tag/Monatsname/Jahr (gaengig in Exports)."""
+    # DD/Mon/YYYY
+    assert parse_iso_date("13/Jun/2024") == "2024-06-13"
+    assert parse_iso_date("13/Juni/2024") == "2024-06-13"
+    # Mon/YYYY
+    assert parse_iso_date("Mai/2024") == "2024-05-01"
+    assert parse_iso_date("Juni/2024") == "2024-06-01"
+    assert parse_iso_date("Jun/2024") == "2024-06-01"
+    # Englisch mit Slash
+    assert parse_iso_date("Jun/13/2024") == "2024-06-13"
+    assert parse_iso_date("June/13/2024") == "2024-06-13"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("13 Juni 2024") == "2024-06-13"
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    # Unbekannter Separator → None
+    assert parse_iso_date("Juni\\2024") is None
+
+
 def test_parse_iso_date_umschliessende_klammern():
     """Zitierte Datumsangaben in Klammern/Anfuehrungszeichen werden gestrippt."""
     # ASCII-Klammern / Anfuehrungszeichen
