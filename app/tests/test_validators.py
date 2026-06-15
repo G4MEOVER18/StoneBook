@@ -455,6 +455,41 @@ def test_parse_iso_date_slash_separator_mit_monatsname():
     assert parse_iso_date("Juni\\2024") is None
 
 
+def test_parse_iso_date_kurzform_mit_punkt_und_slash():
+    """Punkt nach Monatsname-Kurzform mit Slash-Separator: '5/Jun./2024'."""
+    assert parse_iso_date("5/Jun./2024") == "2024-06-05"
+    assert parse_iso_date("13/Jun./2024") == "2024-06-13"
+    assert parse_iso_date("31/Dec./2024") == "2024-12-31"
+    # Mit DE-Vollform plus Punkt (eher selten, aber unschaedlich)
+    assert parse_iso_date("13/Juni./2024") == "2024-06-13"
+    # Mit Bindestrich-Separator
+    assert parse_iso_date("13-Jun.-2024") == "2024-06-13"
+    # Mit Punkt-Separator zwischen Tag und Monat plus Trail-Punkt am Monat
+    assert parse_iso_date("13.Jun.2024") == "2024-06-13"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("13/Jun/2024") == "2024-06-13"
+    assert parse_iso_date("13-Jun-2024") == "2024-06-13"
+    assert parse_iso_date("Jun. 13, 2024") == "2024-06-13"
+
+
+def test_parse_iso_date_komma_vor_jahr_de():
+    """DE-Format mit Komma vor dem Jahr: '13. März, 2024'."""
+    assert parse_iso_date("13. März, 2024") == "2024-03-13"
+    assert parse_iso_date("13. Juni, 2024") == "2024-06-13"
+    assert parse_iso_date("1. Januar, 2020") == "2020-01-01"
+    # Kurzform mit Komma
+    assert parse_iso_date("13. Jun, 2024") == "2024-06-13"
+    # Komma direkt nach Monatsname ohne Space (Excel-CSV-Eigenheit)
+    assert parse_iso_date("13.Juni,2024") == "2024-06-13"
+    # Mit Annaeherungspraefix
+    assert parse_iso_date("ca. 13. März, 2024") == "2024-03-13"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("13. März 2024") == "2024-03-13"
+    # Ungueltiger Tag bleibt None
+    assert parse_iso_date("32. Juni, 2024") is None
+
+
 def test_parse_iso_date_monat_jahr_bindestrich():
     """Bindestrich zwischen Monatsname und Jahr ('Jun-2024', 'Juni-2024')."""
     # Deutsche Kurz-/Vollformen
