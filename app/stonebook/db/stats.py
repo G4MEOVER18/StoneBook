@@ -36,6 +36,7 @@ class Statistik:
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
+    by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
     funddatum_frueheste: str | None = None
     funddatum_spaeteste: str | None = None
@@ -101,6 +102,7 @@ class Statistik:
             "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
+            "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
             "funddatum_frueheste": self.funddatum_frueheste,
             "funddatum_spaeteste": self.funddatum_spaeteste,
@@ -196,6 +198,29 @@ def _count_funddatum_jahr(conn: sqlite3.Connection, limit: int | None = None) ->
         pairs = pairs[:int(limit)]
         pairs.sort(key=lambda p: p[0])
     return {j: n for j, n in pairs}
+
+
+def _count_funddatum_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Jahrzehnt (Dekade), Label ``1980er``, ``1990er`` ...
+
+    Aggregiert die Jahres-Verteilung auf 10er-Schritte; das Label ist die
+    Dekaden-Startzahl mit Suffix ``er`` (Sammler-Konvention: "Funde aus den
+    1990ern"). Ohne Limit, weil die Zahl der Dekaden ueberschaubar bleibt
+    (~10-15 ueber ein Sammlerleben).
+
+    Komplementaer zu :func:`_count_funddatum_jahr`: zeigt grobe
+    Aktivitaetsphasen ohne Einzeljahres-Rauschen. Sortierung: chronologisch
+    aufsteigend (aelteste Dekade zuerst), damit das Histogramm zeitlich
+    lesbar bleibt.
+    """
+    sql = (
+        "SELECT (CAST(substr(Funddatum, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "GROUP BY dekade ORDER BY dekade ASC"
+    )
+    return {f"{r['dekade']}er": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -316,6 +341,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.fundorte_total = _count_distinct(conn, "Fundort")
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
+    st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)
     st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
 
     st.bilder_by_kategorie = {

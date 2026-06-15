@@ -210,6 +210,47 @@ def test_by_funddatum_jahr_limit(tmp_path):
     c.close()
 
 
+def test_by_funddatum_jahrzehnt_aus_seed_db(tmp_path):
+    """Dekaden-Histogramm aggregiert die Jahre auf 10er-Schritte."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dekade.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            # 1980er: 2x
+            ("OBJ_0001", "1985-01-01"),
+            ("OBJ_0002", "1989-12-31"),
+            # 1990er: 1x
+            ("OBJ_0003", "1995-06-13"),
+            # 2020er: 3x
+            ("OBJ_0004", "2020-01-01"),
+            ("OBJ_0005", "2024-06-13"),
+            ("OBJ_0006", "2029-01-01"),
+            # Ausgeschlossene: leer/NULL/ungueltig
+            ("OBJ_0007", ""),
+            ("OBJ_0008", None),
+            ("OBJ_0009", "Fruehling"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend, Label mit 'er'-Suffix
+    assert list(st.by_funddatum_jahrzehnt.items()) == [
+        ("1980er", 2), ("1990er", 1), ("2020er", 3),
+    ]
+    c.close()
+
+
+def test_by_funddatum_jahrzehnt_leer(tmp_path):
+    """Ohne Funddaten ist die Dekaden-Verteilung leer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "dl.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_jahrzehnt == {}
+    c.close()
+
+
 def test_by_funddatum_jahr_leer(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "leer.sqlite3")
