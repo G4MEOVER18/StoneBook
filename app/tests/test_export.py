@@ -62,7 +62,7 @@ def test_csv_export_obj_ids_und_status_kombiniert(conn, tmp_path):
 def test_json_export(conn, tmp_path):
     out = tmp_path / "export.json"
     counts = export_json(conn, out)
-    assert counts == {"objects": 546, "images": 63, "aliases": 54}
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
 
 
 def test_json_export_selektive_obj_ids(conn, tmp_path):
@@ -128,7 +128,7 @@ def test_inspect_backup_altes_format_ohne_meta(tmp_path):
         encoding="utf-8",
     )
     info = inspect_backup(p)
-    assert info["counts"] == {"objects": 2, "images": 0, "aliases": 1}
+    assert info["counts"] == {"objects": 2, "images": 0, "aliases": 1, "ki_analysen": 0}
     assert info["meta"] == {}
 
 
@@ -215,14 +215,14 @@ def test_json_gzip_roundtrip(conn, tmp_path):
     export_json(conn, dump)
     fresh = open_db(tmp_path / "fresh.sqlite3")
     counts = import_json(fresh, dump)
-    assert counts == {"objects": 546, "images": 63, "aliases": 54}
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
     fresh.close()
 
 
 def test_json_export_obj_ids_leer(conn, tmp_path):
     out = tmp_path / "leer.json"
     counts = export_json(conn, out, obj_ids=[])
-    assert counts == {"objects": 0, "images": 0, "aliases": 0}
+    assert counts == {"objects": 0, "images": 0, "aliases": 0, "ki_analysen": 0}
 
 
 def test_json_roundtrip(conn, tmp_path):
@@ -231,7 +231,7 @@ def test_json_roundtrip(conn, tmp_path):
     fresh_db = tmp_path / "fresh.sqlite3"
     fresh = open_db(fresh_db)
     counts = import_json(fresh, dump)
-    assert counts == {"objects": 546, "images": 63, "aliases": 54}
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
     assert fresh.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 546
     assert fresh.execute("SELECT COUNT(*) FROM images").fetchone()[0] == 63
     assert fresh.execute("SELECT COUNT(*) FROM aliases").fetchone()[0] == 54
@@ -282,6 +282,83 @@ def test_json_import_ist_atomar_bei_alias_fk_fehler(tmp_path):
     assert db.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 0
     assert db.execute("SELECT COUNT(*) FROM aliases").fetchone()[0] == 0
     db.close()
+
+
+def test_json_export_und_import_inklusive_ki_analysen(tmp_path):
+    """KI-Analysen muessen in Backup/Restore mitgesichert werden (sonst Datenverlust)."""
+    src = open_db(tmp_path / "src.sqlite3")
+    src.executemany(
+        "INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+        [("OBJ_0001", "Mit Analyse"), ("OBJ_0002", "Ohne Analyse")],
+    )
+    src.executemany(
+        "INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json, uebernommen_json) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 10:00:00", "claude-opus", '{"a":1}', '{"a":1}'),
+            ("OBJ_0001", "2024-06-14 10:00:00", "claude-sonnet", '{"b":2}', None),
+        ],
+    )
+    src.commit()
+    dump = tmp_path / "voll.json"
+    counts = export_json(src, dump)
+    assert counts["ki_analysen"] == 2
+    src.close()
+
+    fresh = open_db(tmp_path / "fresh.sqlite3")
+    counts = import_json(fresh, dump)
+    assert counts["ki_analysen"] == 2
+    rows = fresh.execute(
+        "SELECT obj_id, modell, uebernommen_json FROM ki_analysen ORDER BY id"
+    ).fetchall()
+    assert [(r["obj_id"], r["modell"]) for r in rows] == [
+        ("OBJ_0001", "claude-opus"), ("OBJ_0001", "claude-sonnet"),
+    ]
+    assert rows[0]["uebernommen_json"] == '{"a":1}'
+    assert rows[1]["uebernommen_json"] is None
+    fresh.close()
+
+
+def test_json_export_filtert_ki_analysen_per_obj_id(tmp_path):
+    """obj_ids-Filter beschraenkt KI-Analysen auf die genannten Objekte."""
+    src = open_db(tmp_path / "src.sqlite3")
+    src.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",)],
+    )
+    src.executemany(
+        "INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 10:00:00", "m", "{}"),
+            ("OBJ_0002", "2024-06-13 11:00:00", "m", "{}"),
+            ("OBJ_0003", "2024-06-13 12:00:00", "m", "{}"),
+        ],
+    )
+    src.commit()
+    out = tmp_path / "sel.json"
+    counts = export_json(src, out, obj_ids=["OBJ_0001", "OBJ_0003"])
+    assert counts["ki_analysen"] == 2
+    import json as _json
+    data = _json.loads(out.read_text(encoding="utf-8"))
+    assert {r["obj_id"] for r in data["ki_analysen"]} == {"OBJ_0001", "OBJ_0003"}
+    src.close()
+
+
+def test_json_import_aelteres_backup_ohne_ki_analysen(tmp_path):
+    """Alte Backups ohne ki_analysen-Schluessel laufen weiterhin sauber durch."""
+    src = tmp_path / "alt.json"
+    src.write_text(
+        '{"objects": [{"obj_id": "OBJ_0001", "Name": "Alt"}],'
+        ' "images": [], "aliases": []}',
+        encoding="utf-8",
+    )
+    c = open_db(tmp_path / "x.sqlite3")
+    counts = import_json(c, src)
+    assert counts["objects"] == 1
+    assert counts["ki_analysen"] == 0
+    assert c.execute("SELECT COUNT(*) FROM ki_analysen").fetchone()[0] == 0
+    c.close()
 
 
 def test_json_import_ignoriert_unbekannte_spalten(tmp_path):

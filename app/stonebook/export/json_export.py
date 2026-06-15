@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Iterable
 
 # Schreib-/Leseordnung respektiert die Foreign-Key-Beziehungen
-TABLES: tuple[str, ...] = ("objects", "images", "aliases")
+# (ki_analysen haengt an objects.obj_id und kommt nach objects).
+TABLES: tuple[str, ...] = ("objects", "images", "aliases", "ki_analysen")
 
 # Versionierung des JSON-Backup-Formats. Erhoehen, sobald sich die
 # Struktur (zusaetzliche Tabellen, geaenderte Spaltenbedeutung) aendert.
@@ -73,6 +74,8 @@ def export_json(conn: sqlite3.Connection, path: Path,
         if table == "objects":
             return [r for r in all_rows if r["obj_id"] in wanted]
         if table == "images":
+            return [r for r in all_rows if r["obj_id"] in wanted]
+        if table == "ki_analysen":
             return [r for r in all_rows if r["obj_id"] in wanted]
         if table == "aliases":
             return [r for r in all_rows if r["canonical_id"] in wanted]

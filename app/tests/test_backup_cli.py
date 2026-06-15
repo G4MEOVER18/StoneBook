@@ -39,7 +39,7 @@ def test_write_list_und_restore_round_trip(migrated_db, tmp_path, capsys):
     exit_code = main(["restore", str(written), "--db", str(new_db)])
     assert exit_code == 0
     counts = json.loads(capsys.readouterr().out)
-    assert counts == {"objects": 546, "images": 63, "aliases": 54}
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
 
 
 def test_write_no_compress(migrated_db, tmp_path, capsys):
@@ -58,7 +58,7 @@ def test_inspect_zeigt_counts(migrated_db, tmp_path, capsys):
     written = Path(capsys.readouterr().out.strip())
     main(["inspect", str(written)])
     info = json.loads(capsys.readouterr().out)
-    assert info["counts"] == {"objects": 546, "images": 63, "aliases": 54}
+    assert info["counts"] == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
     assert "meta" in info
 
 
