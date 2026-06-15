@@ -284,7 +284,58 @@ def test_durchschnitt_confidence_ohne_werte(tmp_path):
     c = open_db(tmp_path / "leer.sqlite3")
     st = compute_statistics(c)
     assert st.durchschnitt_confidence_prozent is None
+    assert st.median_confidence_prozent is None
     assert st.wert_roh_summe_chf == 0.0
+
+
+def test_median_confidence_ungerade_anzahl(tmp_path):
+    """Median bei 3 Confidence-Werten = mittlerer Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mc1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 50), ("OBJ_0002", 80), ("OBJ_0003", 90)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.median_confidence_prozent == 80.0
+    assert st.as_dict()["median_confidence_prozent"] == 80.0
+    c.close()
+
+
+def test_median_confidence_gerade_anzahl(tmp_path):
+    """Median bei 4 Werten = Mittel der beiden mittleren."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mc2.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 40), ("OBJ_0002", 50),
+         ("OBJ_0003", 70), ("OBJ_0004", 80)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.median_confidence_prozent == 60.0    # (50+70)/2
+    c.close()
+
+
+def test_median_confidence_ignoriert_null_und_out_of_range(tmp_path):
+    """NULL und Out-of-Range-Werte zaehlen weder in Mittel noch Median."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mc3.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 50),
+            ("OBJ_0002", 80),
+            ("OBJ_0003", None),     # ignoriert
+            ("OBJ_0004", -10),      # out-of-range, ignoriert
+            ("OBJ_0005", 150),      # out-of-range, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.median_confidence_prozent == 65.0   # (50+80)/2 ueber [50, 80]
+    c.close()
 
 
 def test_confidence_buckets_verteilung(tmp_path):

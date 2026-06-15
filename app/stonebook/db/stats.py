@@ -59,6 +59,7 @@ class Statistik:
     gewicht_max_g: float = 0.0
     objekte_mit_gewicht: int = 0
     durchschnitt_confidence_prozent: float | None = None
+    median_confidence_prozent: float | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
@@ -141,6 +142,10 @@ class Statistik:
             "durchschnitt_confidence_prozent": (
                 round(self.durchschnitt_confidence_prozent, 1)
                 if self.durchschnitt_confidence_prozent is not None else None
+            ),
+            "median_confidence_prozent": (
+                round(self.median_confidence_prozent, 1)
+                if self.median_confidence_prozent is not None else None
             ),
             "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
@@ -341,6 +346,21 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.durchschnitt_confidence_prozent = (
         float(sums["conf_avg"]) if sums["conf_avg"] is not None else None
     )
+    # Median Confidence: symmetrisch zu wert_median_chf/gewicht_median_g.
+    # Out-of-Range-Werte (<0 / >100) zaehlen nicht; sie werden in der Integrity
+    # separat gemeldet und wuerden die zentrale Tendenz verzerren.
+    conf_werte = [int(r["c"]) for r in conn.execute(
+        "SELECT Confidence_Prozent AS c FROM objects "
+        "WHERE Confidence_Prozent IS NOT NULL "
+        "AND Confidence_Prozent BETWEEN 0 AND 100 "
+        "ORDER BY c"
+    ).fetchall()]
+    if conf_werte:
+        n = len(conf_werte)
+        st.median_confidence_prozent = float(
+            conf_werte[n // 2] if n % 2
+            else (conf_werte[n // 2 - 1] + conf_werte[n // 2]) / 2
+        )
     st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(
