@@ -147,6 +147,30 @@ def test_has_mineral_filter(tmp_path):
     c.close()
 
 
+def test_has_notizen_filter(tmp_path):
+    """has_notizen unterscheidet dokumentierte von undokumentierten Objekten."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hn.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, notizen) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Fund am Sitterufer 2024"),
+            ("OBJ_0002", "Vermutlich Pyrit-Einschluss"),
+            ("OBJ_0003", None),
+            ("OBJ_0004", ""),         # leer zaehlt wie None
+            ("OBJ_0005", "   "),      # nur Whitespace zaehlt wie None
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_notizen=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_notizen=False)] \
+        == ["OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_notizen=None)) == 5
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []
