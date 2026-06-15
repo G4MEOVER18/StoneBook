@@ -44,6 +44,10 @@ def _format_text(st: Statistik) -> str:
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
+    if st.confidence_buckets and any(st.confidence_buckets.values()):
+        lines += ["", "Confidence-Verteilung:"]
+        for label, n in st.confidence_buckets.items():
+            lines.append(f"  {label:>6s}              {n}")
     if st.by_mineral:
         lines += ["", "Top-Minerale:"]
         for name, n in list(st.by_mineral.items())[:10]:

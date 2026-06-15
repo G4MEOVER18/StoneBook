@@ -27,6 +27,15 @@ def test_text_ausgabe(migrated_db, capsys):
     assert "Top-Minerale:" in out
 
 
+def test_text_ausgabe_zeigt_confidence_buckets(migrated_db, capsys):
+    """Confidence-Verteilung wird in den Text-Bericht aufgenommen, sobald Werte da sind."""
+    main(["--db", str(migrated_db)])
+    out = capsys.readouterr().out
+    assert "Confidence-Verteilung:" in out
+    # Mindestens ein Klassenlabel im Output
+    assert "75-100" in out or "0-24" in out or "ohne" in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0
@@ -35,6 +44,9 @@ def test_json_ausgabe(migrated_db, capsys):
     assert payload["bilder_total"] == 63
     assert payload["aliase_total"] == 54
     assert "by_mineral" in payload
+    # Buckets sind in der JSON-Form enthalten (Dashboard/Reports lesen das hier)
+    assert "confidence_buckets" in payload
+    assert set(payload["confidence_buckets"]) == {"ohne", "0-24", "25-49", "50-74", "75-100"}
 
 
 def test_fehlende_db_exit_2(tmp_path, capsys):
