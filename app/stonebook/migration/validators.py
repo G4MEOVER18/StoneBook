@@ -32,8 +32,16 @@ _MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\-](\d{4})\s*$")
 # "ca. 1985", "circa 2020", "um 1980", "approx. 2024", "around 1995".
 # Werden gestrippt, dann wird der Rest re-parst - die Datumsbedeutung selbst bleibt
 # gleich (Vermerk "Naeherungswert" liegt in der Freitext-Spalte, nicht im ISO-Datum).
+# DE-Sammler-Vokabular umfasst zusaetzlich ``etwa``, ``vermutlich``,
+# ``schaetzungsweise``/``schätzungsweise`` (alle "geschaetzter Wert", semantisch
+# identisch mit ``ca.``); EN ergaenzt ``estimated``/``est.``/``roughly``.
 _APPROX_PREFIX = re.compile(
-    r"^(?:ca\.?|circa|approx\.?|approximately|around|about|um|gegen)\s+",
+    r"^(?:ca\.?|circa|approx\.?|approximately"
+    r"|around|about|roughly|estimated|est\."
+    r"|um|gegen|etwa|vermutlich"
+    # Umlaut-Variante und Transliteration ae (gemischte Sammlungs-Notizen)
+    r"|sch[äa]tzungsweise|schaetzungsweise"
+    r")\s+",
     re.IGNORECASE,
 )
 # Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen

@@ -166,6 +166,39 @@ def test_parse_iso_date_annaeherungs_praefix():
     assert parse_iso_date("ca. 1700") is None  # ausserhalb 1800-2999
 
 
+def test_parse_iso_date_annaeherungs_praefix_erweitert():
+    """DE-Sammler-Vokabular (etwa/vermutlich/schaetzungsweise) und EN (estimated/roughly) als Praefix."""
+    # Deutsch
+    assert parse_iso_date("etwa 1985") == "1985-01-01"
+    assert parse_iso_date("vermutlich 1985") == "1985-01-01"
+    assert parse_iso_date("schaetzungsweise 1985") == "1985-01-01"
+    assert parse_iso_date("schätzungsweise 1985") == "1985-01-01"
+    # Englisch
+    assert parse_iso_date("estimated 1985") == "1985-01-01"
+    assert parse_iso_date("est. 1985") == "1985-01-01"
+    assert parse_iso_date("roughly 1985") == "1985-01-01"
+    # Case-insensitive
+    assert parse_iso_date("ETWA 2020") == "2020-01-01"
+    assert parse_iso_date("Vermutlich 2020") == "2020-01-01"
+    assert parse_iso_date("SCHAETZUNGSWEISE 1985") == "1985-01-01"
+    # Praefix + vollstaendiges Datum (Rekursion)
+    assert parse_iso_date("etwa Juni 2024") == "2024-06-01"
+    assert parse_iso_date("vermutlich 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("estimated 2024-06-13") == "2024-06-13"
+    # Verkettet mit bestehenden Praefixen (rekursive Strippung)
+    assert parse_iso_date("etwa ca. 1985") == "1985-01-01"
+    # Ohne Datum-Rest → None
+    assert parse_iso_date("etwa") is None
+    assert parse_iso_date("vermutlich") is None
+    # Datum aus dem zulaessigen Bereich → None
+    assert parse_iso_date("etwa 1700") is None
+    # Bestehende Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("um 1980") == "1980-01-01"
+    assert parse_iso_date("approx 2024") == "2024-01-01"
+
+
 def test_parse_iso_date_jahreszeiten():
     """Sammlungs-Notizen mit Jahreszeit + Jahr ergeben den meteorologischen Saison-Start."""
     # Deutsch
