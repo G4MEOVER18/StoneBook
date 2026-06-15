@@ -36,6 +36,39 @@ def test_text_ausgabe_zeigt_confidence_buckets(migrated_db, capsys):
     assert "75-100" in out or "0-24" in out or "ohne" in out
 
 
+def test_text_ausgabe_zeigt_median_confidence(tmp_path, capsys):
+    """Median-Confidence-Zeile erscheint, sobald gueltige Werte vorliegen."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mc.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 60), ("OBJ_0002", 80), ("OBJ_0003", 90)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Median Confidence:" in out
+    assert "80.0" in out
+
+
+def test_text_ausgabe_ohne_confidence_keine_median_zeile(tmp_path, capsys):
+    """Ohne gueltige Werte erscheint die Median-Zeile gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "noc.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Median Confidence:" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])

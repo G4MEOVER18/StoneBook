@@ -50,6 +50,10 @@ def _format_text(st: Statistik) -> str:
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
+    if st.median_confidence_prozent is not None:
+        # Median liegt direkt unter Mittel; Reihenfolge spiegelt das Werte-/Gewicht-Layout.
+        lines.append(
+            f"Median Confidence:     {st.median_confidence_prozent:.1f} %")
     if st.confidence_buckets and any(st.confidence_buckets.values()):
         lines += ["", "Confidence-Verteilung:"]
         for label, n in st.confidence_buckets.items():
