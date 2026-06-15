@@ -125,6 +125,22 @@ _QUARTER_LONG = re.compile(
     re.IGNORECASE,
 )
 
+# Relative Jahresposition + Jahr ("Anfang 2024", "Mitte 1985", "Ende 1999",
+# "early 2024", "mid 2024", "late 2024", "mid-2024"). Konvention analog Saison:
+# Anfang/early → Januar (01), Mitte/mid → Juli (07), Ende/late → Dezember (12).
+# Separator zwischen Schluesselwort und Jahr: Whitespace oder Bindestrich (englisch
+# "mid-2024" ist verbreitet). Wird vor _SEASON_YEAR geprueft, damit die
+# Schluesselwoerter nicht als unbekannter Saison-Name auf None fallen.
+_RELATIVE_MONTHS: dict[str, int] = {
+    "anfang": 1, "early": 1,
+    "mitte": 7, "mid": 7,
+    "ende": 12, "late": 12,
+}
+_RELATIVE_YEAR = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
@@ -285,6 +301,15 @@ def parse_iso_date(text) -> str | None:
         year = int(m.group(3))
         if 1800 <= year <= 2999:
             return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
+    # Relative Jahresposition ("Anfang/Mitte/Ende 2024", "early/mid/late 2024",
+    # "mid-2024"). Vor _SEASON_YEAR geprueft, damit die Schluesselwoerter nicht
+    # erst als unbekannter Saison-Name auf None fallen.
+    m = _RELATIVE_YEAR.match(s)
+    if m:
+        month = _RELATIVE_MONTHS[m.group(1).lower()]
+        year = int(m.group(2))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
     # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024"): meteorologischer
     # Saison-Start im genannten Jahr. Ueber denselben _MONTH_YEAR-Regex
     # gepatched, damit "Juni 2024" (Monat) Vorrang vor Seasons hat.

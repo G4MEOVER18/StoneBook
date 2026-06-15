@@ -164,6 +164,57 @@ def test_parse_iso_date_jahreszeiten():
     assert parse_iso_date("June 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_relative_jahresposition():
+    """Anfang/Mitte/Ende + Jahr (analog Saison): Jan / Jul / Dez im genannten Jahr."""
+    # Deutsch
+    assert parse_iso_date("Anfang 2024") == "2024-01-01"
+    assert parse_iso_date("Mitte 2024") == "2024-07-01"
+    assert parse_iso_date("Ende 2024") == "2024-12-01"
+    assert parse_iso_date("Anfang 1985") == "1985-01-01"
+    assert parse_iso_date("Mitte 1985") == "1985-07-01"
+    assert parse_iso_date("Ende 1999") == "1999-12-01"
+    # Englisch
+    assert parse_iso_date("early 2024") == "2024-01-01"
+    assert parse_iso_date("mid 2024") == "2024-07-01"
+    assert parse_iso_date("late 2024") == "2024-12-01"
+    # Bindestrich-Variante (verbreitet bei "mid-2024")
+    assert parse_iso_date("mid-2024") == "2024-07-01"
+    assert parse_iso_date("early-2024") == "2024-01-01"
+    assert parse_iso_date("late-2024") == "2024-12-01"
+    # Case-insensitive
+    assert parse_iso_date("ANFANG 2024") == "2024-01-01"
+    assert parse_iso_date("Mid 2024") == "2024-07-01"
+    # Kombiniert mit Annaeherungspraefix
+    assert parse_iso_date("ca. Anfang 1985") == "1985-01-01"
+    assert parse_iso_date("circa mid 1985") == "1985-07-01"
+    # Kombiniert mit trailing Satzzeichen
+    assert parse_iso_date("Ende 2024.") == "2024-12-01"
+    # Kombiniert in Klammern
+    assert parse_iso_date("[Mitte 1985]") == "1985-07-01"
+
+
+def test_parse_iso_date_relative_jahresposition_ungueltig():
+    """Schluesselwort ohne Jahr / Jahr ausserhalb / mehrdeutige Decade-Spanne → None."""
+    # Schluesselwort allein
+    assert parse_iso_date("Anfang") is None
+    assert parse_iso_date("Mitte") is None
+    assert parse_iso_date("Ende") is None
+    assert parse_iso_date("early") is None
+    # Jahr ausserhalb 1800-2999
+    assert parse_iso_date("Anfang 1700") is None
+    assert parse_iso_date("Ende 3000") is None
+    # Mit zusaetzlichem Wort (z.B. "Anfang Maerz 2024") → None
+    # (semantisch sinnvoll waere 2024-03-01, aber das Format ist nicht eindeutig
+    # genug zur stillschweigenden Konvertierung)
+    assert parse_iso_date("Anfang März 2024") is None
+    # Bestehende Saison-Notation bleibt unveraendert (kein Regress)
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    # Decade-Spans wie "late 1980s" / "Anfang der 1980er" sind mehrdeutig → None
+    # (Dekaden-Notation allein wird weiterhin als 1980-01-01 erkannt)
+    assert parse_iso_date("late 1980s") is None
+    assert parse_iso_date("Anfang der 1980er") is None
+
+
 def test_parse_iso_date_jahrzehnt():
     """Jahrzehnt-Notation ergibt das Dekaden-Startjahr (1980er → 1980-01-01)."""
     # Deutsch
