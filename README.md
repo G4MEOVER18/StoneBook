@@ -126,3 +126,9 @@ cd app && pytest tests -q        # 30 Tests: Migration, CSV-Parser, Duplikate, E
 <div align="center">
 <sub>Privates Projekt · © G4MEOVER</sub>
 </div>
+
+---
+
+## Kontakt
+
+**Entwickler:** Yanis Ameseder · **E-Mail:** [g4me.over.18@gmail.com](mailto:g4me.over.18@gmail.com)
