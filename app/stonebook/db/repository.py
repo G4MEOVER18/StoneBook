@@ -6,6 +6,8 @@ from stonebook.fields import DATA_FIELDS, is_empty
 
 DATA_COLS = [f.name for f in DATA_FIELDS]
 
+VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"})
+
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
     "obj_id", "Name", "Mineral_Primaer", "Fundort", "status",
@@ -226,7 +228,27 @@ class ObjectRepo:
         self.conn.commit()
 
     def set_status(self, obj_id: str, status: str) -> None:
+        if status not in VALID_STATUSES:
+            raise ValueError(
+                f"Ungueltiger Status: {status!r} "
+                f"(erwartet einen aus {sorted(VALID_STATUSES)})")
         self.update_fields(obj_id, {"status": status})
+
+    def archive(self, obj_id: str) -> None:
+        """Markiert ein Objekt als ``archiviert`` (refresh_status laesst es danach in Ruhe)."""
+        self.set_status(obj_id, "archiviert")
+
+    def unarchive(self, obj_id: str) -> None:
+        """Hebt eine Archivierung auf; Folgestatus (aktiv/platzhalter) wird automatisch bestimmt."""
+        row = self.get(obj_id)
+        if row is None:
+            return
+        if row["status"] == "archiviert":
+            # Auf platzhalter zuruecksetzen, damit refresh_status den passenden Status berechnet
+            self.conn.execute(
+                "UPDATE objects SET status = 'platzhalter' WHERE obj_id = ?", (obj_id,))
+            self.conn.commit()
+            self.refresh_status(obj_id)
 
     def refresh_status(self, obj_id: str) -> None:
         """platzhalter → aktiv, sobald Felddaten oder Bilder vorhanden sind."""

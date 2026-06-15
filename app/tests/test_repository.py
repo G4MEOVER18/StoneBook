@@ -476,3 +476,53 @@ def test_varietaet_und_gesteinsart_filter(tmp_path):
     rows = repo.list_objects(varietaet="Jaspis", gesteinsart="Sediment")
     assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
     c.close()
+
+
+def test_set_status_validiert(tmp_path):
+    """Ungueltige Status-Werte werden mit ValueError abgewiesen (Tippschutz)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "st.sqlite3")
+    repo = ObjectRepo(c)
+    repo.create("OBJ_0001")
+    repo.set_status("OBJ_0001", "aktiv")
+    repo.set_status("OBJ_0001", "platzhalter")
+    repo.set_status("OBJ_0001", "archiviert")
+    with pytest.raises(ValueError):
+        repo.set_status("OBJ_0001", "geloescht")
+    with pytest.raises(ValueError):
+        repo.set_status("OBJ_0001", "")
+    c.close()
+
+
+def test_archive_und_unarchive(tmp_path):
+    """archive setzt 'archiviert'; unarchive berechnet Folgestatus aus dem Inhalt."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ar.sqlite3")
+    repo = ObjectRepo(c)
+    repo.create("OBJ_0001", Name="Hat Inhalt")
+    repo.create("OBJ_0002")  # bleibt leer
+
+    repo.archive("OBJ_0001")
+    repo.archive("OBJ_0002")
+    assert repo.get("OBJ_0001")["status"] == "archiviert"
+    assert repo.get("OBJ_0002")["status"] == "archiviert"
+
+    # refresh_status laesst archivierte Objekte in Ruhe
+    repo.refresh_status_all()
+    assert repo.get("OBJ_0001")["status"] == "archiviert"
+
+    # Unarchive: Objekt mit Inhalt -> aktiv, leeres Objekt -> platzhalter
+    repo.unarchive("OBJ_0001")
+    repo.unarchive("OBJ_0002")
+    assert repo.get("OBJ_0001")["status"] == "aktiv"
+    assert repo.get("OBJ_0002")["status"] == "platzhalter"
+    c.close()
+
+
+def test_unarchive_unbekannte_id_no_op(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "u.sqlite3")
+    repo = ObjectRepo(c)
+    # Darf keinen Fehler werfen, auch wenn obj_id nicht existiert
+    repo.unarchive("OBJ_9999")
+    c.close()
