@@ -616,6 +616,49 @@ def test_notizen_contains_filter(tmp_path):
     c.close()
 
 
+def test_mineral_contains_filter(tmp_path):
+    """Substring-Filter ueber Mineral_Primaer findet Mineral-Familien-Varianten."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Quarz"),
+            ("OBJ_0002", "Rauchquarz"),
+            ("OBJ_0003", "Rosenquarz"),
+            ("OBJ_0004", "Calcit"),
+            ("OBJ_0005", "Mine_Spec"),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Quarz-Familie: drei Varianten mit Substring 'quarz'
+    rows = repo.list_objects(mineral_contains="quarz")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(mineral_contains="QUARZ")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kein Match
+    rows = repo.list_objects(mineral_contains="Pyrit")
+    assert rows == []
+    # Anderes Mineral
+    rows = repo.list_objects(mineral_contains="Calcit")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # LIKE-Metazeichen wortwoertlich (_ wird nicht als beliebiges Zeichen interpretiert)
+    rows = repo.list_objects(mineral_contains="Mine_S")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(mineral_contains="MineXS")
+    assert rows == []
+    # NULL-Eintraege fliegen automatisch raus (LIKE auf NULL liefert NULL)
+    rows = repo.list_objects(mineral_contains="z")
+    assert all(r["obj_id"] != "OBJ_0006" for r in rows)
+    # Kombinierbar mit has_mineral
+    rows = repo.list_objects(mineral_contains="quarz", has_mineral=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_varietaet_und_gesteinsart_filter(tmp_path):
     """Strukturierter Filter fuer Varietaet und Gesteinsart (exakter Match)."""
     from stonebook.db.database import open_db

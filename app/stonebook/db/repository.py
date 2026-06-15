@@ -69,6 +69,7 @@ class ObjectRepo:
                      funddatum_max: str | None = None,
                      fundort: str = "",
                      fundort_contains: str = "",
+                     mineral_contains: str = "",
                      name_contains: str = "",
                      notizen_contains: str = "",
                      wert_min: float | None = None,
@@ -182,6 +183,13 @@ class ObjectRepo:
         # ueber FTS gibt es bereits via ``search`` -- diese Filter sind die schlanke
         # Alternative, ohne MATCH-Syntax und mit garantiertem Substring-Match (FTS5
         # tokenisiert; "Mineral_42" wuerde dort nicht direkt als ein Token treffen).
+        if mineral_contains:
+            # Substring-Filter ueber Mineral_Primaer: findet Familien-Varianten
+            # ("Quarz" trifft "Rauchquarz", "Rosenquarz", "Bergkristall" nicht, aber
+            # "quarz" trifft alle Quarz-Varietaeten ohne Kenntnis der exakten Schreibweise).
+            # Komplementaer zum exakten ``mineral``-Filter (Dropdown-Auswahl).
+            where.append("o.Mineral_Primaer LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(mineral_contains) + "%")
         if name_contains:
             where.append("o.Name LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(name_contains) + "%")
