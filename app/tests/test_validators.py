@@ -475,6 +475,66 @@ def test_parse_iso_date_trailing_satzzeichen():
     assert parse_iso_date("unbekannt.") is None
 
 
+def test_parse_iso_date_iso_wochendatum():
+    """ISO 8601 Wochendatum ergibt den Montag (ohne Tag) bzw. den gewuenschten Tag."""
+    # ISO-Standard mit Bindestrich, ohne Tag → Montag der Woche
+    assert parse_iso_date("2024-W25") == "2024-06-17"
+    assert parse_iso_date("2024-W01") == "2024-01-01"
+    assert parse_iso_date("2024-W52") == "2024-12-23"
+    # Compact-Form (ohne Bindestrich), wie sie in Logs auftaucht
+    assert parse_iso_date("2024W25") == "2024-06-17"
+    assert parse_iso_date("2020W01") == "2019-12-30"  # ISO-Wochenjahr ueberlappt!
+    # Mit explizitem Wochentag (1=Mo .. 7=So)
+    assert parse_iso_date("2024-W25-1") == "2024-06-17"
+    assert parse_iso_date("2024-W25-3") == "2024-06-19"
+    assert parse_iso_date("2024-W25-7") == "2024-06-23"
+    assert parse_iso_date("2024W253") == "2024-06-19"  # Compact mit Tag
+    # Case-insensitive (w klein)
+    assert parse_iso_date("2024-w25") == "2024-06-17"
+    # Kombiniert mit trailing Satzzeichen / Klammer / Praefix
+    assert parse_iso_date("2024-W25.") == "2024-06-17"
+    assert parse_iso_date("(2024-W25)") == "2024-06-17"
+    assert parse_iso_date("ca. 2024-W25") == "2024-06-17"
+
+
+def test_parse_iso_date_iso_wochendatum_ungueltig():
+    # Woche ausserhalb 1..53
+    assert parse_iso_date("2024-W00") is None
+    assert parse_iso_date("2024-W54") is None
+    # Tag ausserhalb 1..7 → matcht das Pattern nicht (faellt auf andere zurueck → None)
+    assert parse_iso_date("2024-W25-0") is None
+    assert parse_iso_date("2024-W25-8") is None
+    # Jahr ausserhalb 1800..2999
+    assert parse_iso_date("1700-W01") is None
+    # 2024 hat nur 52 Wochen → W53 ist ungueltig
+    assert parse_iso_date("2024-W53") is None
+    # Aber 2020 hat 53 Wochen → W53 ist gueltig
+    assert parse_iso_date("2020-W53") == "2020-12-28"
+
+
+def test_parse_iso_date_kw_notation():
+    """Deutsche KW-Notation ergibt den Montag der genannten Woche."""
+    # Verschiedene Separatoren
+    assert parse_iso_date("KW 25 2024") == "2024-06-17"
+    assert parse_iso_date("KW25/2024") == "2024-06-17"
+    assert parse_iso_date("KW 25, 2024") == "2024-06-17"
+    assert parse_iso_date("KW25-2024") == "2024-06-17"
+    assert parse_iso_date("KW 1 2024") == "2024-01-01"
+    # Case-insensitive
+    assert parse_iso_date("kw 25 2024") == "2024-06-17"
+    assert parse_iso_date("Kw25/2024") == "2024-06-17"
+    # Kombiniert mit Annaeherungspraefix / Klammer
+    assert parse_iso_date("ca. KW 25 2024") == "2024-06-17"
+    assert parse_iso_date("[KW 25 2024]") == "2024-06-17"
+    # Ungueltig
+    assert parse_iso_date("KW 0 2024") is None
+    assert parse_iso_date("KW 54 2024") is None
+    assert parse_iso_date("KW 25 1700") is None
+    assert parse_iso_date("KW 53 2024") is None  # 2024 hat nur 52 Wochen
+    # Ohne Jahr → kein Match (mehrdeutig)
+    assert parse_iso_date("KW 25") is None
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

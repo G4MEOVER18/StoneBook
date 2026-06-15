@@ -146,6 +146,23 @@ _QUARTER_LONG = re.compile(
     re.IGNORECASE,
 )
 
+# ISO 8601 Wochendatum: "2024-W25", "2024W25" (compact), "2024-W25-3" (mit Tag).
+# Konvention: ohne expliziten Wochentag → Montag der Woche (ISO-Wochenstart).
+# Verbreitet in Log-/Build-Stempeln und manchen Sammlungs-Notizen ("KW25 2024").
+# Zwei Schreibweisen werden akzeptiert: ISO-Standard (Bindestrich) und compact
+# (ohne Bindestrich); Wochentag optional, immer 1-7 (Mo-So per ISO-Definition).
+_ISO_WEEK_DATE = re.compile(
+    r"^\s*(\d{4})-?W(\d{1,2})(?:-?([1-7]))?\s*$",
+    re.IGNORECASE,
+)
+# Deutsche KW-Notation: "KW 25 2024", "KW25/2024", "KW 25, 2024".
+# Verbreitet in Sammlungs-Tagebuechern (Wochenangaben statt Tagen). Mapping
+# identisch zu _ISO_WEEK_DATE (Montag der genannten Woche).
+_KW_YEAR = re.compile(
+    r"^\s*KW\s*(\d{1,2})\s*[/.\-, ]\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
 # Relative Jahresposition + Jahr ("Anfang 2024", "Mitte 1985", "Ende 1999",
 # "early 2024", "mid 2024", "late 2024", "mid-2024"). Konvention analog Saison:
 # Anfang/early → Januar (01), Mitte/mid → Juli (07), Ende/late → Dezember (12).
@@ -309,6 +326,27 @@ def parse_iso_date(text) -> str | None:
         year = int(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # ISO 8601 Wochendatum ("2024-W25", "2024W25", "2024-W25-3"). Vor den
+    # uebrigen YYYY-MM/YYYY-...-Mustern geprueft, damit das W eindeutig erkannt
+    # wird und nicht erst gegen Monatsnamen versucht wird.
+    m = _ISO_WEEK_DATE.match(s)
+    if m:
+        year, week = int(m.group(1)), int(m.group(2))
+        day = int(m.group(3)) if m.group(3) else 1
+        if 1800 <= year <= 2999 and 1 <= week <= 53:
+            try:
+                return datetime.date.fromisocalendar(year, week, day).isoformat()
+            except ValueError:
+                return None
+    # Deutsche KW-Notation ("KW 25 2024", "KW25/2024"). Mapping wie _ISO_WEEK_DATE.
+    m = _KW_YEAR.match(s)
+    if m:
+        week, year = int(m.group(1)), int(m.group(2))
+        if 1800 <= year <= 2999 and 1 <= week <= 53:
+            try:
+                return datetime.date.fromisocalendar(year, week, 1).isoformat()
+            except ValueError:
+                return None
     # Numerisches Monat/Jahr ("06/2024", "6-2024"). Erst nach den DD.MM.YYYY-
     # Formaten geprueft, damit die nicht versehentlich auf MM/YYYY zurueckfallen.
     m = _MONTH_NUMERIC_YEAR.match(s)
