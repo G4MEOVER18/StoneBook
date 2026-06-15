@@ -1,7 +1,10 @@
 """Datenbank-Neuaufbau aus den Repo-Quellen (idempotent: DB wird neu erstellt).
 
-CLI:  python -m stonebook.migration.migrate [repo_root]
+CLI:
+    python -m stonebook.migration.migrate [repo_root]
+                                          [--db PATH] [--report-json] [--quiet]
 """
+import argparse
 import csv
 import json
 import sys
@@ -122,20 +125,47 @@ def migrate(root: Path, db_file: Path, log=print) -> dict:
     return report
 
 
-def main() -> int:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="python -m stonebook.migration.migrate",
+        description="Baut die StoneBook-SQLite-DB aus den CSV-Quellen neu auf.",
+    )
+    p.add_argument("repo_root", nargs="?", default=None,
+                   help="Repo-Root (Ordner mit objects/ und data/). "
+                        "Default: drei Ebenen ueber dem Modul.")
+    p.add_argument("--db", type=Path, default=None,
+                   help="Ziel-Pfad fuer die SQLite-Datei "
+                        "(Default: <repo>/data/db/stonebook.sqlite3).")
+    p.add_argument("--report-json", action="store_true",
+                   help="Schreibt den Kennzahlen-Report als JSON auf stdout "
+                        "(unterdrueckt das Standard-Log).")
+    p.add_argument("--quiet", action="store_true",
+                   help="Unterdrueckt die Fortschrittsausgaben.")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    if len(sys.argv) > 1:
-        root = Path(sys.argv[1])
-    else:
-        root = Path(__file__).resolve().parents[3]
+    args = _build_arg_parser().parse_args(argv)
+    root = (Path(args.repo_root) if args.repo_root
+            else Path(__file__).resolve().parents[3])
     if not (root / "objects").is_dir():
-        print(f"Kein StoneBook-Repo unter: {root}")
+        print(f"Kein StoneBook-Repo unter: {root}", file=sys.stderr)
         return 1
-    db_file = root / "data" / "db" / "stonebook.sqlite3"
-    migrate(root, db_file)
+    db_file = args.db if args.db else root / "data" / "db" / "stonebook.sqlite3"
+
+    # Bei --report-json darf nichts auf stdout, was kein JSON ist.
+    if args.report_json or args.quiet:
+        log = lambda *_: None
+    else:
+        log = print
+    report = migrate(root, db_file, log=log)
+    if args.report_json:
+        json.dump(report, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
     return 0
 
 

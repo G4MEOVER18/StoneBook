@@ -87,3 +87,38 @@ def test_platzhalter_status(migrated):
     conn, _ = migrated
     row = conn.execute("SELECT status FROM objects WHERE obj_id = 'OBJ_0500'").fetchone()
     assert row["status"] == "platzhalter"
+
+
+def test_main_cli_report_json(tmp_path, capsys):
+    """CLI ``--report-json`` schreibt ausschliesslich gueltiges JSON auf stdout."""
+    import json
+
+    from stonebook.migration.migrate import main
+    db_file = tmp_path / "cli.sqlite3"
+    exit_code = main([str(REPO), "--db", str(db_file), "--report-json"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    report = json.loads(out)
+    assert report["objekte"] == 546
+    assert report["aliase"] == 54
+    assert report["bilder"] == 63
+    assert db_file.is_file()
+
+
+def test_main_cli_quiet_kein_progress(tmp_path, capsys):
+    """``--quiet`` unterdrueckt die Schritt-Logs (kein '1/5 ...' auf stdout)."""
+    from stonebook.migration.migrate import main
+    db_file = tmp_path / "q.sqlite3"
+    main([str(REPO), "--db", str(db_file), "--quiet"])
+    out = capsys.readouterr().out
+    assert "1/5" not in out
+    assert "Fertig" not in out
+
+
+def test_main_cli_fehlerhaftes_repo(tmp_path, capsys):
+    """Beim nicht-existenten Repo: exit 1, Fehlermeldung auf stderr."""
+    from stonebook.migration.migrate import main
+    exit_code = main([str(tmp_path), "--db", str(tmp_path / "x.sqlite3")])
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "Kein StoneBook-Repo" in err
