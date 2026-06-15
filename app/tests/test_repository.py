@@ -171,6 +171,31 @@ def test_has_pruefempfehlungen_filter(tmp_path):
     c.close()
 
 
+def test_has_gewicht_filter(tmp_path):
+    """has_gewicht trennt gewogene Objekte von ungewogenen; 0/negativ zaehlt wie 'ohne'."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 125.5),
+            ("OBJ_0002", 0.1),
+            ("OBJ_0003", None),
+            ("OBJ_0004", 0.0),     # 0 zaehlt wie 'nicht gewogen'
+            ("OBJ_0005", -1.0),    # negative Werte ebenso (defensiv; sollte nicht auftreten)
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_gewicht=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_gewicht=False)] \
+        == ["OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    # None laesst alle durch
+    assert len(repo.list_objects(has_gewicht=None)) == 5
+    c.close()
+
+
 def test_has_notizen_filter(tmp_path):
     """has_notizen unterscheidet dokumentierte von undokumentierten Objekten."""
     from stonebook.db.database import open_db
