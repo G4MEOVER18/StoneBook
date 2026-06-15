@@ -833,6 +833,45 @@ def test_varietaet_contains_filter(tmp_path):
     c.close()
 
 
+def test_gesteinsart_contains_filter(tmp_path):
+    """Substring-Filter ueber Gesteinsart findet Gesteins-Familien (Granit-Klan)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Biotitgranit"),
+            ("OBJ_0002", "Rosa Granit"),
+            ("OBJ_0003", "Basalt"),
+            ("OBJ_0004", "Gran_4 Probe"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring matched beide Granit-Varianten
+    rows = repo.list_objects(gesteinsart_contains="Granit")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(gesteinsart_contains="granit")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Andere Gesteinsart
+    rows = repo.list_objects(gesteinsart_contains="Basalt")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Metazeichen wortwoertlich (_ wird nicht als beliebiges Zeichen interpretiert)
+    rows = repo.list_objects(gesteinsart_contains="Gran_4")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    rows = repo.list_objects(gesteinsart_contains="GranX4")
+    assert rows == []
+    # NULL Gesteinsart fliegt automatisch raus
+    rows = repo.list_objects(gesteinsart_contains="a")
+    assert all(r["obj_id"] != "OBJ_0005" for r in rows)
+    # Kombinierbar mit exaktem gesteinsart-Filter (Schnittmenge)
+    rows = repo.list_objects(gesteinsart_contains="Granit", gesteinsart="Rosa Granit")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_varietaet_und_gesteinsart_filter(tmp_path):
     """Strukturierter Filter fuer Varietaet und Gesteinsart (exakter Match)."""
     from stonebook.db.database import open_db

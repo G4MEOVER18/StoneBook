@@ -89,6 +89,7 @@ class ObjectRepo:
                      varietaet: str = "",
                      varietaet_contains: str = "",
                      gesteinsart: str = "",
+                     gesteinsart_contains: str = "",
                      sort_by: str | None = None,
                      sort_desc: bool = False) -> list[sqlite3.Row]:
         from stonebook.db.stats import wert_pro_objekt_sql
@@ -269,6 +270,13 @@ class ObjectRepo:
         if gesteinsart:
             where.append("o.Gesteinsart = ?")
             params.append(gesteinsart)
+        if gesteinsart_contains:
+            # Substring-Filter ueber Gesteinsart: findet Gesteins-Familien wie "Granit"
+            # (Biotitgranit, Rosa Granit, Granitporphyr) ohne Kenntnis der exakten Notation.
+            # Komplementaer zum exakten ``gesteinsart``-Filter (Dropdown-Auswahl);
+            # spiegelt das Muster der anderen *_contains-Filter (Fundort/Mineral/Varietaet).
+            where.append("o.Gesteinsart LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(gesteinsart_contains) + "%")
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += _order_by_clause(sort_by, sort_desc)
