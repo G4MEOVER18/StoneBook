@@ -108,6 +108,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         for oid, name, gewicht in st.top_gewicht_objekte[:top]:
             label = f"{oid} {name}".strip()
             lines.append(f"  {label:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_mineral:
+        # Beantwortet "Welcher Mineraltyp ist insgesamt am wertvollsten?"
+        # (komplementaer zu top_wert_objekte, das das wertvollste Einzelstueck zeigt).
+        # Summen aus wert_pro_objekt_sql() ueber alle CHF-Felder pro Mineral-Gruppe.
+        lines += ["", "Wert pro Mineral (CHF):"]
+        for mineral, wert in st.wert_pro_mineral[:top]:
+            lines.append(f"  {mineral:40s} {wert:>12,.0f}")
     return "\n".join(lines)
 
 

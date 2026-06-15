@@ -229,6 +229,75 @@ def test_text_ausgabe_ohne_bilder_keine_kategorie_zeile(tmp_path, capsys):
     assert "Bilder pro Kategorie:" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_mineral(tmp_path, capsys):
+    """Wert-pro-Mineral-Block summiert CHF-Felder pro Mineraltyp und sortiert absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Quarz",   100.0,  50.0),  # Quarz total 150
+            ("OBJ_0002", "Quarz",   200.0, None),   # Quarz total 350
+            ("OBJ_0003", "Calcit",  None,  800.0),  # Calcit total 800
+            ("OBJ_0004", "Pyrit",    25.0, None),   # Pyrit  total  25
+            ("OBJ_0005", "Pyrit",   None,  None),   # Pyrit  bleibt 25
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Mineral (CHF):" in out
+    # Reihenfolge absteigend nach Summe: Calcit (800), Quarz (350), Pyrit (25)
+    # Nur im Wert-Block pruefen, da Calcit/Quarz/Pyrit auch in Top-Minerale stehen.
+    block = out.split("Wert pro Mineral (CHF):", 1)[1]
+    assert block.index("Calcit") < block.index("Quarz") < block.index("Pyrit")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_mineral_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Block gar nicht (Liste leer)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer) VALUES (?, ?)",
+        [("OBJ_0001", "Quarz"), ("OBJ_0002", "Calcit")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Mineral" not in out
+
+
+def test_top_flag_steuert_wert_pro_mineral_laenge(tmp_path, capsys):
+    """--top N begrenzt auch die Wert-pro-Mineral-Liste."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpmt.sqlite3"
+    c = open_db(db_file)
+    # 6 Mineralien mit absteigenden Werten
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Mineral_{i:02d}", float(100 - i)) for i in range(1, 7)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--top", "3"])
+    out = capsys.readouterr().out
+    assert "Mineral_01" in out  # Hoechster Wert (99) - immer erste 3
+    assert "Mineral_02" in out
+    assert "Mineral_03" in out
+    # Wert-Liste hat <=3 Eintraege; Mineral_04..06 nicht enthalten.
+    # (Mineral_04..06 koennen sonst in by_mineral auftauchen; pruefe gezielt im
+    # Wert-pro-Mineral-Block.)
+    block = out.split("Wert pro Mineral (CHF):", 1)[1]
+    assert "Mineral_04" not in block
+    assert "Mineral_05" not in block
+    assert "Mineral_06" not in block
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
