@@ -389,5 +389,36 @@ class AnalysisRepo:
 
     def for_object(self, obj_id: str) -> list[sqlite3.Row]:
         return self.conn.execute(
-            "SELECT * FROM ki_analysen WHERE obj_id = ? ORDER BY zeitpunkt DESC",
+            "SELECT * FROM ki_analysen WHERE obj_id = ? "
+            "ORDER BY zeitpunkt DESC, id DESC",
             (obj_id,)).fetchall()
+
+    def get(self, analysis_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM ki_analysen WHERE id = ?", (analysis_id,)).fetchone()
+
+    def delete(self, analysis_id: int) -> bool:
+        """Loescht eine einzelne KI-Analyse; gibt True zurueck, wenn etwas geloescht wurde."""
+        cur = self.conn.execute("DELETE FROM ki_analysen WHERE id = ?", (analysis_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def prune(self, obj_id: str, keep: int) -> int:
+        """Behaelt nur die ``keep`` neuesten Analysen je Objekt; loescht aeltere.
+
+        ``keep < 0`` wirft ``ValueError``; ``keep == 0`` loescht alle Analysen
+        des Objekts. Gibt die Zahl tatsaechlich geloeschter Zeilen zurueck.
+        """
+        if keep < 0:
+            raise ValueError("keep muss >= 0 sein")
+        cur = self.conn.execute(
+            "DELETE FROM ki_analysen WHERE obj_id = ? AND id NOT IN ("
+            " SELECT id FROM ki_analysen WHERE obj_id = ?"
+            " ORDER BY zeitpunkt DESC, id DESC LIMIT ?)",
+            (obj_id, obj_id, keep))
+        self.conn.commit()
+        return cur.rowcount
+
+    def count_for(self, obj_id: str) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM ki_analysen WHERE obj_id = ?", (obj_id,)).fetchone()[0]
