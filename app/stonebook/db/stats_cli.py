@@ -112,6 +112,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Funde pro Jahr:"]
         for jahr, n in st.by_funddatum_jahr.items():
             lines.append(f"  {jahr:40s} {n}")
+    if st.by_funddatum_jahrzehnt:
+        # Dekaden-Histogramm: grobe Sicht ohne Einzeljahres-Rauschen. Sortierung
+        # bleibt chronologisch aus _count_funddatum_jahrzehnt (aelteste zuerst).
+        # Ergaenzt die Jahres-Auflistung um den Blick auf Aktivitaetsphasen.
+        lines += ["", "Funde pro Jahrzehnt:"]
+        for dekade, n in st.by_funddatum_jahrzehnt.items():
+            lines.append(f"  {dekade:40s} {n}")
     if st.top_wert_objekte:
         # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
         # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.

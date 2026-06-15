@@ -398,7 +398,9 @@ def test_top_flag_begrenzt_funde_pro_jahr(tmp_path, capsys):
     c.close()
     main(["--db", str(db_file), "--top", "3"])
     out = capsys.readouterr().out
-    block = out.split("Funde pro Jahr:", 1)[1]
+    # Block strikt auf den Jahres-Abschnitt eingrenzen (Dekaden-Block laeuft
+    # darunter und enthaelt 2020er als Label - sonst falsche Positiv-Treffer).
+    block = out.split("Funde pro Jahr:", 1)[1].split("Funde pro Jahrzehnt:", 1)[0]
     # Top-3 nach Anzahl: 2024, 2023, 2022 (chronologisch sortiert).
     assert "2022" in block
     assert "2023" in block
@@ -406,6 +408,49 @@ def test_top_flag_begrenzt_funde_pro_jahr(tmp_path, capsys):
     # 2020/2021 fallen heraus (nur 1/2 Treffer).
     assert "2020" not in block
     assert "2021" not in block
+
+
+def test_text_ausgabe_zeigt_funde_pro_jahrzehnt(tmp_path, capsys):
+    """Dekaden-Block liegt unter dem Jahres-Block und summiert die Jahre auf 10er-Schritte."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpd.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "1985-01-01"),
+            ("OBJ_0002", "1989-12-31"),
+            ("OBJ_0003", "1995-06-13"),
+            ("OBJ_0004", "2024-06-13"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Jahrzehnt:" in out
+    block = out.split("Funde pro Jahrzehnt:", 1)[1]
+    # Chronologisch aufsteigend, Label mit 'er'-Suffix
+    assert "1980er" in block
+    assert "1990er" in block
+    assert "2020er" in block
+    assert block.index("1980er") < block.index("1990er") < block.index("2020er")
+
+
+def test_text_ausgabe_ohne_funddatum_keine_jahrzehnt_zeile(tmp_path, capsys):
+    """Ohne gueltige Funddaten erscheint auch der Dekaden-Block nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpd0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Jahrzehnt:" not in out
 
 
 def test_text_ausgabe_zeigt_objekte_pro_kategorie(tmp_path, capsys):
