@@ -96,6 +96,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Top-Fundorte:"]
         for name, n in list(st.by_fundort.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_kategorie:
+        # Komplementaer zu Wert-/Gewicht-pro-Kategorie: zeigt die schiere Anzahl
+        # pro Objekt-Kategorie (Handstueck/Kristall/Geroell/...). Ohne Anzahl
+        # erkennt der Leser nicht, ob eine Kategorie das Gewicht/den Wert ueber
+        # wenige grosse Stuecke oder ueber Masse erzeugt.
+        lines += ["", "Objekte pro Kategorie:"]
+        for name, n in list(st.by_kategorie.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.top_wert_objekte:
         # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
         # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.

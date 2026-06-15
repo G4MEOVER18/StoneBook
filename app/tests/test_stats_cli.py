@@ -340,6 +340,48 @@ def test_text_ausgabe_ohne_werte_keine_wert_pro_fundort_zeile(tmp_path, capsys):
     assert "Wert pro Fundort" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_kategorie(tmp_path, capsys):
+    """Objekte-pro-Kategorie-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opk.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Handstueck"),
+            ("OBJ_0002", "Handstueck"),
+            ("OBJ_0003", "Handstueck"),
+            ("OBJ_0004", "Kristall"),
+            ("OBJ_0005", "Kristall"),
+            ("OBJ_0006", "Geroell"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Kategorie:" in out
+    # Reihenfolge absteigend: Handstueck (3), Kristall (2), Geroell (1)
+    block = out.split("Objekte pro Kategorie:", 1)[1]
+    assert block.index("Handstueck") < block.index("Kristall") < block.index("Geroell")
+
+
+def test_text_ausgabe_ohne_kategorie_keine_zeile(tmp_path, capsys):
+    """Ohne Kategorie-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opk0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Kategorie:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db
