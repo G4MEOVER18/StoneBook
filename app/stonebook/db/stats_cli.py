@@ -129,6 +129,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Mineral (g):"]
         for mineral, gewicht in st.gewicht_pro_mineral[:top]:
             lines.append(f"  {mineral:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_fundort:
+        # Spiegelbild zu wert_pro_fundort: welcher Fundort dominiert gewichtsmaessig?
+        # Aufschluss-/Halden-Funde liefern oft viel Masse fuer geringen Wert; das
+        # macht der Block sichtbar (komplementaer zur Wert-Sicht).
+        lines += ["", "Gewicht pro Fundort (g):"]
+        for ort, gewicht in st.gewicht_pro_fundort[:top]:
+            lines.append(f"  {ort:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 

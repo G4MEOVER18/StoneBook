@@ -381,6 +381,47 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_mineral_zeile(tmp_path, cap
     assert "Gewicht pro Mineral" not in out
 
 
+def test_text_ausgabe_zeigt_gewicht_pro_fundort(tmp_path, capsys):
+    """Gewicht-pro-Fundort-Block summiert g pro Fundort und sortiert absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Davos",       100.0),  # Davos total 250
+            ("OBJ_0002", "Davos",       150.0),
+            ("OBJ_0003", "Zermatt",     800.0),  # Zermatt total 800
+            ("OBJ_0004", "St. Gallen",   20.0),  # St. Gallen total 20
+            ("OBJ_0005", "St. Gallen",  None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Fundort (g):" in out
+    # Reihenfolge absteigend: Zermatt (800), Davos (250), St. Gallen (20)
+    block = out.split("Gewicht pro Fundort (g):", 1)[1]
+    assert block.index("Zermatt") < block.index("Davos") < block.index("St. Gallen")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_fundort_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Gewicht-pro-Fundort-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpf0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [("OBJ_0001", "Davos"), ("OBJ_0002", "Zermatt")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Fundort" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
