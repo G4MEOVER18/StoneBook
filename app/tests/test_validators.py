@@ -62,6 +62,34 @@ def test_parse_iso_date_englische_monatsnamen():
     assert parse_iso_date("Jun. 13, 2024") == "2024-06-13"
 
 
+def test_parse_iso_date_tag_ordinal_suffix():
+    """Englisches Ordinal-Suffix (st/nd/rd/th) am Tag wird akzeptiert."""
+    # Tag-vor-Monat
+    assert parse_iso_date("1st March 2024") == "2024-03-01"
+    assert parse_iso_date("2nd June 2024") == "2024-06-02"
+    assert parse_iso_date("3rd July 2024") == "2024-07-03"
+    assert parse_iso_date("4th August 2024") == "2024-08-04"
+    assert parse_iso_date("21st December 2024") == "2024-12-21"
+    assert parse_iso_date("22nd February 2024") == "2024-02-22"
+    assert parse_iso_date("23rd December 1999") == "1999-12-23"
+    assert parse_iso_date("31st May 2024") == "2024-05-31"
+    # Monat-vor-Tag
+    assert parse_iso_date("March 1st, 2024") == "2024-03-01"
+    assert parse_iso_date("June 2nd 2024") == "2024-06-02"
+    assert parse_iso_date("May 31st, 2024") == "2024-05-31"
+    assert parse_iso_date("Dec 23rd, 1999") == "1999-12-23"
+    # Case-insensitive
+    assert parse_iso_date("1ST March 2024") == "2024-03-01"
+    assert parse_iso_date("March 1ST, 2024") == "2024-03-01"
+    # Mit trailing Satzzeichen
+    assert parse_iso_date("March 1st, 2024.") == "2024-03-01"
+    # Mit Annaeherungspraefix
+    assert parse_iso_date("ca. 1st March 2024") == "2024-03-01"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("Jun 13, 2024") == "2024-06-13"
+
+
 def test_parse_iso_date_englische_monatsnamen_ungueltig():
     assert parse_iso_date("Feb 30, 2024") is None  # 30. Februar
     assert parse_iso_date("Foo 13, 2024") is None  # Unbekannter Monat
