@@ -2,7 +2,7 @@
 import datetime
 import sqlite3
 
-from stonebook.fields import DATA_FIELDS, is_empty
+from stonebook.fields import DATA_FIELDS, IMAGE_CATEGORIES, is_empty
 
 DATA_COLS = [f.name for f in DATA_FIELDS]
 
@@ -58,6 +58,8 @@ class ObjectRepo:
     def list_objects(self, search: str = "", status: str = "", mineral: str = "",
                      kategorie: str = "", only_images: bool = False,
                      has_bilder: bool | None = None,
+                     has_image_kategorie: str = "",
+                     missing_image_kategorie: str = "",
                      min_confidence: int | None = None,
                      max_confidence: int | None = None,
                      has_confidence: bool | None = None,
@@ -118,6 +120,26 @@ class ObjectRepo:
             where.append("EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
         elif effective_has_bilder is False:
             where.append("NOT EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
+        # has_image_kategorie: nur Objekte mit mindestens einem Bild der genannten Kategorie.
+        # missing_image_kategorie: nur Objekte ohne Bild dieser Kategorie - typische
+        # Foto-Workflow-Frage ("welche Objekte fehlen UV365-Aufnahmen?").
+        # Beide validieren gegen IMAGE_CATEGORIES, damit Tippfehler keinen leeren
+        # Filter erzeugen (sondern einen klaren Fehler).
+        if has_image_kategorie:
+            if has_image_kategorie not in IMAGE_CATEGORIES:
+                raise ValueError(f"Unbekannte Bild-Kategorie: {has_image_kategorie!r}")
+            where.append(
+                "EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id "
+                "AND i.kategorie = ?)")
+            params.append(has_image_kategorie)
+        if missing_image_kategorie:
+            if missing_image_kategorie not in IMAGE_CATEGORIES:
+                raise ValueError(
+                    f"Unbekannte Bild-Kategorie: {missing_image_kategorie!r}")
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id "
+                "AND i.kategorie = ?)")
+            params.append(missing_image_kategorie)
         if min_confidence is not None:
             where.append("o.Confidence_Prozent >= ?")
             params.append(int(min_confidence))

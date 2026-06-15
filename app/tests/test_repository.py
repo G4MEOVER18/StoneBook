@@ -671,6 +671,47 @@ def test_notizen_contains_filter(tmp_path):
     c.close()
 
 
+def test_has_und_missing_image_kategorie_filter(tmp_path):
+    """Foto-Workflow: finde Objekte mit/ohne Bild einer bestimmten Bild-Kategorie."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "imc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Uebersicht", "objects/OBJ_0001/u1.jpg"),
+            ("OBJ_0001", "UV365",       "objects/OBJ_0001/uv.jpg"),
+            ("OBJ_0002", "Uebersicht", "objects/OBJ_0002/u2.jpg"),
+            # OBJ_0003 hat ueberhaupt kein Bild
+            ("OBJ_0004", "Kamera",      "objects/OBJ_0004/k.jpg"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Objekte mit Uebersichts-Bild
+    rows = repo.list_objects(has_image_kategorie="Uebersicht")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Objekte MIT UV365-Bild
+    rows = repo.list_objects(has_image_kategorie="UV365")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Objekte OHNE UV365-Bild (inkl. ohne Bilder ueberhaupt)
+    rows = repo.list_objects(missing_image_kategorie="UV365")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Kombinierbar: hat Uebersicht UND es fehlt UV365 → OBJ_0002
+    rows = repo.list_objects(has_image_kategorie="Uebersicht",
+                             missing_image_kategorie="UV365")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Unbekannte Kategorie → ValueError (Tippschutz)
+    with pytest.raises(ValueError):
+        repo.list_objects(has_image_kategorie="UV999")
+    with pytest.raises(ValueError):
+        repo.list_objects(missing_image_kategorie="UV999")
+    c.close()
+
+
 def test_mineral_contains_filter(tmp_path):
     """Substring-Filter ueber Mineral_Primaer findet Mineral-Familien-Varianten."""
     from stonebook.db.database import open_db
