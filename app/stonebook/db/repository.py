@@ -55,7 +55,9 @@ class ObjectRepo:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def list_objects(self, search: str = "", status: str = "", mineral: str = "",
+    def list_objects(self, search: str = "", status: str = "",
+                     status_in: list[str] | tuple[str, ...] | None = None,
+                     mineral: str = "",
                      kategorie: str = "", only_images: bool = False,
                      has_bilder: bool | None = None,
                      has_image_kategorie: str = "",
@@ -105,6 +107,20 @@ class ObjectRepo:
         if status:
             where.append("o.status = ?")
             params.append(status)
+        # status_in: Mengen-Filter ("aktiv ODER archiviert, aber nicht platzhalter").
+        # Ergaenzend zum exakten ``status``-Filter; beide kombinierbar (Schnittmenge).
+        # Validiert gegen VALID_STATUSES, damit Tippfehler keinen leeren Filter erzeugen.
+        if status_in:
+            statuses = [s for s in status_in if s]
+            invalid = [s for s in statuses if s not in VALID_STATUSES]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Status-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_STATUSES)})")
+            if statuses:
+                placeholders = ", ".join("?" * len(statuses))
+                where.append(f"o.status IN ({placeholders})")
+                params.extend(statuses)
         if mineral:
             where.append("o.Mineral_Primaer = ?")
             params.append(mineral)

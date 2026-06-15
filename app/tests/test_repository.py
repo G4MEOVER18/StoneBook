@@ -671,6 +671,45 @@ def test_notizen_contains_filter(tmp_path):
     c.close()
 
 
+def test_status_in_filter(tmp_path):
+    """status_in akzeptiert Mengen ('aktiv ODER archiviert'); Tippfehler werfen ValueError."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "si.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, status) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "aktiv"),
+            ("OBJ_0002", "platzhalter"),
+            ("OBJ_0003", "archiviert"),
+            ("OBJ_0004", "aktiv"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter aktiv ODER archiviert
+    rows = repo.list_objects(status_in=["aktiv", "archiviert"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # Einzelnes Element in der Liste (verhaelt sich wie status=)
+    rows = repo.list_objects(status_in=["archiviert"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(status_in=[])
+    assert len(rows) == 4
+    # Tupel akzeptiert (unveraenderlich, fuer Default-Werte hilfreich)
+    rows = repo.list_objects(status_in=("aktiv",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit status= (Schnittmenge, beide muessen passen)
+    rows = repo.list_objects(status="aktiv", status_in=["aktiv", "archiviert"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Schnittmenge wird leer, wenn status nicht in status_in liegt
+    rows = repo.list_objects(status="platzhalter", status_in=["aktiv", "archiviert"])
+    assert rows == []
+    # Tippfehler → ValueError
+    with pytest.raises(ValueError, match="Unbekannte Status"):
+        repo.list_objects(status_in=["geloescht"])
+    c.close()
+
+
 def test_has_und_missing_image_kategorie_filter(tmp_path):
     """Foto-Workflow: finde Objekte mit/ohne Bild einer bestimmten Bild-Kategorie."""
     from stonebook.db.database import open_db
