@@ -64,6 +64,14 @@ def _format_text(st: Statistik) -> str:
         # Median liegt direkt unter Mittel; Reihenfolge spiegelt das Werte-/Gewicht-Layout.
         lines.append(
             f"Median Confidence:     {st.median_confidence_prozent:.1f} %")
+    # Coverage-Quoten beantworten "Wie viel meiner Sammlung ist dokumentiert?"
+    # Nur ausgeben, wenn ueberhaupt Objekte vorhanden sind (sonst sind alle
+    # Quoten None und die Zeilen waeren nichtssagend).
+    if st.objekte_total > 0:
+        lines += ["", "Coverage:"]
+        lines.append(f"  Bilder:              {st.quote_mit_bildern_prozent:.1f} %")
+        lines.append(f"  Funddatum:           {st.quote_mit_funddatum_prozent:.1f} %")
+        lines.append(f"  Wertschaetzung:      {st.quote_mit_wert_prozent:.1f} %")
     if st.confidence_buckets and any(st.confidence_buckets.values()):
         lines += ["", "Confidence-Verteilung:"]
         for label, n in st.confidence_buckets.items():

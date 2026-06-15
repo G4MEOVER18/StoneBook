@@ -151,6 +151,46 @@ def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
     assert "Median Gewicht" not in out
 
 
+def test_text_ausgabe_zeigt_coverage_quoten(tmp_path, capsys):
+    """Coverage-Block zeigt Bild-/Funddatum-/Wert-Quoten als Sammler-Coverage."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cov.sqlite3"
+    c = open_db(db_file)
+    # 4 Objekte: 2 mit Bild (50%), 1 mit Funddatum (25%), 2 mit Wert (50%)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "2024-06-13", 100.0),
+            ("OBJ_0002", None, 50.0),
+            ("OBJ_0003", None, None),
+            ("OBJ_0004", None, None),
+        ],
+    )
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        [("OBJ_0001", "Kamera", "a.jpg"), ("OBJ_0002", "Kamera", "b.jpg")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    # Drei Quoten in einer 50/25/50-Konstellation
+    assert "50.0 %" in out
+    assert "25.0 %" in out
+
+
+def test_text_ausgabe_ohne_objekte_keine_coverage(tmp_path, capsys):
+    """Leere DB: Coverage-Block ausgelassen (Quoten waeren None)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "leer.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
