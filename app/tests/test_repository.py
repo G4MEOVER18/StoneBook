@@ -89,6 +89,61 @@ def test_sort_by_haerte_und_dichte(tmp_path):
     c.close()
 
 
+def test_sort_by_haerte_max_und_dichte_max(tmp_path):
+    """Sortierung nach Mohs-Haerte/Dichte-Obergrenze; NULLs landen am Ende.
+
+    Symmetrie zu test_sort_by_haerte_und_dichte (_min); fuer Sammler-Fragen wie
+    "wer ist robust genug zum Polieren?" (Mohs_Haerte_max-Obergrenze).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hdmax.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_max, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.5, 2.8),   # Calcit-Bereich
+            ("OBJ_0002", 7.5, 2.7),   # Quarz mit Obergrenze
+            ("OBJ_0003", 1.5, 2.4),   # Talk
+            ("OBJ_0004", None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Mohs_Haerte_max")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0001", "OBJ_0002"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Dichte_max_gcm3", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
+def test_sort_by_dimensionen(tmp_path):
+    """Sortierung nach Laenge_mm/Breite_mm/Hoehe_mm fuer Vitrinen-/Schubladen-Auswahl."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "dim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 120.0, 80.0, 40.0),   # gross flach
+            ("OBJ_0002",  60.0, 50.0, 50.0),   # mittel kompakt
+            ("OBJ_0003",  30.0, 20.0, 80.0),   # klein hoch
+            ("OBJ_0004",  None, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Laenge_mm")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Breite_mm", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    rows = repo.list_objects(sort_by="Hoehe_mm", sort_desc=True)
+    # OBJ_0003 hat 80mm Hoehe → vorne; dann OBJ_0002 (50), OBJ_0001 (40)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    c.close()
+
+
 def test_sort_by_kategorie_und_varietaet(tmp_path):
     """Sortierung nach kategorischen Spalten gruppiert Listen visuell.
 

@@ -13,9 +13,15 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     "obj_id", "Name", "Mineral_Primaer", "Varietaet", "Kategorie",
     "Fundort", "status",
     "Confidence_Prozent", "Funddatum", "Gewicht_g",
-    # Physikalische Eigenschaften (untere Bereichsgrenze - relevant fuer
-    # Sammler-Reihenfolgen wie "vom weichsten zum haertesten Stueck").
-    "Mohs_Haerte_min", "Dichte_min_gcm3",
+    # Physikalische Eigenschaften: sowohl untere (``_min``) als auch obere
+    # Bereichsgrenze (``_max``). Sammler-Reihenfolge "vom weichsten zum haertesten"
+    # arbeitet mit _min; "wer hat das robusteste/dichteste Maximum?" mit _max
+    # (z.B. fuer Polier-Auswahl per Mohs-Obergrenze).
+    "Mohs_Haerte_min", "Mohs_Haerte_max",
+    "Dichte_min_gcm3", "Dichte_max_gcm3",
+    # Geometrische Dimensionen fuer Vitrinen-/Schubladen-Auswahl: nach jeder
+    # Achse einzeln sortierbar. Volumen waere idealer, ist aber kein Schema-Feld.
+    "Laenge_mm", "Breite_mm", "Hoehe_mm",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })
