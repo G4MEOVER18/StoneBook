@@ -36,6 +36,20 @@ _APPROX_PREFIX = re.compile(
     r"^(?:ca\.?|circa|approx\.?|approximately|around|about|um|gegen)\s+",
     re.IGNORECASE,
 )
+# Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen
+# ("Mo 13.06.2024", "Donnerstag, 13. Juni 2024", "Thu Jun 13 2024").
+# Voll- und Kurzformen (DE: Mo/Di/Mi/Do/Fr/Sa/So; EN: Mon-Sun) werden gestrippt,
+# samt optionalem trailing ``.`` und Komma. Danach uebernimmt die Rekursion.
+# Zweistellige Kurzform mit Punkt ("Mo.") oder ohne — beides verbreitet.
+_WEEKDAY_PREFIX = re.compile(
+    r"^(?:"
+    r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag"
+    r"|monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+    r"|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun"
+    r"|mo|di|mi|do|fr|sa|so"
+    r")\.?\s*,?\s+",
+    re.IGNORECASE,
+)
 # Trailing time component (T/space getrennt) inkl. optionaler Zonenangabe.
 # Wird vor dem Re-Parsing gestrichen, damit auch "13.06.2024 14:30" funktioniert.
 _TRAILING_TIME = re.compile(
@@ -219,6 +233,14 @@ def parse_iso_date(text) -> str | None:
     # Genau einmal anwenden; die Rekursion uebernimmt das eigentliche Parsing.
     if _APPROX_PREFIX.match(s):
         rest = _APPROX_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_iso_date(rest)
+        return None
+    # Wochentag-Praefix abstreifen ("Mo 13.06.2024" → "13.06.2024"). Wird vor den
+    # uebrigen Patterns geprueft, damit "Donnerstag, 13. Juni 2024" nicht erst
+    # als _DAY_MONTH_YEAR mit "Donnerstag" als Monat versucht wird.
+    if _WEEKDAY_PREFIX.match(s):
+        rest = _WEEKDAY_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_iso_date(rest)
         return None

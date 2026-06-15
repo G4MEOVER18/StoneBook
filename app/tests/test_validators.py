@@ -348,6 +348,36 @@ def test_parse_iso_date_numerisches_monat_jahr():
     assert parse_iso_date("2024/06") == "2024-06-01"
 
 
+def test_parse_iso_date_wochentag_praefix():
+    """Wochentag-Praefixe (DE/EN, lang/kurz) werden gestrippt, Rest re-parst."""
+    # DE Vollform + Komma
+    assert parse_iso_date("Donnerstag, 13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("Montag, 1.1.2020") == "2020-01-01"
+    # DE Kurzform mit/ohne Punkt
+    assert parse_iso_date("Mo 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("Mo. 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("Di 13.6.2024") == "2024-06-13"
+    assert parse_iso_date("Fr 1. Januar 2024") == "2024-01-01"
+    # EN Vollform + Komma
+    assert parse_iso_date("Thursday, June 13, 2024") == "2024-06-13"
+    assert parse_iso_date("Sunday, May 5, 2020") == "2020-05-05"
+    # EN Kurzform
+    assert parse_iso_date("Mon, 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("Thu Jun 13 2024") == "2024-06-13"
+    assert parse_iso_date("Thu 2024-06-13") == "2024-06-13"
+    # Case-insensitive
+    assert parse_iso_date("DONNERSTAG, 13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("mo 13.06.2024") == "2024-06-13"
+    # Wochentag allein → None (kein Datum-Rest)
+    assert parse_iso_date("Donnerstag") is None
+    assert parse_iso_date("Mon") is None
+    # Wochentag + Unsinn → None
+    assert parse_iso_date("Mon 99") is None
+    # Bestehende Datumsangaben ohne Wochentag bleiben gleich (kein Regress)
+    assert parse_iso_date("May 2024") == "2024-05-01"
+    assert parse_iso_date("May 5, 2020") == "2020-05-05"
+
+
 def test_parse_iso_date_bindestrich_separator_mit_monatsname():
     """Bindestrich als Separator zwischen Tag/Monatsname/Jahr (Oracle/Log-Exporte)."""
     # DD-MMM-YYYY (Oracle-Default-Format)
