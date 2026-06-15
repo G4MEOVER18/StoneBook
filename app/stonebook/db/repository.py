@@ -69,6 +69,8 @@ class ObjectRepo:
                      funddatum_max: str | None = None,
                      fundort: str = "",
                      fundort_contains: str = "",
+                     name_contains: str = "",
+                     notizen_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      gewicht_min: float | None = None,
@@ -175,6 +177,17 @@ class ObjectRepo:
             # LIKE ist case-insensitive fuer ASCII; fuer Umlaute reicht das in der CH-Praxis aus.
             where.append("o.Fundort LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(fundort_contains) + "%")
+        # Substring-Filter ueber Name (Bezeichnung) und notizen (Freitext); LIKE-Metas
+        # werden escapet, sodass z.B. "_42" wortwoertlich trifft. Volltext-Suche
+        # ueber FTS gibt es bereits via ``search`` -- diese Filter sind die schlanke
+        # Alternative, ohne MATCH-Syntax und mit garantiertem Substring-Match (FTS5
+        # tokenisiert; "Mineral_42" wuerde dort nicht direkt als ein Token treffen).
+        if name_contains:
+            where.append("o.Name LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(name_contains) + "%")
+        if notizen_contains:
+            where.append("o.notizen LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(notizen_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))

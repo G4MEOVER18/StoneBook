@@ -553,6 +553,69 @@ def test_fundort_contains_escaped_metacharacters(tmp_path):
     c.close()
 
 
+def test_name_contains_filter(tmp_path):
+    """Substring-Filter ueber Name (Bezeichnung); LIKE-Metazeichen werden escapet."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Rauchquarz aus Davos"),
+            ("OBJ_0002", "Bergkristall aus Davos"),
+            ("OBJ_0003", "Calcit-Drusenstueck"),
+            ("OBJ_0004", "Mine_42 Probe"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring-Match
+    rows = repo.list_objects(name_contains="Davos")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(name_contains="calcit")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Metazeichen wortwoertlich (_ wird nicht als beliebiges Zeichen interpretiert)
+    rows = repo.list_objects(name_contains="Mine_4")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    rows = repo.list_objects(name_contains="MineX4")
+    assert rows == []
+    # NULL Name fliegt automatisch raus (LIKE-Match liefert NULL)
+    rows = repo.list_objects(name_contains="x")
+    assert all(r["obj_id"] != "OBJ_0005" for r in rows)
+    c.close()
+
+
+def test_notizen_contains_filter(tmp_path):
+    """Substring-Filter ueber notizen-Freitext (Sammlungs-Anmerkungen)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nz.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, notizen) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Vom Vater geerbt 1985."),
+            ("OBJ_0002", "Gefunden im Bachbett.\nMit UV-Lampe getestet."),
+            ("OBJ_0003", None),
+            ("OBJ_0004", "Sonderprobe 100% rein."),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Einfacher Substring-Match
+    rows = repo.list_objects(notizen_contains="Vater")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Findet Eintraege mit eingebetteten Zeilenumbruechen
+    rows = repo.list_objects(notizen_contains="UV-Lampe")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Metazeichen wortwoertlich (% wird nicht als Wildcard interpretiert)
+    rows = repo.list_objects(notizen_contains="100%")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # Kombinierbar mit anderen Filtern
+    rows = repo.list_objects(notizen_contains="geerbt", has_notizen=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
 def test_varietaet_und_gesteinsart_filter(tmp_path):
     """Strukturierter Filter fuer Varietaet und Gesteinsart (exakter Match)."""
     from stonebook.db.database import open_db
