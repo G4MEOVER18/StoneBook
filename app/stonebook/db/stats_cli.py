@@ -1,0 +1,90 @@
+"""CLI fuer Sammlungs-Kennzahlen.
+
+Beispiele:
+    python -m stonebook.db.stats_cli                     # Default-DB, Text
+    python -m stonebook.db.stats_cli --json              # JSON-Ausgabe
+    python -m stonebook.db.stats_cli --db <pfad>
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from stonebook.db.database import connect
+from stonebook.db.stats import Statistik, compute_statistics
+
+
+def _default_db_file() -> Path:
+    return Path(__file__).resolve().parents[3] / "data" / "db" / "stonebook.sqlite3"
+
+
+def _format_text(st: Statistik) -> str:
+    lines = [
+        "Sammlungs-Uebersicht",
+        "====================",
+        f"Objekte gesamt:        {st.objekte_total}",
+        f"  aktiv:               {st.objekte_aktiv}",
+        f"  platzhalter:         {st.objekte_platzhalter}",
+        f"  archiviert:          {st.objekte_archiviert}",
+        f"Bilder:                {st.bilder_total} "
+        f"(in {st.objekte_mit_bildern} Objekten)",
+        f"Aliase (Merges):       {st.aliase_total}",
+        f"Mineral-Arten:         {st.mineral_arten_total}",
+        f"Fundorte:              {st.fundorte_total}",
+        "",
+        f"Wert (Summe, CHF):     {st.wert_summe_chf:,.0f}",
+        f"  davon Roh:           {st.wert_roh_summe_chf:,.0f}",
+        f"  Objekte mit Wert:    {st.objekte_mit_wert}",
+        f"  Maximaler Einzelwert:{st.wert_max_chf:,.0f}",
+        f"Gewicht (Summe, g):    {st.gewicht_summe_g:,.1f}",
+        f"  Objekte mit Gewicht: {st.objekte_mit_gewicht}",
+    ]
+    if st.durchschnitt_confidence_prozent is not None:
+        lines.append(
+            f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
+    if st.by_mineral:
+        lines += ["", "Top-Minerale:"]
+        for name, n in list(st.by_mineral.items())[:10]:
+            lines.append(f"  {name:40s} {n}")
+    if st.by_fundort:
+        lines += ["", "Top-Fundorte:"]
+        for name, n in list(st.by_fundort.items())[:10]:
+            lines.append(f"  {name:40s} {n}")
+    return "\n".join(lines)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="python -m stonebook.db.stats_cli",
+        description="Gibt aggregierte StoneBook-Kennzahlen aus.",
+    )
+    p.add_argument("--db", type=Path, default=None,
+                   help="Pfad zur SQLite-DB (Default: <repo>/data/db/stonebook.sqlite3).")
+    p.add_argument("--json", action="store_true",
+                   help="Gibt das vollstaendige Statistik-Objekt als JSON aus.")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+    db_file = args.db if args.db else _default_db_file()
+    if not db_file.is_file():
+        print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
+        return 2
+    conn = connect(db_file)
+    try:
+        st = compute_statistics(conn)
+    finally:
+        conn.close()
+    if args.json:
+        json.dump(st.as_dict(), sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    else:
+        print(_format_text(st))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
