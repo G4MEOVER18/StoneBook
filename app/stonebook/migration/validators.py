@@ -81,18 +81,20 @@ _MONTH_NAMES: dict[str, int] = {
     "november": 11, "nov": 11,
     "dezember": 12, "december": 12, "dez": 12, "dec": 12,
 }
-# "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024" / "13/Jun/2024"
-# Separator zwischen den Teilen: Punkt, Slash, oder reines Whitespace.
-# Optionales englisches Tag-Ordinal-Suffix ``st|nd|rd|th`` nach der Tagzahl
-# ("1st June 2024", "31st May 2024") - in englischen Foto-Captions verbreitet.
+# "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024" / "13/Jun/2024" / "13-Jun-2024"
+# Separator zwischen den Teilen: Punkt, Slash, Bindestrich, oder reines Whitespace.
+# Bindestrich-Form "DD-MMM-YYYY" ist verbreitet in Oracle-/Log-/Datenbank-Exporten
+# ("01-JAN-2024"). Optionales englisches Tag-Ordinal-Suffix ``st|nd|rd|th`` nach
+# der Tagzahl ("1st June 2024", "31st May 2024") - in englischen Foto-Captions
+# verbreitet.
 _DAY_MONTH_YEAR = re.compile(
-    r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s*[./]?\s*([A-Za-zÄÖÜäöü]+)\s*[./]?\s*(\d{4})\s*$",
+    r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s*[./\-]?\s*([A-Za-zÄÖÜäöü]+)\s*[./\-]?\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Englische Reihenfolge "Jun 13, 2024" / "June 13 2024" / "Jun. 13, 2024" / "Jun/13/2024"
-# Tag-Ordinal "March 1st, 2024" wird ebenfalls akzeptiert.
+# / "Jun-13-2024". Tag-Ordinal "March 1st, 2024" wird ebenfalls akzeptiert.
 _ENGLISH_MONTH_DAY_YEAR = re.compile(
-    r"^\s*([A-Za-z]+)\s*[./]?\s*(\d{1,2})(?:st|nd|rd|th)?\s*[,/]?\s*(\d{4})\s*$",
+    r"^\s*([A-Za-z]+)\s*[./\-]?\s*(\d{1,2})(?:st|nd|rd|th)?\s*[,/\-]?\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
 # "Juni 2024" / "Juni, 2024" / "Juni/2024"

@@ -348,6 +348,30 @@ def test_parse_iso_date_numerisches_monat_jahr():
     assert parse_iso_date("2024/06") == "2024-06-01"
 
 
+def test_parse_iso_date_bindestrich_separator_mit_monatsname():
+    """Bindestrich als Separator zwischen Tag/Monatsname/Jahr (Oracle/Log-Exporte)."""
+    # DD-MMM-YYYY (Oracle-Default-Format)
+    assert parse_iso_date("01-Jun-2024") == "2024-06-01"
+    assert parse_iso_date("13-Jun-2024") == "2024-06-13"
+    assert parse_iso_date("31-Dez-1999") == "1999-12-31"
+    # Deutsche Vollform
+    assert parse_iso_date("13-Juni-2024") == "2024-06-13"
+    # GROSSGESCHRIEBEN (Oracle TO_CHAR-Default)
+    assert parse_iso_date("01-JAN-2024") == "2024-01-01"
+    assert parse_iso_date("31-DEC-2024") == "2024-12-31"
+    # Englische Reihenfolge MMM-DD-YYYY
+    assert parse_iso_date("Jun-13-2024") == "2024-06-13"
+    assert parse_iso_date("June-13-2024") == "2024-06-13"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("13/Jun/2024") == "2024-06-13"
+    # 2-stellige Jahresangaben weiterhin nicht akzeptiert (zu mehrdeutig)
+    assert parse_iso_date("01-Jun-99") is None
+    # Unbekannter Monat / Jahr ausserhalb 1800-2999
+    assert parse_iso_date("01-Foo-2024") is None
+    assert parse_iso_date("01-Jun-1700") is None
+
+
 def test_parse_iso_date_slash_separator_mit_monatsname():
     """Slash als Separator zwischen Tag/Monatsname/Jahr (gaengig in Exports)."""
     # DD/Mon/YYYY
