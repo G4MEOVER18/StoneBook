@@ -65,6 +65,61 @@ def test_sort_by_erstellt_am_desc(tmp_path):
     c.close()
 
 
+def test_sort_by_haerte_und_dichte(tmp_path):
+    """Sortierung nach Mohs-Haerte/Dichte-Untergrenze; NULLs landen am Ende."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hd.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Dichte_min_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.5, 2.7),   # Calcit
+            ("OBJ_0002", 7.0, 2.6),   # Quarz
+            ("OBJ_0003", 1.0, 2.3),   # Talk
+            ("OBJ_0004", None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Mohs_Haerte_min")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0001", "OBJ_0002"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Dichte_min_gcm3", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
+def test_sort_by_kategorie_und_varietaet(tmp_path):
+    """Sortierung nach kategorischen Spalten gruppiert Listen visuell.
+
+    list_objects gibt nur eine SELECT-Untermenge zurueck (Kategorie/Varietaet
+    sind nicht enthalten); die Reihenfolge wird daher ueber obj_id geprueft -
+    OBJ_id-Belegung ist so gewaehlt, dass die alphabetische Sortierung eindeutig
+    eine bestimmte obj_id-Reihenfolge erzeugt.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "kv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Varietaet) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Handstueck", "Jaspis"),
+            ("OBJ_0002", "Kristall", "Bergkristall"),
+            ("OBJ_0003", "Geroell", "Achat"),
+            ("OBJ_0004", "Handstueck", "Achat"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Kategorie aufsteigend: Geroell (OBJ_0003), Handstueck (OBJ_0001, OBJ_0004),
+    # Kristall (OBJ_0002). Stabile Zweitsortierung nach obj_id macht die Mitte deterministisch.
+    rows = repo.list_objects(sort_by="Kategorie")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0001", "OBJ_0004", "OBJ_0002"]
+    # Varietaet aufsteigend: Achat (OBJ_0003, OBJ_0004), Bergkristall (OBJ_0002), Jaspis (OBJ_0001).
+    rows = repo.list_objects(sort_by="Varietaet")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004", "OBJ_0002", "OBJ_0001"]
+    c.close()
+
+
 def test_min_confidence_filter(repo):
     rows = repo.list_objects(min_confidence=70)
     assert rows

@@ -10,8 +10,12 @@ VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
-    "obj_id", "Name", "Mineral_Primaer", "Fundort", "status",
+    "obj_id", "Name", "Mineral_Primaer", "Varietaet", "Kategorie",
+    "Fundort", "status",
     "Confidence_Prozent", "Funddatum", "Gewicht_g",
+    # Physikalische Eigenschaften (untere Bereichsgrenze - relevant fuer
+    # Sammler-Reihenfolgen wie "vom weichsten zum haertesten Stueck").
+    "Mohs_Haerte_min", "Dichte_min_gcm3",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })
