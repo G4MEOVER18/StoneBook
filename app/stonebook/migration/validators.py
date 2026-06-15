@@ -231,6 +231,40 @@ _COORD_LABEL = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# Vollnamen der Himmelsrichtungen (DE/EN) werden vor dem Pattern-Matching auf
+# die Ein-Buchstaben-Form reduziert, mit der _DMS/_DECIMAL_PAIR/_PREFIX_PAIR
+# arbeitet. Verbreitet in GPS-Logs/Foto-Captions: ``"North 46.5, East 7.5"``,
+# ``"Nord 46.5°, Ost 7.5°"``, ``"Norden 46.5 Osten 7.5"``.
+# DE-Vollformen mit -en-Suffix (``Norden``/``Sueden``/``Osten``/``Westen``)
+# sind im Sammler-Sprachgebrauch ueblich; ``Sued`` bleibt mit Umlaut-Normalisierung.
+_DIRECTION_WORD = re.compile(
+    r"\b(?:"
+    r"north|south|east|west"
+    r"|nord(?:en)?|sued(?:en)?|s[uü]d(?:en)?|ost(?:en)?|west(?:en)?"
+    r")\b\.?",
+    re.IGNORECASE,
+)
+_DIRECTION_LETTER: dict[str, str] = {
+    "n": "N", "north": "N", "nord": "N", "norden": "N",
+    "s": "S", "south": "S",
+    "sued": "S", "sueden": "S", "süd": "S", "süden": "S",
+    "e": "E", "east": "E",
+    "o": "O", "ost": "O", "osten": "O",
+    "w": "W", "west": "W", "westen": "W",
+}
+
+
+def _normalize_direction_words(text: str) -> str:
+    """Reduziert Vollnamen der Himmelsrichtungen auf die Ein-Buchstaben-Form (N/S/E/W/O).
+
+    DMS/_DECIMAL_PAIR/_PREFIX_PAIR erwarten Einzelbuchstaben; volle Worte aus
+    Foto-Captions oder GPS-Logs ("North 46.5", "Nord 46.5°", "Osten 7.5") wuerden
+    sonst nicht matchen. Eingaben ohne Vollnamen bleiben unveraendert.
+    """
+    def _replace(m: re.Match) -> str:
+        key = m.group(0).rstrip(".").lower()
+        return _DIRECTION_LETTER.get(key, m.group(0))
+    return _DIRECTION_WORD.sub(_replace, text)
 
 
 def parse_iso_date(text) -> str | None:
@@ -459,6 +493,10 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         s = _COORD_LABEL.sub(" ", s).strip()
         if not s:
             return None
+    # Vollnamen der Himmelsrichtungen ("North"/"Nord"/"Osten" ...) auf die Ein-
+    # Buchstaben-Form normalisieren, damit die Patterns weiter unten greifen.
+    # Reine N/S/E/W/O-Eingaben bleiben unveraendert.
+    s = _normalize_direction_words(s)
 
     dms_hits = _DMS.findall(s)
     if len(dms_hits) >= 2:

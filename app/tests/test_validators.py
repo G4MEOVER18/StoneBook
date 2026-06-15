@@ -638,6 +638,36 @@ def test_parse_coordinates_mit_labels():
     assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_himmelsrichtung_vollnamen():
+    """Vollnamen der Himmelsrichtungen (DE/EN) werden auf N/S/E/W/O reduziert."""
+    # Deutsch (Praefix-Form)
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Norden 46.5, Osten 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("Sueden 46.5, Westen 7.5") == (-46.5, -7.5)
+    # Umlaute (Süd/Süden)
+    assert parse_coordinates("Süd 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("Süden 46.5, Westen 7.5") == (-46.5, -7.5)
+    # Englisch (Praefix-Form)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("South 46.5, West 7.5") == (-46.5, -7.5)
+    # Mixed-Sprache (kommt in geerbten Sammlungs-Notizen vor)
+    assert parse_coordinates("North 46.5, Ost 7.5") == (46.5, 7.5)
+    # Decimal-Suffix-Form ("46.5° North, 7.5° East")
+    assert parse_coordinates("46.5° North, 7.5° East") == (46.5, 7.5)
+    assert parse_coordinates("46.5° Nord, 7.5° Ost") == (46.5, 7.5)
+    # Case-insensitive
+    assert parse_coordinates("NORTH 46.5, EAST 7.5") == (46.5, 7.5)
+    assert parse_coordinates("nord 46.5, ost 7.5") == (46.5, 7.5)
+    # Mit trailing Punkt nach Kurzform
+    assert parse_coordinates("Nord. 46.5, Ost. 7.5") == (46.5, 7.5)
+    # Mit Labels kombiniert (Reihenfolge: erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: North 46.5, Lon: East 7.5") == (46.5, 7.5)
+    # Einzelbuchstaben weiter funktionierend (kein Regress)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None
