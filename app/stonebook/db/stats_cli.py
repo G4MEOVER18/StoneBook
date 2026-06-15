@@ -143,6 +143,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Fundort (g):"]
         for ort, gewicht in st.gewicht_pro_fundort[:top]:
             lines.append(f"  {ort:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_kategorie:
+        # Spiegelbild zu wert_pro_kategorie: welche Objekt-Kategorie dominiert
+        # gewichtsmaessig? Grosse Handstuecke vs. viele kleine Kristalle werden
+        # so sichtbar, auch wenn der monetaere Wert vergleichbar bleibt.
+        lines += ["", "Gewicht pro Kategorie (g):"]
+        for kat, gewicht in st.gewicht_pro_kategorie[:top]:
+            lines.append(f"  {kat:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 

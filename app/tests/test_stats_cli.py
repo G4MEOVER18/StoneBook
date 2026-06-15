@@ -463,6 +463,47 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_fundort_zeile(tmp_path, cap
     assert "Gewicht pro Fundort" not in out
 
 
+def test_text_ausgabe_zeigt_gewicht_pro_kategorie(tmp_path, capsys):
+    """Gewicht-pro-Kategorie-Block summiert g pro Objekt-Kategorie und sortiert absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpk.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Handstueck", 600.0),   # Handstueck 1000
+            ("OBJ_0002", "Handstueck", 400.0),
+            ("OBJ_0003", "Kristall",   150.0),   # Kristall   150
+            ("OBJ_0004", "Geroell",     10.0),   # Geroell     10
+            ("OBJ_0005", "Geroell",   None),     # NULL zaehlt nicht
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Kategorie (g):" in out
+    # Reihenfolge absteigend: Handstueck (1000), Kristall (150), Geroell (10)
+    block = out.split("Gewicht pro Kategorie (g):", 1)[1]
+    assert block.index("Handstueck") < block.index("Kristall") < block.index("Geroell")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_kategorie_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Gewicht-pro-Kategorie-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpk0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [("OBJ_0001", "Handstueck"), ("OBJ_0002", "Kristall")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Kategorie" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
