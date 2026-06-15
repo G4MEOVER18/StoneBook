@@ -102,6 +102,57 @@ def test_text_ausgabe_ohne_werte_keine_top_listen(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Top-Wertobjekte" not in out
     assert "Top-Gewichtsobjekte" not in out
+    assert "Top-Foto-Objekte" not in out
+
+
+def test_text_ausgabe_zeigt_top_bilder_objekte(tmp_path, capsys):
+    """Top-Foto-Objekte erscheinen mit Objekt + Bildanzahl absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "EinFoto"),
+            ("OBJ_0002", "DreiFotos"),
+            ("OBJ_0003", "OhneFoto"),
+        ],
+    )
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        [
+            # rel_path muss pro DB einzigartig sein (UNIQUE constraint)
+            ("OBJ_0001", "uebersicht", "OBJ_0001/u.jpg"),
+            ("OBJ_0002", "uebersicht", "OBJ_0002/u.jpg"),
+            ("OBJ_0002", "kamera",     "OBJ_0002/k.jpg"),
+            ("OBJ_0002", "mikroskop",  "OBJ_0002/m.jpg"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Foto-Objekte (Bilder):" in out
+    block = out.split("Top-Foto-Objekte (Bilder):", 1)[1]
+    # DreiFotos kommt vor EinFoto; OhneFoto erscheint nicht (HAVING n > 0)
+    assert block.index("DreiFotos") < block.index("EinFoto")
+    assert "OhneFoto" not in block
+
+
+def test_text_ausgabe_ohne_bilder_keine_top_foto_objekte_zeile(tmp_path, capsys):
+    """Ohne irgendwelche Bilder erscheint der Top-Foto-Objekte-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tb0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+        [("OBJ_0001", "A"), ("OBJ_0002", "B")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Foto-Objekte" not in out
 
 
 def test_text_ausgabe_zeigt_durchschnitt_und_median_wert_gewicht(tmp_path, capsys):

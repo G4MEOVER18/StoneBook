@@ -1131,6 +1131,92 @@ def test_top_gewicht_objekte_leer(tmp_path):
     c.close()
 
 
+def test_top_bilder_objekte_aus_seed_db(tmp_path):
+    """Best-fotografierte Objekte absteigend nach Bildanzahl (Objekte ohne Foto ignoriert)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tb.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name) VALUES (?,?)",
+        [
+            ("OBJ_0001", "EinFoto"),
+            ("OBJ_0002", "DreiFotos"),
+            ("OBJ_0003", "FuenfFotos"),
+            ("OBJ_0004", "OhneFoto"),
+        ],
+    )
+    # Verschiedene Foto-Kategorien (die zaehlen alle gleich fuer top_bilder).
+    # rel_path muss pro DB einzigartig sein (UNIQUE constraint), daher obj_id-praefix.
+    image_rows = [
+        ("OBJ_0001", "uebersicht", "OBJ_0001/uebersicht.jpg"),
+        ("OBJ_0002", "uebersicht", "OBJ_0002/u.jpg"),
+        ("OBJ_0002", "kamera",     "OBJ_0002/k.jpg"),
+        ("OBJ_0002", "mikroskop",  "OBJ_0002/m.jpg"),
+        ("OBJ_0003", "uebersicht", "OBJ_0003/u.jpg"),
+        ("OBJ_0003", "kamera",     "OBJ_0003/k.jpg"),
+        ("OBJ_0003", "mikroskop",  "OBJ_0003/m.jpg"),
+        ("OBJ_0003", "uv_365nm",   "OBJ_0003/uv.jpg"),
+        ("OBJ_0003", "sonder",     "OBJ_0003/s.jpg"),
+    ]
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        image_rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.top_bilder_objekte == [
+        ("OBJ_0003", "FuenfFotos", 5),
+        ("OBJ_0002", "DreiFotos", 3),
+        ("OBJ_0001", "EinFoto", 1),
+    ]
+    # JSON-Form bleibt mit int erhalten (kein float-Rounding)
+    d = st.as_dict()
+    assert d["top_bilder_objekte"] == [
+        ("OBJ_0003", "FuenfFotos", 5),
+        ("OBJ_0002", "DreiFotos", 3),
+        ("OBJ_0001", "EinFoto", 1),
+    ]
+    c.close()
+
+
+def test_top_bilder_objekte_limit_respektiert(tmp_path):
+    """top_bilder=3 schneidet die Top-3 ab; sonst werden bis zu top_bilder Eintraege geliefert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tb_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [(f"OBJ_{i:04d}",) for i in range(1, 8)],
+    )
+    # OBJ_n bekommt n Bilder (n=1..7)
+    image_rows = [
+        (f"OBJ_{i:04d}", "uebersicht", f"u{i}_{j}.jpg")
+        for i in range(1, 8) for j in range(1, i + 1)
+    ]
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?,?,?)",
+        image_rows,
+    )
+    c.commit()
+    st = compute_statistics(c, top_bilder=3)
+    assert len(st.top_bilder_objekte) == 3
+    zahlen = [n for _, _, n in st.top_bilder_objekte]
+    assert zahlen == [7, 6, 5]
+    c.close()
+
+
+def test_top_bilder_objekte_leer(tmp_path):
+    """Ohne Bilder bleibt die Liste leer (HAVING n > 0 schliesst Null-Eintraege aus)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.top_bilder_objekte == []
+    c.close()
+
+
 def test_by_beste_verwendung_aus_seed_db(tmp_path):
     """Verteilung nach 'Beste Verwendung' (Enum); leere Werte ignoriert."""
     from stonebook.db.database import open_db

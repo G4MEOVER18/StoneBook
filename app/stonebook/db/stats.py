@@ -48,6 +48,7 @@ class Statistik:
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
+    top_bilder_objekte: list[tuple[str, str, int]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
@@ -119,6 +120,9 @@ class Statistik:
             ],
             "top_gewicht_objekte": [
                 (oid, name, round(g, 2)) for oid, name, g in self.top_gewicht_objekte
+            ],
+            "top_bilder_objekte": [
+                (oid, name, int(n)) for oid, name, n in self.top_bilder_objekte
             ],
             "wert_pro_mineral": [
                 (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
@@ -314,7 +318,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_fundort: int = 10,
                        top_wert_kategorie: int = 10,
                        top_gewicht_kategorie: int = 10,
-                       top_gewicht: int = 10) -> Statistik:
+                       top_gewicht: int = 10,
+                       top_bilder: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -440,6 +445,18 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             "WHERE Gewicht_g IS NOT NULL AND Gewicht_g > 0 "
             "ORDER BY g DESC, obj_id LIMIT ?",
             (int(top_gewicht),),
+        ).fetchall()
+    ]
+    # Best-fotografierte Objekte (analog top_wert/top_gewicht): zeigt, welche Stuecke
+    # die hoechste Bilder-Coverage haben. Aggregiert ueber alle Foto-Kategorien.
+    st.top_bilder_objekte = [
+        (r["obj_id"], r["Name"] or "", int(r["n"]))
+        for r in conn.execute(
+            "SELECT o.obj_id AS obj_id, o.Name AS Name, COUNT(i.id) AS n "
+            "FROM objects o JOIN images i ON i.obj_id = o.obj_id "
+            "GROUP BY o.obj_id, o.Name HAVING n > 0 "
+            "ORDER BY n DESC, o.obj_id LIMIT ?",
+            (int(top_bilder),),
         ).fetchall()
     ]
     st.wert_pro_mineral = _sum_by(conn, "Mineral_Primaer", wert_sql, top_wert_mineral)

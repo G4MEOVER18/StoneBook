@@ -131,6 +131,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         for oid, name, gewicht in st.top_gewicht_objekte[:top]:
             label = f"{oid} {name}".strip()
             lines.append(f"  {label:40s} {gewicht:>12,.1f}")
+    if st.top_bilder_objekte:
+        # Foto-Coverage pro Objekt: zeigt, welche Stuecke fotografisch am besten
+        # dokumentiert sind. Komplementaer zu objekte_mit_bildern (Anzahl): nur
+        # weil ein Objekt EIN Foto hat, ist es nicht gut dokumentiert; hier wird
+        # die Spreizung sichtbar (5 Kategorien vs. nur Uebersicht).
+        lines += ["", "Top-Foto-Objekte (Bilder):"]
+        for oid, name, n in st.top_bilder_objekte[:top]:
+            label = f"{oid} {name}".strip()
+            lines.append(f"  {label:40s} {n:>12d}")
     if st.wert_pro_mineral:
         # Beantwortet "Welcher Mineraltyp ist insgesamt am wertvollsten?"
         # (komplementaer zu top_wert_objekte, das das wertvollste Einzelstueck zeigt).
@@ -222,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
             top_wert_mineral=args.top, top_gewicht_mineral=args.top,
             top_wert_fundort=args.top, top_gewicht_fundort=args.top,
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
-            top_gewicht=args.top)
+            top_gewicht=args.top, top_bilder=args.top)
     finally:
         conn.close()
     if args.json:
