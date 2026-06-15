@@ -659,6 +659,45 @@ def test_mineral_contains_filter(tmp_path):
     c.close()
 
 
+def test_varietaet_contains_filter(tmp_path):
+    """Substring-Filter ueber Varietaet findet Familien-Varianten (Jaspis-Klan)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Roter Jaspis"),
+            ("OBJ_0002", "Bunter Jaspis"),
+            ("OBJ_0003", "Milchquarz"),
+            ("OBJ_0004", "Mine_4 Probe"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring matched alle Jaspis-Eintraege
+    rows = repo.list_objects(varietaet_contains="Jaspis")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(varietaet_contains="jaspis")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Andere Varietaet
+    rows = repo.list_objects(varietaet_contains="quarz")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Metazeichen wortwoertlich (_ wird nicht als beliebiges Zeichen interpretiert)
+    rows = repo.list_objects(varietaet_contains="Mine_4")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    rows = repo.list_objects(varietaet_contains="MineX4")
+    assert rows == []
+    # NULL Varietaet fliegt automatisch raus
+    rows = repo.list_objects(varietaet_contains="z")
+    assert all(r["obj_id"] != "OBJ_0005" for r in rows)
+    # Kombinierbar mit exaktem varietaet-Filter (Schnittmenge)
+    rows = repo.list_objects(varietaet_contains="Jaspis", varietaet="Roter Jaspis")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
 def test_varietaet_und_gesteinsart_filter(tmp_path):
     """Strukturierter Filter fuer Varietaet und Gesteinsart (exakter Match)."""
     from stonebook.db.database import open_db

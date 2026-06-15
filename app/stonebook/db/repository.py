@@ -79,6 +79,7 @@ class ObjectRepo:
                      kristallsystem: str = "",
                      beste_verwendung: str = "",
                      varietaet: str = "",
+                     varietaet_contains: str = "",
                      gesteinsart: str = "",
                      sort_by: str | None = None,
                      sort_desc: bool = False) -> list[sqlite3.Row]:
@@ -217,6 +218,12 @@ class ObjectRepo:
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)
+        if varietaet_contains:
+            # Substring-Filter ueber Varietaet: findet Familien wie "Jaspis" (Roter Jaspis,
+            # Bunter Jaspis, Brekzien-Jaspis) ohne Kenntnis der exakten Notation.
+            # Komplementaer zum exakten ``varietaet``-Filter (Dropdown-Auswahl).
+            where.append("o.Varietaet LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(varietaet_contains) + "%")
         if gesteinsart:
             where.append("o.Gesteinsart = ?")
             params.append(gesteinsart)
