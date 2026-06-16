@@ -14,6 +14,11 @@ VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"
 VALID_KRISTALLSYSTEME: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Kristallsystem"].enum_values if v
 )
+# Analog: gueltige Beste-Verwendung-Werte aus dem Feldwoerterbuch (ohne Default).
+# Trennt den Mengenfilter (z.B. "Schmuck ODER Sammlung") sauber von Freitext.
+VALID_BESTE_VERWENDUNG: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Beste_Verwendung"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -100,6 +105,7 @@ class ObjectRepo:
                      kristallsystem: str = "",
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
+                     beste_verwendung_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
                      varietaet_contains: str = "",
                      gesteinsart: str = "",
@@ -287,6 +293,21 @@ class ObjectRepo:
         if beste_verwendung:
             where.append("o.Beste_Verwendung = ?")
             params.append(beste_verwendung)
+        # beste_verwendung_in: Mengen-Filter ("Schmuck ODER Sammlung", aber nicht
+        # Industrie/Talisman). Spiegelt status_in / kristallsystem_in: validiert
+        # gegen VALID_BESTE_VERWENDUNG, damit Tippfehler einen klaren Fehler
+        # statt eines stillen Leerergebnisses erzeugen.
+        if beste_verwendung_in:
+            uses = [v for v in beste_verwendung_in if v]
+            invalid = [v for v in uses if v not in VALID_BESTE_VERWENDUNG]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Beste_Verwendung-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_BESTE_VERWENDUNG)})")
+            if uses:
+                placeholders = ", ".join("?" * len(uses))
+                where.append(f"o.Beste_Verwendung IN ({placeholders})")
+                params.extend(uses)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)

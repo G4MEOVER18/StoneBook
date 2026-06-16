@@ -814,6 +814,46 @@ def test_kristallsystem_in_filter(tmp_path):
     c.close()
 
 
+def test_beste_verwendung_in_filter(tmp_path):
+    """beste_verwendung_in akzeptiert Mengen ('Schmuck ODER Sammlung'); Tippfehler werfen ValueError."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bvi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Schmuck"),
+            ("OBJ_0002", "Sammlung"),
+            ("OBJ_0003", "Industrie"),
+            ("OBJ_0004", "Schmuck"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter Schmuck ODER Sammlung (Sammler-typische Frage)
+    rows = repo.list_objects(beste_verwendung_in=["Schmuck", "Sammlung"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie beste_verwendung=
+    rows = repo.list_objects(beste_verwendung_in=["Industrie"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(beste_verwendung_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(beste_verwendung_in=("Schmuck",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit beste_verwendung= (Schnittmenge)
+    rows = repo.list_objects(
+        beste_verwendung="Schmuck",
+        beste_verwendung_in=["Schmuck", "Sammlung"],
+    )
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Beste_Verwendung-Werte"):
+        repo.list_objects(beste_verwendung_in=["Goldschmuck"])
+    c.close()
+
+
 def test_has_und_missing_image_kategorie_filter(tmp_path):
     """Foto-Workflow: finde Objekte mit/ohne Bild einer bestimmten Bild-Kategorie."""
     from stonebook.db.database import open_db
