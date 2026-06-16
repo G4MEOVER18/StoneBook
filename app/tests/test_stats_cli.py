@@ -504,6 +504,46 @@ def test_text_ausgabe_ohne_funddatum_keine_jahrzehnt_zeile(tmp_path, capsys):
     assert "Funde pro Jahrzehnt:" not in out
 
 
+def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
+    """Monats-Block liegt unter Jahr/Jahrzehnt und gibt 01..12 chronologisch aus."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2020-07-15"),
+            ("OBJ_0002", "2021-07-20"),
+            ("OBJ_0003", "2022-08-10"),
+            ("OBJ_0004", "2023-12-05"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Monat:" in out
+    block = out.split("Funde pro Monat:", 1)[1]
+    # Aufsteigend nach Monatsziffer: 07 -> 08 -> 12
+    assert block.index("07") < block.index("08") < block.index("12")
+
+
+def test_text_ausgabe_ohne_funddatum_keine_monat_zeile(tmp_path, capsys):
+    """Ohne gueltige Funddaten erscheint auch der Monats-Block nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", ""), ("OBJ_0003", "2024")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Monat:" not in out
+
+
 def test_text_ausgabe_zeigt_objekte_pro_kategorie(tmp_path, capsys):
     """Objekte-pro-Kategorie-Block zaehlt absteigend nach Anzahl."""
     from stonebook.db.database import open_db

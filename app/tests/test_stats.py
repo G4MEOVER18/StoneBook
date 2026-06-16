@@ -259,6 +259,68 @@ def test_by_funddatum_jahr_leer(tmp_path):
     c.close()
 
 
+def test_by_funddatum_monat_aus_seed_db(tmp_path):
+    """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "monat.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            # Juli: 3x (verschiedene Jahre, gleicher Monat)
+            ("OBJ_0001", "2020-07-15"),
+            ("OBJ_0002", "2021-07-20"),
+            ("OBJ_0003", "2024-07-01"),
+            # August: 2x
+            ("OBJ_0004", "2022-08-10"),
+            ("OBJ_0005", "2024-08-31"),
+            # Dezember: 1x (z.B. Mineralienboerse)
+            ("OBJ_0006", "2023-12-05"),
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0007", ""),
+            ("OBJ_0008", None),
+            ("OBJ_0009", "Fruehling"),
+            ("OBJ_0010", "2024"),         # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Monatsziffer, Monate ohne Treffer fehlen
+    assert list(st.by_funddatum_monat.items()) == [
+        ("07", 3), ("08", 2), ("12", 1),
+    ]
+    assert st.as_dict()["by_funddatum_monat"] == {"07": 3, "08": 2, "12": 1}
+    c.close()
+
+
+def test_by_funddatum_monat_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (z.B. aus kaputten Importen) faellt aus dem Histogramm."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "monat_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_monat == {"07": 1}
+    c.close()
+
+
+def test_by_funddatum_monat_leer(tmp_path):
+    """Ohne gueltige Funddaten ist die Monatsverteilung leer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_monat == {}
+    c.close()
+
+
 def test_funddatum_spanne_aus_seed_db(tmp_path):
     """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
     from stonebook.db.database import open_db

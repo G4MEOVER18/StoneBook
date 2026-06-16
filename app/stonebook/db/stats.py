@@ -37,6 +37,7 @@ class Statistik:
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
+    by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
     funddatum_frueheste: str | None = None
     funddatum_spaeteste: str | None = None
@@ -111,6 +112,7 @@ class Statistik:
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
+            "by_funddatum_monat": dict(self.by_funddatum_monat),
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
             "funddatum_frueheste": self.funddatum_frueheste,
             "funddatum_spaeteste": self.funddatum_spaeteste,
@@ -230,6 +232,31 @@ def _count_funddatum_jahr(conn: sqlite3.Connection, limit: int | None = None) ->
         pairs = pairs[:int(limit)]
         pairs.sort(key=lambda p: p[0])
     return {j: n for j, n in pairs}
+
+
+def _count_funddatum_monat(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Monat (01..12), ueber alle Jahre aggregiert.
+
+    Komplementaer zu :func:`_count_funddatum_jahr` (chronologisch) und
+    :func:`_count_funddatum_jahrzehnt` (Dekaden): zeigt die Saison-Verteilung
+    eines Sammler-Lebens - typisch sind Spitzen in Juli/August (Berg-Saison)
+    und Dezember (Mineralienboerse Tucson/Muenchen). Label sind die Monats-
+    Ziffern (``"01"`` .. ``"12"``); Monate ohne Treffer fehlen im Dict.
+
+    Akzeptiert nur Funddaten in ISO-Form ``YYYY-MM-DD``/``YYYY-MM`` mit
+    gueltigem Monatsteil 01-12; reine Jahresangaben (``"2024"``) haben keinen
+    Monatsteil und werden ignoriert (sonst wuerden sie als "Monat 00" auf
+    einen Default-Bucket fallen und die Saison-Statistik verzerren).
+    """
+    sql = (
+        "SELECT substr(Funddatum, 6, 2) AS monat, COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY monat ORDER BY monat ASC"
+    )
+    return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_funddatum_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
@@ -380,6 +407,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)
+    st.by_funddatum_monat = _count_funddatum_monat(conn)
     st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
 
     st.bilder_by_kategorie = {
