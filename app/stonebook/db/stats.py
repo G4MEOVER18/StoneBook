@@ -57,12 +57,14 @@ class Statistik:
     wert_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -152,6 +154,9 @@ class Statistik:
             "wert_pro_status": [
                 (s, round(w, 2)) for s, w in self.wert_pro_status
             ],
+            "wert_pro_funddatum_jahr": [
+                (j, round(w, 2)) for j, w in self.wert_pro_funddatum_jahr
+            ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
@@ -169,6 +174,9 @@ class Statistik:
             ],
             "gewicht_pro_status": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_status
+            ],
+            "gewicht_pro_funddatum_jahr": [
+                (j, round(g, 2)) for j, g in self.gewicht_pro_funddatum_jahr
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -357,6 +365,33 @@ def _sum_by(conn: sqlite3.Connection, group_col: str, value_sql: str,
 _wert_pro_objekt_sql = wert_pro_objekt_sql
 
 
+def _sum_by_funddatum_jahr(conn: sqlite3.Connection, value_sql: str,
+                           limit: int,
+                           extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Jahr.
+
+    Pendant zu :func:`_sum_by` fuer Spalten, ergaenzt um den Substring-Trick fuer
+    das Funddatum-Jahr. Selektiert nur Eintraege mit gueltigem Jahres-Praefix
+    (vier Ziffern); andere Funddaten haben kein verlaessliches Jahr und wuerden
+    die Aggregate verzerren (siehe :func:`_count_funddatum_jahr`).
+
+    Top-N absteigend nach Summe; Tie-Break aufsteigend nach Jahr - damit das
+    "bestes Sammeljahr"-Ranking stabil bleibt und gleichwertige Jahre
+    chronologisch hintereinander stehen.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT substr(Funddatum, 1, 4) AS k, SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY k HAVING w > 0 "
+        f"ORDER BY w DESC, k ASC LIMIT ?"
+    )
+    return [(r["k"], float(r["w"])) for r in conn.execute(sql, (int(limit),)).fetchall()]
+
+
 def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert: int = 10, top_jahre: int | None = None,
                        top_wert_mineral: int = 10,
@@ -371,7 +406,9 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
                        top_bilder: int = 10,
-                       top_confidence: int = 10) -> Statistik:
+                       top_confidence: int = 10,
+                       top_wert_funddatum_jahr: int = 10,
+                       top_gewicht_funddatum_jahr: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -567,4 +604,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         extra_where=gewicht_where)
     st.gewicht_pro_status = _sum_by(
         conn, "status", "Gewicht_g", 10, extra_where=gewicht_where)
+    # Zeit-Sicht des Sammlungswerts: "in welchem Funddatum-Jahr ist der hoechste
+    # Wert/das hoechste Gewicht zusammengekommen?" Komplementaer zu
+    # by_funddatum_jahr (Anzahl): zeigt nicht "wie viele Stuecke", sondern "wie
+    # wertvoll/schwer war die Ausbeute". Beantwortet Sammler-Fragen wie "mein
+    # bestes Jahr 2019 hatte zwar wenige Funde, aber einen seltenen Riesen-
+    # kristall - taucht hier ganz oben auf".
+    st.wert_pro_funddatum_jahr = _sum_by_funddatum_jahr(
+        conn, wert_sql, top_wert_funddatum_jahr)
+    st.gewicht_pro_funddatum_jahr = _sum_by_funddatum_jahr(
+        conn, "Gewicht_g", top_gewicht_funddatum_jahr,
+        extra_where=gewicht_where)
     return st

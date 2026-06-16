@@ -239,6 +239,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Status (g):"]
         for status, gewicht in st.gewicht_pro_status:
             lines.append(f"  {status:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_funddatum_jahr:
+        # Sammler-Frage "welches war mein wertvollstes Jahr?": Wert-Summe pro
+        # Funddatum-Jahr, absteigend - komplementaer zu by_funddatum_jahr
+        # (Anzahl) und Top-Wertobjekten (Einzelstueck-Sicht).
+        lines += ["", "Wert pro Funddatum-Jahr (CHF):"]
+        for jahr, wert in st.wert_pro_funddatum_jahr[:top]:
+            lines.append(f"  {jahr:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_funddatum_jahr:
+        # Spiegelbild: schwerstes Sammeljahr. Wert und Gewicht entkoppeln sich
+        # haeufig (eine Saison schwerer Geroelle vs. eine Saison kleiner
+        # Kristalle), deshalb beide Sichten anbieten.
+        lines += ["", "Gewicht pro Funddatum-Jahr (g):"]
+        for jahr, gewicht in st.gewicht_pro_funddatum_jahr[:top]:
+            lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 
@@ -280,7 +294,9 @@ def main(argv: list[str] | None = None) -> int:
             top_wert_beste_verwendung=args.top,
             top_gewicht_beste_verwendung=args.top,
             top_gewicht=args.top, top_bilder=args.top,
-            top_confidence=args.top)
+            top_confidence=args.top,
+            top_wert_funddatum_jahr=args.top,
+            top_gewicht_funddatum_jahr=args.top)
     finally:
         conn.close()
     if args.json:

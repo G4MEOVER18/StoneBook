@@ -321,6 +321,105 @@ def test_by_funddatum_monat_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_funddatum_jahr_aus_seed_db(tmp_path):
+    """Wertsumme pro Funddatum-Jahr, absteigend sortiert; Tie-Break chronologisch."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfj.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # 2020: ein Riesenstueck (1000)
+            ("OBJ_0001", "2020-05-13", 1000.0, None),
+            # 2021: zwei Stuecke -> 300
+            ("OBJ_0002", "2021-04-01", 100.0, 200.0),
+            ("OBJ_0003", "2021-09-15", None, None),     # 0
+            # 2022: drei Stuecke -> 300 (Tie-Break: chronologisch nach 2021)
+            ("OBJ_0004", "2022-03-01", 100.0, None),
+            ("OBJ_0005", "2022-07-10", 100.0, None),
+            ("OBJ_0006", "2022-11-30", 100.0, None),
+            # 2024: ein Stueck ohne Wert -> faellt raus
+            ("OBJ_0007", "2024-01-01", None, None),
+            # Ungueltige/leere Funddaten -> ignoriert
+            ("OBJ_0008", "", 999.0, None),
+            ("OBJ_0009", None, 999.0, None),
+            ("OBJ_0010", "Fruehling", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # 2020 (1000) > 2021 (300) == 2022 (300) -> Tie-Break aufsteigend nach Jahr.
+    assert st.wert_pro_funddatum_jahr == [
+        ("2020", 1000.0),
+        ("2021", 300.0),
+        ("2022", 300.0),
+    ]
+    assert st.as_dict()["wert_pro_funddatum_jahr"] == [
+        ("2020", 1000.0), ("2021", 300.0), ("2022", 300.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_funddatum_jahr_limit(tmp_path):
+    """top_wert_funddatum_jahr begrenzt die Listenlaenge."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfj_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"20{i:02d}-01-01", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_funddatum_jahr=3)
+    assert len(st.wert_pro_funddatum_jahr) == 3
+    werte = [w for _, w in st.wert_pro_funddatum_jahr]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_funddatum_jahr_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_jahr == []
+    c.close()
+
+
+def test_gewicht_pro_funddatum_jahr_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Funddatum-Jahr; NULL/0 zaehlen nicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfj.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "2020-05-13", 1000.0),
+            ("OBJ_0002", "2021-04-01", 100.0),
+            ("OBJ_0003", "2021-09-15", 150.0),   # 2021 total 250
+            ("OBJ_0004", "2022-03-01", 50.0),
+            ("OBJ_0005", "2022-07-10", None),    # NULL -> ignoriert
+            ("OBJ_0006", "2022-11-30", 0.0),     # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_jahr == [
+        ("2020", 1000.0),
+        ("2021", 250.0),
+        ("2022", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_funddatum_jahr"] == [
+        ("2020", 1000.0), ("2021", 250.0), ("2022", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_jahr_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_jahr == []
+    c.close()
+
+
 def test_funddatum_spanne_aus_seed_db(tmp_path):
     """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
     from stonebook.db.database import open_db

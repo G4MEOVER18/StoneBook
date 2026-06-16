@@ -544,6 +544,83 @@ def test_text_ausgabe_ohne_funddatum_keine_monat_zeile(tmp_path, capsys):
     assert "Funde pro Monat:" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_funddatum_jahr(tmp_path, capsys):
+    """Wert-pro-Funddatum-Jahr-Block listet die wertvollsten Sammeljahre absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpfj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "2020-05-13", 1000.0, None),     # 2020: 1000
+            ("OBJ_0002", "2021-04-01", 100.0, 200.0),     # 2021: 300
+            ("OBJ_0003", "2022-03-01", 50.0, None),       # 2022: 50
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Funddatum-Jahr (CHF):" in out
+    block = out.split("Wert pro Funddatum-Jahr (CHF):", 1)[1]
+    assert block.index("2020") < block.index("2021") < block.index("2022")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_funddatum_jahr_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpfj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", "2020-05-13"), ("OBJ_0002", "2021-04-01")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Funddatum-Jahr" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_funddatum_jahr(tmp_path, capsys):
+    """Gewicht-pro-Funddatum-Jahr-Block listet die schwersten Sammeljahre."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpfj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2020-05-13", 1000.0),
+            ("OBJ_0002", "2021-04-01", 250.0),
+            ("OBJ_0003", "2022-03-01", 50.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Funddatum-Jahr (g):" in out
+    block = out.split("Gewicht pro Funddatum-Jahr (g):", 1)[1]
+    assert block.index("2020") < block.index("2021") < block.index("2022")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_funddatum_jahr_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpfj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", "2020-05-13"), ("OBJ_0002", "2021-04-01")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Funddatum-Jahr" not in out
+
+
 def test_text_ausgabe_zeigt_objekte_pro_kategorie(tmp_path, capsys):
     """Objekte-pro-Kategorie-Block zaehlt absteigend nach Anzahl."""
     from stonebook.db.database import open_db
