@@ -454,6 +454,69 @@ def test_funddatum_jahr_range_filter(tmp_path):
     c.close()
 
 
+def test_funddatum_monat_filter(tmp_path):
+    """Saison-Filter ueber alle Jahre: 'alle Juli-Funde' unabhaengig vom Jahr."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "monat.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2020-07-15"),
+            ("OBJ_0002", "2021-07-20"),   # auch Juli, anderes Jahr
+            ("OBJ_0003", "2022-08-10"),   # August - faellt raus
+            ("OBJ_0004", "2024-07-01"),
+            ("OBJ_0005", "2024"),         # ohne Monatsteil - faellt raus
+            ("OBJ_0006", ""),             # leer - faellt raus
+            ("OBJ_0007", None),           # NULL - faellt raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(funddatum_monat=7)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Monat ohne Treffer -> leere Liste, kein Crash
+    rows = repo.list_objects(funddatum_monat=3)
+    assert rows == []
+    c.close()
+
+
+def test_funddatum_monat_kombiniert_mit_jahresbereich(tmp_path):
+    """Schnittmenge mit Jahres-Filter: 'Juli-Funde 2021-2024'."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_y.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2019-07-15"),   # Juli, aber zu alt
+            ("OBJ_0002", "2021-07-20"),
+            ("OBJ_0003", "2024-07-01"),
+            ("OBJ_0004", "2024-08-01"),   # August - faellt raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(funddatum_monat=7,
+                              funddatum_jahr_min=2021, funddatum_jahr_max=2024)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
+def test_funddatum_monat_ungueltig_wirft_value_error(tmp_path):
+    """Tippfehler 0/13/-1 erzeugen einen klaren Fehler statt eines leeren Ergebnisses."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "x.sqlite3")
+    c.execute("INSERT INTO objects (obj_id, Funddatum) VALUES ('OBJ_0001', '2024-07-01')")
+    c.commit()
+    repo = ObjectRepo(c)
+    with pytest.raises(ValueError, match="funddatum_monat"):
+        repo.list_objects(funddatum_monat=0)
+    with pytest.raises(ValueError, match="funddatum_monat"):
+        repo.list_objects(funddatum_monat=13)
+    with pytest.raises(ValueError, match="funddatum_monat"):
+        repo.list_objects(funddatum_monat=-1)
+    c.close()
+
+
 def test_wert_min_max_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "w.sqlite3")

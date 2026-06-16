@@ -91,6 +91,7 @@ class ObjectRepo:
                      has_wert: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
+                     funddatum_monat: int | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
                      fundort: str = "",
@@ -224,6 +225,23 @@ class ObjectRepo:
             if funddatum_jahr_max is not None:
                 where.append("CAST(substr(o.Funddatum, 1, 4) AS INTEGER) <= ?")
                 params.append(int(funddatum_jahr_max))
+        # funddatum_monat: Saison-Filter ("alle Juli-Funde", ueber alle Jahre).
+        # Komplementaer zum Jahres-Bereich oben (zeit-vs-saisonal); spiegelt das
+        # by_funddatum_monat-Aggregat in der Statistik. Erwartet 1..12 (Tippfehler
+        # 0/13 erzeugen einen klaren Fehler statt eines leeren Ergebnisses).
+        # Pruefung gegen Monatsteil 01..12 (siehe _count_funddatum_monat); reine
+        # Jahresangaben ohne Monat fallen automatisch heraus.
+        if funddatum_monat is not None:
+            m = int(funddatum_monat)
+            if not 1 <= m <= 12:
+                raise ValueError(
+                    f"funddatum_monat muss zwischen 1 und 12 liegen (war: {m})")
+            where.append(
+                "o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                "AND substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                "AND substr(o.Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+                "AND CAST(substr(o.Funddatum, 6, 2) AS INTEGER) = ?")
+            params.append(m)
         # Funddatum-Bereich auf Tagesgenauigkeit: ISO YYYY-MM-DD lexikographisch
         # vergleichbar. Akzeptiert auch YYYY-MM oder YYYY allein.
         if funddatum_min is not None:
