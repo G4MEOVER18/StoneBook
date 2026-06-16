@@ -1356,3 +1356,80 @@ def test_gewicht_pro_kristallsystem_leer(tmp_path):
     st = compute_statistics(c)
     assert st.gewicht_pro_kristallsystem == []
     c.close()
+
+
+def test_top_confidence_objekte_aus_seed_db(tmp_path):
+    """Am verlaesslichsten identifizierte Objekte absteigend nach Confidence."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name, Confidence_Prozent) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Unsicher", 30),
+            ("OBJ_0002", "Solide",   75),
+            ("OBJ_0003", "Sicher",   95),
+            ("OBJ_0004", "OhneConf", None),    # ignoriert (NULL)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.top_confidence_objekte == [
+        ("OBJ_0003", "Sicher", 95),
+        ("OBJ_0002", "Solide", 75),
+        ("OBJ_0001", "Unsicher", 30),
+    ]
+    d = st.as_dict()
+    assert d["top_confidence_objekte"] == [
+        ("OBJ_0003", "Sicher", 95),
+        ("OBJ_0002", "Solide", 75),
+        ("OBJ_0001", "Unsicher", 30),
+    ]
+    c.close()
+
+
+def test_top_confidence_objekte_ignoriert_out_of_range(tmp_path):
+    """Out-of-Range-Werte (<0 / >100) tauchen nicht in der Liste auf."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tc_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name, Confidence_Prozent) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Negativ", -5),    # out-of-range
+            ("OBJ_0002", "Ueber",  150),    # out-of-range
+            ("OBJ_0003", "Gueltig", 80),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.top_confidence_objekte == [("OBJ_0003", "Gueltig", 80)]
+    c.close()
+
+
+def test_top_confidence_objekte_limit_respektiert(tmp_path):
+    """top_confidence=3 schneidet die Liste auf 3 Eintraege."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tc_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [(f"OBJ_{i:04d}", i) for i in range(50, 100)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_confidence=3)
+    assert len(st.top_confidence_objekte) == 3
+    werte = [c for _, _, c in st.top_confidence_objekte]
+    assert werte == [99, 98, 97]
+    c.close()
+
+
+def test_top_confidence_objekte_leer(tmp_path):
+    """Ohne Confidence-Werte bleibt die Liste leer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.top_confidence_objekte == []
+    c.close()

@@ -871,6 +871,44 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_kristallsystem_zeile(tmp_pa
     assert "Gewicht pro Kristallsystem" not in out
 
 
+def test_text_ausgabe_zeigt_top_confidence_objekte(tmp_path, capsys):
+    """Top-Confidence-Objekte-Block listet die zuverlaessigsten Identifikationen absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tcoc.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name, Confidence_Prozent) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Unsicher", 30),
+            ("OBJ_0002", "Solide",   75),
+            ("OBJ_0003", "Sicher",   95),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Confidence-Objekte (%):" in out
+    block = out.split("Top-Confidence-Objekte (%):", 1)[1]
+    assert block.index("Sicher") < block.index("Solide") < block.index("Unsicher")
+
+
+def test_text_ausgabe_ohne_confidence_keine_top_confidence_zeile(tmp_path, capsys):
+    """Ohne Confidence-Werte erscheint der Top-Confidence-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tcoc0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Confidence-Objekte" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])

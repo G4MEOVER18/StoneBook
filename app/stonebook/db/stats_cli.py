@@ -140,6 +140,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         for oid, name, n in st.top_bilder_objekte[:top]:
             label = f"{oid} {name}".strip()
             lines.append(f"  {label:40s} {n:>12d}")
+    if st.top_confidence_objekte:
+        # Sammler-Frage: "Welche Stuecke sind am verlaesslichsten identifiziert?"
+        # Komplementaer zu confidence_buckets (Verteilung): hier die konkrete
+        # Spitze (mit Name/ID), nicht nur die Klassen-Histogramm-Sicht.
+        lines += ["", "Top-Confidence-Objekte (%):"]
+        for oid, name, c in st.top_confidence_objekte[:top]:
+            label = f"{oid} {name}".strip()
+            lines.append(f"  {label:40s} {c:>12d}")
     if st.wert_pro_mineral:
         # Beantwortet "Welcher Mineraltyp ist insgesamt am wertvollsten?"
         # (komplementaer zu top_wert_objekte, das das wertvollste Einzelstueck zeigt).
@@ -246,7 +254,8 @@ def main(argv: list[str] | None = None) -> int:
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
             top_wert_kristallsystem=args.top,
             top_gewicht_kristallsystem=args.top,
-            top_gewicht=args.top, top_bilder=args.top)
+            top_gewicht=args.top, top_bilder=args.top,
+            top_confidence=args.top)
     finally:
         conn.close()
     if args.json:

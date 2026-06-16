@@ -49,6 +49,7 @@ class Statistik:
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_bilder_objekte: list[tuple[str, str, int]] = field(default_factory=list)
+    top_confidence_objekte: list[tuple[str, str, int]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
@@ -125,6 +126,9 @@ class Statistik:
             ],
             "top_bilder_objekte": [
                 (oid, name, int(n)) for oid, name, n in self.top_bilder_objekte
+            ],
+            "top_confidence_objekte": [
+                (oid, name, int(c)) for oid, name, c in self.top_confidence_objekte
             ],
             "wert_pro_mineral": [
                 (mineral, round(w, 2)) for mineral, w in self.wert_pro_mineral
@@ -329,7 +333,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert_kristallsystem: int = 10,
                        top_gewicht_kristallsystem: int = 10,
                        top_gewicht: int = 10,
-                       top_bilder: int = 10) -> Statistik:
+                       top_bilder: int = 10,
+                       top_confidence: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -467,6 +472,20 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             "GROUP BY o.obj_id, o.Name HAVING n > 0 "
             "ORDER BY n DESC, o.obj_id LIMIT ?",
             (int(top_bilder),),
+        ).fetchall()
+    ]
+    # Top-Confidence-Objekte: am verlaesslichsten identifizierte Stuecke (analog
+    # top_wert/top_gewicht/top_bilder). Out-of-Range-Werte (<0 / >100) bleiben
+    # ausgeschlossen, damit die Tabelle nicht von kaputten Confidence-Eintraegen
+    # dominiert wird (Integrity meldet die separat).
+    st.top_confidence_objekte = [
+        (r["obj_id"], r["Name"] or "", int(r["c"]))
+        for r in conn.execute(
+            "SELECT obj_id, Name, Confidence_Prozent AS c FROM objects "
+            "WHERE Confidence_Prozent IS NOT NULL "
+            "AND Confidence_Prozent BETWEEN 0 AND 100 "
+            "ORDER BY c DESC, obj_id LIMIT ?",
+            (int(top_confidence),),
         ).fetchall()
     ]
     st.wert_pro_mineral = _sum_by(conn, "Mineral_Primaer", wert_sql, top_wert_mineral)
