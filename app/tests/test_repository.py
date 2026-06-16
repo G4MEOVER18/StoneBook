@@ -765,6 +765,55 @@ def test_status_in_filter(tmp_path):
     c.close()
 
 
+def test_kristallsystem_in_filter(tmp_path):
+    """kristallsystem_in akzeptiert Mengen ('trigonal ODER hexagonal' fuer Quarz-Familie); Tippfehler werfen ValueError."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ksi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "trigonal"),
+            ("OBJ_0002", "hexagonal"),
+            ("OBJ_0003", "kubisch"),
+            ("OBJ_0004", "trigonal"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter trigonal ODER hexagonal (Quarz-Familie)
+    rows = repo.list_objects(kristallsystem_in=["trigonal", "hexagonal"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie kristallsystem=
+    rows = repo.list_objects(kristallsystem_in=["kubisch"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(kristallsystem_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(kristallsystem_in=("trigonal",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit kristallsystem= (Schnittmenge)
+    rows = repo.list_objects(
+        kristallsystem="trigonal",
+        kristallsystem_in=["trigonal", "hexagonal"],
+    )
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Schnittmenge wird leer, wenn kristallsystem nicht in der Menge liegt
+    rows = repo.list_objects(
+        kristallsystem="kubisch",
+        kristallsystem_in=["trigonal", "hexagonal"],
+    )
+    assert rows == []
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Kristallsystem-Werte"):
+        repo.list_objects(kristallsystem_in=["pseudokubisch"])
+    # Mehrere Tippfehler werden gemeinsam gemeldet
+    with pytest.raises(ValueError, match="pseudokubisch"):
+        repo.list_objects(kristallsystem_in=["trigonal", "pseudokubisch"])
+    c.close()
+
+
 def test_has_und_missing_image_kategorie_filter(tmp_path):
     """Foto-Workflow: finde Objekte mit/ohne Bild einer bestimmten Bild-Kategorie."""
     from stonebook.db.database import open_db

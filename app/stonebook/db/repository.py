@@ -2,11 +2,18 @@
 import datetime
 import sqlite3
 
-from stonebook.fields import DATA_FIELDS, IMAGE_CATEGORIES, is_empty
+from stonebook.fields import DATA_FIELDS, FIELD_BY_NAME, IMAGE_CATEGORIES, is_empty
 
 DATA_COLS = [f.name for f in DATA_FIELDS]
 
 VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"})
+
+# Gueltige Kristallsysteme aus dem Feldwoerterbuch (ohne den leeren Default-Eintrag).
+# Werden fuer den kristallsystem_in-Mengenfilter zur Validierung benutzt, damit
+# Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses erzeugen.
+VALID_KRISTALLSYSTEME: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Kristallsystem"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -91,6 +98,7 @@ class ObjectRepo:
                      gewicht_min: float | None = None,
                      gewicht_max: float | None = None,
                      kristallsystem: str = "",
+                     kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
                      varietaet: str = "",
                      varietaet_contains: str = "",
@@ -261,6 +269,21 @@ class ObjectRepo:
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
             params.append(kristallsystem)
+        # kristallsystem_in: Mengen-Filter ("trigonal ODER hexagonal" fuer Quarz-Familie).
+        # Spiegelt status_in: validiert gegen VALID_KRISTALLSYSTEME aus dem Feldwoerterbuch,
+        # damit Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses erzeugen.
+        # Kombinierbar mit dem exakten ``kristallsystem``-Filter (Schnittmenge).
+        if kristallsystem_in:
+            systems = [s for s in kristallsystem_in if s]
+            invalid = [s for s in systems if s not in VALID_KRISTALLSYSTEME]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Kristallsystem-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_KRISTALLSYSTEME)})")
+            if systems:
+                placeholders = ", ".join("?" * len(systems))
+                where.append(f"o.Kristallsystem IN ({placeholders})")
+                params.extend(systems)
         if beste_verwendung:
             where.append("o.Beste_Verwendung = ?")
             params.append(beste_verwendung)
