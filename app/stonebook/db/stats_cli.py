@@ -253,6 +253,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Funddatum-Jahr (g):"]
         for jahr, gewicht in st.gewicht_pro_funddatum_jahr[:top]:
             lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_funddatum_monat:
+        # Saison-Ertrag in CHF: welcher Monat bringt ueber alle Jahre den meisten
+        # Wert? Komplementaer zu by_funddatum_monat (Anzahl) - dort die Aktivitaet,
+        # hier der Ertrag. Reihenfolge: absteigend nach Summe (top zuerst), damit
+        # der "beste Monat" ohne Suchen sichtbar ist.
+        lines += ["", "Wert pro Funddatum-Monat (CHF):"]
+        for monat, wert in st.wert_pro_funddatum_monat:
+            lines.append(f"  {monat:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_funddatum_monat:
+        # Spiegelbild Gewicht: welcher Monat bringt die meiste Masse? Berg-Saison
+        # vs. Boersen-Spitzen entkoppeln sich oft (Boerse = wenige hochpreisige
+        # Kleinstuecke, Berg = schwere Handstuecke).
+        lines += ["", "Gewicht pro Funddatum-Monat (g):"]
+        for monat, gewicht in st.gewicht_pro_funddatum_monat:
+            lines.append(f"  {monat:40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 

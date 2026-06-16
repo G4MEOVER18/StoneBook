@@ -420,6 +420,85 @@ def test_gewicht_pro_funddatum_jahr_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_funddatum_monat_aus_seed_db(tmp_path):
+    """Wertsumme pro Funddatum-Monat ueber alle Jahre; absteigend nach Summe."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # Juli ueber zwei Jahre: 300 + 400 = 700
+            ("OBJ_0001", "2020-07-15", 100.0, 200.0),
+            ("OBJ_0002", "2024-07-20", 400.0, None),
+            # August: 250
+            ("OBJ_0003", "2022-08-10", 250.0, None),
+            # Dezember (Boerse): 50
+            ("OBJ_0004", "2023-12-05", 50.0, None),
+            # Ohne Wert -> faellt raus
+            ("OBJ_0005", "2024-03-01", None, None),
+            # Ohne gueltiges Funddatum -> ignoriert
+            ("OBJ_0006", "", 999.0, None),
+            ("OBJ_0007", "2024", 999.0, None),     # ohne Monatsteil
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_monat == [
+        ("07", 700.0),
+        ("08", 250.0),
+        ("12", 50.0),
+    ]
+    assert st.as_dict()["wert_pro_funddatum_monat"] == [
+        ("07", 700.0), ("08", 250.0), ("12", 50.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_funddatum_monat_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_monat == []
+    c.close()
+
+
+def test_gewicht_pro_funddatum_monat_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Funddatum-Monat ueber alle Jahre; 0/NULL ignoriert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2020-07-15", 100.0),
+            ("OBJ_0002", "2024-07-20", 400.0),    # Juli: 500
+            ("OBJ_0003", "2022-08-10", 250.0),    # August: 250
+            ("OBJ_0004", "2023-12-05", 50.0),     # Dezember: 50
+            ("OBJ_0005", "2024-03-01", None),     # NULL -> ignoriert
+            ("OBJ_0006", "2024-03-01", 0.0),      # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_monat == [
+        ("07", 500.0),
+        ("08", 250.0),
+        ("12", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_funddatum_monat"] == [
+        ("07", 500.0), ("08", 250.0), ("12", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_monat_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_monat == []
+    c.close()
+
+
 def test_funddatum_spanne_aus_seed_db(tmp_path):
     """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
     from stonebook.db.database import open_db

@@ -58,6 +58,7 @@ class Statistik:
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
@@ -65,6 +66,7 @@ class Statistik:
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -157,6 +159,9 @@ class Statistik:
             "wert_pro_funddatum_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_funddatum_jahr
             ],
+            "wert_pro_funddatum_monat": [
+                (m, round(w, 2)) for m, w in self.wert_pro_funddatum_monat
+            ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
@@ -177,6 +182,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_funddatum_jahr
+            ],
+            "gewicht_pro_funddatum_monat": [
+                (m, round(g, 2)) for m, g in self.gewicht_pro_funddatum_monat
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -363,6 +371,32 @@ def _sum_by(conn: sqlite3.Connection, group_col: str, value_sql: str,
 
 # Backwards-Kompatibilitaet: vorheriger Privatname.
 _wert_pro_objekt_sql = wert_pro_objekt_sql
+
+
+def _sum_by_funddatum_monat(conn: sqlite3.Connection, value_sql: str,
+                            extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Monat (01..12).
+
+    Pendant zu :func:`_sum_by_funddatum_jahr`, aggregiert ueber alle Jahre.
+    Selektiert nur Eintraege mit gueltigem Monatsteil 01..12; reine Jahres-
+    angaben ohne Monat fallen weg (siehe :func:`_count_funddatum_monat`).
+
+    Top-N absteigend nach Summe; Tie-Break aufsteigend nach Monat. Ohne Limit,
+    weil maximal 12 Monate vorkommen koennen - die Ausgabe wird nie laenger.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT substr(Funddatum, 6, 2) AS k, SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY k HAVING w > 0 "
+        f"ORDER BY w DESC, k ASC"
+    )
+    return [(r["k"], float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_funddatum_jahr(conn: sqlite3.Connection, value_sql: str,
@@ -615,4 +649,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.gewicht_pro_funddatum_jahr = _sum_by_funddatum_jahr(
         conn, "Gewicht_g", top_gewicht_funddatum_jahr,
         extra_where=gewicht_where)
+    # Saison-Sicht des Sammlungswerts: "welcher Monat bringt am meisten Wert/
+    # Gewicht?". Komplementaer zu by_funddatum_monat (Anzahl): zeigt nicht
+    # "wie oft sammle ich im Juli", sondern "wie ergiebig ist die Juli-Saison".
+    # Berg-Saison (Jul/Aug) gegen Boersen-Spitzen (Dez/Feb) werden so
+    # vergleichbar; keine Limit-Parameter, weil max 12 Eintraege moeglich.
+    st.wert_pro_funddatum_monat = _sum_by_funddatum_monat(conn, wert_sql)
+    st.gewicht_pro_funddatum_monat = _sum_by_funddatum_monat(
+        conn, "Gewicht_g", extra_where=gewicht_where)
     return st
