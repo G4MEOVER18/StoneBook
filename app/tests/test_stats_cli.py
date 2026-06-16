@@ -909,6 +909,83 @@ def test_text_ausgabe_ohne_confidence_keine_top_confidence_zeile(tmp_path, capsy
     assert "Top-Confidence-Objekte" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_beste_verwendung(tmp_path, capsys):
+    """Wert-pro-Beste-Verwendung-Block summiert CHF je Verwendungs-Kategorie."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpbv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung, Wert_CHF_roh, "
+        "Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Sammlung",  600.0, 400.0),   # Sammlung 1000
+            ("OBJ_0002", "Schmuck",   200.0, 150.0),   # Schmuck   350
+            ("OBJ_0003", "Forschung",  10.0, None),    # Forschung  10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Beste-Verwendung (CHF):" in out
+    block = out.split("Wert pro Beste-Verwendung (CHF):", 1)[1]
+    assert block.index("Sammlung") < block.index("Schmuck") < block.index("Forschung")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_beste_verwendung_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpbv0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [("OBJ_0001", "Schmuck"), ("OBJ_0002", "Sammlung")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Beste-Verwendung" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_beste_verwendung(tmp_path, capsys):
+    """Gewicht-pro-Beste-Verwendung-Block summiert g je Verwendungs-Kategorie."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpbv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Industrie", 1000.0),
+            ("OBJ_0002", "Sammlung",   150.0),
+            ("OBJ_0003", "Schmuck",     10.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Beste-Verwendung (g):" in out
+    block = out.split("Gewicht pro Beste-Verwendung (g):", 1)[1]
+    assert block.index("Industrie") < block.index("Sammlung") < block.index("Schmuck")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_beste_verwendung_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpbv0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [("OBJ_0001", "Schmuck"), ("OBJ_0002", "Sammlung")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Beste-Verwendung" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])

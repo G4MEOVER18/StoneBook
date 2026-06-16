@@ -54,11 +54,13 @@ class Statistik:
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
@@ -142,6 +144,9 @@ class Statistik:
             "wert_pro_kristallsystem": [
                 (ks, round(w, 2)) for ks, w in self.wert_pro_kristallsystem
             ],
+            "wert_pro_beste_verwendung": [
+                (bv, round(w, 2)) for bv, w in self.wert_pro_beste_verwendung
+            ],
             "wert_pro_status": [
                 (s, round(w, 2)) for s, w in self.wert_pro_status
             ],
@@ -156,6 +161,9 @@ class Statistik:
             ],
             "gewicht_pro_kristallsystem": [
                 (ks, round(g, 2)) for ks, g in self.gewicht_pro_kristallsystem
+            ],
+            "gewicht_pro_beste_verwendung": [
+                (bv, round(g, 2)) for bv, g in self.gewicht_pro_beste_verwendung
             ],
             "gewicht_pro_status": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_status
@@ -332,6 +340,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_kategorie: int = 10,
                        top_wert_kristallsystem: int = 10,
                        top_gewicht_kristallsystem: int = 10,
+                       top_wert_beste_verwendung: int = 10,
+                       top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
                        top_bilder: int = 10,
                        top_confidence: int = 10) -> Statistik:
@@ -497,6 +507,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # ueber wenige grosse - der Block macht das sichtbar.
     st.wert_pro_kristallsystem = _sum_by(
         conn, "Kristallsystem", wert_sql, top_wert_kristallsystem)
+    # Verwendungs-Sicht: wo steckt der Wert je Empfehlung (Schmuck/Sammlung/
+    # Forschung/Industrie/Talisman/Dekoration)? Beantwortet "lohnt sich ein
+    # Schmuck-Verkauf, oder steckt der Wert eher in Forschungs-/Sammler-Stuecken?".
+    st.wert_pro_beste_verwendung = _sum_by(
+        conn, "Beste_Verwendung", wert_sql, top_wert_beste_verwendung)
     # status: nur drei Werte (aktiv/platzhalter/archiviert); Limit von 10 reicht
     # uebergross, damit alle vorhandenen Status durchkommen. Beantwortet die Frage
     # "Wieviel Sammlungswert steckt im Archiv vs. aktiv vs. noch unbeschriftet?".
@@ -515,6 +530,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # meiste Masse? Bei Quarz-/Pyrit-lastigen Sammlungen oft entkoppelt vom Wert.
     st.gewicht_pro_kristallsystem = _sum_by(
         conn, "Kristallsystem", "Gewicht_g", top_gewicht_kristallsystem,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_beste_verwendung: welche Verwendungs-Kategorie
+    # bringt die meiste Masse? Industrie/Dekoration oft schwer, Schmuck oft
+    # leicht aber hochpreisig - der Block macht den Unterschied sichtbar.
+    st.gewicht_pro_beste_verwendung = _sum_by(
+        conn, "Beste_Verwendung", "Gewicht_g", top_gewicht_beste_verwendung,
         extra_where=gewicht_where)
     st.gewicht_pro_status = _sum_by(
         conn, "status", "Gewicht_g", 10, extra_where=gewicht_where)

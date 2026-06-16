@@ -176,6 +176,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Kristallsystem (CHF):"]
         for ks, wert in st.wert_pro_kristallsystem[:top]:
             lines.append(f"  {ks:40s} {wert:>12,.0f}")
+    if st.wert_pro_beste_verwendung:
+        # Verwendungs-Sicht: wo steckt der Wert je Empfehlung? Sammler-Frage
+        # "lohnt sich Schmuck-Verkauf, oder steckt der Wert in Sammler-/
+        # Forschungs-Stuecken?" - der Block macht das transparent.
+        lines += ["", "Wert pro Beste-Verwendung (CHF):"]
+        for bv, wert in st.wert_pro_beste_verwendung[:top]:
+            lines.append(f"  {bv:40s} {wert:>12,.0f}")
     if st.wert_pro_status:
         # Lifecycle-Sicht: wo steckt der Wert nach Pflegezustand? Beantwortet
         # Sammler-Fragen wie "wieviel Sammlungswert habe ich schon erfasst (aktiv)
@@ -210,6 +217,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Kristallsystem (g):"]
         for ks, gewicht in st.gewicht_pro_kristallsystem[:top]:
             lines.append(f"  {ks:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_beste_verwendung:
+        # Spiegelbild zu wert_pro_beste_verwendung: Industrie/Dekoration oft
+        # schwer, Schmuck oft leicht aber hochpreisig - die Wert/Gewicht-
+        # Entkopplung wird je Verwendungs-Kategorie sichtbar.
+        lines += ["", "Gewicht pro Beste-Verwendung (g):"]
+        for bv, gewicht in st.gewicht_pro_beste_verwendung[:top]:
+            lines.append(f"  {bv:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_status:
         # Spiegelbild zu wert_pro_status: welche Gewichts-Masse haengt noch in
         # platzhaltern? Komplementaer fuer Versicherungsabschaetzung pro Lifecycle.
@@ -254,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
             top_wert_kristallsystem=args.top,
             top_gewicht_kristallsystem=args.top,
+            top_wert_beste_verwendung=args.top,
+            top_gewicht_beste_verwendung=args.top,
             top_gewicht=args.top, top_bilder=args.top,
             top_confidence=args.top)
     finally:

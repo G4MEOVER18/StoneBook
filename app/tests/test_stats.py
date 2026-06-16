@@ -1433,3 +1433,111 @@ def test_top_confidence_objekte_leer(tmp_path):
     st = compute_statistics(c)
     assert st.top_confidence_objekte == []
     c.close()
+
+
+def test_wert_pro_beste_verwendung_aus_seed_db(tmp_path):
+    """Wertsumme pro Beste_Verwendung, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpbv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung, Wert_CHF_roh, "
+        "Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Schmuck",   100.0, 200.0),    # Schmuck 300
+            ("OBJ_0002", "Schmuck",    50.0, None),     # +50 -> 350
+            ("OBJ_0003", "Sammlung", 1000.0, None),     # Sammlung 1000
+            ("OBJ_0004", "Sammlung",  None, None),      # 0
+            ("OBJ_0005", "Forschung",  10.0, None),     # Forschung 10
+            ("OBJ_0006", "",          999.0, None),     # leer -> ignoriert
+            ("OBJ_0007", None,        999.0, None),     # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_beste_verwendung == [
+        ("Sammlung", 1000.0),
+        ("Schmuck", 350.0),
+        ("Forschung", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_beste_verwendung"] == [
+        ("Sammlung", 1000.0), ("Schmuck", 350.0), ("Forschung", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_beste_verwendung_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpbv_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung, Wert_CHF_roh) "
+        "VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Use{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_beste_verwendung=3)
+    assert len(st.wert_pro_beste_verwendung) == 3
+    werte = [w for _, w in st.wert_pro_beste_verwendung]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_beste_verwendung_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_beste_verwendung == []
+    c.close()
+
+
+def test_gewicht_pro_beste_verwendung_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Beste_Verwendung, absteigend sortiert; 0/NULL ignoriert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpbv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "Industrie", 1000.0),
+            ("OBJ_0002", "Sammlung",   100.0),
+            ("OBJ_0003", "Sammlung",    50.0),   # Sammlung total 150
+            ("OBJ_0004", "Schmuck",     10.0),
+            ("OBJ_0005", "Schmuck",   None),     # NULL ignoriert
+            ("OBJ_0006", "",          999.0),    # leer ignoriert
+            ("OBJ_0007", None,        999.0),    # NULL ignoriert
+            ("OBJ_0008", "Talisman",    0.0),    # 0 ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_beste_verwendung == [
+        ("Industrie", 1000.0),
+        ("Sammlung", 150.0),
+        ("Schmuck", 10.0),
+    ]
+    assert st.as_dict()["gewicht_pro_beste_verwendung"] == [
+        ("Industrie", 1000.0), ("Sammlung", 150.0), ("Schmuck", 10.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_beste_verwendung_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpbv_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Use{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_beste_verwendung=3)
+    assert len(st.gewicht_pro_beste_verwendung) == 3
+    g = [v for _, v in st.gewicht_pro_beste_verwendung]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_beste_verwendung_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_beste_verwendung == []
+    c.close()
