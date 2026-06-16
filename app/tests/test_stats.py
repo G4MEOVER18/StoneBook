@@ -1248,3 +1248,111 @@ def test_by_beste_verwendung_leer(tmp_path):
     st = compute_statistics(c)
     assert st.by_beste_verwendung == {}
     c.close()
+
+
+def test_wert_pro_kristallsystem_aus_seed_db(tmp_path):
+    """Wertsumme pro Kristallsystem, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpks.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Wert_CHF_roh, "
+        "Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "trigonal", 100.0, 200.0),     # trigonal: 300
+            ("OBJ_0002", "trigonal", 50.0, None),       # trigonal: +50 -> 350
+            ("OBJ_0003", "kubisch", 1000.0, None),      # kubisch: 1000
+            ("OBJ_0004", "kubisch", None, None),        # 0
+            ("OBJ_0005", "hexagonal", 10.0, None),
+            ("OBJ_0006", "", 999.0, None),              # leer -> ignoriert
+            ("OBJ_0007", None, 999.0, None),            # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_kristallsystem == [
+        ("kubisch", 1000.0),
+        ("trigonal", 350.0),
+        ("hexagonal", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_kristallsystem"] == [
+        ("kubisch", 1000.0), ("trigonal", 350.0), ("hexagonal", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_kristallsystem_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpks_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Wert_CHF_roh) "
+        "VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Sys{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_kristallsystem=3)
+    assert len(st.wert_pro_kristallsystem) == 3
+    werte = [w for _, w in st.wert_pro_kristallsystem]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_kristallsystem_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_kristallsystem == []
+    c.close()
+
+
+def test_gewicht_pro_kristallsystem_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Kristallsystem, absteigend sortiert; 0/NULL zaehlen nicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpks.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "trigonal", 100.0),
+            ("OBJ_0002", "trigonal", 50.0),       # trigonal total 150
+            ("OBJ_0003", "kubisch", 1000.0),      # kubisch total 1000
+            ("OBJ_0004", "kubisch", None),        # NULL -> ignoriert
+            ("OBJ_0005", "hexagonal", 10.0),
+            ("OBJ_0006", "", 999.0),              # leer -> ignoriert
+            ("OBJ_0007", None, 999.0),            # NULL -> ignoriert
+            ("OBJ_0008", "monoklin", 0.0),        # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_kristallsystem == [
+        ("kubisch", 1000.0),
+        ("trigonal", 150.0),
+        ("hexagonal", 10.0),
+    ]
+    assert st.as_dict()["gewicht_pro_kristallsystem"] == [
+        ("kubisch", 1000.0), ("trigonal", 150.0), ("hexagonal", 10.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_kristallsystem_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpks_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Sys{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_kristallsystem=3)
+    assert len(st.gewicht_pro_kristallsystem) == 3
+    g = [v for _, v in st.gewicht_pro_kristallsystem]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_kristallsystem_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_kristallsystem == []
+    c.close()

@@ -161,6 +161,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Kategorie (CHF):"]
         for kat, wert in st.wert_pro_kategorie[:top]:
             lines.append(f"  {kat:40s} {wert:>12,.0f}")
+    if st.wert_pro_kristallsystem:
+        # Kristallographische Sicht: welcher Symmetrietyp dominiert wertmaessig?
+        # Komplementaer zu by_kristallsystem (Anzahl) - hier zaehlt der Sammlungswert
+        # pro Kristallsystem (trigonal/kubisch/hexagonal/...).
+        lines += ["", "Wert pro Kristallsystem (CHF):"]
+        for ks, wert in st.wert_pro_kristallsystem[:top]:
+            lines.append(f"  {ks:40s} {wert:>12,.0f}")
     if st.wert_pro_status:
         # Lifecycle-Sicht: wo steckt der Wert nach Pflegezustand? Beantwortet
         # Sammler-Fragen wie "wieviel Sammlungswert habe ich schon erfasst (aktiv)
@@ -189,6 +196,12 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Kategorie (g):"]
         for kat, gewicht in st.gewicht_pro_kategorie[:top]:
             lines.append(f"  {kat:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_kristallsystem:
+        # Spiegelbild zu wert_pro_kristallsystem: welcher Symmetrietyp traegt die
+        # meiste Masse? Bei Quarz-/Pyrit-Sammlungen oft entkoppelt vom Wert.
+        lines += ["", "Gewicht pro Kristallsystem (g):"]
+        for ks, gewicht in st.gewicht_pro_kristallsystem[:top]:
+            lines.append(f"  {ks:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_status:
         # Spiegelbild zu wert_pro_status: welche Gewichts-Masse haengt noch in
         # platzhaltern? Komplementaer fuer Versicherungsabschaetzung pro Lifecycle.
@@ -231,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
             top_wert_mineral=args.top, top_gewicht_mineral=args.top,
             top_wert_fundort=args.top, top_gewicht_fundort=args.top,
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
+            top_wert_kristallsystem=args.top,
+            top_gewicht_kristallsystem=args.top,
             top_gewicht=args.top, top_bilder=args.top)
     finally:
         conn.close()

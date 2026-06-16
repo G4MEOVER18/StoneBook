@@ -791,6 +791,86 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_status_zeile(tmp_path, caps
     assert "Gewicht pro Status" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_kristallsystem(tmp_path, capsys):
+    """Wert-pro-Kristallsystem-Block summiert CHF je Symmetrietyp, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpks.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "kubisch",   600.0, 400.0),   # kubisch  1000
+            ("OBJ_0002", "trigonal",  200.0, 150.0),   # trigonal  350
+            ("OBJ_0003", "hexagonal",  10.0, None),    # hexagonal  10
+            ("OBJ_0004", "hexagonal", None, None),     # bleibt 10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Kristallsystem (CHF):" in out
+    block = out.split("Wert pro Kristallsystem (CHF):", 1)[1]
+    assert block.index("kubisch") < block.index("trigonal") < block.index("hexagonal")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_kristallsystem_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpks0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [("OBJ_0001", "trigonal"), ("OBJ_0002", "kubisch")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Kristallsystem" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_kristallsystem(tmp_path, capsys):
+    """Gewicht-pro-Kristallsystem-Block summiert g je Symmetrietyp, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpks.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "kubisch",   600.0),
+            ("OBJ_0002", "kubisch",   400.0),  # kubisch total 1000
+            ("OBJ_0003", "trigonal",  150.0),
+            ("OBJ_0004", "hexagonal",  10.0),
+            ("OBJ_0005", "hexagonal", None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Kristallsystem (g):" in out
+    block = out.split("Gewicht pro Kristallsystem (g):", 1)[1]
+    assert block.index("kubisch") < block.index("trigonal") < block.index("hexagonal")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_kristallsystem_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpks0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [("OBJ_0001", "trigonal"), ("OBJ_0002", "kubisch")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Kristallsystem" not in out
+
+
 def test_text_ausgabe_zeigt_ki_analysen(migrated_db, capsys):
     """KI-Analysen-Zeile gibt total + Objekte + uebernommene aus."""
     main(["--db", str(migrated_db)])
