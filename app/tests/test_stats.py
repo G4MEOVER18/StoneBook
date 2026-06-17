@@ -981,6 +981,46 @@ def test_by_magnetismus_leer(tmp_path):
     c.close()
 
 
+def test_by_spaltbarkeit_aus_seed_db(tmp_path):
+    """Verteilung nach Spaltbarkeit ignoriert leere Eintraege (5 Enum-Stufen).
+
+    Klassische Lehrbuch-Sicht: Calcit/Fluorit/Glimmer (vollkommen) vs. Quarz
+    (keine) vs. Granat (deutlich). Spiegelt Bruch und Glanz auf der
+    mineralogischen Achse - praktisch fuer Polier-/Praeparier-Entscheidungen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "spk.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "keine"),
+            ("OBJ_0002", "keine"),
+            ("OBJ_0003", "keine"),
+            ("OBJ_0004", "vollkommen"),
+            ("OBJ_0005", "vollkommen"),
+            ("OBJ_0006", "deutlich"),
+            ("OBJ_0007", "undeutlich"),
+            ("OBJ_0008", ""),
+            ("OBJ_0009", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_spaltbarkeit == {
+        "keine": 3, "vollkommen": 2, "deutlich": 1, "undeutlich": 1,
+    }
+    assert st.as_dict()["by_spaltbarkeit"]["keine"] == 3
+    c.close()
+
+
+def test_by_spaltbarkeit_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_spaltbarkeit == {}
+    c.close()
+
+
 def test_by_varietaet_aus_seed_db(tmp_path):
     """Verteilung nach Varietaet ignoriert leere Eintraege (Quarz-Familie zerfaellt)."""
     from stonebook.db.database import open_db

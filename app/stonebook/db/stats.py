@@ -38,6 +38,7 @@ class Statistik:
     by_glanz: dict[str, int] = field(default_factory=dict)
     by_transparenz: dict[str, int] = field(default_factory=dict)
     by_magnetismus: dict[str, int] = field(default_factory=dict)
+    by_spaltbarkeit: dict[str, int] = field(default_factory=dict)
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
@@ -134,6 +135,7 @@ class Statistik:
             "by_glanz": dict(self.by_glanz),
             "by_transparenz": dict(self.by_transparenz),
             "by_magnetismus": dict(self.by_magnetismus),
+            "by_spaltbarkeit": dict(self.by_spaltbarkeit),
             "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
@@ -591,6 +593,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # (mineralogisch) und by_glanz (optisch): hier die physikalische
     # Eisengehalt-Achse, die mineralogisch quer durch alle Hauptgruppen geht.
     st.by_magnetismus = _count_by(conn, "Magnetismus")
+    # Mineralogische Sicht: welche Spaltbarkeit dominiert die Sammlung?
+    # Fuenf Enum-Werte aus dem Feldwoerterbuch (vollkommen/gut/deutlich/
+    # undeutlich/keine) - klassische Lehrbuch-Sicht (Calcit/Fluorit/Glimmer:
+    # vollkommen; Quarz: keine; Granat: deutlich). Komplementaer zu by_bruch
+    # (Bruchverhalten) und by_glanz (Oberflaechen-Reflexion): hier die
+    # Spaltflaechen-Charakteristik, die das Polieren/Praeparieren bestimmt.
+    st.by_spaltbarkeit = _count_by(conn, "Spaltbarkeit")
     st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.
