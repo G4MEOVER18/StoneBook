@@ -613,6 +613,102 @@ def test_gewicht_min_max_filter(tmp_path):
     c.close()
 
 
+def test_laenge_min_max_filter(tmp_path):
+    """Vitrinen-/Sortierkasten-Auswahl per Laenge_mm-Bereich."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "lm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 30.0),
+            ("OBJ_0002", 80.0),
+            ("OBJ_0003", 200.0),
+            ("OBJ_0004", None),     # ohne Vermessung -> faellt aus min-Filter raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Nur Min: alle ab 50 mm
+    rows = repo.list_objects(laenge_min=50.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Nur Max: alle bis 100 mm (NULL ist nicht <= 100)
+    rows = repo.list_objects(laenge_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Kombiniert: 50 <= L <= 100
+    rows = repo.list_objects(laenge_min=50.0, laenge_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
+def test_breite_min_max_filter(tmp_path):
+    """Breiten-Filter analog Laenge_min/_max (Vitrinen-Auswahl auf zweiter Achse)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Breite_mm) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 20.0),
+            ("OBJ_0002", 60.0),
+            ("OBJ_0003", 150.0),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(breite_min=40.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    rows = repo.list_objects(breite_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(breite_min=40.0, breite_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
+def test_hoehe_min_max_filter(tmp_path):
+    """Hoehen-Filter analog Laenge_min/_max (Vitrinen-Auswahl auf dritter Achse)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Hoehe_mm) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 10.0),
+            ("OBJ_0002", 40.0),
+            ("OBJ_0003", 90.0),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(hoehe_min=30.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    rows = repo.list_objects(hoehe_max=50.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(hoehe_min=30.0, hoehe_max=50.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
+def test_dimensionen_filter_kombiniert(tmp_path):
+    """Vitrinen-Auswahl: alle drei Achsen gleichzeitig (passt in 100x100x50 Fach?)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "dim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 80.0, 60.0, 30.0),    # passt komplett
+            ("OBJ_0002", 80.0, 60.0, 80.0),    # zu hoch
+            ("OBJ_0003", 120.0, 60.0, 30.0),   # zu lang
+            ("OBJ_0004", 80.0, 120.0, 30.0),   # zu breit
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(
+        laenge_max=100.0, breite_max=100.0, hoehe_max=50.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
 def test_refresh_status_all_setzt_aktiv_und_platzhalter(tmp_path):
     """Bulk-refresh ist semantisch identisch zu pro-Objekt-refresh_status."""
     from stonebook.db.database import open_db

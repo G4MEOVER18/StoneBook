@@ -110,6 +110,12 @@ class ObjectRepo:
                      wert_max: float | None = None,
                      gewicht_min: float | None = None,
                      gewicht_max: float | None = None,
+                     laenge_min: float | None = None,
+                     laenge_max: float | None = None,
+                     breite_min: float | None = None,
+                     breite_max: float | None = None,
+                     hoehe_min: float | None = None,
+                     hoehe_max: float | None = None,
                      kristallsystem: str = "",
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
@@ -314,6 +320,29 @@ class ObjectRepo:
         if gewicht_max is not None:
             where.append("o.Gewicht_g <= ?")
             params.append(float(gewicht_max))
+        # Dimensionen-Filter fuer Vitrinen-/Schubladen-Auswahl: "welche Stuecke
+        # passen in einen 100mm-Sortierkasten?" -> laenge_max=100. Drei Achsen
+        # einzeln filterbar, weil ein langes flaches Stueck (200x50x10) in eine
+        # andere Vitrine passt als ein wuerfelfoermiges (60x60x60). NULL-Eintraege
+        # (nicht vermessene Stuecke) bleiben durch die ?-Vergleiche aussen vor.
+        if laenge_min is not None:
+            where.append("o.Laenge_mm >= ?")
+            params.append(float(laenge_min))
+        if laenge_max is not None:
+            where.append("o.Laenge_mm <= ?")
+            params.append(float(laenge_max))
+        if breite_min is not None:
+            where.append("o.Breite_mm >= ?")
+            params.append(float(breite_min))
+        if breite_max is not None:
+            where.append("o.Breite_mm <= ?")
+            params.append(float(breite_max))
+        if hoehe_min is not None:
+            where.append("o.Hoehe_mm >= ?")
+            params.append(float(hoehe_min))
+        if hoehe_max is not None:
+            where.append("o.Hoehe_mm <= ?")
+            params.append(float(hoehe_max))
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
             params.append(kristallsystem)
