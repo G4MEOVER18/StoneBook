@@ -104,6 +104,7 @@ class ObjectRepo:
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
                      fundort: str = "",
+                     fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
                      mineral_contains: str = "",
                      name_contains: str = "",
@@ -322,6 +323,18 @@ class ObjectRepo:
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
+        # fundort_in: Mengen-Filter ("Davos ODER Zermatt ODER St. Gallen")
+        # fuer Reise- oder Regions-Auswertungen. Fundort ist Freitext (Ort plus
+        # optionale Detail-Angabe wie "St. Gallen, Sitter"), daher keine
+        # Enum-Validierung; leere Eintraege werden uebersprungen. Kombinierbar
+        # mit exaktem ``fundort``-Filter und mit ``fundort_contains`` (Regions-
+        # Substring fuer "St. Gallen, Sitter" + "St. Gallen, Bahnhof").
+        if fundort_in:
+            orte = [o for o in fundort_in if o]
+            if orte:
+                placeholders = ", ".join("?" * len(orte))
+                where.append(f"o.Fundort IN ({placeholders})")
+                params.extend(orte)
         if fundort_contains:
             # Substring-Filter fuer Sammel-Regionen ("St. Gallen, Sitter" + "St. Gallen, Bahnhof").
             # LIKE ist case-insensitive fuer ASCII; fuer Umlaute reicht das in der CH-Praxis aus.

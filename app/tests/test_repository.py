@@ -811,6 +811,67 @@ def test_fundort_filter(tmp_path):
     c.close()
 
 
+def test_fundort_in_filter(tmp_path):
+    """fundort_in akzeptiert Freitext-Mengen ('Davos ODER Zermatt ODER St. Gallen').
+
+    Spiegelt mineral_in/varietaet_in/gesteinsart_in: Fundort ist Freitext
+    (Ort plus optionale Detail-Angabe wie 'St. Gallen, Sitter'), daher
+    keine Enum-Validierung; leere Strings werden uebersprungen.
+    Sammler-Frage: 'zeig mir alle Funde meiner Lieblings-Fundorte'.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "fi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Davos"),
+            ("OBJ_0002", "Zermatt"),
+            ("OBJ_0003", "St. Gallen, Sitter"),
+            ("OBJ_0004", "Davos"),
+            ("OBJ_0005", "Andermatt"),
+            ("OBJ_0006", None),
+            ("OBJ_0007", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Drei Lieblings-Fundorte
+    rows = repo.list_objects(
+        fundort_in=["Davos", "Zermatt", "St. Gallen, Sitter"])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie fundort=
+    rows = repo.list_objects(fundort_in=["Davos"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(fundort_in=[])
+    assert len(rows) == 7
+    # Tupel akzeptiert
+    rows = repo.list_objects(fundort_in=("Andermatt",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Leere Strings werden uebersprungen (degeneriert nicht)
+    rows = repo.list_objects(fundort_in=["", "Zermatt"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    rows = repo.list_objects(fundort_in=["", ""])
+    assert len(rows) == 7
+    # Unbekannter Fundort -> leeres Ergebnis (Freitext-Domaene)
+    rows = repo.list_objects(fundort_in=["Mondsee"])
+    assert rows == []
+    # Kombiniert mit fundort= (Schnittmenge)
+    rows = repo.list_objects(
+        fundort="Davos",
+        fundort_in=["Davos", "Zermatt"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit fundort_contains (Regions-Substring): findet exakte
+    # Eintraege, die ZUSAETZLICH einen Substring enthalten - hier nur
+    # St. Gallen mit Detail-Angabe.
+    rows = repo.list_objects(
+        fundort_in=["Davos", "Zermatt", "St. Gallen, Sitter"],
+        fundort_contains="Sitter")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    c.close()
+
+
 def test_fundort_contains_filter(tmp_path):
     """Substring-Filter findet Sammel-Regionen mit unterschiedlichen Detail-Ortsangaben."""
     from stonebook.db.database import open_db
