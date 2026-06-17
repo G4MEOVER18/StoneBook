@@ -185,6 +185,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Varietaet (CHF):"]
         for var, wert in st.wert_pro_varietaet[:top]:
             lines.append(f"  {var:40s} {wert:>12,.0f}")
+    if st.wert_pro_gesteinsart:
+        # Petrologische Wert-Sicht: Granit/Gneis/Basalt/Sandstein-Klassen liegen
+        # oft auf unterschiedlichen Preisniveaus (Edelgranite vs. Halden-Basalt).
+        # Komplementaer zu by_gesteinsart (Anzahl).
+        lines += ["", "Wert pro Gesteinsart (CHF):"]
+        for ges, wert in st.wert_pro_gesteinsart[:top]:
+            lines.append(f"  {ges:40s} {wert:>12,.0f}")
     if st.wert_pro_fundort:
         # Komplementaer zu by_fundort (Anzahl): zeigt den Fundort mit dem hoechsten
         # Sammlungs-Gesamtwert. Hilft bei Versicherungseinschaetzung pro Region und
@@ -234,6 +241,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Varietaet (g):"]
         for var, gewicht in st.gewicht_pro_varietaet[:top]:
             lines.append(f"  {var:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_gesteinsart:
+        # Spiegelbild zu wert_pro_gesteinsart: welche Gesteinsart bringt die
+        # meiste Masse? Basalt-/Granit-Geroelle dominieren oft die Sammlung
+        # gewichtsmaessig, ohne wertlich vorne zu liegen.
+        lines += ["", "Gewicht pro Gesteinsart (g):"]
+        for ges, gewicht in st.gewicht_pro_gesteinsart[:top]:
+            lines.append(f"  {ges:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_fundort:
         # Spiegelbild zu wert_pro_fundort: welcher Fundort dominiert gewichtsmaessig?
         # Aufschluss-/Halden-Funde liefern oft viel Masse fuer geringen Wert; das
@@ -331,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
             top_jahre=args.top,
             top_wert_mineral=args.top, top_gewicht_mineral=args.top,
             top_wert_varietaet=args.top, top_gewicht_varietaet=args.top,
+            top_wert_gesteinsart=args.top, top_gewicht_gesteinsart=args.top,
             top_wert_fundort=args.top, top_gewicht_fundort=args.top,
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
             top_wert_kristallsystem=args.top,

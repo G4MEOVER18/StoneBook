@@ -55,6 +55,7 @@ class Statistik:
     top_confidence_objekte: list[tuple[str, str, int]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_gesteinsart: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
@@ -64,6 +65,7 @@ class Statistik:
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_gesteinsart: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
@@ -150,6 +152,9 @@ class Statistik:
             "wert_pro_varietaet": [
                 (var, round(w, 2)) for var, w in self.wert_pro_varietaet
             ],
+            "wert_pro_gesteinsart": [
+                (ges, round(w, 2)) for ges, w in self.wert_pro_gesteinsart
+            ],
             "wert_pro_fundort": [
                 (ort, round(w, 2)) for ort, w in self.wert_pro_fundort
             ],
@@ -176,6 +181,9 @@ class Statistik:
             ],
             "gewicht_pro_varietaet": [
                 (var, round(g, 2)) for var, g in self.gewicht_pro_varietaet
+            ],
+            "gewicht_pro_gesteinsart": [
+                (ges, round(g, 2)) for ges, g in self.gewicht_pro_gesteinsart
             ],
             "gewicht_pro_fundort": [
                 (ort, round(g, 2)) for ort, g in self.gewicht_pro_fundort
@@ -444,6 +452,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_mineral: int = 10,
                        top_wert_varietaet: int = 10,
                        top_gewicht_varietaet: int = 10,
+                       top_wert_gesteinsart: int = 10,
+                       top_gewicht_gesteinsart: int = 10,
                        top_wert_fundort: int = 10,
                        top_gewicht_fundort: int = 10,
                        top_wert_kategorie: int = 10,
@@ -628,6 +638,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # "Milchquarz" innerhalb der Quarz-Familie laufen wertlich oft weit
     # auseinander; der Block zeigt, welche Varietaet das Geld traegt.
     st.wert_pro_varietaet = _sum_by(conn, "Varietaet", wert_sql, top_wert_varietaet)
+    # Petrologische Wert-Sicht: welche Gesteinsart traegt den Sammlungswert?
+    # Granit-Stuecke vs. Gneis-/Basalt-Stuecke liegen oft auf ganz unterschied-
+    # lichen Preis-Niveaus (z.B. Edelgranite vs. Halden-Basalt); der Block
+    # macht das transparent, komplementaer zu by_gesteinsart (Anzahl).
+    st.wert_pro_gesteinsart = _sum_by(
+        conn, "Gesteinsart", wert_sql, top_wert_gesteinsart)
     st.wert_pro_fundort = _sum_by(conn, "Fundort", wert_sql, top_wert_fundort)
     st.wert_pro_kategorie = _sum_by(conn, "Kategorie", wert_sql, top_wert_kategorie)
     # Kristallographische Sicht: welcher Symmetrietyp dominiert wertmaessig?
@@ -654,6 +670,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # entkoppeln sich oft vom Wert (viel Masse fuer wenig Geld).
     st.gewicht_pro_varietaet = _sum_by(
         conn, "Varietaet", "Gewicht_g", top_gewicht_varietaet,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_gesteinsart: welche Gesteinsart bringt die meiste
+    # Masse? Basalt-/Granit-Geroelle dominieren oft die Sammlung gewichts-
+    # maessig, ohne wertlich vorne zu liegen - der Block macht das sichtbar.
+    st.gewicht_pro_gesteinsart = _sum_by(
+        conn, "Gesteinsart", "Gewicht_g", top_gewicht_gesteinsart,
         extra_where=gewicht_where)
     st.gewicht_pro_fundort = _sum_by(
         conn, "Fundort", "Gewicht_g", top_gewicht_fundort,

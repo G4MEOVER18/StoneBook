@@ -1144,6 +1144,85 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_varietaet_zeile(tmp_path, c
     assert "Gewicht pro Varietaet" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_gesteinsart(tmp_path, capsys):
+    """Wert-pro-Gesteinsart-Block summiert CHF je petrologischer Gruppe."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Gneis",  600.0, 400.0),   # Gneis  1000
+            ("OBJ_0002", "Granit", 200.0, 150.0),   # Granit  350
+            ("OBJ_0003", "Basalt",  10.0, None),    # Basalt   10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Gesteinsart (CHF):" in out
+    block = out.split("Wert pro Gesteinsart (CHF):", 1)[1]
+    assert block.index("Gneis") < block.index("Granit") < block.index("Basalt")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_gesteinsart_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Wert-pro-Gesteinsart-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?, ?)",
+        [("OBJ_0001", "Granit"), ("OBJ_0002", "Basalt")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Gesteinsart" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_gesteinsart(tmp_path, capsys):
+    """Gewicht-pro-Gesteinsart-Block summiert g je petrologischer Gruppe."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Gneis",  600.0),
+            ("OBJ_0002", "Gneis",  400.0),   # Gneis total 1000
+            ("OBJ_0003", "Granit", 150.0),
+            ("OBJ_0004", "Basalt",  10.0),
+            ("OBJ_0005", "Basalt", None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Gesteinsart (g):" in out
+    block = out.split("Gewicht pro Gesteinsart (g):", 1)[1]
+    assert block.index("Gneis") < block.index("Granit") < block.index("Basalt")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_gesteinsart_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Gewicht-pro-Gesteinsart-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?, ?)",
+        [("OBJ_0001", "Granit"), ("OBJ_0002", "Basalt")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Gesteinsart" not in out
+
+
 def test_text_ausgabe_zeigt_top_confidence_objekte(tmp_path, capsys):
     """Top-Confidence-Objekte-Block listet die zuverlaessigsten Identifikationen absteigend."""
     from stonebook.db.database import open_db
