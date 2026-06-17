@@ -35,6 +35,7 @@ class Statistik:
     by_gesteinsart: dict[str, int] = field(default_factory=dict)
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_kristallsystem: dict[str, int] = field(default_factory=dict)
+    by_glanz: dict[str, int] = field(default_factory=dict)
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
@@ -122,6 +123,7 @@ class Statistik:
             "by_gesteinsart": dict(self.by_gesteinsart),
             "by_kategorie": dict(self.by_kategorie),
             "by_kristallsystem": dict(self.by_kristallsystem),
+            "by_glanz": dict(self.by_glanz),
             "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
@@ -536,6 +538,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_gesteinsart = _count_by(conn, "Gesteinsart")
     st.by_kategorie = _count_by(conn, "Kategorie")
     st.by_kristallsystem = _count_by(conn, "Kristallsystem")
+    # Optische Sicht: welche Glanz-Charakteristik dominiert die Sammlung?
+    # Glasiger Quarz vs. metallischer Pyrit vs. matter Sandstein trennt die
+    # Sammlung auf einer Achse, die weder mineralogisch (by_mineral) noch
+    # kristallographisch (by_kristallsystem) sichtbar ist. Sieben Enum-Werte
+    # aus dem Feldwoerterbuch (glasig/wachsig/matt/metallisch/fettig/seidig/perlmutt).
+    st.by_glanz = _count_by(conn, "Glanz")
     st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.

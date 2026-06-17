@@ -881,6 +881,37 @@ def test_by_kristallsystem_leer(tmp_path):
     c.close()
 
 
+def test_by_glanz_aus_seed_db(tmp_path):
+    """Verteilung nach Glanz ignoriert leere Eintraege (optische Charakteristik)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "glz.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "glasig"),
+            ("OBJ_0002", "glasig"),
+            ("OBJ_0003", "glasig"),
+            ("OBJ_0004", "metallisch"),
+            ("OBJ_0005", "matt"),
+            ("OBJ_0006", ""),
+            ("OBJ_0007", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_glanz == {"glasig": 3, "matt": 1, "metallisch": 1}
+    assert st.as_dict()["by_glanz"]["glasig"] == 3
+    c.close()
+
+
+def test_by_glanz_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_glanz == {}
+    c.close()
+
+
 def test_by_varietaet_aus_seed_db(tmp_path):
     """Verteilung nach Varietaet ignoriert leere Eintraege (Quarz-Familie zerfaellt)."""
     from stonebook.db.database import open_db
