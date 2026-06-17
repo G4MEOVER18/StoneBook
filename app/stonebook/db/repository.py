@@ -98,6 +98,7 @@ class ObjectRepo:
                      has_wert: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
+                     funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_monat: int | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
@@ -255,6 +256,25 @@ class ObjectRepo:
             if funddatum_jahr_max is not None:
                 where.append("CAST(substr(o.Funddatum, 1, 4) AS INTEGER) <= ?")
                 params.append(int(funddatum_jahr_max))
+        # funddatum_jahr_in: diskrete Jahres-Menge ("Funde aus 2018 ODER 2020 ODER
+        # 2024") - komplementaer zum Bereichsfilter funddatum_jahr_min/_max, der
+        # ein zusammenhaengendes Intervall vorgibt. Validierung: jeder Eintrag
+        # muss ein realistisches Jahr 1800..2999 sein; sonst ValueError mit klarer
+        # Diagnose (statt eines stillen Leerergebnisses fuer "2023" als String).
+        if funddatum_jahr_in:
+            jahre = [int(j) for j in funddatum_jahr_in]
+            invalid = [j for j in jahre if not 1800 <= j <= 2999]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Funddatum-Jahre: {invalid} "
+                    f"(erwartet 1800..2999)")
+            if jahre:
+                placeholders = ", ".join("?" * len(jahre))
+                where.append(
+                    f"substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    f"AND CAST(substr(o.Funddatum, 1, 4) AS INTEGER) IN "
+                    f"({placeholders})")
+                params.extend(jahre)
         # funddatum_monat: Saison-Filter ("alle Juli-Funde", ueber alle Jahre).
         # Komplementaer zum Jahres-Bereich oben (zeit-vs-saisonal); spiegelt das
         # by_funddatum_monat-Aggregat in der Statistik. Erwartet 1..12 (Tippfehler

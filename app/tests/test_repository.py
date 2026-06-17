@@ -454,6 +454,51 @@ def test_funddatum_jahr_range_filter(tmp_path):
     c.close()
 
 
+def test_funddatum_jahr_in_filter(tmp_path):
+    """funddatum_jahr_in akzeptiert diskrete Jahresmenge ('2018 ODER 2022 ODER 2024')."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "yi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2018-05-13"),
+            ("OBJ_0002", "2020-08-01"),
+            ("OBJ_0003", "2022-01-01"),
+            ("OBJ_0004", "2024-11-30"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "kein-datum"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Diskrete Mengen-Auswahl: nur die genannten Jahre
+    rows = repo.list_objects(funddatum_jahr_in=[2018, 2022, 2024])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # Einzelnes Jahr verhaelt sich wie min=max
+    rows = repo.list_objects(funddatum_jahr_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(funddatum_jahr_in=(2020, 2022))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(funddatum_jahr_in=[])
+    assert len(rows) == 6
+    # Jahr ohne Treffer -> leeres Ergebnis, kein Crash
+    rows = repo.list_objects(funddatum_jahr_in=[1999])
+    assert rows == []
+    # Kombiniert mit Bereichsfilter (Schnittmenge): {2018,2020,2024} ∩ [2020..2023]
+    rows = repo.list_objects(funddatum_jahr_in=[2018, 2020, 2024],
+                              funddatum_jahr_min=2020, funddatum_jahr_max=2023)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Ungueltige Jahresangaben (ausserhalb 1800..2999) -> ValueError
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Jahre"):
+        repo.list_objects(funddatum_jahr_in=[2020, 9999])
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Jahre"):
+        repo.list_objects(funddatum_jahr_in=[1700])
+    c.close()
+
+
 def test_funddatum_monat_filter(tmp_path):
     """Saison-Filter ueber alle Jahre: 'alle Juli-Funde' unabhaengig vom Jahr."""
     from stonebook.db.database import open_db
