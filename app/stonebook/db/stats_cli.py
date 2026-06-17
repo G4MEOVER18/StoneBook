@@ -295,6 +295,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Funddatum-Jahr (g):"]
         for jahr, gewicht in st.gewicht_pro_funddatum_jahr[:top]:
             lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_funddatum_jahrzehnt:
+        # Dekaden-Sicht des Sammlungswerts: groberes Raster gegen Einzeljahr-
+        # Rauschen. Komplementaer zu by_funddatum_jahrzehnt (Anzahl) und
+        # wert_pro_funddatum_jahr (Einzeljahres-Aufloesung).
+        lines += ["", "Wert pro Funddatum-Jahrzehnt (CHF):"]
+        for dekade, wert in st.wert_pro_funddatum_jahrzehnt:
+            lines.append(f"  {dekade:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_funddatum_jahrzehnt:
+        # Spiegelbild Gewicht: welche Dekade brachte die meiste Masse?
+        # Bei zeitlich konzentrierten Schwerstuecken sind die Dekaden ein
+        # klareres Signal als das Einzeljahr.
+        lines += ["", "Gewicht pro Funddatum-Jahrzehnt (g):"]
+        for dekade, gewicht in st.gewicht_pro_funddatum_jahrzehnt:
+            lines.append(f"  {dekade:40s} {gewicht:>12,.1f}")
     if st.wert_pro_funddatum_monat:
         # Saison-Ertrag in CHF: welcher Monat bringt ueber alle Jahre den meisten
         # Wert? Komplementaer zu by_funddatum_monat (Anzahl) - dort die Aktivitaet,

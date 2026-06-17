@@ -420,6 +420,87 @@ def test_gewicht_pro_funddatum_jahr_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_funddatum_jahrzehnt_aus_seed_db(tmp_path):
+    """Wertsumme pro Dekade; absteigend nach Summe, Tie-Break chronologisch."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfd.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # 1990er: ein Riesenstueck (1000)
+            ("OBJ_0001", "1995-06-13", 1000.0, None),
+            # 2000er: zwei Stuecke -> 300
+            ("OBJ_0002", "2003-01-01", 100.0, 200.0),
+            ("OBJ_0003", "2008-09-15", None, None),     # 0
+            # 2010er: drei Stuecke -> 300 (Tie-Break: chronologisch nach 2000er)
+            ("OBJ_0004", "2010-03-01", 100.0, None),
+            ("OBJ_0005", "2014-07-10", 100.0, None),
+            ("OBJ_0006", "2019-11-30", 100.0, None),
+            # Ungueltige/leere Funddaten -> ignoriert
+            ("OBJ_0007", "", 999.0, None),
+            ("OBJ_0008", None, 999.0, None),
+            ("OBJ_0009", "Fruehling", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # 1990er (1000) > 2000er (300) == 2010er (300) -> Tie-Break aufsteigend.
+    assert st.wert_pro_funddatum_jahrzehnt == [
+        ("1990er", 1000.0),
+        ("2000er", 300.0),
+        ("2010er", 300.0),
+    ]
+    assert st.as_dict()["wert_pro_funddatum_jahrzehnt"] == [
+        ("1990er", 1000.0), ("2000er", 300.0), ("2010er", 300.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_funddatum_jahrzehnt_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_jahrzehnt == []
+    c.close()
+
+
+def test_gewicht_pro_funddatum_jahrzehnt_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Dekade; NULL/0 zaehlen nicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfd.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "1995-06-13", 1000.0),
+            ("OBJ_0002", "2003-04-01", 100.0),
+            ("OBJ_0003", "2008-09-15", 150.0),   # 2000er total 250
+            ("OBJ_0004", "2010-03-01", 50.0),
+            ("OBJ_0005", "2015-07-10", None),    # NULL -> ignoriert
+            ("OBJ_0006", "2019-11-30", 0.0),     # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_jahrzehnt == [
+        ("1990er", 1000.0),
+        ("2000er", 250.0),
+        ("2010er", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_funddatum_jahrzehnt"] == [
+        ("1990er", 1000.0), ("2000er", 250.0), ("2010er", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_jahrzehnt_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_jahrzehnt == []
+    c.close()
+
+
 def test_wert_pro_funddatum_monat_aus_seed_db(tmp_path):
     """Wertsumme pro Funddatum-Monat ueber alle Jahre; absteigend nach Summe."""
     from stonebook.db.database import open_db

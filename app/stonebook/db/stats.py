@@ -62,6 +62,7 @@ class Statistik:
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
@@ -72,6 +73,7 @@ class Statistik:
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
@@ -173,6 +175,9 @@ class Statistik:
             "wert_pro_funddatum_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_funddatum_jahr
             ],
+            "wert_pro_funddatum_jahrzehnt": [
+                (d, round(w, 2)) for d, w in self.wert_pro_funddatum_jahrzehnt
+            ],
             "wert_pro_funddatum_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_funddatum_monat
             ],
@@ -202,6 +207,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_funddatum_jahr
+            ],
+            "gewicht_pro_funddatum_jahrzehnt": [
+                (d, round(g, 2)) for d, g in self.gewicht_pro_funddatum_jahrzehnt
             ],
             "gewicht_pro_funddatum_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_funddatum_monat
@@ -417,6 +425,29 @@ def _sum_by_funddatum_monat(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, k ASC"
     )
     return [(r["k"], float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_funddatum_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
+                                extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Jahrzehnt (Dekade).
+
+    Pendant zu :func:`_count_funddatum_jahrzehnt` (Anzahl), aber summiert
+    Wert/Gewicht je Dekaden-Bucket. Label folgt der Sammler-Konvention
+    (``1980er``, ``1990er``, ...). Sortierung absteigend nach Summe; bei
+    Gleichstand chronologisch aufsteigend. Ohne Limit, weil die Zahl der
+    Dekaden (~10-15 ueber ein Sammlerleben) klein bleibt.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT (CAST(substr(Funddatum, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
+        f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
+        f"GROUP BY dekade HAVING w > 0 "
+        f"ORDER BY w DESC, dekade ASC"
+    )
+    return [(f"{r['dekade']}er", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_funddatum_jahr(conn: sqlite3.Connection, value_sql: str,
@@ -707,6 +738,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.gewicht_pro_funddatum_jahr = _sum_by_funddatum_jahr(
         conn, "Gewicht_g", top_gewicht_funddatum_jahr,
         extra_where=gewicht_where)
+    # Dekaden-Sicht des Sammlungswerts: "in welchem Jahrzehnt habe ich am meisten
+    # Wert/Masse zusammengetragen?". Komplementaer zu wert_pro_funddatum_jahr
+    # (Einzeljahres-Rauschen): zeigt grobe Aktivitaetsphasen ohne Verzerrung
+    # durch einzelne Ausreisserjahre. Ohne Limit (max ~10-15 Dekaden).
+    st.wert_pro_funddatum_jahrzehnt = _sum_by_funddatum_jahrzehnt(conn, wert_sql)
+    st.gewicht_pro_funddatum_jahrzehnt = _sum_by_funddatum_jahrzehnt(
+        conn, "Gewicht_g", extra_where=gewicht_where)
     # Saison-Sicht des Sammlungswerts: "welcher Monat bringt am meisten Wert/
     # Gewicht?". Komplementaer zu by_funddatum_monat (Anzahl): zeigt nicht
     # "wie oft sammle ich im Juli", sondern "wie ergiebig ist die Juli-Saison".
