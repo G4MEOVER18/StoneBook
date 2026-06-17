@@ -123,6 +123,7 @@ class ObjectRepo:
                      beste_verwendung: str = "",
                      beste_verwendung_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
+                     varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
                      gesteinsart: str = "",
                      gesteinsart_contains: str = "",
@@ -417,6 +418,17 @@ class ObjectRepo:
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)
+        # varietaet_in: Mengen-Filter ("Bergkristall ODER Milchquarz ODER Rauchquarz")
+        # innerhalb einer Mineral-Familie. Freitext-Feld wie Mineral_Primaer (kein
+        # Feldwoerterbuch-Enum), daher keine Enum-Validierung; leere Eintraege
+        # werden uebersprungen. Kombinierbar mit exaktem ``varietaet``-Filter und
+        # mit ``varietaet_contains`` (Substring-Familie).
+        if varietaet_in:
+            vars_ = [v for v in varietaet_in if v]
+            if vars_:
+                placeholders = ", ".join("?" * len(vars_))
+                where.append(f"o.Varietaet IN ({placeholders})")
+                params.extend(vars_)
         if varietaet_contains:
             # Substring-Filter ueber Varietaet: findet Familien wie "Jaspis" (Roter Jaspis,
             # Bunter Jaspis, Brekzien-Jaspis) ohne Kenntnis der exakten Notation.

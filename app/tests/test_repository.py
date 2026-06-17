@@ -1254,6 +1254,64 @@ def test_mineral_contains_filter(tmp_path):
     c.close()
 
 
+def test_varietaet_in_filter(tmp_path):
+    """varietaet_in akzeptiert Freitext-Mengen ('Bergkristall ODER Milchquarz').
+
+    Spiegelt mineral_in: Varietaet ist Freitext, keine Enum-Validierung;
+    leere Strings werden uebersprungen. Sammler-Frage: 'zeig mir alle
+    benannten Quarz-Varianten' (Auswahl aus dem distinct_values-Dropdown).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Bergkristall"),
+            ("OBJ_0002", "Milchquarz"),
+            ("OBJ_0003", "Rauchquarz"),
+            ("OBJ_0004", "Bergkristall"),
+            ("OBJ_0005", "Achat"),
+            ("OBJ_0006", None),
+            ("OBJ_0007", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Quarz-Familien-Auswahl
+    rows = repo.list_objects(
+        varietaet_in=["Bergkristall", "Milchquarz", "Rauchquarz"])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie varietaet=
+    rows = repo.list_objects(varietaet_in=["Bergkristall"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(varietaet_in=[])
+    assert len(rows) == 7
+    # Tupel akzeptiert
+    rows = repo.list_objects(varietaet_in=("Achat",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Leere Strings werden uebersprungen (degeneriert nicht)
+    rows = repo.list_objects(varietaet_in=["", "Rauchquarz"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    rows = repo.list_objects(varietaet_in=["", ""])
+    assert len(rows) == 7
+    # Unbekannte Varietaet -> leeres Ergebnis (Freitext-Domaene)
+    rows = repo.list_objects(varietaet_in=["Mondquarz"])
+    assert rows == []
+    # Kombiniert mit varietaet= (Schnittmenge)
+    rows = repo.list_objects(
+        varietaet="Bergkristall",
+        varietaet_in=["Bergkristall", "Milchquarz"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit varietaet_contains (Substring-Familie)
+    rows = repo.list_objects(
+        varietaet_in=["Bergkristall", "Milchquarz", "Achat"],
+        varietaet_contains="quarz")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_varietaet_contains_filter(tmp_path):
     """Substring-Filter ueber Varietaet findet Familien-Varianten (Jaspis-Klan)."""
     from stonebook.db.database import open_db
