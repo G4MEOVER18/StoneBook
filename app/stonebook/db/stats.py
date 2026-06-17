@@ -37,6 +37,7 @@ class Statistik:
     by_kristallsystem: dict[str, int] = field(default_factory=dict)
     by_glanz: dict[str, int] = field(default_factory=dict)
     by_transparenz: dict[str, int] = field(default_factory=dict)
+    by_magnetismus: dict[str, int] = field(default_factory=dict)
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
@@ -130,6 +131,7 @@ class Statistik:
             "by_kristallsystem": dict(self.by_kristallsystem),
             "by_glanz": dict(self.by_glanz),
             "by_transparenz": dict(self.by_transparenz),
+            "by_magnetismus": dict(self.by_magnetismus),
             "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
@@ -572,6 +574,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # optisch nebeneinander, brauchen aber unterschiedliches Licht-Setup beim
     # Fotografieren. Drei Enum-Werte (durchsichtig/durchscheinend/opak).
     st.by_transparenz = _count_by(conn, "Transparenz")
+    # Magnetismus-Sicht: welcher Anteil der Sammlung reagiert auf den Magneten?
+    # Drei Enum-Werte aus dem Feldwoerterbuch (ja/schwach/nein) - praktischer
+    # Indikator fuer Magnetit/Pyrrhotin-Anteil (stark), Haematit/Ilmenit
+    # (schwach) und alles uebrige (nein). Komplementaer zu by_mineral
+    # (mineralogisch) und by_glanz (optisch): hier die physikalische
+    # Eisengehalt-Achse, die mineralogisch quer durch alle Hauptgruppen geht.
+    st.by_magnetismus = _count_by(conn, "Magnetismus")
     st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.

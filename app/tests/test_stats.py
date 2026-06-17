@@ -944,6 +944,43 @@ def test_by_transparenz_leer(tmp_path):
     c.close()
 
 
+def test_by_magnetismus_aus_seed_db(tmp_path):
+    """Verteilung nach Magnetismus ignoriert leere Eintraege (3 Enum-Stufen).
+
+    Praktischer Eisengehalt-Indikator: nein (Quarz/Calcit), schwach
+    (Haematit/Ilmenit), ja (Magnetit/Pyrrhotin). Geht mineralogisch quer
+    durch alle Hauptgruppen - eine Sicht, die by_mineral nicht abdeckt.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mag.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "nein"),
+            ("OBJ_0002", "nein"),
+            ("OBJ_0003", "nein"),
+            ("OBJ_0004", "schwach"),
+            ("OBJ_0005", "ja"),
+            ("OBJ_0006", "ja"),
+            ("OBJ_0007", ""),
+            ("OBJ_0008", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_magnetismus == {"nein": 3, "ja": 2, "schwach": 1}
+    assert st.as_dict()["by_magnetismus"]["nein"] == 3
+    c.close()
+
+
+def test_by_magnetismus_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_magnetismus == {}
+    c.close()
+
+
 def test_by_varietaet_aus_seed_db(tmp_path):
     """Verteilung nach Varietaet ignoriert leere Eintraege (Quarz-Familie zerfaellt)."""
     from stonebook.db.database import open_db
