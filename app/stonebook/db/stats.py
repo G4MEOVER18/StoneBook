@@ -60,6 +60,7 @@ class Statistik:
     wert_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -71,6 +72,7 @@ class Statistik:
     gewicht_pro_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -168,6 +170,9 @@ class Statistik:
             "wert_pro_kristallsystem": [
                 (ks, round(w, 2)) for ks, w in self.wert_pro_kristallsystem
             ],
+            "wert_pro_glanz": [
+                (g, round(w, 2)) for g, w in self.wert_pro_glanz
+            ],
             "wert_pro_beste_verwendung": [
                 (bv, round(w, 2)) for bv, w in self.wert_pro_beste_verwendung
             ],
@@ -200,6 +205,9 @@ class Statistik:
             ],
             "gewicht_pro_kristallsystem": [
                 (ks, round(g, 2)) for ks, g in self.gewicht_pro_kristallsystem
+            ],
+            "gewicht_pro_glanz": [
+                (glz, round(g, 2)) for glz, g in self.gewicht_pro_glanz
             ],
             "gewicht_pro_beste_verwendung": [
                 (bv, round(g, 2)) for bv, g in self.gewicht_pro_beste_verwendung
@@ -493,6 +501,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_kategorie: int = 10,
                        top_wert_kristallsystem: int = 10,
                        top_gewicht_kristallsystem: int = 10,
+                       top_wert_glanz: int = 10,
+                       top_gewicht_glanz: int = 10,
                        top_wert_beste_verwendung: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
@@ -691,6 +701,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # ueber wenige grosse - der Block macht das sichtbar.
     st.wert_pro_kristallsystem = _sum_by(
         conn, "Kristallsystem", wert_sql, top_wert_kristallsystem)
+    # Optische Wert-Sicht: welcher Glanztyp traegt den Sammlungswert? Glasige
+    # Quarz-Sammlungen vs. metallische Sulfide vs. matte Sedimentstuecke laufen
+    # wertlich oft weit auseinander; der Block macht das transparent.
+    # Komplementaer zu by_glanz (Anzahl).
+    st.wert_pro_glanz = _sum_by(
+        conn, "Glanz", wert_sql, top_wert_glanz)
     # Verwendungs-Sicht: wo steckt der Wert je Empfehlung (Schmuck/Sammlung/
     # Forschung/Industrie/Talisman/Dekoration)? Beantwortet "lohnt sich ein
     # Schmuck-Verkauf, oder steckt der Wert eher in Forschungs-/Sammler-Stuecken?".
@@ -726,6 +742,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # meiste Masse? Bei Quarz-/Pyrit-lastigen Sammlungen oft entkoppelt vom Wert.
     st.gewicht_pro_kristallsystem = _sum_by(
         conn, "Kristallsystem", "Gewicht_g", top_gewicht_kristallsystem,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_glanz: welcher Glanztyp dominiert gewichtsmaessig?
+    # Matte Geroellstuecke (Sediment) tragen oft die Sammlungsmasse, glasige
+    # Kristalle den Wert - die Wert/Gewicht-Entkopplung wird auf der optischen
+    # Achse sichtbar (analog zu kristallsystem-/varietaet-/gesteinsart-Aufteilung).
+    st.gewicht_pro_glanz = _sum_by(
+        conn, "Glanz", "Gewicht_g", top_gewicht_glanz,
         extra_where=gewicht_where)
     # Spiegelbild zu wert_pro_beste_verwendung: welche Verwendungs-Kategorie
     # bringt die meiste Masse? Industrie/Dekoration oft schwer, Schmuck oft

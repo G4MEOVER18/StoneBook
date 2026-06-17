@@ -1772,6 +1772,113 @@ def test_gewicht_pro_kristallsystem_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_glanz_aus_seed_db(tmp_path):
+    """Wertsumme pro Glanz, absteigend sortiert (optische Wert-Sicht)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "glasig", 100.0, 200.0),    # glasig: 300
+            ("OBJ_0002", "glasig", 50.0, None),      # glasig: +50 -> 350
+            ("OBJ_0003", "metallisch", 1000.0, None),  # metallisch: 1000
+            ("OBJ_0004", "metallisch", None, None),  # 0
+            ("OBJ_0005", "matt", 10.0, None),
+            ("OBJ_0006", "", 999.0, None),           # leer -> ignoriert
+            ("OBJ_0007", None, 999.0, None),         # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_glanz == [
+        ("metallisch", 1000.0),
+        ("glasig", 350.0),
+        ("matt", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_glanz"] == [
+        ("metallisch", 1000.0), ("glasig", 350.0), ("matt", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_glanz_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpg_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Glanz{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_glanz=3)
+    assert len(st.wert_pro_glanz) == 3
+    werte = [w for _, w in st.wert_pro_glanz]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_glanz_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_glanz == []
+    c.close()
+
+
+def test_gewicht_pro_glanz_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Glanz, absteigend sortiert; 0/NULL zaehlen nicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "matt", 1000.0),         # matt total 1000 (Geroelle schwer)
+            ("OBJ_0002", "matt", 500.0),          # matt total 1500
+            ("OBJ_0003", "glasig", 100.0),        # glasig total 100 (Kristalle leicht)
+            ("OBJ_0004", "glasig", None),         # NULL -> ignoriert
+            ("OBJ_0005", "metallisch", 200.0),
+            ("OBJ_0006", "", 999.0),              # leer -> ignoriert
+            ("OBJ_0007", None, 999.0),            # NULL -> ignoriert
+            ("OBJ_0008", "seidig", 0.0),          # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_glanz == [
+        ("matt", 1500.0),
+        ("metallisch", 200.0),
+        ("glasig", 100.0),
+    ]
+    assert st.as_dict()["gewicht_pro_glanz"] == [
+        ("matt", 1500.0), ("metallisch", 200.0), ("glasig", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_glanz_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpg_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Glanz{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_glanz=3)
+    assert len(st.gewicht_pro_glanz) == 3
+    g = [v for _, v in st.gewicht_pro_glanz]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_glanz_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_glanz == []
+    c.close()
+
+
 def test_wert_pro_varietaet_aus_seed_db(tmp_path):
     """Wertsumme pro Varietaet, absteigend sortiert (feinere Aufteilung unter Mineral)."""
     from stonebook.db.database import open_db
