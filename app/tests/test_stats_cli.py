@@ -1231,6 +1231,7 @@ def test_json_ausgabe(migrated_db, capsys):
     assert payload["aliase_total"] == 54
     assert "by_mineral" in payload
     assert "by_varietaet" in payload
+    assert "by_gesteinsart" in payload
     # Buckets sind in der JSON-Form enthalten (Dashboard/Reports lesen das hier)
     assert "confidence_buckets" in payload
     assert set(payload["confidence_buckets"]) == {"ohne", "0-24", "25-49", "50-74", "75-100"}
@@ -1272,6 +1273,45 @@ def test_text_ausgabe_ohne_varietaet_keine_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Top-Varietaeten" not in out
+
+
+def test_text_ausgabe_zeigt_top_gesteinsarten(tmp_path, capsys):
+    """Top-Gesteinsarten-Block erscheint, sobald Gesteinsart-Werte da sind."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Granit"),
+            ("OBJ_0002", "Granit"),
+            ("OBJ_0003", "Granit"),
+            ("OBJ_0004", "Gneis"),
+            ("OBJ_0005", "Basalt"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Gesteinsarten:" in out
+    block = out.split("Top-Gesteinsarten:", 1)[1]
+    # Granit fuehrt (3 Objekte) vor Gneis/Basalt (je 1)
+    assert block.index("Granit") < block.index("Gneis")
+    assert block.index("Granit") < block.index("Basalt")
+
+
+def test_text_ausgabe_ohne_gesteinsart_keine_zeile(tmp_path, capsys):
+    """Ohne Gesteinsart-Eintraege erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tg0.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Gesteinsarten" not in out
 
 
 def test_top_flag_steuert_listenlaenge(tmp_path, capsys):

@@ -832,6 +832,36 @@ def test_by_varietaet_leer(tmp_path):
     c.close()
 
 
+def test_by_gesteinsart_aus_seed_db(tmp_path):
+    """Verteilung nach Gesteinsart ignoriert leere Eintraege (petrologische Gruppen)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ges.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Granit"),
+            ("OBJ_0002", "Granit"),
+            ("OBJ_0003", "Gneis"),
+            ("OBJ_0004", "Basalt"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_gesteinsart == {"Granit": 2, "Basalt": 1, "Gneis": 1}
+    assert st.as_dict()["by_gesteinsart"]["Granit"] == 2
+    c.close()
+
+
+def test_by_gesteinsart_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_gesteinsart == {}
+    c.close()
+
+
 def test_bilder_by_kategorie_aus_migrierter_db(conn):
     st = compute_statistics(conn)
     # Migrierte DB hat 63 Bilder verteilt auf Kategorien

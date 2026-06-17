@@ -99,6 +99,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Top-Varietaeten:"]
         for name, n in list(st.by_varietaet.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_gesteinsart:
+        # Petrologische Sicht: Granit/Gneis/Basalt/Sandstein. Weder Mineral-
+        # noch Varietaet-Sicht zeigen das (die laufen auf mineralogischer
+        # Ebene); hier die uebergeordnete Gesteins-Gruppierung.
+        lines += ["", "Top-Gesteinsarten:"]
+        for name, n in list(st.by_gesteinsart.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_fundort:
         lines += ["", "Top-Fundorte:"]
         for name, n in list(st.by_fundort.items())[:top]:
