@@ -1065,6 +1065,85 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_kristallsystem_zeile(tmp_pa
     assert "Gewicht pro Kristallsystem" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_varietaet(tmp_path, capsys):
+    """Wert-pro-Varietaet-Block summiert CHF je Varietaet, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Milchquarz",   600.0, 400.0),   # Milchquarz  1000
+            ("OBJ_0002", "Bergkristall", 200.0, 150.0),   # Bergkristall 350
+            ("OBJ_0003", "Rauchquarz",    10.0, None),    # Rauchquarz    10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Varietaet (CHF):" in out
+    block = out.split("Wert pro Varietaet (CHF):", 1)[1]
+    assert block.index("Milchquarz") < block.index("Bergkristall") < block.index("Rauchquarz")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_varietaet_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Wert-pro-Varietaet-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpv0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [("OBJ_0001", "Bergkristall"), ("OBJ_0002", "Milchquarz")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Varietaet" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_varietaet(tmp_path, capsys):
+    """Gewicht-pro-Varietaet-Block summiert g je Varietaet, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Milchquarz",   600.0),
+            ("OBJ_0002", "Milchquarz",   400.0),  # Milchquarz total 1000
+            ("OBJ_0003", "Bergkristall", 150.0),
+            ("OBJ_0004", "Rauchquarz",    10.0),
+            ("OBJ_0005", "Rauchquarz",   None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Varietaet (g):" in out
+    block = out.split("Gewicht pro Varietaet (g):", 1)[1]
+    assert block.index("Milchquarz") < block.index("Bergkristall") < block.index("Rauchquarz")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_varietaet_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Gewicht-pro-Varietaet-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpv0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [("OBJ_0001", "Bergkristall"), ("OBJ_0002", "Milchquarz")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Varietaet" not in out
+
+
 def test_text_ausgabe_zeigt_top_confidence_objekte(tmp_path, capsys):
     """Top-Confidence-Objekte-Block listet die zuverlaessigsten Identifikationen absteigend."""
     from stonebook.db.database import open_db

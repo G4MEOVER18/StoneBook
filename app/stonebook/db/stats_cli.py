@@ -178,6 +178,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Mineral (CHF):"]
         for mineral, wert in st.wert_pro_mineral[:top]:
             lines.append(f"  {mineral:40s} {wert:>12,.0f}")
+    if st.wert_pro_varietaet:
+        # Feinere Sicht unter dem Mineral: Bergkristall vs. Milchquarz innerhalb
+        # der Quarz-Familie laufen wertlich oft weit auseinander. Komplementaer
+        # zu wert_pro_mineral (Hauptgruppe) und by_varietaet (Anzahl).
+        lines += ["", "Wert pro Varietaet (CHF):"]
+        for var, wert in st.wert_pro_varietaet[:top]:
+            lines.append(f"  {var:40s} {wert:>12,.0f}")
     if st.wert_pro_fundort:
         # Komplementaer zu by_fundort (Anzahl): zeigt den Fundort mit dem hoechsten
         # Sammlungs-Gesamtwert. Hilft bei Versicherungseinschaetzung pro Region und
@@ -220,6 +227,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Mineral (g):"]
         for mineral, gewicht in st.gewicht_pro_mineral[:top]:
             lines.append(f"  {mineral:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_varietaet:
+        # Spiegelbild zu wert_pro_varietaet: welche Varietaet dominiert
+        # gewichtsmaessig? Milchquarz-Geroelle vs. wenige feine Bergkristalle
+        # zeigen die Wert/Gewicht-Entkopplung auf Varietaet-Ebene.
+        lines += ["", "Gewicht pro Varietaet (g):"]
+        for var, gewicht in st.gewicht_pro_varietaet[:top]:
+            lines.append(f"  {var:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_fundort:
         # Spiegelbild zu wert_pro_fundort: welcher Fundort dominiert gewichtsmaessig?
         # Aufschluss-/Halden-Funde liefern oft viel Masse fuer geringen Wert; das
@@ -316,6 +330,7 @@ def main(argv: list[str] | None = None) -> int:
             conn, top_fundorte=args.top, top_wert=args.top,
             top_jahre=args.top,
             top_wert_mineral=args.top, top_gewicht_mineral=args.top,
+            top_wert_varietaet=args.top, top_gewicht_varietaet=args.top,
             top_wert_fundort=args.top, top_gewicht_fundort=args.top,
             top_wert_kategorie=args.top, top_gewicht_kategorie=args.top,
             top_wert_kristallsystem=args.top,
