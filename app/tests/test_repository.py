@@ -1107,6 +1107,69 @@ def test_kategorie_in_filter(tmp_path):
     c.close()
 
 
+def test_mineral_in_filter(tmp_path):
+    """mineral_in akzeptiert Freitext-Mengen ('Quarz ODER Calcit ODER Pyrit').
+
+    Mineral_Primaer ist Freitext (kein Feldwoerterbuch-Enum), daher keine
+    Enum-Validierung wie bei kategorie_in/status_in - der GUI-Caller liefert
+    die Werte aus distinct_values(). Leere Strings werden uebersprungen,
+    damit kein degenerierter IN-Filter entsteht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Quarz"),
+            ("OBJ_0002", "Calcit"),
+            ("OBJ_0003", "Pyrit"),
+            ("OBJ_0004", "Quarz"),
+            ("OBJ_0005", "Feldspat"),
+            ("OBJ_0006", None),
+            ("OBJ_0007", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter: drei klassische Mineral-Familien gleichzeitig
+    rows = repo.list_objects(mineral_in=["Quarz", "Calcit", "Pyrit"])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie mineral=
+    rows = repo.list_objects(mineral_in=["Quarz"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Leere Liste -> kein Filter (alle 7 Test-Objekte)
+    rows = repo.list_objects(mineral_in=[])
+    assert len(rows) == 7
+    # Tupel akzeptiert (unveraenderlich, fuer Default-Werte hilfreich)
+    rows = repo.list_objects(mineral_in=("Calcit",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Leere Strings in der Menge werden uebersprungen (entstehen z.B. aus
+    # einem "Alle"-Eintrag im Multiselect); der Filter degeneriert nicht.
+    rows = repo.list_objects(mineral_in=["", "Pyrit"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Reine Leerstrings -> kein Filter (alle 7 Test-Objekte)
+    rows = repo.list_objects(mineral_in=["", ""])
+    assert len(rows) == 7
+    # Unbekanntes Mineral -> leeres Ergebnis, kein Crash (Freitext-Domaene)
+    rows = repo.list_objects(mineral_in=["Mondgestein"])
+    assert rows == []
+    # Kombiniert mit mineral= (Schnittmenge, beide muessen passen)
+    rows = repo.list_objects(
+        mineral="Quarz", mineral_in=["Quarz", "Calcit"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Schnittmenge wird leer, wenn mineral nicht in der Menge liegt
+    rows = repo.list_objects(
+        mineral="Pyrit", mineral_in=["Quarz", "Calcit"])
+    assert rows == []
+    # Kombiniert mit mineral_contains (Familien-Substring): Schnittmenge
+    # findet "Quarz" UND alles, was den Substring 'arz' enthaelt
+    rows = repo.list_objects(
+        mineral_in=["Quarz", "Calcit"], mineral_contains="arz")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    c.close()
+
+
 def test_has_und_missing_image_kategorie_filter(tmp_path):
     """Foto-Workflow: finde Objekte mit/ohne Bild einer bestimmten Bild-Kategorie."""
     from stonebook.db.database import open_db

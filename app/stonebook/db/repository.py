@@ -81,6 +81,7 @@ class ObjectRepo:
     def list_objects(self, search: str = "", status: str = "",
                      status_in: list[str] | tuple[str, ...] | None = None,
                      mineral: str = "",
+                     mineral_in: list[str] | tuple[str, ...] | None = None,
                      kategorie: str = "",
                      kategorie_in: list[str] | tuple[str, ...] | None = None,
                      only_images: bool = False,
@@ -160,6 +161,20 @@ class ObjectRepo:
         if mineral:
             where.append("o.Mineral_Primaer = ?")
             params.append(mineral)
+        # mineral_in: Mengen-Filter ("Quarz ODER Calcit ODER Pyrit") fuer das
+        # Multiselect-Dropdown der Mineral-Liste. Mineral_Primaer ist Freitext
+        # (kein Feldwoerterbuch-Enum), daher keine Enum-Validierung wie bei
+        # kategorie_in/status_in - der GUI-Caller liefert die Werte ohnehin
+        # aus distinct_values("Mineral_Primaer"). Leere Eintraege werden
+        # uebersprungen, damit kein degenerierter IN-Filter entsteht.
+        # Kombinierbar mit dem exakten ``mineral``-Filter (Schnittmenge) und
+        # mit ``mineral_contains`` (LIKE-Substring auf der Familien-Ebene).
+        if mineral_in:
+            minerals = [m for m in mineral_in if m]
+            if minerals:
+                placeholders = ", ".join("?" * len(minerals))
+                where.append(f"o.Mineral_Primaer IN ({placeholders})")
+                params.extend(minerals)
         if kategorie:
             where.append("o.Kategorie = ?")
             params.append(kategorie)
