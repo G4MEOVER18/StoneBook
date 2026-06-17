@@ -24,6 +24,12 @@ VALID_BESTE_VERWENDUNG: frozenset[str] = frozenset(
 VALID_KATEGORIEN: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Kategorie"].enum_values if v
 )
+# Analog: gueltige Glanz-Werte aus dem Feldwoerterbuch (ohne Default).
+# Fuer den glanz_in-Mengenfilter ("glasig ODER metallisch ODER seidig" als
+# optische Auswahl: alle glasigen Quarze + alle metallischen Pyrite zusammen).
+VALID_GLANZ: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Glanz"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -123,6 +129,8 @@ class ObjectRepo:
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
                      beste_verwendung_in: list[str] | tuple[str, ...] | None = None,
+                     glanz: str = "",
+                     glanz_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
                      varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
@@ -429,6 +437,25 @@ class ObjectRepo:
                 placeholders = ", ".join("?" * len(uses))
                 where.append(f"o.Beste_Verwendung IN ({placeholders})")
                 params.extend(uses)
+        if glanz:
+            where.append("o.Glanz = ?")
+            params.append(glanz)
+        # glanz_in: Mengen-Filter ("glasig ODER metallisch ODER seidig") fuer die
+        # optische Auswahl. Spiegelt kristallsystem_in / beste_verwendung_in:
+        # validiert gegen VALID_GLANZ aus dem Feldwoerterbuch, damit Tippfehler
+        # einen klaren Fehler statt eines stillen Leerergebnisses erzeugen.
+        # Kombinierbar mit dem exakten ``glanz``-Filter (Schnittmenge).
+        if glanz_in:
+            glanze = [g for g in glanz_in if g]
+            invalid = [g for g in glanze if g not in VALID_GLANZ]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Glanz-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_GLANZ)})")
+            if glanze:
+                placeholders = ", ".join("?" * len(glanze))
+                where.append(f"o.Glanz IN ({placeholders})")
+                params.extend(glanze)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)

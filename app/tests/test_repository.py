@@ -1079,6 +1079,55 @@ def test_kristallsystem_in_filter(tmp_path):
     c.close()
 
 
+def test_glanz_in_filter(tmp_path):
+    """glanz_in akzeptiert Mengen ('glasig ODER metallisch'); Tippfehler werfen ValueError."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "glz.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "glasig"),
+            ("OBJ_0002", "metallisch"),
+            ("OBJ_0003", "matt"),
+            ("OBJ_0004", "glasig"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter glasig ODER metallisch (optische Auswahl)
+    rows = repo.list_objects(glanz_in=["glasig", "metallisch"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie glanz=
+    rows = repo.list_objects(glanz_in=["matt"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(glanz_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(glanz_in=("glasig",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit glanz= (Schnittmenge)
+    rows = repo.list_objects(
+        glanz="glasig",
+        glanz_in=["glasig", "metallisch"],
+    )
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Schnittmenge wird leer, wenn glanz nicht in der Menge liegt
+    rows = repo.list_objects(
+        glanz="matt",
+        glanz_in=["glasig", "metallisch"],
+    )
+    assert rows == []
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Glanz-Werte"):
+        repo.list_objects(glanz_in=["spiegelnd"])
+    # Mehrere Tippfehler werden gemeinsam gemeldet
+    with pytest.raises(ValueError, match="spiegelnd"):
+        repo.list_objects(glanz_in=["glasig", "spiegelnd"])
+    c.close()
+
+
 def test_beste_verwendung_in_filter(tmp_path):
     """beste_verwendung_in akzeptiert Mengen ('Schmuck ODER Sammlung'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db
