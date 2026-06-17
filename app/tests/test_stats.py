@@ -800,6 +800,38 @@ def test_by_kristallsystem_leer(tmp_path):
     c.close()
 
 
+def test_by_varietaet_aus_seed_db(tmp_path):
+    """Verteilung nach Varietaet ignoriert leere Eintraege (Quarz-Familie zerfaellt)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "var.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Bergkristall"),
+            ("OBJ_0002", "Bergkristall"),
+            ("OBJ_0003", "Milchquarz"),
+            ("OBJ_0004", "Rauchquarz"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_varietaet == {
+        "Bergkristall": 2, "Milchquarz": 1, "Rauchquarz": 1,
+    }
+    assert st.as_dict()["by_varietaet"]["Bergkristall"] == 2
+    c.close()
+
+
+def test_by_varietaet_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_varietaet == {}
+    c.close()
+
+
 def test_bilder_by_kategorie_aus_migrierter_db(conn):
     st = compute_statistics(conn)
     # Migrierte DB hat 63 Bilder verteilt auf Kategorien

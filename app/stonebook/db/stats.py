@@ -31,6 +31,7 @@ class Statistik:
     fundorte_total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_mineral: dict[str, int] = field(default_factory=dict)
+    by_varietaet: dict[str, int] = field(default_factory=dict)
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_kristallsystem: dict[str, int] = field(default_factory=dict)
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
@@ -110,6 +111,7 @@ class Statistik:
             "fundorte_total": self.fundorte_total,
             "by_status": dict(self.by_status),
             "by_mineral": dict(self.by_mineral),
+            "by_varietaet": dict(self.by_varietaet),
             "by_kategorie": dict(self.by_kategorie),
             "by_kristallsystem": dict(self.by_kristallsystem),
             "by_beste_verwendung": dict(self.by_beste_verwendung),
@@ -468,6 +470,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_archiviert = st.by_status.get("archiviert", 0)
 
     st.by_mineral = _count_by(conn, "Mineral_Primaer")
+    # Varietaeten-Verteilung als feinere Sicht unter dem Hauptmineral: Quarz allein
+    # sagt wenig - "Bergkristall", "Milchquarz", "Rauchquarz" trennt die Sammlung
+    # auf der fuer Sammler interessanten Granularitaet. Ergaenzt by_mineral, das
+    # auf der mineralogischen Hauptgruppe bleibt.
+    st.by_varietaet = _count_by(conn, "Varietaet")
     st.by_kategorie = _count_by(conn, "Kategorie")
     st.by_kristallsystem = _count_by(conn, "Kristallsystem")
     st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")

@@ -92,6 +92,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Top-Minerale:"]
         for name, n in list(st.by_mineral.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_varietaet:
+        # Feinere Sicht unter den Hauptmineralen: Quarz-Familie zerfaellt in
+        # Bergkristall/Milchquarz/Rauchquarz, Jaspis-Familie in Roter/Bunter/
+        # Brekzien-Jaspis usw. Ergaenzt by_mineral (mineralogische Hauptgruppe).
+        lines += ["", "Top-Varietaeten:"]
+        for name, n in list(st.by_varietaet.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_fundort:
         lines += ["", "Top-Fundorte:"]
         for name, n in list(st.by_fundort.items())[:top]:

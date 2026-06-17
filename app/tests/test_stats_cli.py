@@ -1230,9 +1230,48 @@ def test_json_ausgabe(migrated_db, capsys):
     assert payload["bilder_total"] == 63
     assert payload["aliase_total"] == 54
     assert "by_mineral" in payload
+    assert "by_varietaet" in payload
     # Buckets sind in der JSON-Form enthalten (Dashboard/Reports lesen das hier)
     assert "confidence_buckets" in payload
     assert set(payload["confidence_buckets"]) == {"ohne", "0-24", "25-49", "50-74", "75-100"}
+
+
+def test_text_ausgabe_zeigt_top_varietaeten(tmp_path, capsys):
+    """Top-Varietaeten-Block erscheint, sobald Varietaet-Werte da sind."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Bergkristall"),
+            ("OBJ_0002", "Bergkristall"),
+            ("OBJ_0003", "Milchquarz"),
+            ("OBJ_0004", "Rauchquarz"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Varietaeten:" in out
+    block = out.split("Top-Varietaeten:", 1)[1]
+    # Bergkristall fuehrt (2 Objekte) vor Milchquarz/Rauchquarz (je 1)
+    assert block.index("Bergkristall") < block.index("Milchquarz")
+    assert block.index("Bergkristall") < block.index("Rauchquarz")
+
+
+def test_text_ausgabe_ohne_varietaet_keine_zeile(tmp_path, capsys):
+    """Ohne Varietaet-Eintraege erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tv0.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Top-Varietaeten" not in out
 
 
 def test_top_flag_steuert_listenlaenge(tmp_path, capsys):
