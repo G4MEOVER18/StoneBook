@@ -36,6 +36,7 @@ class Statistik:
     by_kategorie: dict[str, int] = field(default_factory=dict)
     by_kristallsystem: dict[str, int] = field(default_factory=dict)
     by_glanz: dict[str, int] = field(default_factory=dict)
+    by_transparenz: dict[str, int] = field(default_factory=dict)
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
@@ -126,6 +127,7 @@ class Statistik:
             "by_kategorie": dict(self.by_kategorie),
             "by_kristallsystem": dict(self.by_kristallsystem),
             "by_glanz": dict(self.by_glanz),
+            "by_transparenz": dict(self.by_transparenz),
             "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
@@ -554,6 +556,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # kristallographisch (by_kristallsystem) sichtbar ist. Sieben Enum-Werte
     # aus dem Feldwoerterbuch (glasig/wachsig/matt/metallisch/fettig/seidig/perlmutt).
     st.by_glanz = _count_by(conn, "Glanz")
+    # Lichtdurchlaessigkeits-Sicht: wie transparent ist die Sammlung im Schnitt?
+    # Komplementaer zu by_glanz (Oberflaechen-Reflexion vs. Volumen-Lichtgang):
+    # durchsichtiger Bergkristall, durchscheinender Achat, opaker Pyrit liegen
+    # optisch nebeneinander, brauchen aber unterschiedliches Licht-Setup beim
+    # Fotografieren. Drei Enum-Werte (durchsichtig/durchscheinend/opak).
+    st.by_transparenz = _count_by(conn, "Transparenz")
     st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.
