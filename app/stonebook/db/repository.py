@@ -36,6 +36,12 @@ VALID_GLANZ: frozenset[str] = frozenset(
 VALID_TRANSPARENZ: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Transparenz"].enum_values if v
 )
+# Analog: gueltige Magnetismus-Werte aus dem Feldwoerterbuch (ohne Default).
+# Fuer den magnetismus_in-Mengenfilter ("ja ODER schwach" als Eisen-Auswahl:
+# alle reagierenden Stuecke separat von inerten Quarz-/Calcit-Stuecken).
+VALID_MAGNETISMUS: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Magnetismus"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -139,6 +145,7 @@ class ObjectRepo:
                      glanz_in: list[str] | tuple[str, ...] | None = None,
                      transparenz: str = "",
                      transparenz_in: list[str] | tuple[str, ...] | None = None,
+                     magnetismus_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
                      varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
@@ -484,6 +491,23 @@ class ObjectRepo:
                 placeholders = ", ".join("?" * len(trs))
                 where.append(f"o.Transparenz IN ({placeholders})")
                 params.extend(trs)
+        # magnetismus_in: Mengen-Filter ("ja ODER schwach") als Eisen-Auswahl -
+        # alle magnetisch reagierenden Stuecke (Magnetit/Pyrrhotin/Haematit/
+        # Ilmenit) in einer Sicht, ohne dass die inerten Quarz-/Calcit-Stuecke
+        # mitkommen. Spiegelt glanz_in/transparenz_in: validiert gegen
+        # VALID_MAGNETISMUS (ja/schwach/nein), damit Tippfehler einen klaren
+        # Fehler statt eines stillen Leerergebnisses erzeugen.
+        if magnetismus_in:
+            mags = [m for m in magnetismus_in if m]
+            invalid = [m for m in mags if m not in VALID_MAGNETISMUS]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Magnetismus-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_MAGNETISMUS)})")
+            if mags:
+                placeholders = ", ".join("?" * len(mags))
+                where.append(f"o.Magnetismus IN ({placeholders})")
+                params.extend(mags)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)

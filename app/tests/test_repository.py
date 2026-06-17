@@ -1177,6 +1177,48 @@ def test_transparenz_in_filter(tmp_path):
     c.close()
 
 
+def test_magnetismus_in_filter(tmp_path):
+    """magnetismus_in akzeptiert Mengen ('ja ODER schwach'); Tippfehler werfen ValueError.
+
+    Eisen-Auswahl: alle reagierenden Stuecke (Magnetit/Pyrrhotin/Haematit) in
+    einer Sicht, ohne die inerten Quarz-/Calcit-Stuecke. Spiegelt
+    transparenz_in/glanz_in: gegen VALID_MAGNETISMUS validiert.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mag.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "ja"),
+            ("OBJ_0002", "schwach"),
+            ("OBJ_0003", "nein"),
+            ("OBJ_0004", "ja"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter ja ODER schwach (alle eisenhaltigen Stuecke)
+    rows = repo.list_objects(magnetismus_in=["ja", "schwach"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag
+    rows = repo.list_objects(magnetismus_in=["nein"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(magnetismus_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(magnetismus_in=("ja",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Magnetismus-Werte"):
+        repo.list_objects(magnetismus_in=["paramagnetisch"])
+    # Mehrere Tippfehler werden gemeinsam gemeldet
+    with pytest.raises(ValueError, match="paramagnetisch"):
+        repo.list_objects(magnetismus_in=["ja", "paramagnetisch"])
+    c.close()
+
+
 def test_beste_verwendung_in_filter(tmp_path):
     """beste_verwendung_in akzeptiert Mengen ('Schmuck ODER Sammlung'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db
