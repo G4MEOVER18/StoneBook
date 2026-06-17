@@ -62,6 +62,7 @@ class Statistik:
     wert_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -74,6 +75,7 @@ class Statistik:
     gewicht_pro_kategorie: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -175,6 +177,9 @@ class Statistik:
             "wert_pro_glanz": [
                 (g, round(w, 2)) for g, w in self.wert_pro_glanz
             ],
+            "wert_pro_transparenz": [
+                (t, round(w, 2)) for t, w in self.wert_pro_transparenz
+            ],
             "wert_pro_beste_verwendung": [
                 (bv, round(w, 2)) for bv, w in self.wert_pro_beste_verwendung
             ],
@@ -210,6 +215,9 @@ class Statistik:
             ],
             "gewicht_pro_glanz": [
                 (glz, round(g, 2)) for glz, g in self.gewicht_pro_glanz
+            ],
+            "gewicht_pro_transparenz": [
+                (t, round(g, 2)) for t, g in self.gewicht_pro_transparenz
             ],
             "gewicht_pro_beste_verwendung": [
                 (bv, round(g, 2)) for bv, g in self.gewicht_pro_beste_verwendung
@@ -505,6 +513,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_kristallsystem: int = 10,
                        top_wert_glanz: int = 10,
                        top_gewicht_glanz: int = 10,
+                       top_wert_transparenz: int = 10,
+                       top_gewicht_transparenz: int = 10,
                        top_wert_beste_verwendung: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
@@ -715,6 +725,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Komplementaer zu by_glanz (Anzahl).
     st.wert_pro_glanz = _sum_by(
         conn, "Glanz", wert_sql, top_wert_glanz)
+    # Lichtdurchlaessigkeits-Wert-Sicht: welcher Transparenz-Typ traegt den
+    # Sammlungswert? Komplementaer zu by_transparenz (Anzahl) und
+    # wert_pro_glanz (Oberflaechen-Reflexion): durchsichtiger Bergkristall vs.
+    # durchscheinender Achat vs. opaker Pyrit liegen wertlich oft auf ganz
+    # unterschiedlichen Niveaus - der Block macht das transparent. Drei
+    # Enum-Werte (durchsichtig/durchscheinend/opak); Limit von 10 reicht ueber-
+    # gross, damit alle vorhandenen Stufen durchkommen.
+    st.wert_pro_transparenz = _sum_by(
+        conn, "Transparenz", wert_sql, top_wert_transparenz)
     # Verwendungs-Sicht: wo steckt der Wert je Empfehlung (Schmuck/Sammlung/
     # Forschung/Industrie/Talisman/Dekoration)? Beantwortet "lohnt sich ein
     # Schmuck-Verkauf, oder steckt der Wert eher in Forschungs-/Sammler-Stuecken?".
@@ -757,6 +776,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Achse sichtbar (analog zu kristallsystem-/varietaet-/gesteinsart-Aufteilung).
     st.gewicht_pro_glanz = _sum_by(
         conn, "Glanz", "Gewicht_g", top_gewicht_glanz,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_transparenz: welcher Transparenz-Typ traegt die
+    # meiste Masse? Opake Geroellstuecke (Sediment, Pyrit) dominieren oft die
+    # Sammlungsmasse, durchsichtige Kristalle den Wert - die Wert/Gewicht-
+    # Entkopplung wird auch auf der Lichtdurchlaessigkeits-Achse sichtbar.
+    st.gewicht_pro_transparenz = _sum_by(
+        conn, "Transparenz", "Gewicht_g", top_gewicht_transparenz,
         extra_where=gewicht_where)
     # Spiegelbild zu wert_pro_beste_verwendung: welche Verwendungs-Kategorie
     # bringt die meiste Masse? Industrie/Dekoration oft schwer, Schmuck oft
