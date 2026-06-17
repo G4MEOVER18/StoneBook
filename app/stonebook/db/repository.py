@@ -126,6 +126,7 @@ class ObjectRepo:
                      varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
                      gesteinsart: str = "",
+                     gesteinsart_in: list[str] | tuple[str, ...] | None = None,
                      gesteinsart_contains: str = "",
                      sort_by: str | None = None,
                      sort_desc: bool = False) -> list[sqlite3.Row]:
@@ -438,6 +439,17 @@ class ObjectRepo:
         if gesteinsart:
             where.append("o.Gesteinsart = ?")
             params.append(gesteinsart)
+        # gesteinsart_in: Mengen-Filter ("Granit ODER Gneis ODER Basalt") fuer
+        # die petrologische Auswahl. Freitext-Feld wie Mineral_Primaer/Varietaet
+        # (kein Feldwoerterbuch-Enum), daher keine Enum-Validierung; leere
+        # Eintraege werden uebersprungen. Kombinierbar mit exaktem
+        # ``gesteinsart``-Filter und mit ``gesteinsart_contains``.
+        if gesteinsart_in:
+            ges = [g for g in gesteinsart_in if g]
+            if ges:
+                placeholders = ", ".join("?" * len(ges))
+                where.append(f"o.Gesteinsart IN ({placeholders})")
+                params.extend(ges)
         if gesteinsart_contains:
             # Substring-Filter ueber Gesteinsart: findet Gesteins-Familien wie "Granit"
             # (Biotitgranit, Rosa Granit, Granitporphyr) ohne Kenntnis der exakten Notation.

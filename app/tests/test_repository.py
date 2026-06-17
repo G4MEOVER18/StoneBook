@@ -1351,6 +1351,63 @@ def test_varietaet_contains_filter(tmp_path):
     c.close()
 
 
+def test_gesteinsart_in_filter(tmp_path):
+    """gesteinsart_in akzeptiert Freitext-Mengen ('Granit ODER Gneis ODER Basalt').
+
+    Spiegelt mineral_in/varietaet_in: Gesteinsart ist Freitext, keine
+    Enum-Validierung; leere Strings werden uebersprungen. Sammler-Frage:
+    'zeig mir alle magmatischen Gesteine in der Sammlung'.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Granit"),
+            ("OBJ_0002", "Gneis"),
+            ("OBJ_0003", "Basalt"),
+            ("OBJ_0004", "Granit"),
+            ("OBJ_0005", "Sandstein"),
+            ("OBJ_0006", None),
+            ("OBJ_0007", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Magmatisch + metamorph
+    rows = repo.list_objects(gesteinsart_in=["Granit", "Gneis", "Basalt"])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie gesteinsart=
+    rows = repo.list_objects(gesteinsart_in=["Granit"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(gesteinsart_in=[])
+    assert len(rows) == 7
+    # Tupel akzeptiert
+    rows = repo.list_objects(gesteinsart_in=("Sandstein",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Leere Strings werden uebersprungen (degeneriert nicht)
+    rows = repo.list_objects(gesteinsart_in=["", "Basalt"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    rows = repo.list_objects(gesteinsart_in=["", ""])
+    assert len(rows) == 7
+    # Unbekannte Gesteinsart -> leeres Ergebnis (Freitext-Domaene)
+    rows = repo.list_objects(gesteinsart_in=["Mondgestein"])
+    assert rows == []
+    # Kombiniert mit gesteinsart= (Schnittmenge)
+    rows = repo.list_objects(
+        gesteinsart="Granit",
+        gesteinsart_in=["Granit", "Gneis"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit gesteinsart_contains (Substring-Familie)
+    rows = repo.list_objects(
+        gesteinsart_in=["Granit", "Gneis", "Sandstein"],
+        gesteinsart_contains="stein")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    c.close()
+
+
 def test_gesteinsart_contains_filter(tmp_path):
     """Substring-Filter ueber Gesteinsart findet Gesteins-Familien (Granit-Klan)."""
     from stonebook.db.database import open_db
