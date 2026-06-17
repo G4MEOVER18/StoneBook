@@ -64,6 +64,7 @@ class Statistik:
     wert_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_magnetismus: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -77,6 +78,7 @@ class Statistik:
     gewicht_pro_kristallsystem: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_magnetismus: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -182,6 +184,9 @@ class Statistik:
             "wert_pro_transparenz": [
                 (t, round(w, 2)) for t, w in self.wert_pro_transparenz
             ],
+            "wert_pro_magnetismus": [
+                (m, round(w, 2)) for m, w in self.wert_pro_magnetismus
+            ],
             "wert_pro_beste_verwendung": [
                 (bv, round(w, 2)) for bv, w in self.wert_pro_beste_verwendung
             ],
@@ -220,6 +225,9 @@ class Statistik:
             ],
             "gewicht_pro_transparenz": [
                 (t, round(g, 2)) for t, g in self.gewicht_pro_transparenz
+            ],
+            "gewicht_pro_magnetismus": [
+                (m, round(g, 2)) for m, g in self.gewicht_pro_magnetismus
             ],
             "gewicht_pro_beste_verwendung": [
                 (bv, round(g, 2)) for bv, g in self.gewicht_pro_beste_verwendung
@@ -517,6 +525,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_glanz: int = 10,
                        top_wert_transparenz: int = 10,
                        top_gewicht_transparenz: int = 10,
+                       top_wert_magnetismus: int = 10,
+                       top_gewicht_magnetismus: int = 10,
                        top_wert_beste_verwendung: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
@@ -743,6 +753,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # gross, damit alle vorhandenen Stufen durchkommen.
     st.wert_pro_transparenz = _sum_by(
         conn, "Transparenz", wert_sql, top_wert_transparenz)
+    # Magnetismus-Wert-Sicht: welcher Eisengehalts-Typ traegt den Sammlungswert?
+    # Magnetit/Pyrrhotin-Stuecke (ja) liegen wertlich oft auf einem ganz anderen
+    # Niveau als inerte Quarz-/Calcit-Stuecke (nein) oder schwach magnetische
+    # Haematit-Stuecke (schwach). Komplementaer zu by_magnetismus (Anzahl) und
+    # wert_pro_glanz/wert_pro_transparenz (optische Achsen): hier die
+    # physikalische Eisengehalt-Achse.
+    st.wert_pro_magnetismus = _sum_by(
+        conn, "Magnetismus", wert_sql, top_wert_magnetismus)
     # Verwendungs-Sicht: wo steckt der Wert je Empfehlung (Schmuck/Sammlung/
     # Forschung/Industrie/Talisman/Dekoration)? Beantwortet "lohnt sich ein
     # Schmuck-Verkauf, oder steckt der Wert eher in Forschungs-/Sammler-Stuecken?".
@@ -792,6 +810,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Entkopplung wird auch auf der Lichtdurchlaessigkeits-Achse sichtbar.
     st.gewicht_pro_transparenz = _sum_by(
         conn, "Transparenz", "Gewicht_g", top_gewicht_transparenz,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_magnetismus: welcher Eisengehalts-Typ traegt die
+    # meiste Masse? Schwere Magnetit-Brocken (ja) heben das Gewicht in einer
+    # Kategorie, die wertlich oft hinter klassischen Quarz-Stuecken zurueckbleibt.
+    # Die Wert/Gewicht-Entkopplung wird auch auf der Magnetismus-Achse sichtbar.
+    st.gewicht_pro_magnetismus = _sum_by(
+        conn, "Magnetismus", "Gewicht_g", top_gewicht_magnetismus,
         extra_where=gewicht_where)
     # Spiegelbild zu wert_pro_beste_verwendung: welche Verwendungs-Kategorie
     # bringt die meiste Masse? Industrie/Dekoration oft schwer, Schmuck oft

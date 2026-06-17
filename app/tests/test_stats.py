@@ -2065,6 +2065,125 @@ def test_gewicht_pro_transparenz_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_magnetismus_aus_seed_db(tmp_path):
+    """Wertsumme pro Magnetismus, absteigend sortiert (Eisengehalts-Wert-Sicht).
+
+    Komplementaer zu wert_pro_glanz/wert_pro_transparenz: hier die physikalische
+    Eisengehalt-Achse. Magnetit-Stuecke (ja) sind oft markant teurer als ein
+    durchschnittliches Quarz-Stueck, schwach magnetische Haematit-Brocken
+    liegen dazwischen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "ja", 100.0, 200.0),       # ja: 300
+            ("OBJ_0002", "ja", 50.0, None),         # +50 -> 350
+            ("OBJ_0003", "nein", 1000.0, None),     # nein: 1000
+            ("OBJ_0004", "nein", None, None),       # 0
+            ("OBJ_0005", "schwach", 10.0, None),
+            ("OBJ_0006", "", 999.0, None),          # leer -> ignoriert
+            ("OBJ_0007", None, 999.0, None),        # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_magnetismus == [
+        ("nein", 1000.0),
+        ("ja", 350.0),
+        ("schwach", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_magnetismus"] == [
+        ("nein", 1000.0), ("ja", 350.0), ("schwach", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_magnetismus_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpm_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Mag{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_magnetismus=3)
+    assert len(st.wert_pro_magnetismus) == 3
+    werte = [w for _, w in st.wert_pro_magnetismus]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_magnetismus_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_magnetismus == []
+    c.close()
+
+
+def test_gewicht_pro_magnetismus_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Magnetismus, absteigend sortiert; 0/NULL zaehlen nicht.
+
+    Spiegelbild zu wert_pro_magnetismus: Magnetit-Brocken sind dicht und schwer,
+    waehrend ein durchschnittlicher Quarz-Stueck im Gewicht oft hinter dem
+    Sammlungs-Durchschnitt zurueckbleibt - die Wert/Gewicht-Entkopplung wird
+    auch hier sichtbar.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "ja", 1000.0),         # ja total 1000 (Magnetit dicht)
+            ("OBJ_0002", "ja", 500.0),          # ja total 1500
+            ("OBJ_0003", "nein", 100.0),        # nein total 100
+            ("OBJ_0004", "nein", None),         # NULL -> ignoriert
+            ("OBJ_0005", "schwach", 200.0),
+            ("OBJ_0006", "", 999.0),            # leer -> ignoriert
+            ("OBJ_0007", None, 999.0),          # NULL -> ignoriert
+            ("OBJ_0008", "ja", 0.0),            # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_magnetismus == [
+        ("ja", 1500.0),
+        ("schwach", 200.0),
+        ("nein", 100.0),
+    ]
+    assert st.as_dict()["gewicht_pro_magnetismus"] == [
+        ("ja", 1500.0), ("schwach", 200.0), ("nein", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_magnetismus_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpm_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Mag{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_magnetismus=3)
+    assert len(st.gewicht_pro_magnetismus) == 3
+    g = [v for _, v in st.gewicht_pro_magnetismus]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_magnetismus_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_magnetismus == []
+    c.close()
+
+
 def test_wert_pro_varietaet_aus_seed_db(tmp_path):
     """Wertsumme pro Varietaet, absteigend sortiert (feinere Aufteilung unter Mineral)."""
     from stonebook.db.database import open_db
