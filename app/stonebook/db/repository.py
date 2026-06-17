@@ -19,6 +19,11 @@ VALID_KRISTALLSYSTEME: frozenset[str] = frozenset(
 VALID_BESTE_VERWENDUNG: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Beste_Verwendung"].enum_values if v
 )
+# Analog: gueltige Kategorie-Werte aus dem Feldwoerterbuch (ohne Default).
+# Fuer den kategorie_in-Mengenfilter ("Handstueck ODER Kristall").
+VALID_KATEGORIEN: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Kategorie"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -76,7 +81,9 @@ class ObjectRepo:
     def list_objects(self, search: str = "", status: str = "",
                      status_in: list[str] | tuple[str, ...] | None = None,
                      mineral: str = "",
-                     kategorie: str = "", only_images: bool = False,
+                     kategorie: str = "",
+                     kategorie_in: list[str] | tuple[str, ...] | None = None,
+                     only_images: bool = False,
                      has_bilder: bool | None = None,
                      has_image_kategorie: str = "",
                      missing_image_kategorie: str = "",
@@ -149,6 +156,23 @@ class ObjectRepo:
         if kategorie:
             where.append("o.Kategorie = ?")
             params.append(kategorie)
+        # kategorie_in: Mengen-Filter ("Handstueck ODER Kristall", aber nicht
+        # Geroell/Sonstiges). Spiegelt status_in / kristallsystem_in /
+        # beste_verwendung_in: validiert gegen VALID_KATEGORIEN aus dem
+        # Feldwoerterbuch, damit Tippfehler einen klaren Fehler statt eines
+        # stillen Leerergebnisses erzeugen. Kombinierbar mit dem exakten
+        # ``kategorie``-Filter (Schnittmenge).
+        if kategorie_in:
+            kats = [k for k in kategorie_in if k]
+            invalid = [k for k in kats if k not in VALID_KATEGORIEN]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Kategorie-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_KATEGORIEN)})")
+            if kats:
+                placeholders = ", ".join("?" * len(kats))
+                where.append(f"o.Kategorie IN ({placeholders})")
+                params.extend(kats)
         # has_bilder ist die kanonische Form (True/False/None); only_images bleibt
         # als Legacy-Alias erhalten und mappt auf has_bilder=True, falls dieses
         # noch nicht gesetzt ist (kein Konflikt zwischen den beiden Flags).

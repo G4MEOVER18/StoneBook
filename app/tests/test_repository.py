@@ -917,6 +917,55 @@ def test_beste_verwendung_in_filter(tmp_path):
     c.close()
 
 
+def test_kategorie_in_filter(tmp_path):
+    """kategorie_in akzeptiert Mengen ('Handstueck ODER Kristall'); Tippfehler werfen ValueError."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "kati.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Handstück"),
+            ("OBJ_0002", "Kristall"),
+            ("OBJ_0003", "Geröll"),
+            ("OBJ_0004", "Handstück"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter Handstueck ODER Kristall
+    rows = repo.list_objects(kategorie_in=["Handstück", "Kristall"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag verhaelt sich wie kategorie=
+    rows = repo.list_objects(kategorie_in=["Geröll"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(kategorie_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(kategorie_in=("Handstück",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Kombiniert mit kategorie= (Schnittmenge)
+    rows = repo.list_objects(
+        kategorie="Handstück",
+        kategorie_in=["Handstück", "Kristall"],
+    )
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Schnittmenge wird leer, wenn kategorie nicht in der Menge liegt
+    rows = repo.list_objects(
+        kategorie="Geröll",
+        kategorie_in=["Handstück", "Kristall"],
+    )
+    assert rows == []
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Kategorie-Werte"):
+        repo.list_objects(kategorie_in=["Pseudo-Kategorie"])
+    # Mehrere Tippfehler werden gemeinsam gemeldet
+    with pytest.raises(ValueError, match="Pseudo"):
+        repo.list_objects(kategorie_in=["Kristall", "Pseudo-Kategorie"])
+    c.close()
+
+
 def test_has_und_missing_image_kategorie_filter(tmp_path):
     """Foto-Workflow: finde Objekte mit/ohne Bild einer bestimmten Bild-Kategorie."""
     from stonebook.db.database import open_db
