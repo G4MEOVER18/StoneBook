@@ -30,6 +30,12 @@ VALID_KATEGORIEN: frozenset[str] = frozenset(
 VALID_GLANZ: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Glanz"].enum_values if v
 )
+# Analog: gueltige Transparenz-Werte aus dem Feldwoerterbuch (ohne Default).
+# Fuer den transparenz_in-Mengenfilter ("durchsichtig ODER durchscheinend" als
+# Foto-Setup-Auswahl: lichtdurchlaessige Stuecke brauchen Backlight, opake nicht).
+VALID_TRANSPARENZ: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Transparenz"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -131,6 +137,8 @@ class ObjectRepo:
                      beste_verwendung_in: list[str] | tuple[str, ...] | None = None,
                      glanz: str = "",
                      glanz_in: list[str] | tuple[str, ...] | None = None,
+                     transparenz: str = "",
+                     transparenz_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
                      varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
@@ -456,6 +464,26 @@ class ObjectRepo:
                 placeholders = ", ".join("?" * len(glanze))
                 where.append(f"o.Glanz IN ({placeholders})")
                 params.extend(glanze)
+        if transparenz:
+            where.append("o.Transparenz = ?")
+            params.append(transparenz)
+        # transparenz_in: Mengen-Filter ("durchsichtig ODER durchscheinend")
+        # fuer Foto-Setup-Auswahl: lichtdurchlaessige Stuecke brauchen Back-
+        # light, opake nicht. Spiegelt glanz_in / kristallsystem_in: validiert
+        # gegen VALID_TRANSPARENZ (durchsichtig/durchscheinend/opak), damit
+        # Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses
+        # erzeugen. Kombinierbar mit dem exakten ``transparenz``-Filter.
+        if transparenz_in:
+            trs = [t for t in transparenz_in if t]
+            invalid = [t for t in trs if t not in VALID_TRANSPARENZ]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Transparenz-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_TRANSPARENZ)})")
+            if trs:
+                placeholders = ", ".join("?" * len(trs))
+                where.append(f"o.Transparenz IN ({placeholders})")
+                params.extend(trs)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)
