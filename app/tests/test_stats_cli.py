@@ -1687,6 +1687,86 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_transparenz_zeile(tmp_path,
     assert "Gewicht pro Transparenz" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_magnetismus(tmp_path, capsys):
+    """Wert-pro-Magnetismus-Block summiert CHF je Eisengehalt-Typ, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "ja",      600.0, 400.0),  # ja      1000
+            ("OBJ_0002", "schwach", 200.0, 150.0),  # schwach  350
+            ("OBJ_0003", "nein",     10.0, None),   # nein      10
+            ("OBJ_0004", "nein",    None,  None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Magnetismus (CHF):" in out
+    block = out.split("Wert pro Magnetismus (CHF):", 1)[1]
+    assert block.index("ja") < block.index("schwach") < block.index("nein")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_magnetismus_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Magnetismus-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [("OBJ_0001", "ja"), ("OBJ_0002", "nein")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Magnetismus" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_magnetismus(tmp_path, capsys):
+    """Gewicht-pro-Magnetismus-Block summiert g je Eisengehalt-Typ, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "ja",      600.0),
+            ("OBJ_0002", "ja",      400.0),  # ja total 1000
+            ("OBJ_0003", "schwach", 150.0),
+            ("OBJ_0004", "nein",     10.0),
+            ("OBJ_0005", "nein",    None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Magnetismus (g):" in out
+    block = out.split("Gewicht pro Magnetismus (g):", 1)[1]
+    assert block.index("ja") < block.index("schwach") < block.index("nein")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_magnetismus_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Magnetismus-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [("OBJ_0001", "ja"), ("OBJ_0002", "nein")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Magnetismus" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_varietaet(tmp_path, capsys):
     """Wert-pro-Varietaet-Block summiert CHF je Varietaet, absteigend sortiert."""
     from stonebook.db.database import open_db

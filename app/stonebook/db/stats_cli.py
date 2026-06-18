@@ -338,6 +338,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Transparenz (CHF):"]
         for t, wert in st.wert_pro_transparenz[:top]:
             lines.append(f"  {t:40s} {wert:>12,.0f}")
+    if st.wert_pro_magnetismus:
+        # Magnetismus-Wert-Sicht: welcher Eisengehalts-Typ traegt den Sammlungs-
+        # wert (ja/schwach/nein)? Magnetit/Pyrrhotin (ja) liegen wertlich oft auf
+        # einem anderen Niveau als inerte Quarz-/Calcit-Stuecke (nein) oder
+        # schwach magnetische Haematit-Stuecke (schwach). Komplementaer zu
+        # by_magnetismus (Anzahl) und wert_pro_glanz/wert_pro_transparenz
+        # (optische Achsen): hier die physikalische Eisengehalt-Achse.
+        lines += ["", "Wert pro Magnetismus (CHF):"]
+        for m, wert in st.wert_pro_magnetismus[:top]:
+            lines.append(f"  {m:40s} {wert:>12,.0f}")
     if st.wert_pro_beste_verwendung:
         # Verwendungs-Sicht: wo steckt der Wert je Empfehlung? Sammler-Frage
         # "lohnt sich Schmuck-Verkauf, oder steckt der Wert in Sammler-/
@@ -410,6 +420,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Transparenz (g):"]
         for t, gewicht in st.gewicht_pro_transparenz[:top]:
             lines.append(f"  {t:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_magnetismus:
+        # Spiegelbild zu wert_pro_magnetismus: welcher Eisengehalts-Typ traegt
+        # die meiste Masse? Schwere Magnetit-Brocken (ja) heben das Gewicht in
+        # einer Kategorie, die wertlich oft hinter klassischen Quarz-Stuecken
+        # zurueckbleibt. Die Wert/Gewicht-Entkopplung wird auch auf der
+        # Magnetismus-Achse sichtbar.
+        lines += ["", "Gewicht pro Magnetismus (g):"]
+        for m, gewicht in st.gewicht_pro_magnetismus[:top]:
+            lines.append(f"  {m:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_beste_verwendung:
         # Spiegelbild zu wert_pro_beste_verwendung: Industrie/Dekoration oft
         # schwer, Schmuck oft leicht aber hochpreisig - die Wert/Gewicht-
