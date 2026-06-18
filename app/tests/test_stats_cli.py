@@ -946,6 +946,48 @@ def test_text_ausgabe_ohne_kristallsystem_keine_zeile(tmp_path, capsys):
     assert "Objekte pro Kristallsystem:" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_glanz(tmp_path, capsys):
+    """Objekte-pro-Glanz-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "glasig"),
+            ("OBJ_0002", "glasig"),
+            ("OBJ_0003", "glasig"),
+            ("OBJ_0004", "metallisch"),
+            ("OBJ_0005", "metallisch"),
+            ("OBJ_0006", "seidig"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Glanz:" in out
+    # Reihenfolge absteigend: glasig (3), metallisch (2), seidig (1)
+    block = out.split("Objekte pro Glanz:", 1)[1]
+    assert block.index("glasig") < block.index("metallisch") < block.index("seidig")
+
+
+def test_text_ausgabe_ohne_glanz_keine_zeile(tmp_path, capsys):
+    """Ohne Glanz-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Glanz:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db

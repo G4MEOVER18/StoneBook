@@ -128,6 +128,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Kristallsystem:"]
         for name, n in list(st.by_kristallsystem.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_glanz:
+        # Optische Anzahl-Sicht: wieviele Stuecke pro Glanztyp? Komplementaer
+        # zu wert_/gewicht_pro_glanz (CLI weiter unten): zeigt die rohe
+        # Stueck-Zahl pro Oberflaechen-Charakteristik (glasig/metallisch/matt/...).
+        # Glasige Quarze stellen oft die Masse der Stuecke, metallische Pyrit-
+        # /Galenit-Stuecke das wertdominante Segment - der Block trennt die
+        # beiden Effekte. Reihenfolge aus _count_by: absteigend nach Anzahl,
+        # dann alphabetisch.
+        lines += ["", "Objekte pro Glanz:"]
+        for name, n in list(st.by_glanz.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen
