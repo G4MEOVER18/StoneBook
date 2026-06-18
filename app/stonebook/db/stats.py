@@ -45,6 +45,7 @@ class Statistik:
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
+    by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
     funddatum_frueheste: str | None = None
     funddatum_spaeteste: str | None = None
@@ -147,6 +148,7 @@ class Statistik:
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
+            "by_seltenheit_global": dict(self.by_seltenheit_global),
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
             "funddatum_frueheste": self.funddatum_frueheste,
             "funddatum_spaeteste": self.funddatum_spaeteste,
@@ -391,6 +393,34 @@ def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]
         "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
     ).fetchone()
     return (row["lo"], row["hi"])
+
+
+SCALE_1_10_COLUMNS: frozenset[str] = frozenset({
+    "Seltenheit_global_1_10", "Seltenheit_Fundort_1_10", "Nachfrage_1_10",
+})
+
+
+def _count_scale_1_10(conn: sqlite3.Connection, column: str) -> dict[str, int]:
+    """Zaehlt Objekte pro 1..10-Skalenwert (Seltenheit/Nachfrage).
+
+    Ignoriert NULL und out-of-range-Werte (die werden separat in
+    :func:`check_integrity` gemeldet und wuerden die Bucket-Sicht verzerren).
+    Liefert ein Dict in chronologischer Skalen-Reihenfolge (1..10 aufsteigend);
+    Skalenwerte ohne Treffer fehlen, damit der Dashboard-Bar-Chart nicht von
+    leeren Buckets dominiert wird. Komplementaer zu :func:`_confidence_buckets`
+    (0..100 in 5 Bucketts), hier feiner aufgeloest weil die Skala kleiner ist.
+
+    ``column`` wird gegen :data:`SCALE_1_10_COLUMNS` validiert, um SQL-Injection
+    ueber freie Spaltennamen auszuschliessen.
+    """
+    if column not in SCALE_1_10_COLUMNS:
+        raise ValueError(f"Unzulaessige Skalen-Spalte: {column}")
+    rows = conn.execute(
+        f"SELECT {column} AS k, COUNT(*) AS n FROM objects "
+        f"WHERE {column} IS NOT NULL AND {column} BETWEEN 1 AND 10 "
+        f"GROUP BY k ORDER BY k ASC"
+    ).fetchall()
+    return {str(r["k"]): r["n"] for r in rows}
 
 
 CONFIDENCE_BUCKET_ORDER: tuple[str, ...] = ("ohne", "0-24", "25-49", "50-74", "75-100")
@@ -638,6 +668,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)
     st.by_funddatum_monat = _count_funddatum_monat(conn)
+    # Rarity-Histogramm: wie verteilt sich die Sammlung auf der globalen
+    # Seltenheits-Skala (1=haeufig .. 10=sehr selten)? Komplementaer zu den
+    # seltenheit_global_min/max-Filtern: zeigt nicht nur "ein Stueck ist hier
+    # >=8", sondern wo das ganze Bestand-Schwerpunkt liegt. Sammler-typische
+    # Diagnose vor Versicherungseinschaetzung (viel haeufiges Material vs.
+    # konzentriert teure Rarit?ten).
+    st.by_seltenheit_global = _count_scale_1_10(conn, "Seltenheit_global_1_10")
     st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
 
     st.bilder_by_kategorie = {

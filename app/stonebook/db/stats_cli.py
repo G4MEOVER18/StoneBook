@@ -142,6 +142,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Funde pro Monat:"]
         for monat, n in st.by_funddatum_monat.items():
             lines.append(f"  {monat:40s} {n}")
+    if st.by_seltenheit_global:
+        # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
+        # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf
+        # einzelne Stuecke); hier die Gesamtverteilung. Reihenfolge bleibt 1..10
+        # (chronologisch zur Skala), nicht nach Anzahl - sonst verzerrt die
+        # Lesbarkeit des Rarity-Profils.
+        lines += ["", "Seltenheit global (1..10):"]
+        for stufe, n in st.by_seltenheit_global.items():
+            lines.append(f"  {stufe:>40s} {n}")
     if st.top_wert_objekte:
         # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
         # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.

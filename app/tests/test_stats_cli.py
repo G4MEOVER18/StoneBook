@@ -528,6 +528,44 @@ def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
     assert block.index("07") < block.index("08") < block.index("12")
 
 
+def test_text_ausgabe_zeigt_seltenheit_global(tmp_path, capsys):
+    """Rarity-Histogramm 1..10 wird chronologisch nach Skalenwert ausgegeben."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "selt.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 2),
+            ("OBJ_0002", 2),
+            ("OBJ_0003", 7),
+            ("OBJ_0004", 10),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Seltenheit global (1..10):" in out
+    block = out.split("Seltenheit global (1..10):", 1)[1].splitlines()
+    # Reihenfolge: 2 -> 7 -> 10 (aufsteigend nach Skala, nicht nach Anzahl)
+    stufen = [line.strip().split()[0] for line in block if line.strip()][:3]
+    assert stufen == ["2", "7", "10"]
+
+
+def test_text_ausgabe_ohne_seltenheit_keine_zeile(tmp_path, capsys):
+    """Ohne Seltenheits-Eintraege erscheint der Rarity-Block nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "selt0.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Seltenheit global" not in out
+
+
 def test_text_ausgabe_ohne_funddatum_keine_monat_zeile(tmp_path, capsys):
     """Ohne gueltige Funddaten erscheint auch der Monats-Block nicht."""
     from stonebook.db.database import open_db

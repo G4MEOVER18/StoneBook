@@ -321,6 +321,72 @@ def test_by_funddatum_monat_leer(tmp_path):
     c.close()
 
 
+def test_by_seltenheit_global_aus_seed_db(tmp_path):
+    """Histogramm der globalen Seltenheit (1..10), aufsteigend nach Skalenwert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 1),
+            ("OBJ_0002", 1),
+            ("OBJ_0003", 5),
+            ("OBJ_0004", 8),
+            ("OBJ_0005", 10),
+            ("OBJ_0006", None),  # NULL ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Reihenfolge: chronologisch nach Skalenwert (1..10 aufsteigend) - sorgt fuer
+    # ein lesbares Rarity-Profil. Werte ohne Treffer fehlen im Dict.
+    assert list(st.by_seltenheit_global.items()) == [
+        ("1", 2), ("5", 1), ("8", 1), ("10", 1),
+    ]
+    assert st.as_dict()["by_seltenheit_global"] == {
+        "1": 2, "5": 1, "8": 1, "10": 1,
+    }
+    c.close()
+
+
+def test_by_seltenheit_global_ignoriert_out_of_range(tmp_path):
+    """Out-of-range-Werte (<1 / >10) zaehlen nicht (Integrity meldet die separat)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 0),       # out-of-range
+            ("OBJ_0002", 11),      # out-of-range
+            ("OBJ_0003", 5),       # gueltig
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_seltenheit_global == {"5": 1}
+    c.close()
+
+
+def test_by_seltenheit_global_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_seltenheit_global == {}
+    c.close()
+
+
+def test_count_scale_1_10_validiert_spalte(tmp_path):
+    """_count_scale_1_10 weist nicht-gewhitelistete Spalten ab (kein SQL-Injection-Vektor)."""
+    from stonebook.db.database import open_db
+    from stonebook.db.stats import _count_scale_1_10
+    c = open_db(tmp_path / "v.sqlite3")
+    with pytest.raises(ValueError, match="Skalen-Spalte"):
+        _count_scale_1_10(c, "Confidence_Prozent")  # nicht in Whitelist
+    with pytest.raises(ValueError, match="Skalen-Spalte"):
+        _count_scale_1_10(c, "1; DROP TABLE objects --")
+    c.close()
+
+
 def test_wert_pro_funddatum_jahr_aus_seed_db(tmp_path):
     """Wertsumme pro Funddatum-Jahr, absteigend sortiert; Tie-Break chronologisch."""
     from stonebook.db.database import open_db
