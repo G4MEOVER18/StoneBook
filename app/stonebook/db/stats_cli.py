@@ -545,6 +545,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Seltenheit global (g):"]
         for stufe, gewicht in st.gewicht_pro_seltenheit_global:
             lines.append(f"  {stufe:>40s} {gewicht:>12,.1f}")
+    if st.wert_pro_seltenheit_fundort:
+        # Standort-Rarity-Wert-Sicht: spiegelt wert_pro_seltenheit_global, hier
+        # auf der lokalen Skala. Lokale Spitze (>=8) und globale Spitze fallen
+        # nicht immer zusammen - eine lokale Rarit?t aus einem ausgeschoepften
+        # Stollen kann global haeufig (=> wertlich niedriger) bleiben. Beide
+        # Bloecke nebeneinander zeigen, ob die Sammlungs-Wertschwerpunkte
+        # lokal oder global liegen. Reihenfolge wie wert_pro_seltenheit_global:
+        # absteigend nach Summe, max 10 Buckets.
+        lines += ["", "Wert pro Seltenheit Fundort (CHF):"]
+        for stufe, wert in st.wert_pro_seltenheit_fundort:
+            lines.append(f"  {stufe:>40s} {wert:>12,.0f}")
+    if st.gewicht_pro_seltenheit_fundort:
+        # Spiegelbild zu wert_pro_seltenheit_fundort: Standort-Rarity-Masse-Sicht.
+        # Komplementaer zu gewicht_pro_seltenheit_global: zeigt, ob die Sammlungs-
+        # masse auf lokal haeufigen Stuecken (Halden-Material) sitzt, auch wenn
+        # global eine andere Verteilung herrscht.
+        lines += ["", "Gewicht pro Seltenheit Fundort (g):"]
+        for stufe, gewicht in st.gewicht_pro_seltenheit_fundort:
+            lines.append(f"  {stufe:>40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 

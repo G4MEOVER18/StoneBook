@@ -2428,6 +2428,92 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_seltenheit_global_zeile(
     assert "Gewicht pro Seltenheit global" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_seltenheit_fundort(tmp_path, capsys):
+    """Standort-Rarity-Wert-Block: spiegelt wert_pro_seltenheit_global im CLI.
+
+    Komplementaer zu ``Wert pro Seltenheit global``: lokale Spitze und globale
+    Spitze fallen nicht immer zusammen; der Block zeigt den lokalen Wert-
+    Schwerpunkt.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpsf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 8, 1200.0, 300.0),   # Stufe 8: 1500
+            ("OBJ_0002", 4, 200.0, None),     # Stufe 4: 200
+            ("OBJ_0003", 2, 60.0, None),      # Stufe 2: 60
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Seltenheit Fundort (CHF):" in out
+    block = out.split("Wert pro Seltenheit Fundort (CHF):", 1)[1]
+    assert block.index("8") < block.index("4") < block.index("2")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_seltenheit_fundort_zeile(
+        tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Standort-Rarity-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpsf0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?, ?)",
+        [("OBJ_0001", 5), ("OBJ_0002", 8)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Seltenheit Fundort" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_seltenheit_fundort(tmp_path, capsys):
+    """Standort-Rarity-Gewicht-Block: spiegelt gewicht_pro_seltenheit_global im CLI."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpsf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 2, 3000.0),
+            ("OBJ_0002", 2, 2000.0),    # Stufe 2: 5000
+            ("OBJ_0003", 5, 100.0),     # Stufe 5: 100
+            ("OBJ_0004", 9, 20.0),      # Stufe 9: 20
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Seltenheit Fundort (g):" in out
+    block = out.split("Gewicht pro Seltenheit Fundort (g):", 1)[1]
+    assert block.index("2") < block.index("5") < block.index("9")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_seltenheit_fundort_zeile(
+        tmp_path, capsys):
+    """Ohne Gewichts-Eintraege erscheint der Standort-Rarity-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpsf0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?, ?)",
+        [("OBJ_0001", 5), ("OBJ_0002", 8)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Seltenheit Fundort" not in out
+
+
 def test_top_flag_steuert_listenlaenge(tmp_path, capsys):
     """--top N begrenzt sowohl by_mineral als auch top_wert_objekte gemeinsam."""
     from stonebook.db.database import open_db
