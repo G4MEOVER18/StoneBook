@@ -1603,6 +1603,90 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_glanz_zeile(tmp_path, capsy
     assert "Gewicht pro Glanz" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_transparenz(tmp_path, capsys):
+    """Wert-pro-Transparenz-Block summiert CHF je Transparenz-Klasse, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpt.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "durchsichtig",   600.0, 400.0),
+            ("OBJ_0002", "durchscheinend", 200.0, 150.0),
+            ("OBJ_0003", "opak",            10.0, None),
+            ("OBJ_0004", "opak",           None,  None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Transparenz (CHF):" in out
+    block = out.split("Wert pro Transparenz (CHF):", 1)[1]
+    assert (block.index("durchsichtig")
+            < block.index("durchscheinend")
+            < block.index("opak"))
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_transparenz_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Transparenz-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpt0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz) VALUES (?, ?)",
+        [("OBJ_0001", "opak"), ("OBJ_0002", "durchsichtig")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Transparenz" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_transparenz(tmp_path, capsys):
+    """Gewicht-pro-Transparenz-Block summiert g je Transparenz-Klasse, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpt.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "opak",            600.0),
+            ("OBJ_0002", "opak",            400.0),  # opak total 1000
+            ("OBJ_0003", "durchscheinend",  150.0),
+            ("OBJ_0004", "durchsichtig",     10.0),
+            ("OBJ_0005", "durchsichtig",    None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Transparenz (g):" in out
+    block = out.split("Gewicht pro Transparenz (g):", 1)[1]
+    assert (block.index("opak")
+            < block.index("durchscheinend")
+            < block.index("durchsichtig"))
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_transparenz_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Transparenz-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpt0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz) VALUES (?, ?)",
+        [("OBJ_0001", "opak"), ("OBJ_0002", "durchsichtig")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Transparenz" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_varietaet(tmp_path, capsys):
     """Wert-pro-Varietaet-Block summiert CHF je Varietaet, absteigend sortiert."""
     from stonebook.db.database import open_db

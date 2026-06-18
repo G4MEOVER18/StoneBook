@@ -329,6 +329,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Glanz (CHF):"]
         for glz, wert in st.wert_pro_glanz[:top]:
             lines.append(f"  {glz:40s} {wert:>12,.0f}")
+    if st.wert_pro_transparenz:
+        # Lichtdurchlaessigkeits-Wert-Sicht: welcher Transparenz-Typ traegt den
+        # Sammlungswert (durchsichtig/durchscheinend/opak)? Komplementaer zu
+        # by_transparenz (Anzahl) und wert_pro_glanz (Oberflaechen-Reflexion):
+        # durchsichtiger Bergkristall vs. durchscheinender Achat vs. opaker
+        # Pyrit liegen wertlich oft auf ganz unterschiedlichen Niveaus.
+        lines += ["", "Wert pro Transparenz (CHF):"]
+        for t, wert in st.wert_pro_transparenz[:top]:
+            lines.append(f"  {t:40s} {wert:>12,.0f}")
     if st.wert_pro_beste_verwendung:
         # Verwendungs-Sicht: wo steckt der Wert je Empfehlung? Sammler-Frage
         # "lohnt sich Schmuck-Verkauf, oder steckt der Wert in Sammler-/
@@ -392,6 +401,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Glanz (g):"]
         for glz, gewicht in st.gewicht_pro_glanz[:top]:
             lines.append(f"  {glz:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_transparenz:
+        # Spiegelbild zu wert_pro_transparenz: welcher Transparenz-Typ traegt
+        # die meiste Masse? Opake Geroellstuecke (Sediment/Pyrit) dominieren
+        # oft die Sammlungsmasse, durchsichtige Kristalle den Wert - die
+        # Wert/Gewicht-Entkopplung wird auch auf der Lichtdurchlaessigkeits-
+        # Achse sichtbar.
+        lines += ["", "Gewicht pro Transparenz (g):"]
+        for t, gewicht in st.gewicht_pro_transparenz[:top]:
+            lines.append(f"  {t:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_beste_verwendung:
         # Spiegelbild zu wert_pro_beste_verwendung: Industrie/Dekoration oft
         # schwer, Schmuck oft leicht aber hochpreisig - die Wert/Gewicht-
