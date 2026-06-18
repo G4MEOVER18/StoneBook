@@ -99,6 +99,21 @@ def _like_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _append_has_text_filter(where: list[str], value: bool | None, column: str) -> None:
+    """Haengt einen tri-state Vollstaendigkeits-Filter auf eine TEXT-Spalte an ``where``.
+
+    Konsolidiert die has_funddatum/has_mineral/has_notizen/has_pruefempfehlungen/
+    has_strichfarbe/has_hcl_reaktion-Bloecke: Wahr = Feld dokumentiert
+    (``IS NOT NULL AND TRIM != ''``), Falsch = leer/NULL/Whitespace. ``None``
+    bleibt no-op (Filter wird nicht angefuegt). ``column`` ist callerseitig
+    hardcodiert (Whitelist-Validierung implizit, keine SQL-Injection-Flaeche).
+    """
+    if value is True:
+        where.append(f"o.{column} IS NOT NULL AND TRIM(o.{column}) != ''")
+    elif value is False:
+        where.append(f"(o.{column} IS NULL OR TRIM(o.{column}) = '')")
+
+
 def _append_scale_1_10_filter(where: list[str], params: list,
                               name: str, column: str,
                               val_min: int | None, val_max: int | None) -> None:
@@ -320,22 +335,10 @@ class ObjectRepo:
             where.append("o.Confidence_Prozent IS NOT NULL")
         elif has_confidence is False:
             where.append("o.Confidence_Prozent IS NULL")
-        if has_funddatum is True:
-            where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != ''")
-        elif has_funddatum is False:
-            where.append("(o.Funddatum IS NULL OR TRIM(o.Funddatum) = '')")
-        if has_mineral is True:
-            where.append("o.Mineral_Primaer IS NOT NULL AND TRIM(o.Mineral_Primaer) != ''")
-        elif has_mineral is False:
-            where.append("(o.Mineral_Primaer IS NULL OR TRIM(o.Mineral_Primaer) = '')")
-        if has_notizen is True:
-            where.append("o.notizen IS NOT NULL AND TRIM(o.notizen) != ''")
-        elif has_notizen is False:
-            where.append("(o.notizen IS NULL OR TRIM(o.notizen) = '')")
-        if has_pruefempfehlungen is True:
-            where.append("o.Pruefempfehlungen IS NOT NULL AND TRIM(o.Pruefempfehlungen) != ''")
-        elif has_pruefempfehlungen is False:
-            where.append("(o.Pruefempfehlungen IS NULL OR TRIM(o.Pruefempfehlungen) = '')")
+        _append_has_text_filter(where, has_funddatum, "Funddatum")
+        _append_has_text_filter(where, has_mineral, "Mineral_Primaer")
+        _append_has_text_filter(where, has_notizen, "notizen")
+        _append_has_text_filter(where, has_pruefempfehlungen, "Pruefempfehlungen")
         # has_gewicht: tri-state Filter fuer Objekte mit/ohne Wiegegewicht.
         # 0.0 zaehlt wie 'kein Wert' (in der Praxis nicht gewogen, nicht echt 0 g).
         if has_gewicht is True:
@@ -367,24 +370,16 @@ class ObjectRepo:
         # Der Strich auf der Porzellantafel ist die klassische Diagnose-Probe
         # fuer metallische Minerale (Haematit: rot, Magnetit: schwarz, Pyrit:
         # gruenlich-schwarz) und entscheidet oft eine zweideutige Identifikation.
-        # Spiegelt die has_funddatum/has_notizen-Logik: Wahr = Feld dokumentiert
-        # (Inhalt egal), Falsch = NULL/Whitespace. Findet Stuecke, an denen der
-        # Strichtest nachzuholen ist - typische Vorbereitung vor KI-Analyse, weil
-        # die Strichfarbe Mineral-Vorschlaege wirksam disambiguiert.
-        if has_strichfarbe is True:
-            where.append("o.Strichfarbe IS NOT NULL AND TRIM(o.Strichfarbe) != ''")
-        elif has_strichfarbe is False:
-            where.append("(o.Strichfarbe IS NULL OR TRIM(o.Strichfarbe) = '')")
+        # Findet Stuecke, an denen der Strichtest nachzuholen ist - typische
+        # Vorbereitung vor KI-Analyse, weil die Strichfarbe Mineral-Vorschlaege
+        # wirksam disambiguiert.
+        _append_has_text_filter(where, has_strichfarbe, "Strichfarbe")
         # has_hcl_reaktion: tri-state Filter fuer dokumentierten Salzsaeure-Test.
         # HCl identifiziert Karbonate eindeutig (Calcit/Aragonit: starke Reaktion
-        # kalt; Dolomit: schwach kalt, stark warm; Magnesit: nur warm). Spiegelt
-        # has_strichfarbe/has_uv_reaktion: Wahr = Feld dokumentiert (Inhalt egal),
-        # Falsch = NULL/Whitespace. Komplementaer zu has_strichfarbe (metallische
-        # Diagnostik) - HCl deckt den Karbonat-Strang ab.
-        if has_hcl_reaktion is True:
-            where.append("o.HCl_Reaktion IS NOT NULL AND TRIM(o.HCl_Reaktion) != ''")
-        elif has_hcl_reaktion is False:
-            where.append("(o.HCl_Reaktion IS NULL OR TRIM(o.HCl_Reaktion) = '')")
+        # kalt; Dolomit: schwach kalt, stark warm; Magnesit: nur warm).
+        # Komplementaer zu has_strichfarbe (metallische Diagnostik) - HCl deckt
+        # den Karbonat-Strang ab.
+        _append_has_text_filter(where, has_hcl_reaktion, "HCl_Reaktion")
         # has_mohs: tri-state Filter fuer dokumentierte Mohs-Haerte.
         # Wahr, sobald eines der beiden Bereichsfelder (Mohs_Haerte_min/_max)
         # gesetzt ist - die obere und untere Grenze des Haertebereichs werden
