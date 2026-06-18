@@ -1261,6 +1261,49 @@ def test_spaltbarkeit_in_filter(tmp_path):
     c.close()
 
 
+def test_bruch_in_filter(tmp_path):
+    """bruch_in akzeptiert Mengen ('muschelig ODER splittrig'); Tippfehler werfen ValueError.
+
+    Schaerfekanten-Auswahl: Stuecke, die ohne Spaltflaechen scharfe Kanten
+    erzeugen (Obsidian/Quarz/Feuerstein), in einer Sicht ohne fasrige
+    Aktinolith-Stuecke. Spiegelt spaltbarkeit_in/magnetismus_in: gegen
+    VALID_BRUCH validiert.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "br.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "muschelig"),
+            ("OBJ_0002", "splittrig"),
+            ("OBJ_0003", "faserig"),
+            ("OBJ_0004", "muschelig"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter muschelig ODER splittrig (Schaerfekanten-Stuecke)
+    rows = repo.list_objects(bruch_in=["muschelig", "splittrig"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag
+    rows = repo.list_objects(bruch_in=["faserig"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(bruch_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(bruch_in=("muschelig",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Bruch-Werte"):
+        repo.list_objects(bruch_in=["ungueltig"])
+    # Mehrere Tippfehler werden gemeinsam gemeldet
+    with pytest.raises(ValueError, match="ungueltig"):
+        repo.list_objects(bruch_in=["muschelig", "ungueltig"])
+    c.close()
+
+
 def test_beste_verwendung_in_filter(tmp_path):
     """beste_verwendung_in akzeptiert Mengen ('Schmuck ODER Sammlung'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db

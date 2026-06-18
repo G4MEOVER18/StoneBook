@@ -49,6 +49,13 @@ VALID_MAGNETISMUS: frozenset[str] = frozenset(
 VALID_SPALTBARKEIT: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Spaltbarkeit"].enum_values if v
 )
+# Analog: gueltige Bruch-Werte aus dem Feldwoerterbuch (ohne Default).
+# Fuer den bruch_in-Mengenfilter ("muschelig ODER splittrig" als
+# Schaerfekanten-Auswahl: Stuecke, die ohne Spaltflaechen scharfe Kanten
+# erzeugen, separat von fasrigen/erdigen Brocken).
+VALID_BRUCH: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Bruch"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -154,6 +161,7 @@ class ObjectRepo:
                      transparenz_in: list[str] | tuple[str, ...] | None = None,
                      magnetismus_in: list[str] | tuple[str, ...] | None = None,
                      spaltbarkeit_in: list[str] | tuple[str, ...] | None = None,
+                     bruch_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
                      varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
@@ -534,6 +542,24 @@ class ObjectRepo:
                 placeholders = ", ".join("?" * len(sps))
                 where.append(f"o.Spaltbarkeit IN ({placeholders})")
                 params.extend(sps)
+        # bruch_in: Mengen-Filter ("muschelig ODER splittrig") als Schaerfe-
+        # kanten-Auswahl - Stuecke, die ohne Spaltflaechen scharfe Kanten
+        # erzeugen (Obsidian/Quarz/Feuerstein), in einer Sicht ohne fasrige
+        # Aktinolith-/erdige Limonit-Stuecke. Spiegelt spaltbarkeit_in/
+        # magnetismus_in: validiert gegen VALID_BRUCH (muschelig/uneben/
+        # splittrig/faserig/erdig/glatt), damit Tippfehler einen klaren
+        # Fehler statt eines stillen Leerergebnisses erzeugen.
+        if bruch_in:
+            brs = [b for b in bruch_in if b]
+            invalid = [b for b in brs if b not in VALID_BRUCH]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Bruch-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_BRUCH)})")
+            if brs:
+                placeholders = ", ".join("?" * len(brs))
+                where.append(f"o.Bruch IN ({placeholders})")
+                params.extend(brs)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)
