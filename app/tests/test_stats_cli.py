@@ -1072,6 +1072,48 @@ def test_text_ausgabe_ohne_magnetismus_keine_zeile(tmp_path, capsys):
     assert "Objekte pro Magnetismus:" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_spaltbarkeit(tmp_path, capsys):
+    """Objekte-pro-Spaltbarkeit-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opsp.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "keine"),
+            ("OBJ_0002", "keine"),
+            ("OBJ_0003", "keine"),
+            ("OBJ_0004", "vollkommen"),
+            ("OBJ_0005", "vollkommen"),
+            ("OBJ_0006", "deutlich"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Spaltbarkeit:" in out
+    # Reihenfolge absteigend: keine (3), vollkommen (2), deutlich (1)
+    block = out.split("Objekte pro Spaltbarkeit:", 1)[1]
+    assert block.index("keine") < block.index("vollkommen") < block.index("deutlich")
+
+
+def test_text_ausgabe_ohne_spaltbarkeit_keine_zeile(tmp_path, capsys):
+    """Ohne Spaltbarkeit-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opsp0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Spaltbarkeit:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db

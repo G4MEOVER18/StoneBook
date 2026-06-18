@@ -161,6 +161,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Magnetismus:"]
         for name, n in list(st.by_magnetismus.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_spaltbarkeit:
+        # Spaltbarkeits-Anzahl-Sicht: wieviele Stuecke pro Spaltflaechen-Klasse
+        # (vollkommen/gut/deutlich/undeutlich/keine)? Komplementaer zu
+        # wert_/gewicht_pro_spaltbarkeit (CLI weiter unten): zeigt den
+        # Bestand-Schwerpunkt der Spaltflaechen-Verteilung - praktisch vor
+        # Praeparier-Aktionen (Calcit/Fluorit: vollkommen, lassen sich sauber
+        # schneiden; Quarz: keine, nur Saegen/Polieren). Reihenfolge aus
+        # _count_by: absteigend nach Anzahl, dann alphabetisch.
+        lines += ["", "Objekte pro Spaltbarkeit:"]
+        for name, n in list(st.by_spaltbarkeit.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen
