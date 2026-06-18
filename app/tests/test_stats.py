@@ -3253,6 +3253,86 @@ def test_gewicht_pro_seltenheit_fundort_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_nachfrage_aus_seed_db(tmp_path):
+    """Marktnachfrage-Wert-Aggregat: spiegelt seltenheit-Bloecke auf der Demand-Skala.
+
+    Komplementaer zu by_nachfrage (Anzahl): zeigt, ob der Sammlungs-Wert auf
+    hochbegehrten Stuecken (Stufe >=7) konzentriert ist oder in
+    Tauschmaterial (<=3) gebunden bleibt. Out-of-Range ignoriert.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpn.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 9, 900.0, 600.0),    # Stufe 9: 1500
+            ("OBJ_0002", 6, 200.0, None),     # Stufe 6: 200
+            ("OBJ_0003", 3, 100.0, None),     # Stufe 3: 100
+            ("OBJ_0004", 3, None, None),      # 0 -> bleibt 100
+            ("OBJ_0005", 0, 999.0, None),     # out-of-range -> ignoriert
+            ("OBJ_0006", 11, 999.0, None),    # out-of-range -> ignoriert
+            ("OBJ_0007", None, 999.0, None),  # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_nachfrage == [
+        ("9", 1500.0),
+        ("6", 200.0),
+        ("3", 100.0),
+    ]
+    assert st.as_dict()["wert_pro_nachfrage"] == [
+        ("9", 1500.0), ("6", 200.0), ("3", 100.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_nachfrage_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_nachfrage == []
+    c.close()
+
+
+def test_gewicht_pro_nachfrage_aus_seed_db(tmp_path):
+    """Marktnachfrage-Gewicht-Aggregat: 0/NULL zaehlen nicht; spiegelt Wert-Sicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpn.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 2, 2500.0),       # Stufe 2: 2500
+            ("OBJ_0002", 2, 1500.0),       # +1500 -> 4000
+            ("OBJ_0003", 7, 60.0),         # Stufe 7: 60
+            ("OBJ_0004", 5, 0.0),          # 0 -> ignoriert
+            ("OBJ_0005", 5, None),         # NULL -> ignoriert
+            ("OBJ_0006", 0, 999.0),        # out-of-range -> ignoriert
+            ("OBJ_0007", 11, 999.0),       # out-of-range -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_nachfrage == [
+        ("2", 4000.0),
+        ("7", 60.0),
+    ]
+    assert st.as_dict()["gewicht_pro_nachfrage"] == [
+        ("2", 4000.0), ("7", 60.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_nachfrage_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_nachfrage == []
+    c.close()
+
+
 def test_sum_by_scale_1_10_validiert_spalte(tmp_path):
     """SQL-Injection-Schutz: nur SCALE_1_10_COLUMNS-Werte zulaessig (analog _count_scale_1_10)."""
     from stonebook.db.database import open_db

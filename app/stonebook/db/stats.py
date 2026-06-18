@@ -79,6 +79,7 @@ class Statistik:
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_gesteinsart: list[tuple[str, float]] = field(default_factory=list)
@@ -97,6 +98,7 @@ class Statistik:
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -232,6 +234,9 @@ class Statistik:
             "wert_pro_seltenheit_fundort": [
                 (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_fundort
             ],
+            "wert_pro_nachfrage": [
+                (s, round(w, 2)) for s, w in self.wert_pro_nachfrage
+            ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
@@ -285,6 +290,9 @@ class Statistik:
             ],
             "gewicht_pro_seltenheit_fundort": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_fundort
+            ],
+            "gewicht_pro_nachfrage": [
+                (s, round(g, 2)) for s, g in self.gewicht_pro_nachfrage
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -1046,5 +1054,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         conn, "Seltenheit_Fundort_1_10", wert_sql)
     st.gewicht_pro_seltenheit_fundort = _sum_by_scale_1_10(
         conn, "Seltenheit_Fundort_1_10", "Gewicht_g",
+        extra_where=gewicht_where)
+    # Marktnachfrage-Wert-/Gewicht-Sicht: wo liegt der Verkaufs-Druck im
+    # Sammlungs-Wert/-Gewicht? Komplementaer zu by_nachfrage (Anzahl) und
+    # nachfrage_min/max-Filter (Drill-down auf einzelne Stuecke): zeigt, ob
+    # die hochpreisigen Stuecke gerade auf den begehrten Skalen-Stufen (>=7)
+    # liegen oder ob das Geld in Tauschmaterial (<=3) gebunden ist.
+    # Sammler-typisch vor Boersenbesuch: "habe ich genug verkaufsfaehige Masse,
+    # oder traegt die Verkaufs-Spitze nur Einzelstuecke?".
+    st.wert_pro_nachfrage = _sum_by_scale_1_10(
+        conn, "Nachfrage_1_10", wert_sql)
+    st.gewicht_pro_nachfrage = _sum_by_scale_1_10(
+        conn, "Nachfrage_1_10", "Gewicht_g",
         extra_where=gewicht_where)
     return st
