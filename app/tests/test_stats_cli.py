@@ -1767,6 +1767,86 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_magnetismus_zeile(tmp_path,
     assert "Gewicht pro Magnetismus" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_spaltbarkeit(tmp_path, capsys):
+    """Wert-pro-Spaltbarkeit-Block summiert CHF je Spaltflaechen-Klasse, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpsp.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "vollkommen", 600.0, 400.0),  # vollkommen 1000
+            ("OBJ_0002", "gut",        200.0, 150.0),  # gut         350
+            ("OBJ_0003", "keine",       10.0, None),   # keine        10
+            ("OBJ_0004", "keine",      None,  None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Spaltbarkeit (CHF):" in out
+    block = out.split("Wert pro Spaltbarkeit (CHF):", 1)[1]
+    assert block.index("vollkommen") < block.index("gut") < block.index("keine")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_spaltbarkeit_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Spaltbarkeit-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpsp0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [("OBJ_0001", "vollkommen"), ("OBJ_0002", "keine")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Spaltbarkeit" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_spaltbarkeit(tmp_path, capsys):
+    """Gewicht-pro-Spaltbarkeit-Block summiert g je Spaltflaechen-Klasse, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpsp.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "keine",      600.0),
+            ("OBJ_0002", "keine",      400.0),  # keine total 1000
+            ("OBJ_0003", "gut",        150.0),
+            ("OBJ_0004", "vollkommen",  10.0),
+            ("OBJ_0005", "vollkommen", None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Spaltbarkeit (g):" in out
+    block = out.split("Gewicht pro Spaltbarkeit (g):", 1)[1]
+    assert block.index("keine") < block.index("gut") < block.index("vollkommen")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_spaltbarkeit_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Spaltbarkeit-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpsp0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [("OBJ_0001", "vollkommen"), ("OBJ_0002", "keine")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Spaltbarkeit" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_varietaet(tmp_path, capsys):
     """Wert-pro-Varietaet-Block summiert CHF je Varietaet, absteigend sortiert."""
     from stonebook.db.database import open_db

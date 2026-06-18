@@ -348,6 +348,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Magnetismus (CHF):"]
         for m, wert in st.wert_pro_magnetismus[:top]:
             lines.append(f"  {m:40s} {wert:>12,.0f}")
+    if st.wert_pro_spaltbarkeit:
+        # Spaltbarkeits-Wert-Sicht: welche Spaltflaechen-Klasse traegt den
+        # Sammlungswert (vollkommen/gut/deutlich/undeutlich/keine)? Komplementaer
+        # zu by_spaltbarkeit (Anzahl): Calcit/Fluorit (vollkommen) ergeben oft
+        # viele kleine wertvolle Stuecke, Quarz (keine) traegt ueber wenige
+        # grosse Stuecke. Praeparier-relevant: gut spaltbare Stuecke lassen sich
+        # sauber schneiden, was die Polier-Empfehlung und damit Wert_CHF_poliert
+        # beeinflusst.
+        lines += ["", "Wert pro Spaltbarkeit (CHF):"]
+        for sp, wert in st.wert_pro_spaltbarkeit[:top]:
+            lines.append(f"  {sp:40s} {wert:>12,.0f}")
     if st.wert_pro_beste_verwendung:
         # Verwendungs-Sicht: wo steckt der Wert je Empfehlung? Sammler-Frage
         # "lohnt sich Schmuck-Verkauf, oder steckt der Wert in Sammler-/
@@ -429,6 +440,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Magnetismus (g):"]
         for m, gewicht in st.gewicht_pro_magnetismus[:top]:
             lines.append(f"  {m:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_spaltbarkeit:
+        # Spiegelbild zu wert_pro_spaltbarkeit: welche Spaltflaechen-Klasse
+        # traegt die meiste Masse? Glimmer-Plaettchen (vollkommen) sind oft
+        # leicht und zahlreich, dichte Quarz-Brocken (keine) tragen den
+        # Schwerteil. Die Wert/Gewicht-Entkopplung wird auch auf der
+        # Spaltflaechen-Achse sichtbar.
+        lines += ["", "Gewicht pro Spaltbarkeit (g):"]
+        for sp, gewicht in st.gewicht_pro_spaltbarkeit[:top]:
+            lines.append(f"  {sp:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_beste_verwendung:
         # Spiegelbild zu wert_pro_beste_verwendung: Industrie/Dekoration oft
         # schwer, Schmuck oft leicht aber hochpreisig - die Wert/Gewicht-
