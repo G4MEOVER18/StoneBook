@@ -161,6 +161,7 @@ class ObjectRepo:
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_monat: int | None = None,
+                     funddatum_monat_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
                      fundort: str = "",
@@ -410,6 +411,27 @@ class ObjectRepo:
                 "AND substr(o.Funddatum, 6, 2) GLOB '[0-1][0-9]' "
                 "AND CAST(substr(o.Funddatum, 6, 2) AS INTEGER) = ?")
             params.append(m)
+        # funddatum_monat_in: Mengen-Saison-Filter ("Berg-Saison Juli ODER August"
+        # oder "Boersen-Spitzen Februar/Dezember"). Komplementaer zum einzelnen
+        # funddatum_monat-Filter; spiegelt funddatum_jahr_in / funddatum_jahrzehnt_in
+        # in der diskreten Mengen-Notation. Erwartet jeden Eintrag in 1..12
+        # (Tippfehler 0/13 erzeugen einen klaren Fehler).
+        if funddatum_monat_in:
+            monate = [int(m) for m in funddatum_monat_in]
+            invalid = [m for m in monate if not 1 <= m <= 12]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Funddatum-Monate: {invalid} "
+                    f"(erwartet 1..12)")
+            if monate:
+                placeholders = ", ".join("?" * len(monate))
+                where.append(
+                    "o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                    "AND substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+                    f"AND CAST(substr(o.Funddatum, 6, 2) AS INTEGER) IN "
+                    f"({placeholders})")
+                params.extend(monate)
         # Funddatum-Bereich auf Tagesgenauigkeit: ISO YYYY-MM-DD lexikographisch
         # vergleichbar. Akzeptiert auch YYYY-MM oder YYYY allein.
         if funddatum_min is not None:

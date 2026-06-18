@@ -527,6 +527,51 @@ def test_funddatum_jahr_in_filter(tmp_path):
     c.close()
 
 
+def test_funddatum_monat_in_filter(tmp_path):
+    """funddatum_monat_in waehlt mehrere Monate aus (Berg-Saison Juli ODER August)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "monat_in.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2020-07-15"),
+            ("OBJ_0002", "2021-08-20"),
+            ("OBJ_0003", "2022-12-10"),  # Dezember (Boerse)
+            ("OBJ_0004", "2024-02-01"),  # Februar (Tucson)
+            ("OBJ_0005", "2024-03-20"),
+            ("OBJ_0006", "2024"),         # ohne Monatsteil
+            ("OBJ_0007", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Berg-Saison: Juli ODER August
+    rows = repo.list_objects(funddatum_monat_in=[7, 8])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Boersen-Spitzen: Dezember ODER Februar
+    rows = repo.list_objects(funddatum_monat_in=[12, 2])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Einzelner Monat ist OK
+    rows = repo.list_objects(funddatum_monat_in=[3])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(funddatum_monat_in=(7, 8))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(funddatum_monat_in=[])
+    assert len(rows) == 7
+    # Kombiniert mit Jahresfilter (Schnittmenge)
+    rows = repo.list_objects(funddatum_monat_in=[7, 8], funddatum_jahr_min=2021)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Validierung
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Monate"):
+        repo.list_objects(funddatum_monat_in=[7, 13])
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Monate"):
+        repo.list_objects(funddatum_monat_in=[0])
+    c.close()
+
+
 def test_funddatum_jahrzehnt_in_filter(tmp_path):
     """funddatum_jahrzehnt_in akzeptiert diskrete Dekaden ('1980er ODER 2010er').
 
