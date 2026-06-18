@@ -99,6 +99,27 @@ def _like_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _append_scale_1_10_filter(where: list[str], params: list,
+                              name: str, column: str,
+                              val_min: int | None, val_max: int | None) -> None:
+    """Haengt einen ``>=/<=``-Range-Filter auf eine 1..10-Skala an where/params.
+
+    Spiegelt die drei Filterpaare ``seltenheit_global_min/max``,
+    ``seltenheit_fundort_min/max`` und ``nachfrage_min/max``. Out-of-range-Werte
+    (0/11) erzeugen einen klaren ``ValueError`` mit ``name`` als Diagnose
+    (statt einer stillen Leerausgabe). NULL-Eintraege (nicht bewertet)
+    fallen automatisch raus, weil ``NULL >=/<= ?`` immer NULL/False ergibt.
+    """
+    for bound, op in ((val_min, ">="), (val_max, "<=")):
+        if bound is None:
+            continue
+        b = int(bound)
+        if not 1 <= b <= 10:
+            raise ValueError(f"{name} muss in 1..10 liegen (war: {b})")
+        where.append(f"o.{column} {op} ?")
+        params.append(b)
+
+
 def _order_by_clause(sort_by: str | None, sort_desc: bool) -> str:
     if not sort_by:
         return " ORDER BY o.obj_id"
@@ -477,50 +498,26 @@ class ObjectRepo:
         # Globale Seltenheit (1=haeufig .. 10=sehr selten) als Bereichsfilter.
         # Sammler-Frage: "welche Stuecke sind global Top-Rare (>=8)?" liefert
         # die Vitrinen-Schaustuecke; ``seltenheit_global_max=3`` selektiert
-        # Tauschmaterial (haeufige Stuecke). Validiert 1..10 (Tippfehler wie
-        # 0/11 erzeugen einen klaren Fehler statt einer stillen Leerausgabe).
-        # NULL-Eintraege (nicht bewertet) fallen aus dem Filter raus.
-        for bound, op in ((seltenheit_global_min, ">="),
-                          (seltenheit_global_max, "<=")):
-            if bound is not None:
-                b = int(bound)
-                if not 1 <= b <= 10:
-                    raise ValueError(
-                        f"seltenheit_global muss in 1..10 liegen (war: {b})")
-                where.append(f"o.Seltenheit_global_1_10 {op} ?")
-                params.append(b)
-        # Standort-Seltenheit (1=am Fundort haeufig .. 10=am Fundort sehr selten)
-        # als Bereichsfilter analog seltenheit_global. Sammler-typische Frage:
-        # "welche Stuecke sind am Fundort selten genug, um lokale Sammler zu
-        # interessieren (>=8)?" oder "welche kommen am Fundort haeufig vor und
-        # taugen als Tauschmaterial (<=3)?". Komplementaer zur globalen Rarity:
-        # ein global haeufiger Quarz (Seltenheit_global_1_10=2) kann am Fundort
-        # selten sein, wenn der Aufschluss kaum Quarz fuehrt (oder umgekehrt:
-        # lokale Massenware, global trotzdem rar). Validiert 1..10 (Tippfehler
-        # 0/11 erzeugen einen klaren Fehler statt einer stillen Leerausgabe).
-        for bound, op in ((seltenheit_fundort_min, ">="),
-                          (seltenheit_fundort_max, "<=")):
-            if bound is not None:
-                b = int(bound)
-                if not 1 <= b <= 10:
-                    raise ValueError(
-                        f"seltenheit_fundort muss in 1..10 liegen (war: {b})")
-                where.append(f"o.Seltenheit_Fundort_1_10 {op} ?")
-                params.append(b)
-        # Marktnachfrage (1=geringe Nachfrage .. 10=stark gefragt) als Bereichs-
-        # filter analog seltenheit_global. Sammler-Frage: "welche Stuecke
-        # lassen sich gut verkaufen (>=7)?" liefert die marktrelevanten
-        # Kandidaten; ``nachfrage_max=3`` selektiert Lager-/Tauschstuecke ohne
-        # akute Marktattraktivitaet. Validiert 1..10 (Tippfehler erzeugen einen
-        # klaren Fehler statt einer stillen Leerausgabe).
-        for bound, op in ((nachfrage_min, ">="), (nachfrage_max, "<=")):
-            if bound is not None:
-                b = int(bound)
-                if not 1 <= b <= 10:
-                    raise ValueError(
-                        f"nachfrage muss in 1..10 liegen (war: {b})")
-                where.append(f"o.Nachfrage_1_10 {op} ?")
-                params.append(b)
+        # Tauschmaterial (haeufige Stuecke). Validierung 1..10 via Helper
+        # (Tippfehler 0/11 -> ValueError); NULL-Eintraege fallen aus dem
+        # Vergleich raus.
+        _append_scale_1_10_filter(
+            where, params, "seltenheit_global", "Seltenheit_global_1_10",
+            seltenheit_global_min, seltenheit_global_max)
+        # Standort-Seltenheit (1=am Fundort haeufig .. 10=am Fundort sehr selten):
+        # komplementaer zur globalen Rarity: ein global haeufiger Quarz kann am
+        # Fundort selten sein, wenn der Aufschluss kaum Quarz fuehrt (oder
+        # umgekehrt: lokale Massenware, global trotzdem rar). Filtert lokal
+        # interessante Stuecke (>=8) vs. Fundort-Standardware (<=3).
+        _append_scale_1_10_filter(
+            where, params, "seltenheit_fundort", "Seltenheit_Fundort_1_10",
+            seltenheit_fundort_min, seltenheit_fundort_max)
+        # Marktnachfrage (1=geringe Nachfrage .. 10=stark gefragt): ``nachfrage_min=7``
+        # selektiert Verkaufs-Kandidaten, ``nachfrage_max=3`` Lager-/Tausch-
+        # material ohne akute Marktattraktivitaet.
+        _append_scale_1_10_filter(
+            where, params, "nachfrage", "Nachfrage_1_10",
+            nachfrage_min, nachfrage_max)
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
             params.append(kristallsystem)
