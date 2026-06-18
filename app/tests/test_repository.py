@@ -789,6 +789,42 @@ def test_mohs_min_max_filter(tmp_path):
     c.close()
 
 
+def test_dichte_min_max_filter(tmp_path):
+    """Dichte-Filter analog Mohs: Untergrenze auf Dichte_min_gcm3, Obergrenze auf _max.
+
+    Sammler-Frage: ``dichte_min=5.0`` selektiert schwere Erz-Verdaechtige
+    (Magnetit/Haematit/Galenit liegen ueber 5 g/cm3), ``dichte_max=2.0``
+    selektiert leichte Aussen-Rohstoffe (Bims/Vulkanglas). NULL-Eintraege
+    (nicht vermessen) fallen aus dem Filter raus.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "dichte.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 0.7, 0.9),    # Bims: leicht
+            ("OBJ_0002", 2.5, 2.7),    # Quarz/Calcit-Familie
+            ("OBJ_0003", 3.5, 4.0),    # Granat
+            ("OBJ_0004", 5.0, 5.3),    # Haematit/Magnetit-Bereich
+            ("OBJ_0005", 7.4, 7.6),    # Galenit (schwer)
+            ("OBJ_0006", None, None),  # nicht vermessen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Schwere Stuecke (Erz-Verdaechtige): nur Haematit-Bereich und Galenit.
+    rows = repo.list_objects(dichte_min=5.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005"]
+    # Leichte Stuecke: nur Bims.
+    rows = repo.list_objects(dichte_max=2.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Sammler-typische Mittel-Auswahl 2.5..4.0.
+    rows = repo.list_objects(dichte_min=2.5, dichte_max=4.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_refresh_status_all_setzt_aktiv_und_platzhalter(tmp_path):
     """Bulk-refresh ist semantisch identisch zu pro-Objekt-refresh_status."""
     from stonebook.db.database import open_db

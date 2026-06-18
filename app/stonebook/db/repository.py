@@ -153,6 +153,8 @@ class ObjectRepo:
                      hoehe_max: float | None = None,
                      mohs_min: float | None = None,
                      mohs_max: float | None = None,
+                     dichte_min: float | None = None,
+                     dichte_max: float | None = None,
                      kristallsystem: str = "",
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
@@ -449,6 +451,17 @@ class ObjectRepo:
         if mohs_max is not None:
             where.append("o.Mohs_Haerte_max <= ?")
             params.append(float(mohs_max))
+        # Dichte-Filter analog zur Mohs-Haerte ueber das min/max-Spaltenpaar.
+        # Sammler-Frage: "welche Stuecke sind dicht genug fuer Erz-Vermutung
+        # (>=5 g/cm3, Magnetit/Haematit/Galenit)?" -> dichte_min=5.0; oder
+        # "welche koennten Bims/Aerogel/Aussen-Rohstoffe sein (<=2)?" ->
+        # dichte_max=2.0. NULL-Eintraege fallen durch ?-Vergleich aussen vor.
+        if dichte_min is not None:
+            where.append("o.Dichte_min_gcm3 >= ?")
+            params.append(float(dichte_min))
+        if dichte_max is not None:
+            where.append("o.Dichte_max_gcm3 <= ?")
+            params.append(float(dichte_max))
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
             params.append(kristallsystem)
