@@ -359,6 +359,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Spaltbarkeit (CHF):"]
         for sp, wert in st.wert_pro_spaltbarkeit[:top]:
             lines.append(f"  {sp:40s} {wert:>12,.0f}")
+    if st.wert_pro_bruch:
+        # Bruch-Wert-Sicht: welche Bruchverhalten-Klasse traegt den Sammlungs-
+        # wert (muschelig/uneben/splittrig/faserig/erdig/glatt)? Komplementaer
+        # zu by_bruch (Anzahl) und wert_pro_spaltbarkeit (Spaltflaechen):
+        # muschelig brechende Quarz-/Obsidian-Stuecke liegen wertlich oft auf
+        # einem anderen Niveau als fasrige Asbest-/Aktinolith-Stuecke oder
+        # hakig-unebene Kupfer-/Silber-Plaettchen.
+        lines += ["", "Wert pro Bruch (CHF):"]
+        for b, wert in st.wert_pro_bruch[:top]:
+            lines.append(f"  {b:40s} {wert:>12,.0f}")
     if st.wert_pro_beste_verwendung:
         # Verwendungs-Sicht: wo steckt der Wert je Empfehlung? Sammler-Frage
         # "lohnt sich Schmuck-Verkauf, oder steckt der Wert in Sammler-/
@@ -449,6 +459,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Spaltbarkeit (g):"]
         for sp, gewicht in st.gewicht_pro_spaltbarkeit[:top]:
             lines.append(f"  {sp:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_bruch:
+        # Spiegelbild zu wert_pro_bruch: welche Bruchverhalten-Klasse traegt die
+        # meiste Masse? Dichte muschelig brechende Obsidian-Brocken tragen oft
+        # den Schwerteil, fasrige Aktinolith-Buendel bleiben leicht. Die Wert/
+        # Gewicht-Entkopplung wird auch auf der Bruchverhalten-Achse sichtbar.
+        lines += ["", "Gewicht pro Bruch (g):"]
+        for b, gewicht in st.gewicht_pro_bruch[:top]:
+            lines.append(f"  {b:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_beste_verwendung:
         # Spiegelbild zu wert_pro_beste_verwendung: Industrie/Dekoration oft
         # schwer, Schmuck oft leicht aber hochpreisig - die Wert/Gewicht-

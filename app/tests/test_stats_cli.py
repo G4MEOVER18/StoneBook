@@ -1847,6 +1847,86 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_spaltbarkeit_zeile(tmp_path
     assert "Gewicht pro Spaltbarkeit" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_bruch(tmp_path, capsys):
+    """Wert-pro-Bruch-Block summiert CHF je Bruchverhalten-Klasse, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "muschelig", 600.0, 400.0),  # muschelig 1000
+            ("OBJ_0002", "uneben",    200.0, 150.0),  # uneben     350
+            ("OBJ_0003", "faserig",    10.0, None),   # faserig     10
+            ("OBJ_0004", "faserig",   None,  None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Bruch (CHF):" in out
+    block = out.split("Wert pro Bruch (CHF):", 1)[1]
+    assert block.index("muschelig") < block.index("uneben") < block.index("faserig")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_bruch_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Bruch-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpb0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [("OBJ_0001", "muschelig"), ("OBJ_0002", "faserig")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Bruch" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_bruch(tmp_path, capsys):
+    """Gewicht-pro-Bruch-Block summiert g je Bruchverhalten-Klasse, absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "muschelig", 600.0),
+            ("OBJ_0002", "muschelig", 400.0),  # muschelig total 1000
+            ("OBJ_0003", "uneben",    150.0),
+            ("OBJ_0004", "faserig",    10.0),
+            ("OBJ_0005", "faserig",   None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Bruch (g):" in out
+    block = out.split("Gewicht pro Bruch (g):", 1)[1]
+    assert block.index("muschelig") < block.index("uneben") < block.index("faserig")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_bruch_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Bruch-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpb0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [("OBJ_0001", "muschelig"), ("OBJ_0002", "faserig")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Bruch" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_varietaet(tmp_path, capsys):
     """Wert-pro-Varietaet-Block summiert CHF je Varietaet, absteigend sortiert."""
     from stonebook.db.database import open_db
