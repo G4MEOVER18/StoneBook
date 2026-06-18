@@ -139,6 +139,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Glanz:"]
         for name, n in list(st.by_glanz.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_transparenz:
+        # Lichtdurchlaessigkeits-Anzahl-Sicht: wieviele Stuecke pro Transparenz-
+        # Klasse (durchsichtig/durchscheinend/opak)? Komplementaer zu
+        # wert_/gewicht_pro_transparenz (CLI weiter unten) und by_glanz
+        # (Oberflaechen-Reflexion vs. Volumen-Lichtgang): zwei Achsen der
+        # optischen Charakteristik, die das Foto-Setup unterschiedlich
+        # vorbereiten (Backlight noetig vs. Frontlight reicht). Reihenfolge
+        # aus _count_by: absteigend nach Anzahl, dann alphabetisch.
+        lines += ["", "Objekte pro Transparenz:"]
+        for name, n in list(st.by_transparenz.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen
