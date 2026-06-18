@@ -2514,6 +2514,92 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_seltenheit_fundort_zeile(
     assert "Gewicht pro Seltenheit Fundort" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_nachfrage(tmp_path, capsys):
+    """Marktnachfrage-Wert-Block: spiegelt seltenheit-Bloecke im CLI auf der Demand-Skala.
+
+    Komplementaer zu ``Wert pro Seltenheit global``: zeigt nicht Rarit?ts-,
+    sondern Verkaufs-Druck-Schwerpunkt.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpn.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 9, 1500.0, 500.0),   # Stufe 9: 2000
+            ("OBJ_0002", 5, 400.0, None),     # Stufe 5: 400
+            ("OBJ_0003", 1, 80.0, None),      # Stufe 1: 80
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Nachfrage (CHF):" in out
+    block = out.split("Wert pro Nachfrage (CHF):", 1)[1]
+    # Reihenfolge absteigend nach Wertsumme: 9 (2000) > 5 (400) > 1 (80)
+    assert block.index("9") < block.index("5") < block.index("1")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_nachfrage_zeile(
+        tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Nachfrage-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpn0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?, ?)",
+        [("OBJ_0001", 5), ("OBJ_0002", 8)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Nachfrage" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_nachfrage(tmp_path, capsys):
+    """Marktnachfrage-Gewicht-Block: spiegelt seltenheit-Gewichts-Bloecke im CLI."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpn.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 2, 4000.0),
+            ("OBJ_0002", 2, 1000.0),    # Stufe 2: 5000
+            ("OBJ_0003", 5, 150.0),     # Stufe 5: 150
+            ("OBJ_0004", 9, 25.0),      # Stufe 9: 25
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Nachfrage (g):" in out
+    block = out.split("Gewicht pro Nachfrage (g):", 1)[1]
+    assert block.index("2") < block.index("5") < block.index("9")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_nachfrage_zeile(
+        tmp_path, capsys):
+    """Ohne Gewichts-Eintraege erscheint der Nachfrage-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpn0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?, ?)",
+        [("OBJ_0001", 5), ("OBJ_0002", 8)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Nachfrage" not in out
+
+
 def test_top_flag_steuert_listenlaenge(tmp_path, capsys):
     """--top N begrenzt sowohl by_mineral als auch top_wert_objekte gemeinsam."""
     from stonebook.db.database import open_db

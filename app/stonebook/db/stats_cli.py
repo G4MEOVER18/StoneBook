@@ -564,6 +564,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Seltenheit Fundort (g):"]
         for stufe, gewicht in st.gewicht_pro_seltenheit_fundort:
             lines.append(f"  {stufe:>40s} {gewicht:>12,.1f}")
+    if st.wert_pro_nachfrage:
+        # Marktnachfrage-Wert-Sicht: wo liegt der Sammlungswert auf der Demand-
+        # Skala? Sammler-typisch vor Boersenbesuch oder Versicherungs-Update:
+        # konzentriert sich der Wert auf hochbegehrte Stuecke (>=7, kurzfristig
+        # liquidierbar) oder ist er in Tauschmaterial (<=3, schwer absetzbar)
+        # gebunden? Reihenfolge analog zu Seltenheit: absteigend nach Summe,
+        # max 10 Buckets ueber die Skala.
+        lines += ["", "Wert pro Nachfrage (CHF):"]
+        for stufe, wert in st.wert_pro_nachfrage:
+            lines.append(f"  {stufe:>40s} {wert:>12,.0f}")
+    if st.gewicht_pro_nachfrage:
+        # Spiegelbild zu wert_pro_nachfrage: wo liegt die Sammlungsmasse auf der
+        # Demand-Skala? Typisch sitzt die Masse in der wenig begehrten Mitte/
+        # Unteren Skala (Halden-Material, schwer absetzbar), waehrend die
+        # Verkaufs-Spitze ueber wenige hochpreisige Stuecke kommt - die Wert/
+        # Gewicht-Entkopplung wird auch auf der Marktnachfrage-Achse sichtbar.
+        lines += ["", "Gewicht pro Nachfrage (g):"]
+        for stufe, gewicht in st.gewicht_pro_nachfrage:
+            lines.append(f"  {stufe:>40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 
