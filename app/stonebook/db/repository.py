@@ -42,6 +42,13 @@ VALID_TRANSPARENZ: frozenset[str] = frozenset(
 VALID_MAGNETISMUS: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Magnetismus"].enum_values if v
 )
+# Analog: gueltige Spaltbarkeits-Werte aus dem Feldwoerterbuch (ohne Default).
+# Fuer den spaltbarkeit_in-Mengenfilter ("vollkommen ODER gut" als Praeparier-
+# Auswahl: alle sauber spaltbaren Stuecke separat von zaehen Quarz-Brocken,
+# die nur per Saege/Polier bearbeitet werden koennen).
+VALID_SPALTBARKEIT: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Spaltbarkeit"].enum_values if v
+)
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
@@ -146,6 +153,7 @@ class ObjectRepo:
                      transparenz: str = "",
                      transparenz_in: list[str] | tuple[str, ...] | None = None,
                      magnetismus_in: list[str] | tuple[str, ...] | None = None,
+                     spaltbarkeit_in: list[str] | tuple[str, ...] | None = None,
                      varietaet: str = "",
                      varietaet_in: list[str] | tuple[str, ...] | None = None,
                      varietaet_contains: str = "",
@@ -508,6 +516,24 @@ class ObjectRepo:
                 placeholders = ", ".join("?" * len(mags))
                 where.append(f"o.Magnetismus IN ({placeholders})")
                 params.extend(mags)
+        # spaltbarkeit_in: Mengen-Filter ("vollkommen ODER gut") als Praeparier-
+        # Auswahl - alle sauber spaltbaren Stuecke (Calcit/Fluorit/Glimmer) in
+        # einer Sicht, ohne dass die zaehen Quarz-Brocken (keine) mitkommen.
+        # Spiegelt magnetismus_in/transparenz_in: validiert gegen
+        # VALID_SPALTBARKEIT (vollkommen/gut/deutlich/undeutlich/keine), damit
+        # Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses
+        # erzeugen.
+        if spaltbarkeit_in:
+            sps = [s for s in spaltbarkeit_in if s]
+            invalid = [s for s in sps if s not in VALID_SPALTBARKEIT]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Spaltbarkeit-Werte: {invalid} "
+                    f"(erwartet aus {sorted(VALID_SPALTBARKEIT)})")
+            if sps:
+                placeholders = ", ".join("?" * len(sps))
+                where.append(f"o.Spaltbarkeit IN ({placeholders})")
+                params.extend(sps)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)

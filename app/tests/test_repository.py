@@ -1219,6 +1219,48 @@ def test_magnetismus_in_filter(tmp_path):
     c.close()
 
 
+def test_spaltbarkeit_in_filter(tmp_path):
+    """spaltbarkeit_in akzeptiert Mengen ('vollkommen ODER gut'); Tippfehler werfen ValueError.
+
+    Praeparier-Auswahl: alle sauber spaltbaren Stuecke (Calcit/Fluorit/Glimmer)
+    in einer Sicht, ohne die zaehen Quarz-Brocken (keine). Spiegelt
+    magnetismus_in/transparenz_in: gegen VALID_SPALTBARKEIT validiert.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "spk.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "vollkommen"),
+            ("OBJ_0002", "gut"),
+            ("OBJ_0003", "keine"),
+            ("OBJ_0004", "vollkommen"),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Mengen-Filter vollkommen ODER gut (alle sauber spaltbaren Stuecke)
+    rows = repo.list_objects(spaltbarkeit_in=["vollkommen", "gut"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelner Eintrag
+    rows = repo.list_objects(spaltbarkeit_in=["keine"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste → kein Filter
+    rows = repo.list_objects(spaltbarkeit_in=[])
+    assert len(rows) == 5
+    # Tupel akzeptiert
+    rows = repo.list_objects(spaltbarkeit_in=("vollkommen",))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Tippfehler → ValueError mit klarer Diagnose
+    with pytest.raises(ValueError, match="Unbekannte Spaltbarkeit-Werte"):
+        repo.list_objects(spaltbarkeit_in=["nicht_existent"])
+    # Mehrere Tippfehler werden gemeinsam gemeldet
+    with pytest.raises(ValueError, match="nicht_existent"):
+        repo.list_objects(spaltbarkeit_in=["vollkommen", "nicht_existent"])
+    c.close()
+
+
 def test_beste_verwendung_in_filter(tmp_path):
     """beste_verwendung_in akzeptiert Mengen ('Schmuck ODER Sammlung'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db
