@@ -39,6 +39,7 @@ class Statistik:
     by_transparenz: dict[str, int] = field(default_factory=dict)
     by_magnetismus: dict[str, int] = field(default_factory=dict)
     by_spaltbarkeit: dict[str, int] = field(default_factory=dict)
+    by_bruch: dict[str, int] = field(default_factory=dict)
     by_beste_verwendung: dict[str, int] = field(default_factory=dict)
     by_fundort: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
@@ -138,6 +139,7 @@ class Statistik:
             "by_transparenz": dict(self.by_transparenz),
             "by_magnetismus": dict(self.by_magnetismus),
             "by_spaltbarkeit": dict(self.by_spaltbarkeit),
+            "by_bruch": dict(self.by_bruch),
             "by_beste_verwendung": dict(self.by_beste_verwendung),
             "by_fundort": dict(self.by_fundort),
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
@@ -610,6 +612,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # (Bruchverhalten) und by_glanz (Oberflaechen-Reflexion): hier die
     # Spaltflaechen-Charakteristik, die das Polieren/Praeparieren bestimmt.
     st.by_spaltbarkeit = _count_by(conn, "Spaltbarkeit")
+    # Mineralogische Sicht: welches Bruchverhalten dominiert die Sammlung?
+    # Sechs Enum-Werte aus dem Feldwoerterbuch (muschelig/uneben/splittrig/
+    # faserig/erdig/glatt) - klassische Lehrbuch-Sicht (Quarz/Obsidian:
+    # muschelig; Kupfer/Silber: hakig-uneben; Asbest: faserig). Komplementaer
+    # zu by_spaltbarkeit (Spaltflaechen): Stuecke mit keiner Spaltbarkeit
+    # zeigen ihr Bruchverhalten am deutlichsten - der Block macht das transparent.
+    st.by_bruch = _count_by(conn, "Bruch")
     st.by_beste_verwendung = _count_by(conn, "Beste_Verwendung")
     st.by_fundort = _count_by(conn, "Fundort", limit=top_fundorte)
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.

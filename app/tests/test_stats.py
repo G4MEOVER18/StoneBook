@@ -1021,6 +1021,47 @@ def test_by_spaltbarkeit_leer(tmp_path):
     c.close()
 
 
+def test_by_bruch_aus_seed_db(tmp_path):
+    """Verteilung nach Bruch ignoriert leere Eintraege (6 Enum-Stufen).
+
+    Klassische Lehrbuch-Sicht: Quarz/Obsidian (muschelig) vs. Kupfer/Silber
+    (hakig-uneben) vs. Asbest (faserig). Spiegelt Spaltbarkeit auf der
+    Bruchverhalten-Achse - Stuecke mit ``keiner`` Spaltbarkeit zeigen ihr
+    Bruchverhalten am deutlichsten.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "br.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "muschelig"),
+            ("OBJ_0002", "muschelig"),
+            ("OBJ_0003", "muschelig"),
+            ("OBJ_0004", "uneben"),
+            ("OBJ_0005", "uneben"),
+            ("OBJ_0006", "splittrig"),
+            ("OBJ_0007", "faserig"),
+            ("OBJ_0008", ""),
+            ("OBJ_0009", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_bruch == {
+        "muschelig": 3, "uneben": 2, "splittrig": 1, "faserig": 1,
+    }
+    assert st.as_dict()["by_bruch"]["muschelig"] == 3
+    c.close()
+
+
+def test_by_bruch_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_bruch == {}
+    c.close()
+
+
 def test_by_varietaet_aus_seed_db(tmp_path):
     """Verteilung nach Varietaet ignoriert leere Eintraege (Quarz-Familie zerfaellt)."""
     from stonebook.db.database import open_db
