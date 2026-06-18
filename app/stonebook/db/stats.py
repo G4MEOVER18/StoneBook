@@ -80,6 +80,7 @@ class Statistik:
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_confidence_bucket: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_gesteinsart: list[tuple[str, float]] = field(default_factory=list)
@@ -236,6 +237,9 @@ class Statistik:
             ],
             "wert_pro_nachfrage": [
                 (s, round(w, 2)) for s, w in self.wert_pro_nachfrage
+            ],
+            "wert_pro_confidence_bucket": [
+                (b, round(w, 2)) for b, w in self.wert_pro_confidence_bucket
             ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
@@ -487,6 +491,56 @@ def _sum_by_scale_1_10(conn: sqlite3.Connection, column: str, value_sql: str,
 CONFIDENCE_BUCKET_ORDER: tuple[str, ...] = ("ohne", "0-24", "25-49", "50-74", "75-100")
 
 
+def _confidence_bucket_case_sql(column: str = "Confidence_Prozent") -> str:
+    """SQL-CASE-Ausdruck, der einen Confidence-Wert auf den Bucket-Namen abbildet.
+
+    Geteilt von :func:`_confidence_buckets` (Anzahl) und
+    :func:`_sum_by_confidence_bucket` (Wert/Gewicht), damit die Bucket-Grenzen
+    nur an einer Stelle definiert sind und die beiden Aggregate garantiert
+    deckungsgleich klassifizieren.
+    """
+    return (
+        "CASE "
+        f"  WHEN {column} IS NULL THEN 'ohne' "
+        f"  WHEN {column} BETWEEN 0 AND 24 THEN '0-24' "
+        f"  WHEN {column} BETWEEN 25 AND 49 THEN '25-49' "
+        f"  WHEN {column} BETWEEN 50 AND 74 THEN '50-74' "
+        f"  WHEN {column} BETWEEN 75 AND 100 THEN '75-100' "
+        "  ELSE NULL END"
+    )
+
+
+def _sum_by_confidence_bucket(conn: sqlite3.Connection, value_sql: str,
+                              extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Confidence-Bucket.
+
+    Pendant zu :func:`_confidence_buckets` (Anzahl): summiert Wert/Gewicht je
+    25-Prozent-Klasse plus 'ohne' (NULL Confidence). Beantwortet die
+    Sammler-Frage "wieviel Wert/Masse haengt an Stuecken, denen die KI nicht
+    vertraut (<50) vs. an sicheren Bestimmungen (75-100)?".
+
+    Sortierung: absteigend nach Summe, Tiebreak nach
+    :data:`CONFIDENCE_BUCKET_ORDER` (also 'ohne' vor '0-24' vor ...).
+    Out-of-Range-Werte (<0 oder >100) zaehlen nicht; sie werden in
+    :func:`check_integrity` separat gemeldet und wuerden hier nur Rauschen
+    produzieren.
+    """
+    where = "1=1"
+    if extra_where:
+        where = extra_where
+    bucket_sql = _confidence_bucket_case_sql()
+    sql = (
+        f"SELECT {bucket_sql} AS bucket, SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY bucket HAVING bucket IS NOT NULL AND w > 0"
+    )
+    rows = [(str(r["bucket"]), float(r["w"]))
+            for r in conn.execute(sql).fetchall()]
+    order_index = {b: i for i, b in enumerate(CONFIDENCE_BUCKET_ORDER)}
+    rows.sort(key=lambda r: (-r[1], order_index.get(r[0], len(CONFIDENCE_BUCKET_ORDER))))
+    return rows
+
+
 def _confidence_buckets(conn: sqlite3.Connection) -> dict[str, int]:
     """Verteilung der Confidence-Werte auf 25-Prozent-Klassen + 'ohne' (NULL).
 
@@ -497,13 +551,7 @@ def _confidence_buckets(conn: sqlite3.Connection) -> dict[str, int]:
     """
     counts = dict.fromkeys(CONFIDENCE_BUCKET_ORDER, 0)
     rows = conn.execute(
-        "SELECT CASE "
-        "  WHEN Confidence_Prozent IS NULL THEN 'ohne' "
-        "  WHEN Confidence_Prozent BETWEEN 0 AND 24 THEN '0-24' "
-        "  WHEN Confidence_Prozent BETWEEN 25 AND 49 THEN '25-49' "
-        "  WHEN Confidence_Prozent BETWEEN 50 AND 74 THEN '50-74' "
-        "  WHEN Confidence_Prozent BETWEEN 75 AND 100 THEN '75-100' "
-        "  ELSE NULL END AS bucket, COUNT(*) AS n "
+        f"SELECT {_confidence_bucket_case_sql()} AS bucket, COUNT(*) AS n "
         "FROM objects GROUP BY bucket"
     ).fetchall()
     for r in rows:
@@ -1067,4 +1115,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.gewicht_pro_nachfrage = _sum_by_scale_1_10(
         conn, "Nachfrage_1_10", "Gewicht_g",
         extra_where=gewicht_where)
+    # Confidence-Wert-Sicht: wieviel Sammlungswert haengt an "sicheren"
+    # Bestimmungen (75-100) vs. an noch unsicheren Stuecken (<50) vs. an
+    # unbestimmten Stuecken (Confidence NULL, Bucket 'ohne')? Spiegelt
+    # confidence_buckets (Anzahl) auf die Wert-Achse: konzentriert sich der
+    # Sammlungswert dort, wo die KI sicher ist - oder steckt er gerade in
+    # den noch zu pruefenden Stuecken, deren Pruefempfehlungen prioritaer
+    # sind? Komplementaer zu top_confidence_objekte (Spitze) und
+    # durchschnitt_/median_confidence_prozent (zentrale Tendenz).
+    st.wert_pro_confidence_bucket = _sum_by_confidence_bucket(conn, wert_sql)
     return st

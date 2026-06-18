@@ -3343,3 +3343,81 @@ def test_sum_by_scale_1_10_validiert_spalte(tmp_path):
     with pytest.raises(ValueError):
         _sum_by_scale_1_10(c, "Mineral_Primaer", "Wert_CHF_roh")
     c.close()
+
+
+def test_wert_pro_confidence_bucket_aus_seed_db(tmp_path):
+    """Confidence-Wert-Aggregat: spiegelt confidence_buckets auf die Wert-Achse.
+
+    Ordnet jeden Wert dem 25-Prozent-Klassen-Bucket (oder 'ohne' bei NULL) zu;
+    Out-of-Range (<0 / >100) bleibt ausgeschlossen. Sortierung: Summe DESC mit
+    CONFIDENCE_BUCKET_ORDER-Tiebreak.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wpcb.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 95, 800.0, 200.0),   # 75-100: 1000
+            ("OBJ_0002", 80, 400.0, None),    # +400 -> 1400
+            ("OBJ_0003", 60, 300.0, None),    # 50-74: 300
+            ("OBJ_0004", 30, 150.0, None),    # 25-49: 150
+            ("OBJ_0005", 10, 50.0, None),     # 0-24:  50
+            ("OBJ_0006", None, 600.0, None),  # ohne:  600
+            ("OBJ_0007", 50, 0.0, None),      # 0-Wert -> ignoriert
+            ("OBJ_0008", -5, 999.0, None),    # out-of-range -> ignoriert
+            ("OBJ_0009", 150, 999.0, None),   # out-of-range -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_confidence_bucket == [
+        ("75-100", 1400.0),
+        ("ohne", 600.0),
+        ("50-74", 300.0),
+        ("25-49", 150.0),
+        ("0-24", 50.0),
+    ]
+    assert st.as_dict()["wert_pro_confidence_bucket"] == [
+        ("75-100", 1400.0),
+        ("ohne", 600.0),
+        ("50-74", 300.0),
+        ("25-49", 150.0),
+        ("0-24", 50.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_confidence_bucket_tiebreak_in_bucket_order(tmp_path):
+    """Gleicher Summen-Wert -> CONFIDENCE_BUCKET_ORDER bestimmt die Reihenfolge."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wpcb_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, Wert_CHF_roh) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 80, 100.0),   # 75-100: 100
+            ("OBJ_0002", 60, 100.0),   # 50-74:  100
+            ("OBJ_0003", 30, 100.0),   # 25-49:  100
+            ("OBJ_0004", None, 100.0), # ohne:   100
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # alle Buckets bei 100 -> CONFIDENCE_BUCKET_ORDER ('ohne','0-24',...) entscheidet
+    assert st.wert_pro_confidence_bucket == [
+        ("ohne", 100.0),
+        ("25-49", 100.0),
+        ("50-74", 100.0),
+        ("75-100", 100.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_confidence_bucket_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_confidence_bucket == []
+    c.close()
