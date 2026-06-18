@@ -159,6 +159,7 @@ class ObjectRepo:
                      has_uv_reaktion: bool | None = None,
                      has_strichfarbe: bool | None = None,
                      has_hcl_reaktion: bool | None = None,
+                     has_mohs: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -383,6 +384,18 @@ class ObjectRepo:
             where.append("o.HCl_Reaktion IS NOT NULL AND TRIM(o.HCl_Reaktion) != ''")
         elif has_hcl_reaktion is False:
             where.append("(o.HCl_Reaktion IS NULL OR TRIM(o.HCl_Reaktion) = '')")
+        # has_mohs: tri-state Filter fuer dokumentierte Mohs-Haerte.
+        # Wahr, sobald eines der beiden Bereichsfelder (Mohs_Haerte_min/_max)
+        # gesetzt ist - die obere und untere Grenze des Haertebereichs werden
+        # nicht immer zusammen gepflegt (oft nur ``5-6`` als min, max wird leer
+        # gelassen). Spiegelt has_uv_reaktion (zwei Felder, eines reicht); haerte-
+        # spezifischer als der mohs_min/max-Bereichsfilter, der konkrete Schwellen
+        # vorgibt, aber NULL-Eintraege ueberspringt. Findet Stuecke, an denen der
+        # Haertetest nachzuholen ist - zentrale Diagnose-Achse vor KI-Analyse.
+        if has_mohs is True:
+            where.append("(o.Mohs_Haerte_min IS NOT NULL OR o.Mohs_Haerte_max IS NOT NULL)")
+        elif has_mohs is False:
+            where.append("(o.Mohs_Haerte_min IS NULL AND o.Mohs_Haerte_max IS NULL)")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:

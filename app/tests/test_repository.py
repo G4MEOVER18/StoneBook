@@ -479,6 +479,29 @@ def test_has_hcl_reaktion_filter(tmp_path):
     c.close()
 
 
+def test_has_mohs_filter(tmp_path):
+    """has_mohs: dokumentierte Mohs-Haerte (eines der beiden Bereichsfelder reicht)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hmohs.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.5, 7.0),    # voller Bereich Quarz
+            ("OBJ_0002", 5.0, None),   # nur Untergrenze
+            ("OBJ_0003", None, 9.0),   # nur Obergrenze (Korund-Verdacht)
+            ("OBJ_0004", None, None),  # nichts dokumentiert
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_mohs=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_mohs=False)] \
+        == ["OBJ_0004"]
+    assert len(repo.list_objects(has_mohs=None)) == 4
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []
