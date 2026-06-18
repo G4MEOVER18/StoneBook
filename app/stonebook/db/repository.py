@@ -163,6 +163,8 @@ class ObjectRepo:
                      dichte_max: float | None = None,
                      seltenheit_global_min: int | None = None,
                      seltenheit_global_max: int | None = None,
+                     seltenheit_fundort_min: int | None = None,
+                     seltenheit_fundort_max: int | None = None,
                      nachfrage_min: int | None = None,
                      nachfrage_max: int | None = None,
                      kristallsystem: str = "",
@@ -486,6 +488,24 @@ class ObjectRepo:
                     raise ValueError(
                         f"seltenheit_global muss in 1..10 liegen (war: {b})")
                 where.append(f"o.Seltenheit_global_1_10 {op} ?")
+                params.append(b)
+        # Standort-Seltenheit (1=am Fundort haeufig .. 10=am Fundort sehr selten)
+        # als Bereichsfilter analog seltenheit_global. Sammler-typische Frage:
+        # "welche Stuecke sind am Fundort selten genug, um lokale Sammler zu
+        # interessieren (>=8)?" oder "welche kommen am Fundort haeufig vor und
+        # taugen als Tauschmaterial (<=3)?". Komplementaer zur globalen Rarity:
+        # ein global haeufiger Quarz (Seltenheit_global_1_10=2) kann am Fundort
+        # selten sein, wenn der Aufschluss kaum Quarz fuehrt (oder umgekehrt:
+        # lokale Massenware, global trotzdem rar). Validiert 1..10 (Tippfehler
+        # 0/11 erzeugen einen klaren Fehler statt einer stillen Leerausgabe).
+        for bound, op in ((seltenheit_fundort_min, ">="),
+                          (seltenheit_fundort_max, "<=")):
+            if bound is not None:
+                b = int(bound)
+                if not 1 <= b <= 10:
+                    raise ValueError(
+                        f"seltenheit_fundort muss in 1..10 liegen (war: {b})")
+                where.append(f"o.Seltenheit_Fundort_1_10 {op} ?")
                 params.append(b)
         # Marktnachfrage (1=geringe Nachfrage .. 10=stark gefragt) als Bereichs-
         # filter analog seltenheit_global. Sammler-Frage: "welche Stuecke

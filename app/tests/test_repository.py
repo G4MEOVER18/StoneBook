@@ -889,6 +889,64 @@ def test_seltenheit_global_min_max_filter(tmp_path):
     c.close()
 
 
+def test_seltenheit_fundort_min_max_filter(tmp_path):
+    """Standort-Seltenheit (1..10) als Bereichsfilter mit Validierung.
+
+    Sammler-Frage: ``seltenheit_fundort_min=8`` selektiert Stuecke, die am
+    Fundort selten sind (lokal interessant fuer lokale Sammler), waehrend
+    ``seltenheit_fundort_max=3`` haeufige Fundort-Standardware liefert.
+    Komplementaer zur globalen Sicht (siehe ``seltenheit_global_min/max``).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt_fo.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 1),     # am Standort sehr haeufig
+            ("OBJ_0002", 3),     # haeufig
+            ("OBJ_0003", 6),     # mittel
+            ("OBJ_0004", 8),     # selten
+            ("OBJ_0005", 10),    # am Standort sehr selten
+            ("OBJ_0006", None),  # nicht bewertet
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(seltenheit_fundort_min=8)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005"]
+    rows = repo.list_objects(seltenheit_fundort_max=3)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(seltenheit_fundort_min=4, seltenheit_fundort_max=8)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Validierung: out-of-range Tippfehler -> ValueError
+    with pytest.raises(ValueError, match="1..10"):
+        repo.list_objects(seltenheit_fundort_min=0)
+    with pytest.raises(ValueError, match="1..10"):
+        repo.list_objects(seltenheit_fundort_max=11)
+    c.close()
+
+
+def test_seltenheit_fundort_und_global_kombiniert(tmp_path):
+    """Filter laufen orthogonal: lokal selten UND global selten = Top-Vitrine."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt_kombi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, "
+        "Seltenheit_Fundort_1_10) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 9, 9),   # lokal+global selten -> Vitrinen-Schaustueck
+            ("OBJ_0002", 9, 2),   # global selten, lokal Massenware
+            ("OBJ_0003", 2, 9),   # global haeufig, lokal selten
+            ("OBJ_0004", 2, 2),   # ueberall haeufig
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(seltenheit_global_min=8, seltenheit_fundort_min=8)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
 def test_nachfrage_min_max_filter(tmp_path):
     """Nachfrage (1..10) als Bereichsfilter mit Validierung.
 
