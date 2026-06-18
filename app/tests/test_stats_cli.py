@@ -2600,6 +2600,96 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_nachfrage_zeile(
     assert "Gewicht pro Nachfrage" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_confidence_bucket(tmp_path, capsys):
+    """Confidence-Wert-Block: spiegelt confidence_buckets im CLI auf die Wert-Achse.
+
+    Reihenfolge absteigend nach Wert-Summe; 'ohne'-Bucket (NULL Confidence)
+    mit hohem Wert taucht ganz oben auf - das sind die wichtigsten naechsten
+    Pruefkandidaten vor der Pruefempfehlungs-Abarbeitung.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpcb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, Wert_CHF_roh) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 90, 2000.0),     # 75-100: 2000
+            ("OBJ_0002", None, 800.0),    # ohne:   800
+            ("OBJ_0003", 30, 150.0),      # 25-49:  150
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Confidence (CHF):" in out
+    block = out.split("Wert pro Confidence (CHF):", 1)[1]
+    # Reihenfolge absteigend: 75-100 (2000) > ohne (800) > 25-49 (150)
+    assert block.index("75-100") < block.index("ohne") < block.index("25-49")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_confidence_bucket_zeile(
+        tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Confidence-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpcb0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 50), ("OBJ_0002", 80)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Confidence" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_confidence_bucket(tmp_path, capsys):
+    """Confidence-Gewicht-Block: spiegelt wert_pro_confidence_bucket im CLI auf Masse.
+
+    Typisch sitzt die Masse im 'ohne'-Bucket (schwere Geroellstuecke ohne
+    KI-Analyse), waehrend sicher bestimmte Kristalle leicht bleiben.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpcb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", None, 5000.0),   # ohne:   5000
+            ("OBJ_0002", 60, 250.0),      # 50-74:  250
+            ("OBJ_0003", 90, 30.0),       # 75-100: 30
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Confidence (g):" in out
+    block = out.split("Gewicht pro Confidence (g):", 1)[1]
+    assert block.index("ohne") < block.index("50-74") < block.index("75-100")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_confidence_bucket_zeile(
+        tmp_path, capsys):
+    """Ohne Gewichts-Eintraege erscheint der Confidence-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpcb0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 50), ("OBJ_0002", 80)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Confidence" not in out
+
+
 def test_top_flag_steuert_listenlaenge(tmp_path, capsys):
     """--top N begrenzt sowohl by_mineral als auch top_wert_objekte gemeinsam."""
     from stonebook.db.database import open_db

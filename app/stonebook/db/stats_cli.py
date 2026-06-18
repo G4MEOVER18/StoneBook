@@ -583,6 +583,27 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Nachfrage (g):"]
         for stufe, gewicht in st.gewicht_pro_nachfrage:
             lines.append(f"  {stufe:>40s} {gewicht:>12,.1f}")
+    if st.wert_pro_confidence_bucket:
+        # Confidence-Wert-Sicht: spiegelt confidence_buckets (Anzahl) auf die
+        # Wert-Achse. Beantwortet "konzentriert sich der Sammlungswert auf
+        # sicher identifizierte Stuecke (75-100), oder steckt er gerade in
+        # noch unbestimmten / niedrig-confidence-Stuecken (<50/'ohne')?".
+        # Sammler-typisch vor Pruefempfehlungs-Abarbeitung: Stuecke im
+        # 'ohne'/0-24-Bucket mit hohem Wert sind die wichtigsten naechsten
+        # Pruefkandidaten. Reihenfolge: absteigend nach Summe, max 5 Buckets.
+        lines += ["", "Wert pro Confidence (CHF):"]
+        for bucket, wert in st.wert_pro_confidence_bucket:
+            lines.append(f"  {bucket:>40s} {wert:>12,.0f}")
+    if st.gewicht_pro_confidence_bucket:
+        # Spiegelbild zu wert_pro_confidence_bucket: wo liegt die Sammlungs-
+        # masse auf der KI-Bestimmungs-Achse? Typisch sitzt die Masse im
+        # 'ohne'-Bucket (schwere Geroellstuecke ohne KI-Analyse), waehrend
+        # sicher bestimmte Kristalle (75-100) leicht aber wertvoll sind -
+        # die Wert/Gewicht-Entkopplung wird auch auf der Confidence-Achse
+        # sichtbar.
+        lines += ["", "Gewicht pro Confidence (g):"]
+        for bucket, gewicht in st.gewicht_pro_confidence_bucket:
+            lines.append(f"  {bucket:>40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 
