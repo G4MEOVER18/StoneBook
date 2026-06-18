@@ -118,6 +118,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Kategorie:"]
         for name, n in list(st.by_kategorie.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_kristallsystem:
+        # Kristallographische Anzahl-Sicht: wieviele Stuecke pro Symmetrietyp?
+        # Komplementaer zu wert_/gewicht_pro_kristallsystem (CLI weiter unten):
+        # zeigt nicht den Wert-, sondern den Bestand-Schwerpunkt. Trigonal-Quarz
+        # dominiert haeufig die Stueck-Zahl, waehrend kubisch (Pyrit/Granat)
+        # ueber Einzelstuecke den Wert hebt. Reihenfolge aus _count_by:
+        # absteigend nach Anzahl, dann alphabetisch.
+        lines += ["", "Objekte pro Kristallsystem:"]
+        for name, n in list(st.by_kristallsystem.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen

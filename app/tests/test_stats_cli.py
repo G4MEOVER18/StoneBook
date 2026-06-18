@@ -904,6 +904,48 @@ def test_text_ausgabe_ohne_kategorie_keine_zeile(tmp_path, capsys):
     assert "Objekte pro Kategorie:" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_kristallsystem(tmp_path, capsys):
+    """Objekte-pro-Kristallsystem-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opks.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "trigonal"),
+            ("OBJ_0002", "trigonal"),
+            ("OBJ_0003", "trigonal"),
+            ("OBJ_0004", "kubisch"),
+            ("OBJ_0005", "kubisch"),
+            ("OBJ_0006", "hexagonal"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Kristallsystem:" in out
+    # Reihenfolge absteigend: trigonal (3), kubisch (2), hexagonal (1)
+    block = out.split("Objekte pro Kristallsystem:", 1)[1]
+    assert block.index("trigonal") < block.index("kubisch") < block.index("hexagonal")
+
+
+def test_text_ausgabe_ohne_kristallsystem_keine_zeile(tmp_path, capsys):
+    """Ohne Kristallsystem-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opks0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Kristallsystem:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db
