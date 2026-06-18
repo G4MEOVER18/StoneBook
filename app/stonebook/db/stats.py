@@ -68,6 +68,7 @@ class Statistik:
     wert_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_magnetismus: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_spaltbarkeit: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_bruch: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -83,6 +84,7 @@ class Statistik:
     gewicht_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_magnetismus: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_spaltbarkeit: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_bruch: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -196,6 +198,9 @@ class Statistik:
             "wert_pro_spaltbarkeit": [
                 (sp, round(w, 2)) for sp, w in self.wert_pro_spaltbarkeit
             ],
+            "wert_pro_bruch": [
+                (b, round(w, 2)) for b, w in self.wert_pro_bruch
+            ],
             "wert_pro_beste_verwendung": [
                 (bv, round(w, 2)) for bv, w in self.wert_pro_beste_verwendung
             ],
@@ -240,6 +245,9 @@ class Statistik:
             ],
             "gewicht_pro_spaltbarkeit": [
                 (sp, round(g, 2)) for sp, g in self.gewicht_pro_spaltbarkeit
+            ],
+            "gewicht_pro_bruch": [
+                (b, round(g, 2)) for b, g in self.gewicht_pro_bruch
             ],
             "gewicht_pro_beste_verwendung": [
                 (bv, round(g, 2)) for bv, g in self.gewicht_pro_beste_verwendung
@@ -541,6 +549,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_magnetismus: int = 10,
                        top_wert_spaltbarkeit: int = 10,
                        top_gewicht_spaltbarkeit: int = 10,
+                       top_wert_bruch: int = 10,
+                       top_gewicht_bruch: int = 10,
                        top_wert_beste_verwendung: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
@@ -799,6 +809,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # reicht uebergross, damit alle vorhandenen Stufen durchkommen.
     st.wert_pro_spaltbarkeit = _sum_by(
         conn, "Spaltbarkeit", wert_sql, top_wert_spaltbarkeit)
+    # Bruch-Wert-Sicht: welche Bruchverhalten-Klasse traegt den Sammlungswert?
+    # Komplementaer zu by_bruch (Anzahl) und wert_pro_spaltbarkeit
+    # (Spaltflaechen): muschelig brechende Quarz-/Obsidian-Stuecke liegen
+    # wertlich oft auf einem anderen Niveau als fasrige Asbest-/Aktinolith-
+    # Stuecke oder hakig-unebene Kupfer-/Silber-Plaettchen. Sechs Enum-Werte
+    # aus dem Feldwoerterbuch (muschelig/uneben/splittrig/faserig/erdig/glatt).
+    st.wert_pro_bruch = _sum_by(
+        conn, "Bruch", wert_sql, top_wert_bruch)
     # Verwendungs-Sicht: wo steckt der Wert je Empfehlung (Schmuck/Sammlung/
     # Forschung/Industrie/Talisman/Dekoration)? Beantwortet "lohnt sich ein
     # Schmuck-Verkauf, oder steckt der Wert eher in Forschungs-/Sammler-Stuecken?".
@@ -862,6 +880,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Wert/Gewicht-Entkopplung wird auch auf der Spaltflaechen-Achse sichtbar.
     st.gewicht_pro_spaltbarkeit = _sum_by(
         conn, "Spaltbarkeit", "Gewicht_g", top_gewicht_spaltbarkeit,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_bruch: welche Bruchverhalten-Klasse traegt die
+    # meiste Masse? Dichte muschelig brechende Obsidian-Brocken tragen oft
+    # den Schwerteil, fasrige Aktinolith-Buendel bleiben leicht. Die Wert/
+    # Gewicht-Entkopplung wird auch auf der Bruchverhalten-Achse sichtbar.
+    st.gewicht_pro_bruch = _sum_by(
+        conn, "Bruch", "Gewicht_g", top_gewicht_bruch,
         extra_where=gewicht_where)
     # Spiegelbild zu wert_pro_beste_verwendung: welche Verwendungs-Kategorie
     # bringt die meiste Masse? Industrie/Dekoration oft schwer, Schmuck oft
