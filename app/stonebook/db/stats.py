@@ -66,6 +66,7 @@ class Statistik:
     wert_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_magnetismus: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_spaltbarkeit: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_status: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -80,6 +81,7 @@ class Statistik:
     gewicht_pro_glanz: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_transparenz: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_magnetismus: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_spaltbarkeit: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_beste_verwendung: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_status: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
@@ -189,6 +191,9 @@ class Statistik:
             "wert_pro_magnetismus": [
                 (m, round(w, 2)) for m, w in self.wert_pro_magnetismus
             ],
+            "wert_pro_spaltbarkeit": [
+                (sp, round(w, 2)) for sp, w in self.wert_pro_spaltbarkeit
+            ],
             "wert_pro_beste_verwendung": [
                 (bv, round(w, 2)) for bv, w in self.wert_pro_beste_verwendung
             ],
@@ -230,6 +235,9 @@ class Statistik:
             ],
             "gewicht_pro_magnetismus": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_magnetismus
+            ],
+            "gewicht_pro_spaltbarkeit": [
+                (sp, round(g, 2)) for sp, g in self.gewicht_pro_spaltbarkeit
             ],
             "gewicht_pro_beste_verwendung": [
                 (bv, round(g, 2)) for bv, g in self.gewicht_pro_beste_verwendung
@@ -529,6 +537,8 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_gewicht_transparenz: int = 10,
                        top_wert_magnetismus: int = 10,
                        top_gewicht_magnetismus: int = 10,
+                       top_wert_spaltbarkeit: int = 10,
+                       top_gewicht_spaltbarkeit: int = 10,
                        top_wert_beste_verwendung: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
@@ -770,6 +780,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # physikalische Eisengehalt-Achse.
     st.wert_pro_magnetismus = _sum_by(
         conn, "Magnetismus", wert_sql, top_wert_magnetismus)
+    # Spaltbarkeits-Wert-Sicht: welche Spaltflaechen-Klasse traegt den
+    # Sammlungswert? Komplementaer zu by_spaltbarkeit (Anzahl): Calcit/Fluorit
+    # (vollkommen) ergeben oft viele kleine wertvolle Stuecke, Quarz (keine)
+    # traegt ueber wenige grosse Stuecke. Praeparier-relevant: gut spaltbare
+    # Stuecke lassen sich saubrer schneiden, was die Polier-Empfehlung und
+    # damit Wert_CHF_poliert beeinflusst. Fuenf Enum-Werte aus dem Feld-
+    # woerterbuch (vollkommen/gut/deutlich/undeutlich/keine); Limit von 10
+    # reicht uebergross, damit alle vorhandenen Stufen durchkommen.
+    st.wert_pro_spaltbarkeit = _sum_by(
+        conn, "Spaltbarkeit", wert_sql, top_wert_spaltbarkeit)
     # Verwendungs-Sicht: wo steckt der Wert je Empfehlung (Schmuck/Sammlung/
     # Forschung/Industrie/Talisman/Dekoration)? Beantwortet "lohnt sich ein
     # Schmuck-Verkauf, oder steckt der Wert eher in Forschungs-/Sammler-Stuecken?".
@@ -826,6 +846,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Die Wert/Gewicht-Entkopplung wird auch auf der Magnetismus-Achse sichtbar.
     st.gewicht_pro_magnetismus = _sum_by(
         conn, "Magnetismus", "Gewicht_g", top_gewicht_magnetismus,
+        extra_where=gewicht_where)
+    # Spiegelbild zu wert_pro_spaltbarkeit: welche Spaltflaechen-Klasse traegt
+    # die meiste Masse? Glimmer-Plaettchen (vollkommen) sind oft leicht und
+    # zahlreich, dichte Quarz-Brocken (keine) tragen den Schwerteil. Die
+    # Wert/Gewicht-Entkopplung wird auch auf der Spaltflaechen-Achse sichtbar.
+    st.gewicht_pro_spaltbarkeit = _sum_by(
+        conn, "Spaltbarkeit", "Gewicht_g", top_gewicht_spaltbarkeit,
         extra_where=gewicht_where)
     # Spiegelbild zu wert_pro_beste_verwendung: welche Verwendungs-Kategorie
     # bringt die meiste Masse? Industrie/Dekoration oft schwer, Schmuck oft

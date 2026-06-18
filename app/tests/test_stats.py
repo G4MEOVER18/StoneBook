@@ -2224,6 +2224,124 @@ def test_gewicht_pro_magnetismus_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_spaltbarkeit_aus_seed_db(tmp_path):
+    """Wertsumme pro Spaltbarkeit, absteigend sortiert (Spaltflaechen-Wert-Sicht).
+
+    Komplementaer zu by_spaltbarkeit (Anzahl): zeigt, welche Spaltflaechen-
+    Klasse den Sammlungswert traegt. Calcit/Fluorit (vollkommen) liegen
+    wertlich oft auf einem anderen Niveau als Quarz-Stuecke (keine).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wps.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "vollkommen", 100.0, 200.0),    # vollkommen: 300
+            ("OBJ_0002", "vollkommen", 50.0, None),      # +50 -> 350
+            ("OBJ_0003", "keine", 1000.0, None),         # keine: 1000
+            ("OBJ_0004", "keine", None, None),           # 0
+            ("OBJ_0005", "deutlich", 10.0, None),
+            ("OBJ_0006", "", 999.0, None),               # leer -> ignoriert
+            ("OBJ_0007", None, 999.0, None),             # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_spaltbarkeit == [
+        ("keine", 1000.0),
+        ("vollkommen", 350.0),
+        ("deutlich", 10.0),
+    ]
+    d = st.as_dict()
+    assert d["wert_pro_spaltbarkeit"] == [
+        ("keine", 1000.0), ("vollkommen", 350.0), ("deutlich", 10.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_spaltbarkeit_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wps_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Sp{i}", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_spaltbarkeit=3)
+    assert len(st.wert_pro_spaltbarkeit) == 3
+    werte = [w for _, w in st.wert_pro_spaltbarkeit]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_spaltbarkeit_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_spaltbarkeit == []
+    c.close()
+
+
+def test_gewicht_pro_spaltbarkeit_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Spaltbarkeit, absteigend sortiert; 0/NULL zaehlen nicht.
+
+    Spiegelbild zu wert_pro_spaltbarkeit: dichte Quarz-Brocken (keine) tragen
+    den Schwerteil der Sammlungsmasse, leichte Glimmer-Plaettchen (vollkommen)
+    bleiben gewichtsmaessig oft hinter dem Wert zurueck - die Wert/Gewicht-
+    Entkopplung wird auch auf der Spaltflaechen-Achse sichtbar.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gps.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "keine", 1000.0),       # keine total 1000 (Quarz dicht)
+            ("OBJ_0002", "keine", 500.0),        # keine total 1500
+            ("OBJ_0003", "vollkommen", 100.0),   # vollkommen total 100
+            ("OBJ_0004", "vollkommen", None),    # NULL -> ignoriert
+            ("OBJ_0005", "deutlich", 200.0),
+            ("OBJ_0006", "", 999.0),             # leer -> ignoriert
+            ("OBJ_0007", None, 999.0),           # NULL -> ignoriert
+            ("OBJ_0008", "keine", 0.0),          # 0 -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_spaltbarkeit == [
+        ("keine", 1500.0),
+        ("deutlich", 200.0),
+        ("vollkommen", 100.0),
+    ]
+    assert st.as_dict()["gewicht_pro_spaltbarkeit"] == [
+        ("keine", 1500.0), ("deutlich", 200.0), ("vollkommen", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_spaltbarkeit_limit(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gps_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit, Gewicht_g) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"Sp{i}", float(i * 10)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_gewicht_spaltbarkeit=3)
+    assert len(st.gewicht_pro_spaltbarkeit) == 3
+    g = [v for _, v in st.gewicht_pro_spaltbarkeit]
+    assert g == [70.0, 60.0, 50.0]
+    c.close()
+
+
+def test_gewicht_pro_spaltbarkeit_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_spaltbarkeit == []
+    c.close()
+
+
 def test_wert_pro_varietaet_aus_seed_db(tmp_path):
     """Wertsumme pro Varietaet, absteigend sortiert (feinere Aufteilung unter Mineral)."""
     from stonebook.db.database import open_db
