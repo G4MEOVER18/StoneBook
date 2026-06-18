@@ -1523,6 +1523,86 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_kristallsystem_zeile(tmp_pa
     assert "Gewicht pro Kristallsystem" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_glanz(tmp_path, capsys):
+    """Wert-pro-Glanz-Block summiert CHF je Glanztyp, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "metallisch", 600.0, 400.0),  # metallisch 1000
+            ("OBJ_0002", "glasig",     200.0, 150.0),  # glasig      350
+            ("OBJ_0003", "matt",        10.0, None),   # matt         10
+            ("OBJ_0004", "matt",       None,  None),   # matt bleibt  10
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Glanz (CHF):" in out
+    block = out.split("Wert pro Glanz (CHF):", 1)[1]
+    assert block.index("metallisch") < block.index("glasig") < block.index("matt")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_glanz_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Glanz-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [("OBJ_0001", "glasig"), ("OBJ_0002", "metallisch")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Glanz" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_glanz(tmp_path, capsys):
+    """Gewicht-pro-Glanz-Block summiert g je Glanztyp, absteigend sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "matt",       600.0),
+            ("OBJ_0002", "matt",       400.0),  # matt total 1000
+            ("OBJ_0003", "glasig",     150.0),
+            ("OBJ_0004", "metallisch",  10.0),
+            ("OBJ_0005", "metallisch", None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Glanz (g):" in out
+    block = out.split("Gewicht pro Glanz (g):", 1)[1]
+    assert block.index("matt") < block.index("glasig") < block.index("metallisch")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_glanz_zeile(tmp_path, capsys):
+    """Ohne Gewichtsdaten erscheint der Glanz-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [("OBJ_0001", "glasig"), ("OBJ_0002", "metallisch")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Glanz" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_varietaet(tmp_path, capsys):
     """Wert-pro-Varietaet-Block summiert CHF je Varietaet, absteigend sortiert."""
     from stonebook.db.database import open_db

@@ -319,6 +319,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Wert pro Kristallsystem (CHF):"]
         for ks, wert in st.wert_pro_kristallsystem[:top]:
             lines.append(f"  {ks:40s} {wert:>12,.0f}")
+    if st.wert_pro_glanz:
+        # Optische Wert-Sicht: welcher Glanztyp traegt den Sammlungswert?
+        # Glasige Quarz-Sammlungen vs. metallische Sulfide vs. matte Sediment-
+        # stuecke laufen wertlich oft weit auseinander. Komplementaer zu
+        # by_glanz (Anzahl): die Anzahl-Sicht wuerde glasige Quarze als
+        # dominierend zeigen, der Wert kann aber bei wenigen metallischen
+        # Pyrit-/Galenit-Stuecken liegen - der Block trennt die beiden Effekte.
+        lines += ["", "Wert pro Glanz (CHF):"]
+        for glz, wert in st.wert_pro_glanz[:top]:
+            lines.append(f"  {glz:40s} {wert:>12,.0f}")
     if st.wert_pro_beste_verwendung:
         # Verwendungs-Sicht: wo steckt der Wert je Empfehlung? Sammler-Frage
         # "lohnt sich Schmuck-Verkauf, oder steckt der Wert in Sammler-/
@@ -374,6 +384,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Kristallsystem (g):"]
         for ks, gewicht in st.gewicht_pro_kristallsystem[:top]:
             lines.append(f"  {ks:40s} {gewicht:>12,.1f}")
+    if st.gewicht_pro_glanz:
+        # Spiegelbild zu wert_pro_glanz: welcher Glanztyp dominiert gewichts-
+        # maessig? Matte Geroellstuecke (Sediment) tragen oft die Sammlungsmasse,
+        # glasige Kristalle den Wert - die Wert/Gewicht-Entkopplung wird auf der
+        # optischen Achse sichtbar.
+        lines += ["", "Gewicht pro Glanz (g):"]
+        for glz, gewicht in st.gewicht_pro_glanz[:top]:
+            lines.append(f"  {glz:40s} {gewicht:>12,.1f}")
     if st.gewicht_pro_beste_verwendung:
         # Spiegelbild zu wert_pro_beste_verwendung: Industrie/Dekoration oft
         # schwer, Schmuck oft leicht aber hochpreisig - die Wert/Gewicht-
