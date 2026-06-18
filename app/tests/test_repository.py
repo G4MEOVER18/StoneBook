@@ -754,6 +754,41 @@ def test_dimensionen_filter_kombiniert(tmp_path):
     c.close()
 
 
+def test_mohs_min_max_filter(tmp_path):
+    """Mohs-Haerte-Filter: Untergrenze auf Mohs_Haerte_min, Obergrenze auf Mohs_Haerte_max.
+
+    Sammler-Fragen: ``mohs_min=7`` liefert schmucktaugliche Stuecke (Quarz und
+    haerter), ``mohs_max=3`` liefert weiche Stuecke (Gips/Calcit). NULL-
+    Eintraege fallen aus dem Filter raus (nicht bestimmte Haerte).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mohs.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 1.5, 2.0),    # Gips: weich
+            ("OBJ_0002", 3.0, 3.0),    # Calcit
+            ("OBJ_0003", 5.5, 6.0),    # Feldspat
+            ("OBJ_0004", 7.0, 7.0),    # Quarz: schmucktauglich
+            ("OBJ_0005", 8.0, 8.0),    # Topas
+            ("OBJ_0006", None, None),  # nicht bestimmt
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Schmuck-Auswahl: nur Quarz und haerter.
+    rows = repo.list_objects(mohs_min=7.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005"]
+    # Weiche Stuecke: nichts ueber 3 Mohs.
+    rows = repo.list_objects(mohs_max=3.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Mittlere Haerte-Auswahl: Min>=3 UND Max<=7 (ganzer Bereich in 3..7).
+    rows = repo.list_objects(mohs_min=3.0, mohs_max=7.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    c.close()
+
+
 def test_refresh_status_all_setzt_aktiv_und_platzhalter(tmp_path):
     """Bulk-refresh ist semantisch identisch zu pro-Objekt-refresh_status."""
     from stonebook.db.database import open_db

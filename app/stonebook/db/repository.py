@@ -151,6 +151,8 @@ class ObjectRepo:
                      breite_max: float | None = None,
                      hoehe_min: float | None = None,
                      hoehe_max: float | None = None,
+                     mohs_min: float | None = None,
+                     mohs_max: float | None = None,
                      kristallsystem: str = "",
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
@@ -432,6 +434,21 @@ class ObjectRepo:
         if hoehe_max is not None:
             where.append("o.Hoehe_mm <= ?")
             params.append(float(hoehe_max))
+        # Mohs-Haerte-Filter ueber das min/max-Spaltenpaar: Sammler-Frage
+        # "welche Stuecke sind hart genug fuer Schmuck (>=7)?" -> mohs_min=7,
+        # filtert auf Mohs_Haerte_min (das Mineral faellt nirgends unter 7).
+        # Spiegelbild ``mohs_max`` auf Mohs_Haerte_max (das Mineral ueberschreitet
+        # den Wert nirgends) - schliesst weiche Stuecke fuer Strichtest aus
+        # ("welche sind nicht haerter als 3?"). Kombiniert liefert es Stuecke,
+        # deren ganzer Haertebereich in [mohs_min..mohs_max] liegt - analog zur
+        # laenge_/breite_/hoehe_-Vitrinen-Auswahl, hier auf zwei Spalten verteilt.
+        # NULL-Eintraege (nicht bestimmte Haerte) fallen durch ?-Vergleich raus.
+        if mohs_min is not None:
+            where.append("o.Mohs_Haerte_min >= ?")
+            params.append(float(mohs_min))
+        if mohs_max is not None:
+            where.append("o.Mohs_Haerte_max <= ?")
+            params.append(float(mohs_max))
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
             params.append(kristallsystem)
