@@ -861,6 +861,41 @@ def test_seltenheit_global_min_max_filter(tmp_path):
     c.close()
 
 
+def test_nachfrage_min_max_filter(tmp_path):
+    """Nachfrage (1..10) als Bereichsfilter mit Validierung.
+
+    Sammler-Frage: ``nachfrage_min=7`` selektiert die Verkaufs-Kandidaten,
+    ``nachfrage_max=3`` Tauschmaterial ohne akute Marktattraktivitaet.
+    Tippfehler 0/11 erzeugen einen klaren Fehler.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 1),     # kaum Nachfrage
+            ("OBJ_0002", 3),     # gering
+            ("OBJ_0003", 5),     # mittel
+            ("OBJ_0004", 7),     # gut
+            ("OBJ_0005", 10),    # stark gefragt
+            ("OBJ_0006", None),  # nicht bewertet
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(nachfrage_min=7)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005"]
+    rows = repo.list_objects(nachfrage_max=3)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(nachfrage_min=4, nachfrage_max=8)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    with pytest.raises(ValueError, match="1..10"):
+        repo.list_objects(nachfrage_min=0)
+    with pytest.raises(ValueError, match="1..10"):
+        repo.list_objects(nachfrage_max=11)
+    c.close()
+
+
 def test_refresh_status_all_setzt_aktiv_und_platzhalter(tmp_path):
     """Bulk-refresh ist semantisch identisch zu pro-Objekt-refresh_status."""
     from stonebook.db.database import open_db

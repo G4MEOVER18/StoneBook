@@ -157,6 +157,8 @@ class ObjectRepo:
                      dichte_max: float | None = None,
                      seltenheit_global_min: int | None = None,
                      seltenheit_global_max: int | None = None,
+                     nachfrage_min: int | None = None,
+                     nachfrage_max: int | None = None,
                      kristallsystem: str = "",
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
@@ -478,6 +480,20 @@ class ObjectRepo:
                     raise ValueError(
                         f"seltenheit_global muss in 1..10 liegen (war: {b})")
                 where.append(f"o.Seltenheit_global_1_10 {op} ?")
+                params.append(b)
+        # Marktnachfrage (1=geringe Nachfrage .. 10=stark gefragt) als Bereichs-
+        # filter analog seltenheit_global. Sammler-Frage: "welche Stuecke
+        # lassen sich gut verkaufen (>=7)?" liefert die marktrelevanten
+        # Kandidaten; ``nachfrage_max=3`` selektiert Lager-/Tauschstuecke ohne
+        # akute Marktattraktivitaet. Validiert 1..10 (Tippfehler erzeugen einen
+        # klaren Fehler statt einer stillen Leerausgabe).
+        for bound, op in ((nachfrage_min, ">="), (nachfrage_max, "<=")):
+            if bound is not None:
+                b = int(bound)
+                if not 1 <= b <= 10:
+                    raise ValueError(
+                        f"nachfrage muss in 1..10 liegen (war: {b})")
+                where.append(f"o.Nachfrage_1_10 {op} ?")
                 params.append(b)
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
