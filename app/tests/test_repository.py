@@ -502,6 +502,29 @@ def test_has_mohs_filter(tmp_path):
     c.close()
 
 
+def test_has_dichte_filter(tmp_path):
+    """has_dichte: dokumentierte Dichte (eines der beiden Bereichsfelder reicht)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hdichte.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.65, 2.65),  # Quarz, voller Bereich
+            ("OBJ_0002", 2.7, None),   # nur Untergrenze
+            ("OBJ_0003", None, 5.0),   # nur Obergrenze (Erz-Verdacht)
+            ("OBJ_0004", None, None),  # nichts dokumentiert
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_dichte=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_dichte=False)] \
+        == ["OBJ_0004"]
+    assert len(repo.list_objects(has_dichte=None)) == 4
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []

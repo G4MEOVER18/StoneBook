@@ -160,6 +160,7 @@ class ObjectRepo:
                      has_strichfarbe: bool | None = None,
                      has_hcl_reaktion: bool | None = None,
                      has_mohs: bool | None = None,
+                     has_dichte: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -396,6 +397,17 @@ class ObjectRepo:
             where.append("(o.Mohs_Haerte_min IS NOT NULL OR o.Mohs_Haerte_max IS NOT NULL)")
         elif has_mohs is False:
             where.append("(o.Mohs_Haerte_min IS NULL AND o.Mohs_Haerte_max IS NULL)")
+        # has_dichte: tri-state Filter fuer dokumentierte Dichte (eines der beiden
+        # Bereichsfelder reicht). Spiegelt has_mohs exakt: Dichte und Mohs sind
+        # die zwei zentralen physikalischen Diagnose-Achsen, die in der Praxis oft
+        # gemeinsam gepflegt werden (gewogenes Stueck + Polier-Test). Findet
+        # Stuecke, an denen die Dichte-Messung (per Auftriebs-/Pyknometer-Methode)
+        # nachzuholen ist - z.B. um Quarz (2.65) von Calcit (2.71) zu trennen,
+        # wenn die Farbe mehrdeutig ist.
+        if has_dichte is True:
+            where.append("(o.Dichte_min_gcm3 IS NOT NULL OR o.Dichte_max_gcm3 IS NOT NULL)")
+        elif has_dichte is False:
+            where.append("(o.Dichte_min_gcm3 IS NULL AND o.Dichte_max_gcm3 IS NULL)")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
