@@ -158,6 +158,7 @@ class ObjectRepo:
                      has_wert: bool | None = None,
                      has_uv_reaktion: bool | None = None,
                      has_strichfarbe: bool | None = None,
+                     has_hcl_reaktion: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -372,6 +373,16 @@ class ObjectRepo:
             where.append("o.Strichfarbe IS NOT NULL AND TRIM(o.Strichfarbe) != ''")
         elif has_strichfarbe is False:
             where.append("(o.Strichfarbe IS NULL OR TRIM(o.Strichfarbe) = '')")
+        # has_hcl_reaktion: tri-state Filter fuer dokumentierten Salzsaeure-Test.
+        # HCl identifiziert Karbonate eindeutig (Calcit/Aragonit: starke Reaktion
+        # kalt; Dolomit: schwach kalt, stark warm; Magnesit: nur warm). Spiegelt
+        # has_strichfarbe/has_uv_reaktion: Wahr = Feld dokumentiert (Inhalt egal),
+        # Falsch = NULL/Whitespace. Komplementaer zu has_strichfarbe (metallische
+        # Diagnostik) - HCl deckt den Karbonat-Strang ab.
+        if has_hcl_reaktion is True:
+            where.append("o.HCl_Reaktion IS NOT NULL AND TRIM(o.HCl_Reaktion) != ''")
+        elif has_hcl_reaktion is False:
+            where.append("(o.HCl_Reaktion IS NULL OR TRIM(o.HCl_Reaktion) = '')")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:

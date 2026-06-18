@@ -455,6 +455,30 @@ def test_has_strichfarbe_filter(tmp_path):
     c.close()
 
 
+def test_has_hcl_reaktion_filter(tmp_path):
+    """has_hcl_reaktion: dokumentierter Salzsaeure-Test (Karbonat-Diagnostik)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hhcl.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, HCl_Reaktion) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "stark kalt"),     # Calcit
+            ("OBJ_0002", "schwach warm"),   # Dolomit
+            ("OBJ_0003", "keine"),          # Quarz (Nicht-Karbonat dokumentiert)
+            ("OBJ_0004", None),
+            ("OBJ_0005", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_hcl_reaktion=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_hcl_reaktion=False)] \
+        == ["OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_hcl_reaktion=None)) == 5
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []
