@@ -564,6 +564,56 @@ def test_text_ausgabe_ohne_seltenheit_keine_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Seltenheit global" not in out
+    assert "Seltenheit Fundort" not in out
+    assert "Nachfrage (1..10):" not in out
+
+
+def test_text_ausgabe_zeigt_seltenheit_fundort(tmp_path, capsys):
+    """Fundort-Rarity-Histogramm 1..10 spiegelt by_seltenheit_global im CLI."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "selt_fo.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 3),
+            ("OBJ_0002", 3),
+            ("OBJ_0003", 5),
+            ("OBJ_0004", 9),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Seltenheit Fundort (1..10):" in out
+    block = out.split("Seltenheit Fundort (1..10):", 1)[1].splitlines()
+    stufen = [line.strip().split()[0] for line in block if line.strip()][:3]
+    assert stufen == ["3", "5", "9"]
+
+
+def test_text_ausgabe_zeigt_nachfrage(tmp_path, capsys):
+    """Marktnachfrage-Histogramm 1..10 spiegelt by_seltenheit_global im CLI."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "nach.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 1),
+            ("OBJ_0002", 4),
+            ("OBJ_0003", 4),
+            ("OBJ_0004", 8),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Nachfrage (1..10):" in out
+    block = out.split("Nachfrage (1..10):", 1)[1].splitlines()
+    stufen = [line.strip().split()[0] for line in block if line.strip()][:3]
+    assert stufen == ["1", "4", "8"]
 
 
 def test_text_ausgabe_ohne_funddatum_keine_monat_zeile(tmp_path, capsys):

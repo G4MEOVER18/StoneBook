@@ -375,6 +375,104 @@ def test_by_seltenheit_global_leer(tmp_path):
     c.close()
 
 
+def test_by_seltenheit_fundort_aus_seed_db(tmp_path):
+    """Standort-Rarity-Histogramm 1..10 spiegelt by_seltenheit_global."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt_fo.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 2),
+            ("OBJ_0002", 2),
+            ("OBJ_0003", 2),
+            ("OBJ_0004", 6),
+            ("OBJ_0005", 9),
+            ("OBJ_0006", None),  # NULL ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert list(st.by_seltenheit_fundort.items()) == [
+        ("2", 3), ("6", 1), ("9", 1),
+    ]
+    assert st.as_dict()["by_seltenheit_fundort"] == {"2": 3, "6": 1, "9": 1}
+    c.close()
+
+
+def test_by_seltenheit_fundort_ignoriert_out_of_range(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt_fo_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 0),       # out-of-range
+            ("OBJ_0002", 11),      # out-of-range
+            ("OBJ_0003", 7),       # gueltig
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_seltenheit_fundort == {"7": 1}
+    c.close()
+
+
+def test_by_seltenheit_fundort_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_fo.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_seltenheit_fundort == {}
+    c.close()
+
+
+def test_by_nachfrage_aus_seed_db(tmp_path):
+    """Marktnachfrage-Histogramm 1..10 spiegelt by_seltenheit_global."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nach.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 3),
+            ("OBJ_0002", 3),
+            ("OBJ_0003", 7),
+            ("OBJ_0004", 8),
+            ("OBJ_0005", 10),
+            ("OBJ_0006", None),  # NULL ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert list(st.by_nachfrage.items()) == [
+        ("3", 2), ("7", 1), ("8", 1), ("10", 1),
+    ]
+    assert st.as_dict()["by_nachfrage"] == {"3": 2, "7": 1, "8": 1, "10": 1}
+    c.close()
+
+
+def test_by_nachfrage_ignoriert_out_of_range(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nach_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 0),       # out-of-range
+            ("OBJ_0002", 11),      # out-of-range
+            ("OBJ_0003", 4),       # gueltig
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_nachfrage == {"4": 1}
+    c.close()
+
+
+def test_by_nachfrage_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_nach.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_nachfrage == {}
+    c.close()
+
+
 def test_count_scale_1_10_validiert_spalte(tmp_path):
     """_count_scale_1_10 weist nicht-gewhitelistete Spalten ab (kein SQL-Injection-Vektor)."""
     from stonebook.db.database import open_db

@@ -46,6 +46,8 @@ class Statistik:
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
+    by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
+    by_nachfrage: dict[str, int] = field(default_factory=dict)
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
     funddatum_frueheste: str | None = None
     funddatum_spaeteste: str | None = None
@@ -149,6 +151,8 @@ class Statistik:
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
+            "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
+            "by_nachfrage": dict(self.by_nachfrage),
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
             "funddatum_frueheste": self.funddatum_frueheste,
             "funddatum_spaeteste": self.funddatum_spaeteste,
@@ -675,6 +679,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Diagnose vor Versicherungseinschaetzung (viel haeufiges Material vs.
     # konzentriert teure Rarit?ten).
     st.by_seltenheit_global = _count_scale_1_10(conn, "Seltenheit_global_1_10")
+    # Fundort-Rarity-Histogramm: am Standort selten vs. global selten - oft
+    # verschieden, siehe SORTABLE_COLUMNS-Kommentar zu Seltenheit_Fundort. Ein
+    # Stueck kann am Fundort haeufig (Quarz aus Berner Oberland) aber global
+    # selten sein (oder umgekehrt: lokale Rarit?t aus einem ausgeschoepften
+    # Stollen). Spiegelt by_seltenheit_global; nutzt denselben Helper und denselben
+    # 1..10-Skala-Validator (out-of-range bleibt der Integrity ueberlassen).
+    st.by_seltenheit_fundort = _count_scale_1_10(conn, "Seltenheit_Fundort_1_10")
+    # Marktnachfrage-Histogramm 1..10: wo liegt der Marktdruck-Schwerpunkt der
+    # Sammlung? Komplementaer zum nachfrage_min/max-Filter (Drill-down auf
+    # Verkaufs-Kandidaten); hier die Gesamtverteilung. Beantwortet Sammler-
+    # typische Frage vor Boersenbesuch ("habe ich genug Stuecke mit Nachfrage>=7,
+    # die sich verkaufen lassen, oder sitze ich auf reinem Tauschmaterial?").
+    st.by_nachfrage = _count_scale_1_10(conn, "Nachfrage_1_10")
     st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
 
     st.bilder_by_kategorie = {

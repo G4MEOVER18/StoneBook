@@ -151,6 +151,24 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Seltenheit global (1..10):"]
         for stufe, n in st.by_seltenheit_global.items():
             lines.append(f"  {stufe:>40s} {n}")
+    if st.by_seltenheit_fundort:
+        # Fundort-Rarity-Histogramm 1..10: Standort-Seltenheit (komplementaer zur
+        # globalen Sicht). Am Berner-Oberland-Hang haeufiger Quarz kann global
+        # selten sein, oder umgekehrt: lokale Rarit?t aus einem ausgeschoepften
+        # Stollen. Reihenfolge analog by_seltenheit_global (Skala 1..10
+        # chronologisch), damit das Profil direkt vergleichbar bleibt.
+        lines += ["", "Seltenheit Fundort (1..10):"]
+        for stufe, n in st.by_seltenheit_fundort.items():
+            lines.append(f"  {stufe:>40s} {n}")
+    if st.by_nachfrage:
+        # Marktnachfrage-Histogramm 1..10: wo liegt der Marktdruck-Schwerpunkt
+        # der Sammlung? Komplementaer zum nachfrage_min/max-Filter (Drill-down
+        # auf Verkaufs-Kandidaten); hier die Gesamtverteilung. Reihenfolge
+        # bleibt 1..10 (Skala), damit das Profil direkt vergleichbar bleibt mit
+        # by_seltenheit_global/by_seltenheit_fundort.
+        lines += ["", "Nachfrage (1..10):"]
+        for stufe, n in st.by_nachfrage.items():
+            lines.append(f"  {stufe:>40s} {n}")
     if st.top_wert_objekte:
         # Sammler-typische Frage: "Was sind die hochpreisigsten Stuecke?"
         # Format: ID + Name + Wertsumme; Wert in tausenderpunktnotation.
