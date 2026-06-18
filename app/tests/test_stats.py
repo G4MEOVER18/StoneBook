@@ -3421,3 +3421,55 @@ def test_wert_pro_confidence_bucket_leer(tmp_path):
     st = compute_statistics(c)
     assert st.wert_pro_confidence_bucket == []
     c.close()
+
+
+def test_gewicht_pro_confidence_bucket_aus_seed_db(tmp_path):
+    """Confidence-Gewicht-Aggregat: spiegelt wert_pro_confidence_bucket auf Masse.
+
+    Wert/Gewicht-Entkopplung auf der KI-Bestimmungs-Achse: schwere
+    Geroellstuecke ohne KI-Bestimmung (Bucket 'ohne') vs. leichte aber sicher
+    bestimmte Kristalle (75-100). Out-of-Range / NULL / 0-Gewicht bleiben aus.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "gpcb.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", None, 3000.0),    # ohne:   3000
+            ("OBJ_0002", None, 1000.0),    # +1000 -> 4000
+            ("OBJ_0003", 90, 80.0),        # 75-100: 80
+            ("OBJ_0004", 60, 200.0),       # 50-74:  200
+            ("OBJ_0005", 30, 150.0),       # 25-49:  150
+            ("OBJ_0006", 10, 50.0),        # 0-24:   50
+            ("OBJ_0007", 50, 0.0),         # 0-Gewicht -> ignoriert
+            ("OBJ_0008", 50, None),        # NULL -> ignoriert
+            ("OBJ_0009", -5, 999.0),       # out-of-range -> ignoriert
+            ("OBJ_0010", 150, 999.0),      # out-of-range -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_confidence_bucket == [
+        ("ohne", 4000.0),
+        ("50-74", 200.0),
+        ("25-49", 150.0),
+        ("75-100", 80.0),
+        ("0-24", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_confidence_bucket"] == [
+        ("ohne", 4000.0),
+        ("50-74", 200.0),
+        ("25-49", 150.0),
+        ("75-100", 80.0),
+        ("0-24", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_confidence_bucket_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_confidence_bucket == []
+    c.close()

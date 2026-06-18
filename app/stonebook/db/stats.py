@@ -100,6 +100,7 @@ class Statistik:
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_confidence_bucket: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -297,6 +298,9 @@ class Statistik:
             ],
             "gewicht_pro_nachfrage": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_nachfrage
+            ],
+            "gewicht_pro_confidence_bucket": [
+                (b, round(g, 2)) for b, g in self.gewicht_pro_confidence_bucket
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -1124,4 +1128,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # sind? Komplementaer zu top_confidence_objekte (Spitze) und
     # durchschnitt_/median_confidence_prozent (zentrale Tendenz).
     st.wert_pro_confidence_bucket = _sum_by_confidence_bucket(conn, wert_sql)
+    # Spiegelbild zu wert_pro_confidence_bucket: wieviel Sammlungs-Gewicht
+    # haengt an unbestimmten Stuecken (Bucket 'ohne') vs. an sicher
+    # identifizierten (75-100)? Wert/Gewicht-Entkopplung auf der Confidence-
+    # Achse: typisch sitzen schwere Geroellstuecke ohne KI-Analyse im
+    # 'ohne'-Bucket, waehrend wertvolle Kristalle mit klarer Bestimmung den
+    # 75-100-Bucket fuellen - der Block macht das transparent.
+    st.gewicht_pro_confidence_bucket = _sum_by_confidence_bucket(
+        conn, "Gewicht_g", extra_where=gewicht_where)
     return st
