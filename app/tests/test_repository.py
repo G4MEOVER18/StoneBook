@@ -573,6 +573,30 @@ def test_has_kristallsystem_filter(tmp_path):
     c.close()
 
 
+def test_has_dimensionen_filter(tmp_path):
+    """has_dimensionen: mindestens eine der drei Achsen (Laenge/Breite/Hoehe) gemessen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hd.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 100.0, 50.0, 30.0),   # alle drei
+            ("OBJ_0002", 120.0, None, None),   # nur Laenge
+            ("OBJ_0003", None, 80.0, None),    # nur Breite
+            ("OBJ_0004", None, None, 25.0),    # nur Hoehe
+            ("OBJ_0005", None, None, None),    # unvermessenes Stueck
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_dimensionen=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    assert [r["obj_id"] for r in repo.list_objects(has_dimensionen=False)] \
+        == ["OBJ_0005"]
+    assert len(repo.list_objects(has_dimensionen=None)) == 5
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []

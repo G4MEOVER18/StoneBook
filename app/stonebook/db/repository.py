@@ -178,6 +178,7 @@ class ObjectRepo:
                      has_kristallsystem: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
+                     has_dimensionen: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -420,6 +421,20 @@ class ObjectRepo:
             where.append("(o.Dichte_min_gcm3 IS NOT NULL OR o.Dichte_max_gcm3 IS NOT NULL)")
         elif has_dichte is False:
             where.append("(o.Dichte_min_gcm3 IS NULL AND o.Dichte_max_gcm3 IS NULL)")
+        # has_dimensionen: tri-state Filter fuer dokumentierte geometrische Masse.
+        # Wahr, sobald mindestens eine der drei Achsen (Laenge/Breite/Hoehe in mm)
+        # gemessen ist - in der Praxis wird oft nur die laengste Achse erfasst
+        # und die anderen nachgereicht (oder umgekehrt). Findet unvermessene
+        # Stuecke fuer die Vitrinen-/Schubladen-Auswahl (Pendant zum laenge_/
+        # breite_/hoehe_min/max-Bereichsfilter, der NULL-Eintraege ueberspringt).
+        # Komplementaer zu has_gewicht (Masse), das die andere physische
+        # Bestands-Kennzahl abdeckt.
+        if has_dimensionen is True:
+            where.append("(o.Laenge_mm IS NOT NULL OR o.Breite_mm IS NOT NULL "
+                         "OR o.Hoehe_mm IS NOT NULL)")
+        elif has_dimensionen is False:
+            where.append("(o.Laenge_mm IS NULL AND o.Breite_mm IS NULL "
+                         "AND o.Hoehe_mm IS NULL)")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
