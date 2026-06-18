@@ -156,6 +156,7 @@ class ObjectRepo:
                      has_pruefempfehlungen: bool | None = None,
                      has_gewicht: bool | None = None,
                      has_wert: bool | None = None,
+                     has_uv_reaktion: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -344,6 +345,20 @@ class ObjectRepo:
             where.append(f"{wert_sql} > 0")
         elif has_wert is False:
             where.append(f"{wert_sql} <= 0")
+        # has_uv_reaktion: tri-state Filter fuer dokumentierte UV-Fluoreszenz.
+        # Wahr, sobald eines der beiden UV-Felder (UV_365nm langwellig oder
+        # UV_254nm kurzwellig) ueberhaupt einen Eintrag hat - der Inhalt selbst
+        # ("blau", "schwach gruen", "keine") bleibt Freitext und wird nicht
+        # interpretiert (Daten-Vollstaendigkeit, nicht Reaktiv-vs-inert). Spiegelt
+        # die has_funddatum/has_notizen-Logik. Ergaenzt UV-Foto-Auswahl per
+        # has_image_kategorie='UV365'/'UV395': UV-Bilder ohne dokumentierte
+        # Reaktion sind ein Hinweis auf nachzutragende Beobachtung.
+        if has_uv_reaktion is True:
+            where.append("((o.UV_365nm IS NOT NULL AND TRIM(o.UV_365nm) != '') "
+                         "OR (o.UV_254nm IS NOT NULL AND TRIM(o.UV_254nm) != ''))")
+        elif has_uv_reaktion is False:
+            where.append("(o.UV_365nm IS NULL OR TRIM(o.UV_365nm) = '') "
+                         "AND (o.UV_254nm IS NULL OR TRIM(o.UV_254nm) = '')")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:

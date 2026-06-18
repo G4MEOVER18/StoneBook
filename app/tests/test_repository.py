@@ -385,6 +385,52 @@ def test_has_notizen_filter(tmp_path):
     c.close()
 
 
+def test_has_uv_reaktion_filter(tmp_path):
+    """has_uv_reaktion: dokumentierte Fluoreszenz im 365- oder 254-nm-Feld."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "huv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_365nm, UV_254nm) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "blau", None),          # nur 365 nm dokumentiert
+            ("OBJ_0002", None, "schwach gruen"), # nur 254 nm dokumentiert
+            ("OBJ_0003", "keine", "keine"),      # beide dokumentiert (Inhalt egal)
+            ("OBJ_0004", None, None),            # nichts dokumentiert
+            ("OBJ_0005", "", "   "),             # leer/Whitespace zaehlt wie None
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_uv_reaktion=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_uv_reaktion=False)] \
+        == ["OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_uv_reaktion=None)) == 5
+    c.close()
+
+
+def test_has_uv_reaktion_kombinierbar_mit_uv395_bild(tmp_path):
+    """UV-Bild ohne dokumentierte Reaktion: typischer Pflege-Hinweis."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "huv2.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_365nm) VALUES (?, ?)",
+        [("OBJ_0001", "gelb"), ("OBJ_0002", None)],
+    )
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "UV395", "objects/OBJ_0001/UV 395 nm/a.jpg"),
+            ("OBJ_0002", "UV395", "objects/OBJ_0002/UV 395 nm/b.jpg"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(has_image_kategorie="UV395", has_uv_reaktion=False)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []
