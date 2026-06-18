@@ -159,6 +159,7 @@ class ObjectRepo:
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
+                     funddatum_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_monat: int | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
@@ -369,6 +370,29 @@ class ObjectRepo:
                     f"AND CAST(substr(o.Funddatum, 1, 4) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(jahre)
+        # funddatum_jahrzehnt_in: diskrete Dekaden-Menge ("Funde aus den 1980er
+        # ODER 2010er") - komplementaer zu funddatum_jahr_in (Einzeljahre) und
+        # zum Bereichsfilter funddatum_jahr_min/_max. Spiegelt das
+        # by_funddatum_jahrzehnt-Aggregat: gruppiert das Jahr per Integer-Div
+        # durch 10 und vergleicht mit der angegebenen Dekaden-Startzahl
+        # (``1980`` selektiert 1980..1989, nicht "1980er"-String). Validierung:
+        # jeder Eintrag muss ein realistisches Dekaden-Start sein
+        # (1800..2990, durch 10 teilbar); sonst ValueError mit klarer Diagnose.
+        if funddatum_jahrzehnt_in:
+            dekaden = [int(d) for d in funddatum_jahrzehnt_in]
+            invalid = [d for d in dekaden
+                       if not (1800 <= d <= 2990 and d % 10 == 0)]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Funddatum-Jahrzehnte: {invalid} "
+                    f"(erwartet 1800..2990, durch 10 teilbar)")
+            if dekaden:
+                placeholders = ", ".join("?" * len(dekaden))
+                where.append(
+                    f"substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    f"AND (CAST(substr(o.Funddatum, 1, 4) AS INTEGER) / 10) * 10 "
+                    f"IN ({placeholders})")
+                params.extend(dekaden)
         # funddatum_monat: Saison-Filter ("alle Juli-Funde", ueber alle Jahre).
         # Komplementaer zum Jahres-Bereich oben (zeit-vs-saisonal); spiegelt das
         # by_funddatum_monat-Aggregat in der Statistik. Erwartet 1..12 (Tippfehler

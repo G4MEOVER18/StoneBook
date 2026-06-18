@@ -527,6 +527,57 @@ def test_funddatum_jahr_in_filter(tmp_path):
     c.close()
 
 
+def test_funddatum_jahrzehnt_in_filter(tmp_path):
+    """funddatum_jahrzehnt_in akzeptiert diskrete Dekaden ('1980er ODER 2010er').
+
+    Spiegelt funddatum_jahr_in, gruppiert aber per Integer-Div durch 10.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "di.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "1985-05-13"),   # 1980er
+            ("OBJ_0002", "1989-11-30"),   # 1980er (rand)
+            ("OBJ_0003", "1990-01-01"),   # 1990er (rand)
+            ("OBJ_0004", "2015-08-01"),   # 2010er
+            ("OBJ_0005", "2024-11-30"),   # 2020er
+            ("OBJ_0006", ""),
+            ("OBJ_0007", "kein-datum"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Diskrete Dekaden-Auswahl
+    rows = repo.list_objects(funddatum_jahrzehnt_in=[1980, 2010])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Einzelne Dekade
+    rows = repo.list_objects(funddatum_jahrzehnt_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(funddatum_jahrzehnt_in=(1990, 2020))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0005"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(funddatum_jahrzehnt_in=[])
+    assert len(rows) == 7
+    # Dekade ohne Treffer
+    rows = repo.list_objects(funddatum_jahrzehnt_in=[1900])
+    assert rows == []
+    # Kombiniert mit Jahres-Bereichsfilter (Schnittmenge: 1980er ∩ [1986..1989])
+    rows = repo.list_objects(funddatum_jahrzehnt_in=[1980],
+                              funddatum_jahr_min=1986)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Validierung: Nicht-Dekaden-Startzahlen sind ein Programmierfehler
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Jahrzehnte"):
+        repo.list_objects(funddatum_jahrzehnt_in=[1985])  # nicht durch 10 teilbar
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Jahrzehnte"):
+        repo.list_objects(funddatum_jahrzehnt_in=[1700])  # vor 1800
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Jahrzehnte"):
+        repo.list_objects(funddatum_jahrzehnt_in=[3000])  # nach 2990
+    c.close()
+
+
 def test_funddatum_monat_filter(tmp_path):
     """Saison-Filter ueber alle Jahre: 'alle Juli-Funde' unabhaengig vom Jahr."""
     from stonebook.db.database import open_db
