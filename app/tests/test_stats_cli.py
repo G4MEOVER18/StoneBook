@@ -1156,6 +1156,48 @@ def test_text_ausgabe_ohne_bruch_keine_zeile(tmp_path, capsys):
     assert "Objekte pro Bruch:" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_beste_verwendung(tmp_path, capsys):
+    """Objekte-pro-Beste-Verwendung-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opbv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Sammlung"),
+            ("OBJ_0002", "Sammlung"),
+            ("OBJ_0003", "Sammlung"),
+            ("OBJ_0004", "Schmuck"),
+            ("OBJ_0005", "Schmuck"),
+            ("OBJ_0006", "Forschung"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Beste-Verwendung:" in out
+    # Reihenfolge absteigend: Sammlung (3), Schmuck (2), Forschung (1)
+    block = out.split("Objekte pro Beste-Verwendung:", 1)[1]
+    assert block.index("Sammlung") < block.index("Schmuck") < block.index("Forschung")
+
+
+def test_text_ausgabe_ohne_beste_verwendung_keine_zeile(tmp_path, capsys):
+    """Ohne Beste-Verwendung-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opbv0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Beste-Verwendung:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db

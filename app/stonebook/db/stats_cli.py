@@ -184,6 +184,19 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Bruch:"]
         for name, n in list(st.by_bruch.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_beste_verwendung:
+        # Verwendungs-Anzahl-Sicht: wieviele Stuecke pro Beste_Verwendung
+        # (Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration)?
+        # Komplementaer zu wert_/gewicht_pro_beste_verwendung (CLI weiter
+        # unten): zeigt die Bestand-Verteilung der Sammler-Empfehlungen -
+        # praktisch fuer Boersen-Vorbereitung ("wieviele Stuecke habe ich als
+        # Schmuck-Kandidaten markiert?") oder Aufraeum-Entscheidungen
+        # ("Talisman-Stuecke ueberwiegen Sammlungsstuecke, sollten in eine
+        # eigene Lade"). Reihenfolge aus _count_by: absteigend nach Anzahl,
+        # dann alphabetisch.
+        lines += ["", "Objekte pro Beste-Verwendung:"]
+        for name, n in list(st.by_beste_verwendung.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen
