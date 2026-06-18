@@ -172,6 +172,18 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Spaltbarkeit:"]
         for name, n in list(st.by_spaltbarkeit.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_bruch:
+        # Bruchverhalten-Anzahl-Sicht: wieviele Stuecke pro Bruchtyp
+        # (muschelig/uneben/splittrig/faserig/erdig/glatt)? Komplementaer zu
+        # wert_/gewicht_pro_bruch (CLI weiter unten) und by_spaltbarkeit
+        # (Spaltflaechen vs. Bruch sind die zwei Achsen der Bearbeitungs-
+        # Charakteristik): muschelig brechende Quarz-/Obsidian-Stuecke vs.
+        # fasrige Aktinolith-/erdige Limonit-Brocken liegen mechanisch weit
+        # auseinander. Reihenfolge aus _count_by: absteigend nach Anzahl,
+        # dann alphabetisch.
+        lines += ["", "Objekte pro Bruch:"]
+        for name, n in list(st.by_bruch.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen

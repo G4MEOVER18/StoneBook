@@ -1114,6 +1114,48 @@ def test_text_ausgabe_ohne_spaltbarkeit_keine_zeile(tmp_path, capsys):
     assert "Objekte pro Spaltbarkeit:" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_bruch(tmp_path, capsys):
+    """Objekte-pro-Bruch-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "muschelig"),
+            ("OBJ_0002", "muschelig"),
+            ("OBJ_0003", "muschelig"),
+            ("OBJ_0004", "uneben"),
+            ("OBJ_0005", "uneben"),
+            ("OBJ_0006", "faserig"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Bruch:" in out
+    # Reihenfolge absteigend: muschelig (3), uneben (2), faserig (1)
+    block = out.split("Objekte pro Bruch:", 1)[1]
+    assert block.index("muschelig") < block.index("uneben") < block.index("faserig")
+
+
+def test_text_ausgabe_ohne_bruch_keine_zeile(tmp_path, capsys):
+    """Ohne Bruch-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opb0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Bruch:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db
