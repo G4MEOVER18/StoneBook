@@ -155,6 +155,8 @@ class ObjectRepo:
                      mohs_max: float | None = None,
                      dichte_min: float | None = None,
                      dichte_max: float | None = None,
+                     seltenheit_global_min: int | None = None,
+                     seltenheit_global_max: int | None = None,
                      kristallsystem: str = "",
                      kristallsystem_in: list[str] | tuple[str, ...] | None = None,
                      beste_verwendung: str = "",
@@ -462,6 +464,21 @@ class ObjectRepo:
         if dichte_max is not None:
             where.append("o.Dichte_max_gcm3 <= ?")
             params.append(float(dichte_max))
+        # Globale Seltenheit (1=haeufig .. 10=sehr selten) als Bereichsfilter.
+        # Sammler-Frage: "welche Stuecke sind global Top-Rare (>=8)?" liefert
+        # die Vitrinen-Schaustuecke; ``seltenheit_global_max=3`` selektiert
+        # Tauschmaterial (haeufige Stuecke). Validiert 1..10 (Tippfehler wie
+        # 0/11 erzeugen einen klaren Fehler statt einer stillen Leerausgabe).
+        # NULL-Eintraege (nicht bewertet) fallen aus dem Filter raus.
+        for bound, op in ((seltenheit_global_min, ">="),
+                          (seltenheit_global_max, "<=")):
+            if bound is not None:
+                b = int(bound)
+                if not 1 <= b <= 10:
+                    raise ValueError(
+                        f"seltenheit_global muss in 1..10 liegen (war: {b})")
+                where.append(f"o.Seltenheit_global_1_10 {op} ?")
+                params.append(b)
         if kristallsystem:
             where.append("o.Kristallsystem = ?")
             params.append(kristallsystem)

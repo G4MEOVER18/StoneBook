@@ -825,6 +825,42 @@ def test_dichte_min_max_filter(tmp_path):
     c.close()
 
 
+def test_seltenheit_global_min_max_filter(tmp_path):
+    """Globale Seltenheit (1..10) als Bereichsfilter mit Validierung.
+
+    Sammler-Fragen: ``seltenheit_global_min=8`` selektiert die Vitrinen-
+    Schaustuecke (Top-Rare), ``seltenheit_global_max=3`` liefert haeufige
+    Stuecke (Tauschmaterial). Tippfehler 0/11 erzeugen einen klaren Fehler.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "selt.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 1),     # haeufig
+            ("OBJ_0002", 3),     # alltaeglich
+            ("OBJ_0003", 6),     # gehobenes Mittel
+            ("OBJ_0004", 8),     # selten
+            ("OBJ_0005", 10),    # sehr selten
+            ("OBJ_0006", None),  # nicht bewertet
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(seltenheit_global_min=8)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005"]
+    rows = repo.list_objects(seltenheit_global_max=3)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(seltenheit_global_min=4, seltenheit_global_max=8)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Validierung: out-of-range Tippfehler -> ValueError
+    with pytest.raises(ValueError, match="1..10"):
+        repo.list_objects(seltenheit_global_min=0)
+    with pytest.raises(ValueError, match="1..10"):
+        repo.list_objects(seltenheit_global_max=11)
+    c.close()
+
+
 def test_refresh_status_all_setzt_aktiv_und_platzhalter(tmp_path):
     """Bulk-refresh ist semantisch identisch zu pro-Objekt-refresh_status."""
     from stonebook.db.database import open_db
