@@ -157,6 +157,7 @@ class ObjectRepo:
                      has_gewicht: bool | None = None,
                      has_wert: bool | None = None,
                      has_uv_reaktion: bool | None = None,
+                     has_strichfarbe: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -359,6 +360,18 @@ class ObjectRepo:
         elif has_uv_reaktion is False:
             where.append("(o.UV_365nm IS NULL OR TRIM(o.UV_365nm) = '') "
                          "AND (o.UV_254nm IS NULL OR TRIM(o.UV_254nm) = '')")
+        # has_strichfarbe: tri-state Filter fuer dokumentierten Strichtest.
+        # Der Strich auf der Porzellantafel ist die klassische Diagnose-Probe
+        # fuer metallische Minerale (Haematit: rot, Magnetit: schwarz, Pyrit:
+        # gruenlich-schwarz) und entscheidet oft eine zweideutige Identifikation.
+        # Spiegelt die has_funddatum/has_notizen-Logik: Wahr = Feld dokumentiert
+        # (Inhalt egal), Falsch = NULL/Whitespace. Findet Stuecke, an denen der
+        # Strichtest nachzuholen ist - typische Vorbereitung vor KI-Analyse, weil
+        # die Strichfarbe Mineral-Vorschlaege wirksam disambiguiert.
+        if has_strichfarbe is True:
+            where.append("o.Strichfarbe IS NOT NULL AND TRIM(o.Strichfarbe) != ''")
+        elif has_strichfarbe is False:
+            where.append("(o.Strichfarbe IS NULL OR TRIM(o.Strichfarbe) = '')")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
