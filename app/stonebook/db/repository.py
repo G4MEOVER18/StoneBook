@@ -174,6 +174,7 @@ class ObjectRepo:
                      has_uv_reaktion: bool | None = None,
                      has_strichfarbe: bool | None = None,
                      has_hcl_reaktion: bool | None = None,
+                     has_farbe: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
                      funddatum_jahr_min: int | None = None,
@@ -380,6 +381,14 @@ class ObjectRepo:
         # Komplementaer zu has_strichfarbe (metallische Diagnostik) - HCl deckt
         # den Karbonat-Strang ab.
         _append_has_text_filter(where, has_hcl_reaktion, "HCl_Reaktion")
+        # has_farbe: tri-state Filter fuer dokumentierte Farbe (Farbe_beobachtet).
+        # Die beobachtete Farbe ist der erste Eindruck eines Stuecks und das
+        # primaere Freitext-Beschreibungsfeld - ohne Farbnotiz fehlt selbst die
+        # grobste Vor-Identifikation. Komplementaer zu has_strichfarbe (Pulver
+        # auf Porzellan, oft anders als die Stueck-Farbe: Haematit silbrig-
+        # metallisch, Strich aber rot). Findet unbeschriftete Stuecke, an denen
+        # die Bestandsaufnahme nachzuholen ist.
+        _append_has_text_filter(where, has_farbe, "Farbe_beobachtet")
         # has_mohs: tri-state Filter fuer dokumentierte Mohs-Haerte.
         # Wahr, sobald eines der beiden Bereichsfelder (Mohs_Haerte_min/_max)
         # gesetzt ist - die obere und untere Grenze des Haertebereichs werden
