@@ -549,6 +549,30 @@ def test_has_farbe_filter(tmp_path):
     c.close()
 
 
+def test_has_kristallsystem_filter(tmp_path):
+    """has_kristallsystem: dokumentierter Symmetrietyp (kristallographische Hauptachse)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hks.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "trigonal"),     # Quarz
+            ("OBJ_0002", "kubisch"),      # Pyrit
+            ("OBJ_0003", "amorph"),       # Obsidian
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_kristallsystem=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_kristallsystem=False)] \
+        == ["OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_kristallsystem=None)) == 5
+    c.close()
+
+
 def test_has_funddatum_false_default(repo):
     # Testdaten enthalten kein Funddatum → has_funddatum=True liefert nichts
     assert repo.list_objects(has_funddatum=True) == []

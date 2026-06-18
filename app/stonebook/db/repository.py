@@ -175,6 +175,7 @@ class ObjectRepo:
                      has_strichfarbe: bool | None = None,
                      has_hcl_reaktion: bool | None = None,
                      has_farbe: bool | None = None,
+                     has_kristallsystem: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
                      funddatum_jahr_min: int | None = None,
@@ -389,6 +390,13 @@ class ObjectRepo:
         # metallisch, Strich aber rot). Findet unbeschriftete Stuecke, an denen
         # die Bestandsaufnahme nachzuholen ist.
         _append_has_text_filter(where, has_farbe, "Farbe_beobachtet")
+        # has_kristallsystem: tri-state Filter fuer dokumentierten Symmetrietyp.
+        # Das Kristallsystem (kubisch/tetragonal/hexagonal/trigonal/orthorhombisch/
+        # monoklin/triklin/amorph) ist die kristallographische Hauptachse - oft
+        # erst nach Mikroskop-/Diffraktometer-Analyse setzbar, daher in Sammlungs-
+        # bestaenden haeufig leer. Komplementaer zum kristallsystem_in-Mengen-
+        # filter, der konkrete Symmetrien selektiert; hier nur die Anwesenheit.
+        _append_has_text_filter(where, has_kristallsystem, "Kristallsystem")
         # has_mohs: tri-state Filter fuer dokumentierte Mohs-Haerte.
         # Wahr, sobald eines der beiden Bereichsfelder (Mohs_Haerte_min/_max)
         # gesetzt ist - die obere und untere Grenze des Haertebereichs werden
