@@ -78,6 +78,7 @@ class Statistik:
     wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_gesteinsart: list[tuple[str, float]] = field(default_factory=list)
@@ -95,6 +96,7 @@ class Statistik:
     gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -227,6 +229,9 @@ class Statistik:
             "wert_pro_seltenheit_global": [
                 (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_global
             ],
+            "wert_pro_seltenheit_fundort": [
+                (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_fundort
+            ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
@@ -277,6 +282,9 @@ class Statistik:
             ],
             "gewicht_pro_seltenheit_global": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_global
+            ],
+            "gewicht_pro_seltenheit_fundort": [
+                (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_fundort
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -1027,5 +1035,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         conn, "Seltenheit_global_1_10", wert_sql)
     st.gewicht_pro_seltenheit_global = _sum_by_scale_1_10(
         conn, "Seltenheit_global_1_10", "Gewicht_g",
+        extra_where=gewicht_where)
+    # Standort-Rarity-Wert-/Gewicht-Sicht: spiegelt wert_/gewicht_pro_seltenheit_global,
+    # diesmal auf der lokalen Skala. Am Standort haeufiger Quarz (lokal niedrig)
+    # kann global selten und damit wertvoll sein - oder umgekehrt: eine lokale
+    # Rarit?t aus einem ausgeschoepften Stollen wertet weniger als global selten.
+    # Beide Aggregate zusammen zeigen, ob "lokale Spitze" und "globale Spitze"
+    # zusammenfallen oder auseinanderdriften (interessant fuer Sammlungs-Schwerpunkte).
+    st.wert_pro_seltenheit_fundort = _sum_by_scale_1_10(
+        conn, "Seltenheit_Fundort_1_10", wert_sql)
+    st.gewicht_pro_seltenheit_fundort = _sum_by_scale_1_10(
+        conn, "Seltenheit_Fundort_1_10", "Gewicht_g",
         extra_where=gewicht_where)
     return st

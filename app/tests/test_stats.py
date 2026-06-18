@@ -3173,6 +3173,86 @@ def test_gewicht_pro_seltenheit_global_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_seltenheit_fundort_aus_seed_db(tmp_path):
+    """Standort-Rarity-Wert-Aggregat: spiegelt wert_pro_seltenheit_global auf der lokalen Skala.
+
+    Lokal selten (>=8) ist nicht immer global selten - eine lokale Rarit?t aus
+    einem ausgeschoepften Stollen kann global haeufig sein. Der Block zeigt,
+    wo lokal der Wert sitzt; out-of-range bleibt ausgeschlossen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpsf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 2, 50.0, None),       # Stufe 2: 50
+            ("OBJ_0002", 7, 800.0, 200.0),     # Stufe 7: 1000
+            ("OBJ_0003", 7, None, None),       # +0 -> 1000
+            ("OBJ_0004", 4, 100.0, None),      # Stufe 4: 100
+            ("OBJ_0005", 0, 999.0, None),      # out-of-range -> ignoriert
+            ("OBJ_0006", 11, 999.0, None),     # out-of-range -> ignoriert
+            ("OBJ_0007", None, 999.0, None),   # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_seltenheit_fundort == [
+        ("7", 1000.0),
+        ("4", 100.0),
+        ("2", 50.0),
+    ]
+    assert st.as_dict()["wert_pro_seltenheit_fundort"] == [
+        ("7", 1000.0), ("4", 100.0), ("2", 50.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_seltenheit_fundort_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_seltenheit_fundort == []
+    c.close()
+
+
+def test_gewicht_pro_seltenheit_fundort_aus_seed_db(tmp_path):
+    """Standort-Rarity-Gewicht-Aggregat: 0/NULL zaehlen nicht; spiegelt Global-Sicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpsf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 2, 4000.0),       # Stufe 2: 4000
+            ("OBJ_0002", 2, 1000.0),       # +1000 -> 5000
+            ("OBJ_0003", 7, 80.0),         # Stufe 7: 80
+            ("OBJ_0004", 4, 0.0),          # 0 -> ignoriert
+            ("OBJ_0005", 4, None),         # NULL -> ignoriert
+            ("OBJ_0006", 0, 999.0),        # out-of-range -> ignoriert
+            ("OBJ_0007", 11, 999.0),       # out-of-range -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_seltenheit_fundort == [
+        ("2", 5000.0),
+        ("7", 80.0),
+    ]
+    assert st.as_dict()["gewicht_pro_seltenheit_fundort"] == [
+        ("2", 5000.0), ("7", 80.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_seltenheit_fundort_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_seltenheit_fundort == []
+    c.close()
+
+
 def test_sum_by_scale_1_10_validiert_spalte(tmp_path):
     """SQL-Injection-Schutz: nur SCALE_1_10_COLUMNS-Werte zulaessig (analog _count_scale_1_10)."""
     from stonebook.db.database import open_db
