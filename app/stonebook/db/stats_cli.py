@@ -150,6 +150,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Objekte pro Transparenz:"]
         for name, n in list(st.by_transparenz.items())[:top]:
             lines.append(f"  {name:40s} {n}")
+    if st.by_magnetismus:
+        # Magnetismus-Anzahl-Sicht: wieviele Stuecke reagieren auf den Magneten?
+        # Drei Enum-Werte (ja/schwach/nein); typisches Profil ist nein-lastig
+        # (Quarz/Calcit) mit kleinem ja-Anteil (Magnetit/Pyrrhotin). Komplementaer
+        # zu wert_/gewicht_pro_magnetismus (CLI weiter unten): zeigt nicht den
+        # Eisen-bedingten Wertbeitrag, sondern den Bestand-Anteil - praktisch
+        # vor Sortier-Aktionen mit dem Hand-Magneten. Reihenfolge aus _count_by:
+        # absteigend nach Anzahl, dann alphabetisch.
+        lines += ["", "Objekte pro Magnetismus:"]
+        for name, n in list(st.by_magnetismus.items())[:top]:
+            lines.append(f"  {name:40s} {n}")
     if st.by_funddatum_jahr:
         # Histogramm pro Fundjahr (ISO YYYY). Ergaenzt die Funddatum-Spanne oben
         # um die innere Verteilung: zeigt Sammler-Aktivitaetsphasen vs. Pausen

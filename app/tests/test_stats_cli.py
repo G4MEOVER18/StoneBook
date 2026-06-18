@@ -1030,6 +1030,48 @@ def test_text_ausgabe_ohne_transparenz_keine_zeile(tmp_path, capsys):
     assert "Objekte pro Transparenz:" not in out
 
 
+def test_text_ausgabe_zeigt_objekte_pro_magnetismus(tmp_path, capsys):
+    """Objekte-pro-Magnetismus-Block zaehlt absteigend nach Anzahl."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "nein"),
+            ("OBJ_0002", "nein"),
+            ("OBJ_0003", "nein"),
+            ("OBJ_0004", "schwach"),
+            ("OBJ_0005", "schwach"),
+            ("OBJ_0006", "ja"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Magnetismus:" in out
+    # Reihenfolge absteigend: nein (3), schwach (2), ja (1)
+    block = out.split("Objekte pro Magnetismus:", 1)[1]
+    assert block.index("nein") < block.index("schwach") < block.index("ja")
+
+
+def test_text_ausgabe_ohne_magnetismus_keine_zeile(tmp_path, capsys):
+    """Ohne Magnetismus-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "opm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Objekte pro Magnetismus:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_kategorie(tmp_path, capsys):
     """Wert-pro-Kategorie-Block summiert CHF-Felder pro Kategorie und sortiert absteigend."""
     from stonebook.db.database import open_db
