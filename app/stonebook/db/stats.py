@@ -77,6 +77,7 @@ class Statistik:
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_varietaet: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_gesteinsart: list[tuple[str, float]] = field(default_factory=list)
@@ -93,6 +94,7 @@ class Statistik:
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
@@ -222,6 +224,9 @@ class Statistik:
             "wert_pro_funddatum_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_funddatum_monat
             ],
+            "wert_pro_seltenheit_global": [
+                (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_global
+            ],
             "gewicht_pro_mineral": [
                 (mineral, round(g, 2)) for mineral, g in self.gewicht_pro_mineral
             ],
@@ -269,6 +274,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_funddatum_monat
+            ],
+            "gewicht_pro_seltenheit_global": [
+                (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_global
             ],
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
@@ -425,6 +433,39 @@ def _count_scale_1_10(conn: sqlite3.Connection, column: str) -> dict[str, int]:
         f"GROUP BY k ORDER BY k ASC"
     ).fetchall()
     return {str(r["k"]): r["n"] for r in rows}
+
+
+def _sum_by_scale_1_10(conn: sqlite3.Connection, column: str, value_sql: str,
+                       extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach 1..10-Skalenwert.
+
+    Pendant zu :func:`_count_scale_1_10` (Anzahl), aber summiert Wert/Gewicht
+    je Skalen-Bucket. Komplementaer zum ``seltenheit_global_min/max``-Filter
+    (Drill-down auf einzelne Stuecke); hier die Wert-/Massen-Verteilung ueber
+    die Rarity-/Nachfrage-Achse - macht "wo steckt der Wert in der seltenen
+    Spitze (>=8) vs. in der Masse (<=3)?" sichtbar.
+
+    Sortierung: absteigend nach Summe, Tie-Break aufsteigend nach Skalenwert
+    (analog zu :func:`_sum_by`). Ohne Limit, weil maximal 10 Buckets vorkommen
+    koennen - die Ausgabe wird nie laenger. Out-of-Range-Werte (<1 / >10)
+    bleiben ausgeschlossen, damit die Aggregate nicht durch kaputte Skalen-
+    Eintraege verzerrt werden (Integrity meldet die separat).
+
+    ``column`` wird gegen :data:`SCALE_1_10_COLUMNS` validiert, um SQL-Injection
+    ueber freie Spaltennamen auszuschliessen.
+    """
+    if column not in SCALE_1_10_COLUMNS:
+        raise ValueError(f"Unzulaessige Skalen-Spalte: {column}")
+    where = f"{column} IS NOT NULL AND {column} BETWEEN 1 AND 10"
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT {column} AS k, SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY k HAVING w > 0 "
+        f"ORDER BY w DESC, k ASC"
+    )
+    return [(str(r["k"]), float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 CONFIDENCE_BUCKET_ORDER: tuple[str, ...] = ("ohne", "0-24", "25-49", "50-74", "75-100")
@@ -976,4 +1017,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.wert_pro_funddatum_monat = _sum_by_funddatum_monat(conn, wert_sql)
     st.gewicht_pro_funddatum_monat = _sum_by_funddatum_monat(
         conn, "Gewicht_g", extra_where=gewicht_where)
+    # Rarity-Wert-/Gewicht-Sicht: wie verteilt sich Sammlungswert/Masse auf der
+    # globalen Seltenheits-Skala (1..10)? Komplementaer zu by_seltenheit_global
+    # (Anzahl): zeigt nicht "wie viele Stuecke pro Stufe", sondern "wo steckt
+    # der Wert/das Gewicht" - typisch konzentriert sich der Wert in den oberen
+    # Stufen (>=8 Rarit?ten), waehrend das Gewicht in der haeufigen Masse (<=3)
+    # liegt. Skala-Spalte wird ueber SCALE_1_10_COLUMNS validiert.
+    st.wert_pro_seltenheit_global = _sum_by_scale_1_10(
+        conn, "Seltenheit_global_1_10", wert_sql)
+    st.gewicht_pro_seltenheit_global = _sum_by_scale_1_10(
+        conn, "Seltenheit_global_1_10", "Gewicht_g",
+        extra_where=gewicht_where)
     return st

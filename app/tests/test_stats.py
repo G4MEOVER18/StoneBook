@@ -3060,3 +3060,126 @@ def test_gewicht_pro_beste_verwendung_leer(tmp_path):
     st = compute_statistics(c)
     assert st.gewicht_pro_beste_verwendung == []
     c.close()
+
+
+def test_wert_pro_seltenheit_global_aus_seed_db(tmp_path):
+    """Wertsumme pro globalem Seltenheits-Bucket (1..10), absteigend nach Summe.
+
+    Komplementaer zu by_seltenheit_global (Anzahl): zeigt nicht "wieviele
+    Stuecke pro Rarity-Stufe", sondern "wo steckt der Wert in der Rarity-
+    Verteilung" - typisch konzentriert sich der Wert in den oberen Stufen
+    (>=8). Out-of-Range-Werte (<1 / >10) bleiben ausgeschlossen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpsg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 1, 50.0, None),       # Stufe 1: 50
+            ("OBJ_0002", 1, 30.0, None),       # +30 -> 80
+            ("OBJ_0003", 8, 1000.0, 500.0),    # Stufe 8: 1500
+            ("OBJ_0004", 8, None, None),       # 0 -> bleibt 1500
+            ("OBJ_0005", 5, 100.0, None),      # Stufe 5: 100
+            ("OBJ_0006", 0, 999.0, None),      # out-of-range -> ignoriert
+            ("OBJ_0007", 11, 999.0, None),     # out-of-range -> ignoriert
+            ("OBJ_0008", None, 999.0, None),   # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_seltenheit_global == [
+        ("8", 1500.0),
+        ("5", 100.0),
+        ("1", 80.0),
+    ]
+    assert st.as_dict()["wert_pro_seltenheit_global"] == [
+        ("8", 1500.0), ("5", 100.0), ("1", 80.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_seltenheit_global_tiebreaker_aufsteigend(tmp_path):
+    """Bei Gleichstand sortiert nach Skalenwert aufsteigend (analog _sum_by)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpsg_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, Wert_CHF_roh) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 3, 100.0),
+            ("OBJ_0002", 7, 100.0),
+            ("OBJ_0003", 5, 100.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_seltenheit_global == [
+        ("3", 100.0), ("5", 100.0), ("7", 100.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_seltenheit_global_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_seltenheit_global == []
+    c.close()
+
+
+def test_gewicht_pro_seltenheit_global_aus_seed_db(tmp_path):
+    """Gewichtsumme pro globalem Seltenheits-Bucket; 0/NULL zaehlen nicht.
+
+    Spiegelbild zu wert_pro_seltenheit_global: typisch liegt die Masse in
+    den haeufigen Stufen (<=3), waehrend die wertvollen Rarit?ten (>=8)
+    leichter sind - die Wert/Gewicht-Entkopplung wird auf der Rarity-Achse
+    sichtbar.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpsg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 1, 5000.0),       # Stufe 1: 5000
+            ("OBJ_0002", 1, 3000.0),       # +3000 -> 8000
+            ("OBJ_0003", 8, 50.0),         # Stufe 8: 50
+            ("OBJ_0004", 5, 100.0),        # Stufe 5: 100
+            ("OBJ_0005", 5, 0.0),          # 0 -> ignoriert
+            ("OBJ_0006", 5, None),         # NULL -> ignoriert
+            ("OBJ_0007", 0, 999.0),        # out-of-range -> ignoriert
+            ("OBJ_0008", 11, 999.0),       # out-of-range -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_seltenheit_global == [
+        ("1", 8000.0),
+        ("5", 100.0),
+        ("8", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_seltenheit_global"] == [
+        ("1", 8000.0), ("5", 100.0), ("8", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_seltenheit_global_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_seltenheit_global == []
+    c.close()
+
+
+def test_sum_by_scale_1_10_validiert_spalte(tmp_path):
+    """SQL-Injection-Schutz: nur SCALE_1_10_COLUMNS-Werte zulaessig (analog _count_scale_1_10)."""
+    from stonebook.db.database import open_db
+    from stonebook.db.stats import _sum_by_scale_1_10
+    c = open_db(tmp_path / "guard.sqlite3")
+    with pytest.raises(ValueError):
+        _sum_by_scale_1_10(c, "Beliebige_Spalte", "Wert_CHF_roh")
+    with pytest.raises(ValueError):
+        _sum_by_scale_1_10(c, "Mineral_Primaer", "Wert_CHF_roh")
+    c.close()
