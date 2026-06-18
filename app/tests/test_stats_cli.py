@@ -2334,6 +2334,100 @@ def test_text_ausgabe_ohne_gesteinsart_keine_zeile(tmp_path, capsys):
     assert "Top-Gesteinsarten" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_seltenheit_global(tmp_path, capsys):
+    """Wert-pro-Seltenheit-Block summiert CHF je Rarity-Bucket, absteigend.
+
+    Komplementaer zum Anzahl-Block ``Seltenheit global (1..10)``: dort die
+    Bestand-Verteilung, hier der Wert-Schwerpunkt - typisch konzentriert
+    sich der Wert auf die oberen Stufen (>=8) waehrend die Masse der Stuecke
+    in den haeufigen Stufen (<=3) liegt.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpsg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, "
+        "Wert_CHF_roh, Wert_CHF_poliert) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 9, 1500.0, 500.0),   # Stufe 9: 2000
+            ("OBJ_0002", 5, 400.0, None),     # Stufe 5: 400
+            ("OBJ_0003", 1, 50.0, None),      # Stufe 1: 50
+            ("OBJ_0004", 1, 30.0, None),      # +30 -> 80
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Seltenheit global (CHF):" in out
+    block = out.split("Wert pro Seltenheit global (CHF):", 1)[1]
+    # Reihenfolge absteigend nach Wertsumme: 9 (2000) > 5 (400) > 1 (80)
+    assert block.index("9") < block.index("5") < block.index("1")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_seltenheit_global_zeile(
+        tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Rarity-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpsg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?, ?)",
+        [("OBJ_0001", 5), ("OBJ_0002", 8)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Seltenheit global" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_seltenheit_global(tmp_path, capsys):
+    """Gewicht-pro-Seltenheit-Block summiert g je Rarity-Bucket, absteigend.
+
+    Spiegelbild zu Wert-pro-Seltenheit: die Sammlungsmasse liegt typisch in
+    den haeufigen Stufen (<=3), waehrend Rarit?ten (>=8) leicht bleiben.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpsg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, Gewicht_g) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 1, 5000.0),    # Stufe 1: 5000
+            ("OBJ_0002", 1, 3000.0),    # +3000 -> 8000
+            ("OBJ_0003", 5, 200.0),     # Stufe 5: 200
+            ("OBJ_0004", 9, 25.0),      # Stufe 9: 25
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Seltenheit global (g):" in out
+    block = out.split("Gewicht pro Seltenheit global (g):", 1)[1]
+    # Reihenfolge absteigend nach Gewichtsumme: 1 (8000) > 5 (200) > 9 (25)
+    assert block.index("1") < block.index("5") < block.index("9")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_seltenheit_global_zeile(
+        tmp_path, capsys):
+    """Ohne Gewichts-Eintraege erscheint der Rarity-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpsg0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?, ?)",
+        [("OBJ_0001", 5), ("OBJ_0002", 8)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Seltenheit global" not in out
+
+
 def test_top_flag_steuert_listenlaenge(tmp_path, capsys):
     """--top N begrenzt sowohl by_mineral als auch top_wert_objekte gemeinsam."""
     from stonebook.db.database import open_db

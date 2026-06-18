@@ -523,6 +523,28 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Funddatum-Monat (g):"]
         for monat, gewicht in st.gewicht_pro_funddatum_monat:
             lines.append(f"  {monat:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_seltenheit_global:
+        # Rarity-Wert-Sicht: wo steckt der Sammlungswert in der globalen
+        # Seltenheits-Verteilung (1..10)? Komplementaer zu by_seltenheit_global
+        # (Anzahl): die Anzahl-Sicht zeigt den Bestand-Schwerpunkt, der Wert-
+        # Block zeigt das Konzentrat - Sammler-typisch liegen die hochpreisigen
+        # Stuecke auf den oberen Skalen-Stufen (>=8), waehrend die Masse der
+        # haeufigen Stuecke (<=3) nur einen kleinen Wertanteil traegt. Reihen-
+        # folge: absteigend nach Summe (top zuerst); Limit nicht noetig, max 10
+        # Buckets ueber die Skala. Beantwortet Sammler-Frage "lohnt sich der
+        # Versicherungs-Aufwand fuer die Rarit?ten?".
+        lines += ["", "Wert pro Seltenheit global (CHF):"]
+        for stufe, wert in st.wert_pro_seltenheit_global:
+            lines.append(f"  {stufe:>40s} {wert:>12,.0f}")
+    if st.gewicht_pro_seltenheit_global:
+        # Spiegelbild zu wert_pro_seltenheit_global: typisch liegt die Masse in
+        # den haeufigen Stufen (<=3), waehrend die wertvollen Rarit?ten (>=8)
+        # leichter sind - die Wert/Gewicht-Entkopplung wird auch auf der
+        # Rarity-Achse sichtbar. Sammler-typisch: ein paar Kilo "Haldenquarz"
+        # (Stufe 1-2) gegen wenige Gramm Top-Rarit?ten (Stufe 8-10).
+        lines += ["", "Gewicht pro Seltenheit global (g):"]
+        for stufe, gewicht in st.gewicht_pro_seltenheit_global:
+            lines.append(f"  {stufe:>40s} {gewicht:>12,.1f}")
     return "\n".join(lines)
 
 
