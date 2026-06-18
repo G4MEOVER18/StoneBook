@@ -71,6 +71,12 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # Geometrische Dimensionen fuer Vitrinen-/Schubladen-Auswahl: nach jeder
     # Achse einzeln sortierbar. Volumen waere idealer, ist aber kein Schema-Feld.
     "Laenge_mm", "Breite_mm", "Hoehe_mm",
+    # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
+    # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
+    # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
+    # zu sehen. Seltenheit_Fundort ergaenzt die globale Sicht um die Standort-
+    # Rarity (am Fundort selten vs. global selten - oft verschieden).
+    "Seltenheit_global_1_10", "Seltenheit_Fundort_1_10", "Nachfrage_1_10",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })

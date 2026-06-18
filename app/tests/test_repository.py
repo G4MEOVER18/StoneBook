@@ -144,6 +144,34 @@ def test_sort_by_dimensionen(tmp_path):
     c.close()
 
 
+def test_sort_by_seltenheit_und_nachfrage(tmp_path):
+    """Sortierung nach 1..10-Skalen (Seltenheit/Nachfrage) - Begleitung zu den
+    seltenheit_/nachfrage_-Filtern: erst Rarity-Bereich, dann absteigend sortieren.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "rs.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10, "
+        "Seltenheit_Fundort_1_10, Nachfrage_1_10) VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 2, 9, 4),    # lokal selten, global haeufig
+            ("OBJ_0002", 5, 5, 7),    # mittel/gefragt
+            ("OBJ_0003", 9, 2, 9),    # global rar, lokal haeufig
+            ("OBJ_0004", None, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Seltenheit_global_1_10", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Seltenheit_Fundort_1_10", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    rows = repo.list_objects(sort_by="Nachfrage_1_10", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    c.close()
+
+
 def test_sort_by_kategorie_und_varietaet(tmp_path):
     """Sortierung nach kategorischen Spalten gruppiert Listen visuell.
 
