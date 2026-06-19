@@ -232,6 +232,37 @@ def test_sort_by_beste_verwendung(tmp_path):
     c.close()
 
 
+def test_sort_by_glanz(tmp_path):
+    """Sortierung nach Glanz gruppiert die Liste optisch.
+
+    Vor Foto-Sessions will man alle glasigen Quarze und alle metallischen
+    Pyrite beisammen haben, weil sie gleiches Licht-Setup brauchen (glasig:
+    gerichtetes Streiflicht, metallisch: diffuser Schirm). Spiegelt
+    glanz_in / by_glanz / wert_pro_glanz auf die Sortier-Achse.
+    Sieben Enum-Werte, alphabetisch sortiert ergibt fettig/glasig/matt/
+    metallisch/perlmutt/seidig/wachsig.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gl.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "metallisch"),
+            ("OBJ_0002", "glasig"),
+            ("OBJ_0003", "fettig"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Glanz")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Glanz", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_sort_by_gesteinsart(tmp_path):
     """Sortierung nach Gesteinsart gruppiert die Liste petrologisch.
 

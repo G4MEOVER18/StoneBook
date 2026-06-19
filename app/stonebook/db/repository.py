@@ -97,6 +97,14 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # nebeneinander sehen. Spiegelt kristallsystem_in/by_kristallsystem/
     # wert_pro_kristallsystem auf die Sortier-Achse.
     "Kristallsystem",
+    # Glanz als Sortier-Achse fuer optische Vorbereitung (Foto-/Vitrinen-Setup):
+    # gruppiert die Liste nach Oberflaechen-Reflexion (glasig/wachsig/matt/
+    # metallisch/fettig/seidig/perlmutt) - vor Foto-Session will man alle
+    # glasigen Quarze und alle metallischen Pyrite beisammen haben, weil sie
+    # gleiches Licht-Setup brauchen (glasig: gerichtetes Streiflicht, metallisch:
+    # diffuser Schirm). Spiegelt glanz_in/by_glanz/wert_pro_glanz auf die
+    # Sortier-Achse.
+    "Glanz",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })
