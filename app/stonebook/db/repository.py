@@ -191,6 +191,8 @@ class ObjectRepo:
                      erstellt_am_jahr_max: int | None = None,
                      erstellt_am_jahr_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
+                     erstellt_am_monat: int | None = None,
+                     erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -593,6 +595,44 @@ class ObjectRepo:
                     f"AND (CAST(substr(o.erstellt_am, 1, 4) AS INTEGER) / 10) * 10 "
                     f"IN ({placeholders})")
                 params.extend(dekaden)
+        # erstellt_am_monat: Saison-Filter ueber alle Jahre auf der Erfassungs-
+        # Achse ("alle im Januar erfassten Stuecke"). Spiegelt funddatum_monat
+        # und ergaenzt das by_erstellt_am_monat-Aggregat in der Statistik um
+        # den Listen-Drill-down (typische Indoor-Erfassungs-Spitzen Winter/
+        # Boersen-Vorbereitung Januar-Maerz). Substring 6..7 ist analog zu
+        # funddatum_monat und zu _count_erstellt_am_monat; nur vierstellige
+        # Jahres-Praefixe und gueltige Monatsteile 01..12 matchen.
+        if erstellt_am_monat is not None:
+            m = int(erstellt_am_monat)
+            if not 1 <= m <= 12:
+                raise ValueError(
+                    f"erstellt_am_monat muss zwischen 1 und 12 liegen (war: {m})")
+            where.append(
+                "o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                "AND substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                "AND substr(o.erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+                "AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) = ?")
+            params.append(m)
+        # erstellt_am_monat_in: Mengen-Saison-Filter auf der Erfassungs-Achse
+        # ("Indoor-Phase November ODER Dezember ODER Januar"). Spiegelt
+        # funddatum_monat_in; Validierung 1..12 identisch (Tippfehler 0/13
+        # erzeugen klaren Fehler statt stillen Leerergebnisses).
+        if erstellt_am_monat_in:
+            monate = [int(m) for m in erstellt_am_monat_in]
+            invalid = [m for m in monate if not 1 <= m <= 12]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Erstellt-am-Monate: {invalid} "
+                    f"(erwartet 1..12)")
+            if monate:
+                placeholders = ", ".join("?" * len(monate))
+                where.append(
+                    "o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                    "AND substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+                    f"AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) IN "
+                    f"({placeholders})")
+                params.extend(monate)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)

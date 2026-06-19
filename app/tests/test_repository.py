@@ -2481,3 +2481,84 @@ def test_erstellt_am_jahrzehnt_in_filter(tmp_path):
     with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahrzehnte"):
         repo.list_objects(erstellt_am_jahrzehnt_in=[3000])
     c.close()
+
+
+def test_erstellt_am_monat_filter(tmp_path):
+    """erstellt_am_monat filtert nach Erfassungs-Monat ueber alle Jahre.
+
+    Spiegelt funddatum_monat auf die Erfassungs-Achse - typische Indoor-
+    Erfassungs-Spitze ist Januar/Februar/Maerz (Boersen-Vorbereitung).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "em.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2020-01-15 10:00:00"),   # Januar
+            ("OBJ_0002", "2021-02-20 11:30:00"),   # Februar (Tucson)
+            ("OBJ_0003", "2022-07-10 12:00:00"),   # Juli
+            ("OBJ_0004", "2024-12-01 14:15:00"),   # Dezember (Muenchen)
+            ("OBJ_0005", "2024"),                  # ohne Monatsteil → faellt raus
+            ("OBJ_0006", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(erstellt_am_monat=1)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    rows = repo.list_objects(erstellt_am_monat=12)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    rows = repo.list_objects(erstellt_am_monat=7)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Monat ohne Treffer
+    rows = repo.list_objects(erstellt_am_monat=8)
+    assert rows == []
+    # Validierung
+    with pytest.raises(ValueError, match="erstellt_am_monat"):
+        repo.list_objects(erstellt_am_monat=0)
+    with pytest.raises(ValueError, match="erstellt_am_monat"):
+        repo.list_objects(erstellt_am_monat=13)
+    c.close()
+
+
+def test_erstellt_am_monat_in_filter(tmp_path):
+    """erstellt_am_monat_in waehlt mehrere Erfassungs-Monate aus.
+
+    Spiegelt funddatum_monat_in: Indoor-Welle ('Januar ODER Februar ODER
+    Dezember') vs. Sommer-Pause waehrend Feld-Saison.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "emi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2020-01-15 10:00:00"),
+            ("OBJ_0002", "2021-02-20 11:30:00"),
+            ("OBJ_0003", "2022-07-10 12:00:00"),
+            ("OBJ_0004", "2024-12-01 14:15:00"),
+            ("OBJ_0005", "2024-03-20 15:00:00"),
+            ("OBJ_0006", "2024"),
+            ("OBJ_0007", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Indoor-Welle: Januar ODER Februar ODER Dezember
+    rows = repo.list_objects(erstellt_am_monat_in=[1, 2, 12])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0004"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(erstellt_am_monat_in=(7,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(erstellt_am_monat_in=[])
+    assert len(rows) == 7
+    # Kombiniert mit Jahresfilter (Schnittmenge)
+    rows = repo.list_objects(erstellt_am_monat_in=[1, 2],
+                              erstellt_am_jahr_min=2021)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Validierung
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Monate"):
+        repo.list_objects(erstellt_am_monat_in=[7, 13])
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Monate"):
+        repo.list_objects(erstellt_am_monat_in=[0])
+    c.close()
