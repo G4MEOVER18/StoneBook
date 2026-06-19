@@ -190,6 +190,7 @@ class ObjectRepo:
                      erstellt_am_jahr_min: int | None = None,
                      erstellt_am_jahr_max: int | None = None,
                      erstellt_am_jahr_in: list[int] | tuple[int, ...] | None = None,
+                     erstellt_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -570,6 +571,28 @@ class ObjectRepo:
                     f"AND CAST(substr(o.erstellt_am, 1, 4) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(jahre)
+        # erstellt_am_jahrzehnt_in: diskrete Erfassungs-Dekaden-Menge
+        # ("2010er ODER 2020er" - z.B. handgepflegte 2010er-Phase vs. Excel-
+        # Migrations-Welle 2020+). Spiegelt funddatum_jahrzehnt_in auf die
+        # Erfassungs-Achse und ergaenzt das by_erstellt_am_jahrzehnt-Aggregat
+        # um den Listen-Drill-down. Validierung identisch (1800..2990, durch
+        # 10 teilbar), damit Tippfehler einen klaren Fehler statt eines
+        # stillen Leerergebnisses erzeugen.
+        if erstellt_am_jahrzehnt_in:
+            dekaden = [int(d) for d in erstellt_am_jahrzehnt_in]
+            invalid = [d for d in dekaden
+                       if not (1800 <= d <= 2990 and d % 10 == 0)]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Erstellt-am-Jahrzehnte: {invalid} "
+                    f"(erwartet 1800..2990, durch 10 teilbar)")
+            if dekaden:
+                placeholders = ", ".join("?" * len(dekaden))
+                where.append(
+                    f"substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    f"AND (CAST(substr(o.erstellt_am, 1, 4) AS INTEGER) / 10) * 10 "
+                    f"IN ({placeholders})")
+                params.extend(dekaden)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)

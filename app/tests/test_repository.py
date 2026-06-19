@@ -2427,3 +2427,57 @@ def test_erstellt_am_jahr_in_filter(tmp_path):
     with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahre"):
         repo.list_objects(erstellt_am_jahr_in=[1700])
     c.close()
+
+
+def test_erstellt_am_jahrzehnt_in_filter(tmp_path):
+    """erstellt_am_jahrzehnt_in akzeptiert diskrete Erfassungs-Dekaden.
+
+    Spiegelt funddatum_jahrzehnt_in auf die Erfassungs-Achse: gruppiert das
+    Jahr per Integer-Div durch 10 und vergleicht mit der angegebenen
+    Dekaden-Startzahl (``2010`` selektiert 2010..2019).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "edi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2012-05-13 10:00:00"),   # 2010er
+            ("OBJ_0002", "2019-08-01 11:30:00"),   # 2010er (rand)
+            ("OBJ_0003", "2020-01-01 12:00:00"),   # 2020er (rand)
+            ("OBJ_0004", "2024-11-30 14:15:00"),   # 2020er
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "kein-datum"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Diskrete Dekaden-Auswahl
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=[2010, 2020])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Einzelne Dekade
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=[2010])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=(2020,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=[])
+    assert len(rows) == 6
+    # Dekade ohne Treffer
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=[1980])
+    assert rows == []
+    # Kombiniert mit Jahres-Bereichsfilter (Schnittmenge): 2010er ∩ [>=2015]
+    rows = repo.list_objects(erstellt_am_jahrzehnt_in=[2010],
+                              erstellt_am_jahr_min=2015)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Ungueltige Dekaden (nicht durch 10 teilbar / ausserhalb 1800..2990)
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahrzehnte"):
+        repo.list_objects(erstellt_am_jahrzehnt_in=[2015])
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahrzehnte"):
+        repo.list_objects(erstellt_am_jahrzehnt_in=[1700])
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahrzehnte"):
+        repo.list_objects(erstellt_am_jahrzehnt_in=[3000])
+    c.close()
