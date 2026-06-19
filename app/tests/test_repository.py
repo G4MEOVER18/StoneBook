@@ -2342,3 +2342,88 @@ def test_unarchive_unbekannte_id_no_op(tmp_path):
     # Darf keinen Fehler werfen, auch wenn obj_id nicht existiert
     repo.unarchive("OBJ_9999")
     c.close()
+
+
+def test_erstellt_am_jahr_range_filter(tmp_path):
+    """erstellt_am_jahr_min/max filtert nach Erfassungs-Jahr (analog funddatum_jahr).
+
+    Spiegelt funddatum_jahr_min/_max auf die Erfassungs-Achse und ergaenzt das
+    by_erstellt_am_jahr-Aggregat aus stats.py um den Listen-Drill-down.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ey.sqlite3")
+    # erstellt_am direkt setzen, damit der Test deterministisch ist (sonst
+    # waere alles auf das aktuelle Jahr fixiert via _now()).
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2018-05-13 10:00:00"),
+            ("OBJ_0002", "2020-08-01 11:30:00"),
+            ("OBJ_0003", "2022-01-01 12:00:00"),
+            ("OBJ_0004", "2024-11-30 14:15:00"),
+            ("OBJ_0005", ""),            # ohne Stempel → faellt raus
+            ("OBJ_0006", "kein-datum"),  # ungueltig → faellt raus
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(erstellt_am_jahr_min=2020, erstellt_am_jahr_max=2022)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+
+    rows = repo.list_objects(erstellt_am_jahr_min=2023)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+
+    rows = repo.list_objects(erstellt_am_jahr_max=2018)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
+def test_erstellt_am_jahr_in_filter(tmp_path):
+    """erstellt_am_jahr_in akzeptiert diskrete Erfassungs-Jahre (Migrations-Wellen)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "eyi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2018-05-13 10:00:00"),
+            ("OBJ_0002", "2020-08-01 11:30:00"),
+            ("OBJ_0003", "2022-01-01 12:00:00"),
+            ("OBJ_0004", "2024-11-30 14:15:00"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "kein-datum"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Diskrete Mengen-Auswahl
+    rows = repo.list_objects(erstellt_am_jahr_in=[2018, 2022, 2024])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # Einzelnes Jahr verhaelt sich wie min=max
+    rows = repo.list_objects(erstellt_am_jahr_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(erstellt_am_jahr_in=(2020, 2022))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(erstellt_am_jahr_in=[])
+    assert len(rows) == 6
+    # Jahr ohne Treffer -> leeres Ergebnis
+    rows = repo.list_objects(erstellt_am_jahr_in=[1999])
+    assert rows == []
+    # Kombiniert mit Bereichsfilter (Schnittmenge)
+    rows = repo.list_objects(erstellt_am_jahr_in=[2018, 2020, 2024],
+                              erstellt_am_jahr_min=2020, erstellt_am_jahr_max=2023)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Kombiniert mit funddatum_jahr_in: orthogonale Achsen
+    c.execute("UPDATE objects SET Funddatum = '1985-05-13' WHERE obj_id = 'OBJ_0001'")
+    c.execute("UPDATE objects SET Funddatum = '2024-08-01' WHERE obj_id = 'OBJ_0002'")
+    c.commit()
+    rows = repo.list_objects(erstellt_am_jahr_in=[2020],
+                              funddatum_jahr_in=[2024])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Ungueltige Jahresangaben -> ValueError
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahre"):
+        repo.list_objects(erstellt_am_jahr_in=[2020, 9999])
+    with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Jahre"):
+        repo.list_objects(erstellt_am_jahr_in=[1700])
+    c.close()

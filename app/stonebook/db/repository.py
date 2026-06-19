@@ -187,6 +187,9 @@ class ObjectRepo:
                      funddatum_monat_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
+                     erstellt_am_jahr_min: int | None = None,
+                     erstellt_am_jahr_max: int | None = None,
+                     erstellt_am_jahr_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -533,6 +536,40 @@ class ObjectRepo:
             where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
                          "AND o.Funddatum <= ?")
             params.append(str(funddatum_max))
+        # Erfassungs-Achse: filtert nach Jahr des ``erstellt_am``-Stempels (wann
+        # in die DB aufgenommen). Spiegelt funddatum_jahr_min/_max (Fund-Achse)
+        # und ergaenzt das by_erstellt_am_jahr-Aggregat in der Statistik um den
+        # Listen-Drill-down ("welche Stuecke habe ich 2024 erfasst?"). Substring
+        # 1..4 ist analog zu funddatum_jahr und zu _count_erstellt_am_jahr; nur
+        # vierstellige Jahres-Praefixe matchen, damit kaputte Stempel
+        # historischer Imports nicht das Ergebnis verzerren.
+        if erstellt_am_jahr_min is not None or erstellt_am_jahr_max is not None:
+            where.append("substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+            if erstellt_am_jahr_min is not None:
+                where.append("CAST(substr(o.erstellt_am, 1, 4) AS INTEGER) >= ?")
+                params.append(int(erstellt_am_jahr_min))
+            if erstellt_am_jahr_max is not None:
+                where.append("CAST(substr(o.erstellt_am, 1, 4) AS INTEGER) <= ?")
+                params.append(int(erstellt_am_jahr_max))
+        # erstellt_am_jahr_in: diskrete Erfassungs-Jahres-Menge ("erfasst in
+        # 2023 ODER 2024" - z.B. zwei Migrations-Wellen). Spiegelt
+        # funddatum_jahr_in auf die Erfassungs-Achse; Validierung 1800..2999
+        # identisch, damit Tippfehler einen klaren Fehler statt eines stillen
+        # Leerergebnisses erzeugen.
+        if erstellt_am_jahr_in:
+            jahre = [int(j) for j in erstellt_am_jahr_in]
+            invalid = [j for j in jahre if not 1800 <= j <= 2999]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Erstellt-am-Jahre: {invalid} "
+                    f"(erwartet 1800..2999)")
+            if jahre:
+                placeholders = ", ".join("?" * len(jahre))
+                where.append(
+                    f"substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    f"AND CAST(substr(o.erstellt_am, 1, 4) AS INTEGER) IN "
+                    f"({placeholders})")
+                params.extend(jahre)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
