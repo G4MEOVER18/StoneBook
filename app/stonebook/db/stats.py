@@ -81,6 +81,7 @@ class Statistik:
     wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
@@ -103,6 +104,7 @@ class Statistik:
     gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
@@ -243,6 +245,9 @@ class Statistik:
             "wert_pro_erstellt_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_erstellt_am_jahr
             ],
+            "wert_pro_erstellt_am_jahrzehnt": [
+                (d, round(w, 2)) for d, w in self.wert_pro_erstellt_am_jahrzehnt
+            ],
             "wert_pro_erstellt_am_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_erstellt_am_monat
             ],
@@ -308,6 +313,9 @@ class Statistik:
             ],
             "gewicht_pro_erstellt_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_erstellt_am_jahr
+            ],
+            "gewicht_pro_erstellt_am_jahrzehnt": [
+                (d, round(g, 2)) for d, g in self.gewicht_pro_erstellt_am_jahrzehnt
             ],
             "gewicht_pro_erstellt_am_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_erstellt_am_monat
@@ -738,6 +746,39 @@ def _sum_by_funddatum_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
         where = f"{where} AND {extra_where}"
     sql = (
         f"SELECT (CAST(substr(Funddatum, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
+        f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
+        f"GROUP BY dekade HAVING w > 0 "
+        f"ORDER BY w DESC, dekade ASC"
+    )
+    return [(f"{r['dekade']}er", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_erstellt_am_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
+                                  extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``erstellt_am``-Jahrzehnt (Dekade).
+
+    Spiegelt :func:`_sum_by_funddatum_jahrzehnt` auf die Erfassungs-Achse:
+    nicht "in welcher Dekade habe ich am meisten gefunden", sondern "in welcher
+    Dekade habe ich am meisten erfasst/digitalisiert". Komplementaer zu
+    :func:`_count_erstellt_am_jahrzehnt` (Anzahl) und zu
+    :func:`_sum_by_erstellt_am_jahr` (Einzeljahres-Aufloesung) - aggregiert das
+    Erfassungs-Jahres-Histogramm wertlich/gewichtsmaessig auf 10er-Schritte
+    und macht uebergreifende Erfassungs-Wellen (z.B. Excel-Migration in 2020+)
+    sichtbar, die im Jahres-Histogramm durch Einzeljahr-Rauschen verdeckt
+    werden. Label folgt der Sammler-Konvention (``2010er``, ``2020er`` ...).
+
+    Wie bei :func:`_count_erstellt_am_jahrzehnt` zaehlen nur Eintraege mit
+    vierstelligem Jahres-Praefix; kaputte Stempel und NULL/leer bleiben aussen
+    vor. Sortierung absteigend nach Summe, Tie-Break chronologisch aufsteigend.
+    Ohne Limit, weil die Zahl der Dekaden klein bleibt (~3-5 ueber eine
+    Sammler-Karriere, analog zu :func:`_sum_by_funddatum_jahrzehnt`).
+    """
+    where = ("erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+             "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT (CAST(substr(erstellt_am, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
         f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
         f"GROUP BY dekade HAVING w > 0 "
         f"ORDER BY w DESC, dekade ASC"
@@ -1276,6 +1317,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # durch einzelne Ausreisserjahre. Ohne Limit (max ~10-15 Dekaden).
     st.wert_pro_funddatum_jahrzehnt = _sum_by_funddatum_jahrzehnt(conn, wert_sql)
     st.gewicht_pro_funddatum_jahrzehnt = _sum_by_funddatum_jahrzehnt(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Erfassungs-Dekaden-Sicht des Sammlungswerts: spiegelt wert_/gewicht_pro_
+    # funddatum_jahrzehnt auf die Erfassungs-Achse. Aggregiert das Erfassungs-
+    # Jahres-Histogramm (wert_/gewicht_pro_erstellt_am_jahr) wertlich/gewichts-
+    # maessig auf 10er-Schritte und macht uebergreifende Erfassungs-Wellen
+    # sichtbar - typisch eine Excel-Migrations-Welle 2020+ vs. handgepflegte
+    # 2010er-Phase, die im Einzeljahr-Histogramm durch Rauschen verdeckt sind.
+    # Ohne Limit, weil die Zahl der Dekaden klein bleibt (~3-5 ueber eine
+    # Sammler-Karriere, analog zu wert_/gewicht_pro_funddatum_jahrzehnt).
+    st.wert_pro_erstellt_am_jahrzehnt = _sum_by_erstellt_am_jahrzehnt(conn, wert_sql)
+    st.gewicht_pro_erstellt_am_jahrzehnt = _sum_by_erstellt_am_jahrzehnt(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Saison-Sicht des Sammlungswerts: "welcher Monat bringt am meisten Wert/
     # Gewicht?". Komplementaer zu by_funddatum_monat (Anzahl): zeigt nicht

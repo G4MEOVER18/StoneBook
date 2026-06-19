@@ -1033,6 +1033,100 @@ def test_gewicht_pro_funddatum_jahrzehnt_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_erstellt_am_jahrzehnt_aus_seed_db(tmp_path):
+    """Wertsumme pro Erfassungs-Dekade; absteigend nach Summe, Tie-Break chronologisch.
+
+    Spiegelt wert_pro_funddatum_jahrzehnt auf die Erfassungs-Achse: macht
+    uebergreifende Erfassungs-Wellen (Excel-Migration 2020+) wertlich sichtbar,
+    die im Einzeljahr-Histogramm durch Rauschen verdeckt sind.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpeej.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # 2000er: ein Riesenstueck (1000)
+            ("OBJ_0001", "2005-06-13 09:00:00", 1000.0, None),
+            # 2010er: zwei Stuecke -> 300
+            ("OBJ_0002", "2013-01-01 14:00:00", 100.0, 200.0),
+            ("OBJ_0003", "2018-09-15 10:00:00", None, None),     # 0
+            # 2020er: drei Stuecke -> 300 (Tie-Break: chronologisch nach 2010er)
+            ("OBJ_0004", "2020-03-01 08:00:00", 100.0, None),
+            ("OBJ_0005", "2024-07-10 11:30:00", 100.0, None),
+            ("OBJ_0006", "2029-11-30 16:00:00", 100.0, None),
+            # Ungueltige/leere erstellt_am -> ignoriert
+            ("OBJ_0007", "", 999.0, None),
+            ("OBJ_0008", None, 999.0, None),
+            ("OBJ_0009", "kaputt", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # 2000er (1000) > 2010er (300) == 2020er (300) -> Tie-Break aufsteigend.
+    assert st.wert_pro_erstellt_am_jahrzehnt == [
+        ("2000er", 1000.0),
+        ("2010er", 300.0),
+        ("2020er", 300.0),
+    ]
+    assert st.as_dict()["wert_pro_erstellt_am_jahrzehnt"] == [
+        ("2000er", 1000.0), ("2010er", 300.0), ("2020er", 300.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_erstellt_am_jahrzehnt_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_erstellt_am_jahrzehnt == []
+    c.close()
+
+
+def test_gewicht_pro_erstellt_am_jahrzehnt_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Erfassungs-Dekade; NULL/0 zaehlen nicht, kaputte Stempel ignoriert.
+
+    Spiegelt gewicht_pro_funddatum_jahrzehnt auf die Erfassungs-Achse: zeigt,
+    in welcher Erfassungs-Dekade die schwerste Masse eingespielt wurde - typisch
+    fuer Migrations-Wellen mit Geroell-Altbestaenden.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpeej.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "2005-06-13 09:00:00", 1000.0),
+            ("OBJ_0002", "2013-04-01 14:00:00", 100.0),
+            ("OBJ_0003", "2018-09-15 10:00:00", 150.0),   # 2010er total 250
+            ("OBJ_0004", "2020-03-01 08:00:00", 50.0),
+            ("OBJ_0005", "2025-07-10 11:30:00", None),    # NULL -> ignoriert
+            ("OBJ_0006", "2029-11-30 16:00:00", 0.0),     # 0 -> ignoriert
+            # Kaputte Stempel werden ignoriert
+            ("OBJ_0007", "kaputt", 9999.0),
+            ("OBJ_0008", None, 9999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_erstellt_am_jahrzehnt == [
+        ("2000er", 1000.0),
+        ("2010er", 250.0),
+        ("2020er", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_erstellt_am_jahrzehnt"] == [
+        ("2000er", 1000.0), ("2010er", 250.0), ("2020er", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_erstellt_am_jahrzehnt_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_erstellt_am_jahrzehnt == []
+    c.close()
+
+
 def test_wert_pro_funddatum_monat_aus_seed_db(tmp_path):
     """Wertsumme pro Funddatum-Monat ueber alle Jahre; absteigend nach Summe."""
     from stonebook.db.database import open_db
