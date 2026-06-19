@@ -511,6 +511,22 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Funddatum-Jahr (g):"]
         for jahr, gewicht in st.gewicht_pro_funddatum_jahr[:top]:
             lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_erstellt_am_jahr:
+        # Erfassungs-Achse: welcher Erfassungs-Jahrgang hat wertlich am meisten
+        # in die Sammlung eingespielt? Komplementaer zu wert_pro_funddatum_jahr
+        # (Fund-Achse, wann gefunden) und zu by_erstellt_am_jahr (Anzahl):
+        # macht Migrations-Wellen wertlich sichtbar - typisch eine Erfassungs-
+        # Session, die viele wertvolle Altbestaende auf einmal in die DB schiebt.
+        lines += ["", "Wert pro Erfassungs-Jahr (CHF):"]
+        for jahr, wert in st.wert_pro_erstellt_am_jahr[:top]:
+            lines.append(f"  {jahr:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_erstellt_am_jahr:
+        # Spiegelbild: schwerste Erfassungs-Welle. Wert und Gewicht entkoppeln
+        # sich oft (eine Erfassungs-Session vieler leichter Top-Kristalle vs.
+        # eine Geroell-Migrations-Welle), deshalb beide Sichten anbieten.
+        lines += ["", "Gewicht pro Erfassungs-Jahr (g):"]
+        for jahr, gewicht in st.gewicht_pro_erstellt_am_jahr[:top]:
+            lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
     if st.wert_pro_funddatum_jahrzehnt:
         # Dekaden-Sicht des Sammlungswerts: groberes Raster gegen Einzeljahr-
         # Rauschen. Komplementaer zu by_funddatum_jahrzehnt (Anzahl) und
@@ -666,7 +682,9 @@ def main(argv: list[str] | None = None) -> int:
             top_gewicht=args.top, top_bilder=args.top,
             top_confidence=args.top,
             top_wert_funddatum_jahr=args.top,
-            top_gewicht_funddatum_jahr=args.top)
+            top_gewicht_funddatum_jahr=args.top,
+            top_wert_erstellt_am_jahr=args.top,
+            top_gewicht_erstellt_am_jahr=args.top)
     finally:
         conn.close()
     if args.json:

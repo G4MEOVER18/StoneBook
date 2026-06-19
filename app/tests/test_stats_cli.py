@@ -772,6 +772,123 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_funddatum_jahr_zeile(tmp_pa
     assert "Gewicht pro Funddatum-Jahr" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_erstellt_am_jahr(tmp_path, capsys):
+    """Wert-pro-Erfassungs-Jahr-Block listet die wertvollsten Erfassungs-Jahrgaenge.
+
+    Spiegelt wert_pro_funddatum_jahr auf der Erfassungs-Achse - macht
+    Migrations-Wellen sichtbar (z.B. grosse Altbestand-Erfassung in 2026).
+    Sortierung absteigend nach Summe.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpej.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0, None),     # 2024: 1000
+            ("OBJ_0002", "2025-04-01 14:00:00", 100.0, 200.0),     # 2025: 300
+            ("OBJ_0003", "2026-03-01 08:00:00", 50.0, None),       # 2026: 50
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Erfassungs-Jahr (CHF):" in out
+    block = out.split("Wert pro Erfassungs-Jahr (CHF):", 1)[1]
+    assert block.index("2024") < block.index("2025") < block.index("2026")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_erstellt_am_jahr_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Erfassungs-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpej0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-05-13 09:00:00"),
+         ("OBJ_0002", "2025-04-01 14:00:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Erfassungs-Jahr" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_erstellt_am_jahr(tmp_path, capsys):
+    """Gewicht-pro-Erfassungs-Jahr-Block listet die schwersten Erfassungs-Jahrgaenge.
+
+    Spiegelt gewicht_pro_funddatum_jahr; zeigt schwere Migrations-Wellen
+    (Geroell-Altbestaende), die in der Fund-Achse untergehen koennen.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpej.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0),
+            ("OBJ_0002", "2025-04-01 14:00:00", 250.0),
+            ("OBJ_0003", "2026-03-01 08:00:00", 50.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Erfassungs-Jahr (g):" in out
+    block = out.split("Gewicht pro Erfassungs-Jahr (g):", 1)[1]
+    assert block.index("2024") < block.index("2025") < block.index("2026")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_erstellt_am_jahr_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Erfassungs-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpej0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-05-13 09:00:00"),
+         ("OBJ_0002", "2025-04-01 14:00:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Erfassungs-Jahr" not in out
+
+
+def test_text_ausgabe_erfassungs_jahr_unter_funddatum_jahr(tmp_path, capsys):
+    """Erfassungs-Jahr-Bloecke folgen direkt auf die Funddatum-Jahr-Bloecke.
+
+    Sammler-Frage "wann gefunden vs. wann erfasst" lebt von der direkten
+    Nebeneinanderstellung; die Reihenfolge im Bericht spiegelt die
+    Erfassungs-Achse direkt unter der Fund-Achse.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wert_reihenfolge.sqlite3"
+    c = open_db(db_file)
+    # Beide Achsen mit Wert+Gewicht fuellen, damit alle vier Bloecke erscheinen.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, erstellt_am, Wert_CHF_roh, "
+        "Gewicht_g) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2020-05-13", "2024-05-13 09:00:00", 100.0, 50.0),
+            ("OBJ_0002", "2021-04-01", "2025-04-01 14:00:00", 200.0, 100.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert (out.index("Wert pro Funddatum-Jahr (CHF):")
+            < out.index("Gewicht pro Funddatum-Jahr (g):")
+            < out.index("Wert pro Erfassungs-Jahr (CHF):")
+            < out.index("Gewicht pro Erfassungs-Jahr (g):"))
+
+
 def test_text_ausgabe_zeigt_wert_pro_funddatum_jahrzehnt(tmp_path, capsys):
     """Wert-pro-Funddatum-Jahrzehnt-Block listet die wertvollsten Dekaden absteigend."""
     from stonebook.db.database import open_db
