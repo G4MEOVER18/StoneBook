@@ -84,6 +84,12 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # zu sehen. Seltenheit_Fundort ergaenzt die globale Sicht um die Standort-
     # Rarity (am Fundort selten vs. global selten - oft verschieden).
     "Seltenheit_global_1_10", "Seltenheit_Fundort_1_10", "Nachfrage_1_10",
+    # Beste_Verwendung als Sortier-Achse fuer Verwendungs-Vorbereitung:
+    # gruppiert die Liste nach Empfehlung (Schmuck/Sammlung/Forschung/Industrie/
+    # Talisman/Dekoration) - vor Boersenbesuch oder Schmuck-Verkauf will man alle
+    # passenden Stuecke beisammen sehen. Spiegelt beste_verwendung_in/by_beste_
+    # verwendung/wert_pro_beste_verwendung auf die Sortier-Achse.
+    "Beste_Verwendung",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })

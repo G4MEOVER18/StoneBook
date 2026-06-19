@@ -172,6 +172,36 @@ def test_sort_by_seltenheit_und_nachfrage(tmp_path):
     c.close()
 
 
+def test_sort_by_beste_verwendung(tmp_path):
+    """Sortierung nach Beste_Verwendung gruppiert die Liste nach Empfehlung.
+
+    Vor Boersenbesuch / Schmuck-Verkauf: alle "Schmuck"-Stuecke beisammen,
+    alle "Forschung"-Stuecke beisammen - spiegelt beste_verwendung_in /
+    by_beste_verwendung / wert_pro_beste_verwendung auf die Sortier-Achse.
+    Sechs Enum-Werte, alphabetisch geordnet ergibt Dekoration/Forschung/
+    Industrie/Sammlung/Schmuck/Talisman.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Schmuck"),
+            ("OBJ_0002", "Forschung"),
+            ("OBJ_0003", "Dekoration"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Beste_Verwendung")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Beste_Verwendung", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_sort_by_gesteinsart(tmp_path):
     """Sortierung nach Gesteinsart gruppiert die Liste petrologisch.
 
