@@ -795,6 +795,43 @@ def test_has_farbe_filter(tmp_path):
     c.close()
 
 
+def test_has_bruch_filter(tmp_path):
+    """has_bruch: dokumentiertes Bruchverhalten (Bruchflaechen-Achse).
+
+    Bruch ist die Bruchflaechen-Achse (muschelig/uneben/splittrig/faserig/
+    erdig/glatt) - die andere Hand-Vorsichts-Achse neben has_spaltbarkeit
+    (Spaltflaechen). Findet Stuecke, an denen der Bruch-Test
+    (Hammer/Schlag-Beobachtung) nachzuholen ist - zentrale Verletzungs-
+    risiko-Diagnose vor Polier-/Schneid-Sitzungen. Komplementaer zum
+    bruch_in-Mengenfilter und zur Bruch-Sortier-Spalte.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hbr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "muschelig"),   # Quarz/Obsidian (scharfe Kanten)
+            ("OBJ_0002", "splittrig"),   # noch scharfere Kanten
+            ("OBJ_0003", "faserig"),     # Aktinolith
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_bruch=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_bruch=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_bruch=None)) == 6
+    # Kombinierbar mit bruch_in-Mengenfilter (Schnittmenge): dokumentiert UND
+    # scharfkantig (muschelig/splittrig), ohne faserige Aktinolith-Stuecke.
+    rows = repo.list_objects(has_bruch=True, bruch_in=["muschelig", "splittrig"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_kristallsystem_filter(tmp_path):
     """has_kristallsystem: dokumentierter Symmetrietyp (kristallographische Hauptachse)."""
     from stonebook.db.database import open_db

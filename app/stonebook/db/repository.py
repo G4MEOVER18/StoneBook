@@ -271,6 +271,7 @@ class ObjectRepo:
                      has_reaktionshinweis: bool | None = None,
                      has_farbe: bool | None = None,
                      has_kristallsystem: bool | None = None,
+                     has_bruch: bool | None = None,
                      has_fundort: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
@@ -508,6 +509,16 @@ class ObjectRepo:
         # bestaenden haeufig leer. Komplementaer zum kristallsystem_in-Mengen-
         # filter, der konkrete Symmetrien selektiert; hier nur die Anwesenheit.
         _append_has_text_filter(where, has_kristallsystem, "Kristallsystem")
+        # has_bruch: tri-state Filter fuer dokumentiertes Bruchverhalten.
+        # Bruch (muschelig/uneben/splittrig/faserig/erdig/glatt) ist die
+        # Bruchflaechen-Achse - komplementaer zu has_spaltbarkeit (Spaltflaechen
+        # vorhanden), das die andere Hand-Vorsichts-Achse abdeckt: ein Quarz hat
+        # keine Spaltbarkeit (keine), aber muscheligen Bruch (scharfe Kanten),
+        # waehrend Calcit beides hat. Findet Stuecke, an denen der Bruch-Test
+        # (Hammer/Schlag-Beobachtung) nachzuholen ist - zentrale Verletzungs-
+        # risiko-Diagnose vor Polier-/Schneid-Sitzungen. Komplementaer zum
+        # bruch_in-Mengenfilter (konkrete Klassen) und zur Bruch-Sortier-Spalte.
+        _append_has_text_filter(where, has_bruch, "Bruch")
         # has_fundort: tri-state Filter fuer dokumentierten Fundort.
         # Der Fundort ist die Standort-Achse der Sammlung (Berg/Steinbruch/Boerse)
         # und Voraussetzung fuer alle ortsbezogenen Auswertungen (by_fundort,
