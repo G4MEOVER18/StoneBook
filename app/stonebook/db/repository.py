@@ -168,6 +168,7 @@ class ObjectRepo:
                      has_funddatum: bool | None = None,
                      has_mineral: bool | None = None,
                      has_varietaet: bool | None = None,
+                     has_gesteinsart: bool | None = None,
                      has_notizen: bool | None = None,
                      has_pruefempfehlungen: bool | None = None,
                      has_gewicht: bool | None = None,
@@ -357,6 +358,15 @@ class ObjectRepo:
         # denen die mineralogische Sub-Bestimmung nachzuholen ist (typisch nach
         # KI-Vorbestimmung auf Familien-Ebene, vor manueller Varietaet-Pruefung).
         _append_has_text_filter(where, has_varietaet, "Varietaet")
+        # has_gesteinsart: tri-state Filter fuer dokumentierte Gesteinsart.
+        # Die Gesteinsart (Granit/Gneis/Basalt/Sandstein/...) ist die petrologische
+        # Klassifizierung und damit die dritte Mineralogie-Achse neben Mineral_Primaer
+        # (mineralogische Familie) und Varietaet (Sub-Klassifizierung). Spiegelt
+        # has_mineral/has_varietaet und ergaenzt den gesteinsart_in-Mengenfilter
+        # (der NULL/Leereintraege ohnehin uebergeht). Findet Stuecke ohne
+        # petrologischen Kontext - typisch fuer Einzelmineral-Funde aus Klueften,
+        # wo der Wirtsgesteins-Bezug nachgereicht werden muss.
+        _append_has_text_filter(where, has_gesteinsart, "Gesteinsart")
         _append_has_text_filter(where, has_notizen, "notizen")
         _append_has_text_filter(where, has_pruefempfehlungen, "Pruefempfehlungen")
         # has_gewicht: tri-state Filter fuer Objekte mit/ohne Wiegegewicht.
