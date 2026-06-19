@@ -504,6 +504,41 @@ def test_text_ausgabe_ohne_funddatum_keine_jahrzehnt_zeile(tmp_path, capsys):
     assert "Funde pro Jahrzehnt:" not in out
 
 
+def test_text_ausgabe_zeigt_sammlung_erfasst_pro_jahr(tmp_path, capsys):
+    """Sammlungswachstum-Block listet Erfassungs-Jahre chronologisch."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00"),
+            ("OBJ_0002", "2025-06-13 14:30:00"),
+            ("OBJ_0003", "2025-12-01 08:00:00"),
+            ("OBJ_0004", "2026-06-19 08:45:00"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Jahr:" in out
+    block = out.split("Sammlung erfasst pro Jahr:", 1)[1]
+    # Chronologisch aufsteigend
+    assert block.index("2024") < block.index("2025") < block.index("2026")
+
+
+def test_text_ausgabe_ohne_erstellt_am_jahr_keine_zeile(tmp_path, capsys):
+    """open_db() ohne INSERTs → keine Objekte → Sammlungswachstum-Block bleibt aus."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepj0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Jahr:" not in out
+
+
 def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
     """Monats-Block liegt unter Jahr/Jahrzehnt und gibt 01..12 chronologisch aus."""
     from stonebook.db.database import open_db

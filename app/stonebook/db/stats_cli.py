@@ -221,6 +221,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Funde pro Monat:"]
         for monat, n in st.by_funddatum_monat.items():
             lines.append(f"  {monat:40s} {n}")
+    if st.by_erstellt_am_jahr:
+        # Sammlungswachstum-Histogramm pro Erfassungs-Jahr: spiegelt "Funde pro
+        # Jahr" um die Achse, wann das Objekt digitalisiert wurde (statt wann
+        # gefunden). Macht Migrations-Wellen sichtbar (z.B. eine grosse Erfassungs-
+        # session in 2026), die in der Funddatum-Sicht untergehen. Reihenfolge
+        # bleibt chronologisch aus _count_erstellt_am_jahr (aelteste zuerst).
+        lines += ["", "Sammlung erfasst pro Jahr:"]
+        for jahr, n in st.by_erstellt_am_jahr.items():
+            lines.append(f"  {jahr:40s} {n}")
     if st.by_seltenheit_global:
         # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
         # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf
