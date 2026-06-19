@@ -105,6 +105,14 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # diffuser Schirm). Spiegelt glanz_in/by_glanz/wert_pro_glanz auf die
     # Sortier-Achse.
     "Glanz",
+    # Transparenz als Sortier-Achse fuer Foto-/Vitrinen-Vorbereitung (Licht-Gang
+    # vs. -Reflexion): gruppiert die Liste nach Lichtdurchlaessigkeit
+    # (durchsichtig/durchscheinend/opak) - komplementaer zu Glanz (Oberflaechen-
+    # Reflexion vs. Volumen-Lichtgang): durchsichtige Stuecke (Bergkristall)
+    # brauchen Backlight, opake (Pyrit/Sediment) Frontlight. Drei Enum-Werte,
+    # alphabetisch ergibt durchscheinend/durchsichtig/opak. Spiegelt
+    # transparenz_in/by_transparenz/wert_pro_transparenz auf die Sortier-Achse.
+    "Transparenz",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })

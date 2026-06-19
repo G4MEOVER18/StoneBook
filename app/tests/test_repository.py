@@ -263,6 +263,36 @@ def test_sort_by_glanz(tmp_path):
     c.close()
 
 
+def test_sort_by_transparenz(tmp_path):
+    """Sortierung nach Transparenz gruppiert die Liste nach Lichtdurchlaessigkeit.
+
+    Komplementaer zur Sortierung nach Glanz (Oberflaechen-Reflexion vs. Volumen-
+    Lichtgang) - durchsichtige Stuecke brauchen Backlight beim Fotografieren,
+    opake Frontlight. Drei Enum-Werte, alphabetisch ergibt durchscheinend/
+    durchsichtig/opak. Spiegelt transparenz_in / by_transparenz /
+    wert_pro_transparenz auf die Sortier-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "tr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "opak"),
+            ("OBJ_0002", "durchsichtig"),
+            ("OBJ_0003", "durchscheinend"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Transparenz")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Transparenz", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_sort_by_gesteinsart(tmp_path):
     """Sortierung nach Gesteinsart gruppiert die Liste petrologisch.
 
