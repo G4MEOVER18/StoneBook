@@ -860,6 +860,115 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_erstellt_am_jahr_zeile(tmp_
     assert "Gewicht pro Erfassungs-Jahr" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_erstellt_am_monat(tmp_path, capsys):
+    """Wert-pro-Erfassungs-Monat-Block listet Indoor-Erfassungs-Spitzen wertlich.
+
+    Spiegelt wert_pro_funddatum_monat auf die Erfassungs-Achse - Januar-
+    Spitzen (Boersen-Vorbereitung, Indoor-Phasen) tauchen hier sortiert auf.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpem.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00", 500.0),   # Januar 500
+            ("OBJ_0002", "2025-06-13 14:30:00", 200.0),   # Juni 200
+            ("OBJ_0003", "2026-08-21 16:00:00", 50.0),    # August 50
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Erfassungs-Monat (CHF):" in out
+    block = out.split("Wert pro Erfassungs-Monat (CHF):", 1)[1]
+    assert block.index("01") < block.index("06") < block.index("08")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_erstellt_am_monat_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Erfassungs-Wert-Monat-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpem0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-01-15 09:00:00"),
+         ("OBJ_0002", "2025-06-13 14:30:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Erfassungs-Monat" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_erstellt_am_monat(tmp_path, capsys):
+    """Gewicht-pro-Erfassungs-Monat-Block listet schwerste Erfassungs-Monate."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpem.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00", 500.0),
+            ("OBJ_0002", "2025-06-13 14:30:00", 200.0),
+            ("OBJ_0003", "2026-08-21 16:00:00", 50.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Erfassungs-Monat (g):" in out
+    block = out.split("Gewicht pro Erfassungs-Monat (g):", 1)[1]
+    assert block.index("01") < block.index("06") < block.index("08")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_erstellt_am_monat_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Erfassungs-Gewicht-Monat-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpem0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-01-15 09:00:00"),
+         ("OBJ_0002", "2025-06-13 14:30:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Erfassungs-Monat" not in out
+
+
+def test_text_ausgabe_erfassungs_monat_unter_funddatum_monat(tmp_path, capsys):
+    """Erfassungs-Monat-Bloecke folgen direkt auf die Funddatum-Monat-Bloecke.
+
+    Layout-Konvention: Wert/Gewicht pro Funddatum-Monat zuerst, danach das
+    Erfassungs-Pendant - genau wie bei den Jahres-Bloecken.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "monat_reihenfolge.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, erstellt_am, Wert_CHF_roh, "
+        "Gewicht_g) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2020-05-13", "2024-01-15 09:00:00", 100.0, 50.0),
+            ("OBJ_0002", "2021-04-01", "2025-06-13 14:30:00", 200.0, 100.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert (out.index("Wert pro Funddatum-Monat (CHF):")
+            < out.index("Gewicht pro Funddatum-Monat (g):")
+            < out.index("Wert pro Erfassungs-Monat (CHF):")
+            < out.index("Gewicht pro Erfassungs-Monat (g):"))
+
+
 def test_text_ausgabe_erfassungs_jahr_unter_funddatum_jahr(tmp_path, capsys):
     """Erfassungs-Jahr-Bloecke folgen direkt auf die Funddatum-Jahr-Bloecke.
 
