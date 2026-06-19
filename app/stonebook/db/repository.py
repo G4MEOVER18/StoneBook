@@ -176,6 +176,7 @@ class ObjectRepo:
                      has_hcl_reaktion: bool | None = None,
                      has_farbe: bool | None = None,
                      has_kristallsystem: bool | None = None,
+                     has_fundort: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
                      has_dimensionen: bool | None = None,
@@ -404,6 +405,14 @@ class ObjectRepo:
         # bestaenden haeufig leer. Komplementaer zum kristallsystem_in-Mengen-
         # filter, der konkrete Symmetrien selektiert; hier nur die Anwesenheit.
         _append_has_text_filter(where, has_kristallsystem, "Kristallsystem")
+        # has_fundort: tri-state Filter fuer dokumentierten Fundort.
+        # Der Fundort ist die Standort-Achse der Sammlung (Berg/Steinbruch/Boerse)
+        # und Voraussetzung fuer alle ortsbezogenen Auswertungen (by_fundort,
+        # wert_pro_fundort, fundort_in-Mengenfilter). Geerbte Stuecke ohne
+        # Standort-Notiz sind ein typischer Pflege-Rueckstand - der Filter
+        # macht die Luecke direkt sichtbar, komplementaer zum fundort_contains-
+        # Substring-Filter (der NULL/Leereintraege ohnehin uebergeht).
+        _append_has_text_filter(where, has_fundort, "Fundort")
         # has_mohs: tri-state Filter fuer dokumentierte Mohs-Haerte.
         # Wahr, sobald eines der beiden Bereichsfelder (Mohs_Haerte_min/_max)
         # gesetzt ist - die obere und untere Grenze des Haertebereichs werden
