@@ -832,6 +832,43 @@ def test_has_bruch_filter(tmp_path):
     c.close()
 
 
+def test_has_spaltbarkeit_filter(tmp_path):
+    """has_spaltbarkeit: dokumentierte Spaltbarkeit (Spaltflaechen-Achse).
+
+    Spaltbarkeit ist die Spaltflaechen-Achse (vollkommen/gut/deutlich/
+    undeutlich/keine) - komplementaer zu has_bruch (Bruchflaechen). In der
+    Praxis werden beide Tests oft zusammen durchgefuehrt (Hammer-Schlag plus
+    Beobachtung). Findet Stuecke, an denen der Spaltbarkeits-Test nachzuholen
+    ist - Werkzeug-Setup-Achse vor Praeparier-/Polier-Sitzungen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hsp.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "vollkommen"),   # Calcit/Glimmer
+            ("OBJ_0002", "gut"),          # Fluorit
+            ("OBJ_0003", "keine"),        # Quarz/Obsidian
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_spaltbarkeit=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_spaltbarkeit=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_spaltbarkeit=None)) == 6
+    # Kombinierbar mit spaltbarkeit_in (Schnittmenge): dokumentiert UND sauber
+    # spaltbar (vollkommen/gut), ohne zaehe Quarz-Brocken (keine).
+    rows = repo.list_objects(has_spaltbarkeit=True,
+                             spaltbarkeit_in=["vollkommen", "gut"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_kristallsystem_filter(tmp_path):
     """has_kristallsystem: dokumentierter Symmetrietyp (kristallographische Hauptachse)."""
     from stonebook.db.database import open_db

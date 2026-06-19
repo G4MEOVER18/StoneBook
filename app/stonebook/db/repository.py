@@ -272,6 +272,7 @@ class ObjectRepo:
                      has_farbe: bool | None = None,
                      has_kristallsystem: bool | None = None,
                      has_bruch: bool | None = None,
+                     has_spaltbarkeit: bool | None = None,
                      has_fundort: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
@@ -519,6 +520,18 @@ class ObjectRepo:
         # risiko-Diagnose vor Polier-/Schneid-Sitzungen. Komplementaer zum
         # bruch_in-Mengenfilter (konkrete Klassen) und zur Bruch-Sortier-Spalte.
         _append_has_text_filter(where, has_bruch, "Bruch")
+        # has_spaltbarkeit: tri-state Filter fuer dokumentierte Spaltbarkeit.
+        # Spaltbarkeit (vollkommen/gut/deutlich/undeutlich/keine) ist die
+        # Spaltflaechen-Achse - komplementaer zu has_bruch (Bruchflaechen):
+        # Calcit/Fluorit/Glimmer haben vollkommen-/gute Spaltbarkeit und kommen
+        # bei Schlag entlang glatter Flaechen auseinander, waehrend Quarz/
+        # Obsidian "keine" Spaltbarkeit, dafuer muscheligen Bruch (scharfe
+        # Kanten) zeigen - in der Praxis werden beide Tests oft zusammen
+        # durchgefuehrt (Hammer-Schlag plus Beobachtung der Bruchstuecke).
+        # Findet Stuecke, an denen der Spaltbarkeits-Test nachzuholen ist -
+        # Werkzeug-Setup-Achse vor Praeparier-/Polier-Sitzungen. Komplementaer
+        # zum spaltbarkeit_in-Mengenfilter und zur Spaltbarkeit-Sortier-Spalte.
+        _append_has_text_filter(where, has_spaltbarkeit, "Spaltbarkeit")
         # has_fundort: tri-state Filter fuer dokumentierten Fundort.
         # Der Fundort ist die Standort-Achse der Sammlung (Berg/Steinbruch/Boerse)
         # und Voraussetzung fuer alle ortsbezogenen Auswertungen (by_fundort,
