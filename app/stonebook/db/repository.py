@@ -198,6 +198,35 @@ def _append_scale_1_10_filter(where: list[str], params: list,
         params.append(b)
 
 
+def _append_enum_in_filter(where: list[str], params: list,
+                           value: list[str] | tuple[str, ...] | None,
+                           column: str, label: str,
+                           valid_values: frozenset[str]) -> None:
+    """Haengt einen ``IN``-Mengenfilter auf eine Enum-Spalte an where/params.
+
+    Konsolidiert die status_in/kategorie_in/kristallsystem_in/beste_verwendung_in/
+    glanz_in/transparenz_in/magnetismus_in/spaltbarkeit_in/bruch_in-Bloecke: alle
+    neun folgten dem gleichen 13-Zeilen-Muster (leere Eintraege filtern, gegen
+    VALID_*-Frozenset validieren, ``IN (?,?,?)``-Klausel anhaengen). ``label``
+    ist die Diagnose-Bezeichnung in der ValueError-Meldung (z.B. "Status",
+    "Kristallsystem"), ``column`` ist callerseitig hardcodiert (Whitelist-
+    Validierung implizit, keine SQL-Injection-Flaeche). Leere Werte sowie
+    reine Whitespace-/Falsy-Listen bleiben no-op (Filter wird nicht angefuegt).
+    """
+    if not value:
+        return
+    items = [v for v in value if v]
+    invalid = [v for v in items if v not in valid_values]
+    if invalid:
+        raise ValueError(
+            f"Unbekannte {label}-Werte: {invalid} "
+            f"(erwartet aus {sorted(valid_values)})")
+    if items:
+        placeholders = ", ".join("?" * len(items))
+        where.append(f"o.{column} IN ({placeholders})")
+        params.extend(items)
+
+
 def _order_by_clause(sort_by: str | None, sort_desc: bool) -> str:
     if not sort_by:
         return " ORDER BY o.obj_id"
@@ -324,17 +353,8 @@ class ObjectRepo:
         # status_in: Mengen-Filter ("aktiv ODER archiviert, aber nicht platzhalter").
         # Ergaenzend zum exakten ``status``-Filter; beide kombinierbar (Schnittmenge).
         # Validiert gegen VALID_STATUSES, damit Tippfehler keinen leeren Filter erzeugen.
-        if status_in:
-            statuses = [s for s in status_in if s]
-            invalid = [s for s in statuses if s not in VALID_STATUSES]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Status-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_STATUSES)})")
-            if statuses:
-                placeholders = ", ".join("?" * len(statuses))
-                where.append(f"o.status IN ({placeholders})")
-                params.extend(statuses)
+        _append_enum_in_filter(where, params, status_in, "status", "Status",
+                               VALID_STATUSES)
         if mineral:
             where.append("o.Mineral_Primaer = ?")
             params.append(mineral)
@@ -361,17 +381,8 @@ class ObjectRepo:
         # Feldwoerterbuch, damit Tippfehler einen klaren Fehler statt eines
         # stillen Leerergebnisses erzeugen. Kombinierbar mit dem exakten
         # ``kategorie``-Filter (Schnittmenge).
-        if kategorie_in:
-            kats = [k for k in kategorie_in if k]
-            invalid = [k for k in kats if k not in VALID_KATEGORIEN]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Kategorie-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_KATEGORIEN)})")
-            if kats:
-                placeholders = ", ".join("?" * len(kats))
-                where.append(f"o.Kategorie IN ({placeholders})")
-                params.extend(kats)
+        _append_enum_in_filter(where, params, kategorie_in, "Kategorie",
+                               "Kategorie", VALID_KATEGORIEN)
         # has_bilder ist die kanonische Form (True/False/None); only_images bleibt
         # als Legacy-Alias erhalten und mappt auf has_bilder=True, falls dieses
         # noch nicht gesetzt ist (kein Konflikt zwischen den beiden Flags).
@@ -863,17 +874,8 @@ class ObjectRepo:
         # Spiegelt status_in: validiert gegen VALID_KRISTALLSYSTEME aus dem Feldwoerterbuch,
         # damit Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses erzeugen.
         # Kombinierbar mit dem exakten ``kristallsystem``-Filter (Schnittmenge).
-        if kristallsystem_in:
-            systems = [s for s in kristallsystem_in if s]
-            invalid = [s for s in systems if s not in VALID_KRISTALLSYSTEME]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Kristallsystem-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_KRISTALLSYSTEME)})")
-            if systems:
-                placeholders = ", ".join("?" * len(systems))
-                where.append(f"o.Kristallsystem IN ({placeholders})")
-                params.extend(systems)
+        _append_enum_in_filter(where, params, kristallsystem_in, "Kristallsystem",
+                               "Kristallsystem", VALID_KRISTALLSYSTEME)
         if beste_verwendung:
             where.append("o.Beste_Verwendung = ?")
             params.append(beste_verwendung)
@@ -881,17 +883,8 @@ class ObjectRepo:
         # Industrie/Talisman). Spiegelt status_in / kristallsystem_in: validiert
         # gegen VALID_BESTE_VERWENDUNG, damit Tippfehler einen klaren Fehler
         # statt eines stillen Leerergebnisses erzeugen.
-        if beste_verwendung_in:
-            uses = [v for v in beste_verwendung_in if v]
-            invalid = [v for v in uses if v not in VALID_BESTE_VERWENDUNG]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Beste_Verwendung-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_BESTE_VERWENDUNG)})")
-            if uses:
-                placeholders = ", ".join("?" * len(uses))
-                where.append(f"o.Beste_Verwendung IN ({placeholders})")
-                params.extend(uses)
+        _append_enum_in_filter(where, params, beste_verwendung_in, "Beste_Verwendung",
+                               "Beste_Verwendung", VALID_BESTE_VERWENDUNG)
         if glanz:
             where.append("o.Glanz = ?")
             params.append(glanz)
@@ -900,17 +893,8 @@ class ObjectRepo:
         # validiert gegen VALID_GLANZ aus dem Feldwoerterbuch, damit Tippfehler
         # einen klaren Fehler statt eines stillen Leerergebnisses erzeugen.
         # Kombinierbar mit dem exakten ``glanz``-Filter (Schnittmenge).
-        if glanz_in:
-            glanze = [g for g in glanz_in if g]
-            invalid = [g for g in glanze if g not in VALID_GLANZ]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Glanz-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_GLANZ)})")
-            if glanze:
-                placeholders = ", ".join("?" * len(glanze))
-                where.append(f"o.Glanz IN ({placeholders})")
-                params.extend(glanze)
+        _append_enum_in_filter(where, params, glanz_in, "Glanz", "Glanz",
+                               VALID_GLANZ)
         if transparenz:
             where.append("o.Transparenz = ?")
             params.append(transparenz)
@@ -920,34 +904,16 @@ class ObjectRepo:
         # gegen VALID_TRANSPARENZ (durchsichtig/durchscheinend/opak), damit
         # Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses
         # erzeugen. Kombinierbar mit dem exakten ``transparenz``-Filter.
-        if transparenz_in:
-            trs = [t for t in transparenz_in if t]
-            invalid = [t for t in trs if t not in VALID_TRANSPARENZ]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Transparenz-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_TRANSPARENZ)})")
-            if trs:
-                placeholders = ", ".join("?" * len(trs))
-                where.append(f"o.Transparenz IN ({placeholders})")
-                params.extend(trs)
+        _append_enum_in_filter(where, params, transparenz_in, "Transparenz",
+                               "Transparenz", VALID_TRANSPARENZ)
         # magnetismus_in: Mengen-Filter ("ja ODER schwach") als Eisen-Auswahl -
         # alle magnetisch reagierenden Stuecke (Magnetit/Pyrrhotin/Haematit/
         # Ilmenit) in einer Sicht, ohne dass die inerten Quarz-/Calcit-Stuecke
         # mitkommen. Spiegelt glanz_in/transparenz_in: validiert gegen
         # VALID_MAGNETISMUS (ja/schwach/nein), damit Tippfehler einen klaren
         # Fehler statt eines stillen Leerergebnisses erzeugen.
-        if magnetismus_in:
-            mags = [m for m in magnetismus_in if m]
-            invalid = [m for m in mags if m not in VALID_MAGNETISMUS]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Magnetismus-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_MAGNETISMUS)})")
-            if mags:
-                placeholders = ", ".join("?" * len(mags))
-                where.append(f"o.Magnetismus IN ({placeholders})")
-                params.extend(mags)
+        _append_enum_in_filter(where, params, magnetismus_in, "Magnetismus",
+                               "Magnetismus", VALID_MAGNETISMUS)
         # spaltbarkeit_in: Mengen-Filter ("vollkommen ODER gut") als Praeparier-
         # Auswahl - alle sauber spaltbaren Stuecke (Calcit/Fluorit/Glimmer) in
         # einer Sicht, ohne dass die zaehen Quarz-Brocken (keine) mitkommen.
@@ -955,17 +921,8 @@ class ObjectRepo:
         # VALID_SPALTBARKEIT (vollkommen/gut/deutlich/undeutlich/keine), damit
         # Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses
         # erzeugen.
-        if spaltbarkeit_in:
-            sps = [s for s in spaltbarkeit_in if s]
-            invalid = [s for s in sps if s not in VALID_SPALTBARKEIT]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Spaltbarkeit-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_SPALTBARKEIT)})")
-            if sps:
-                placeholders = ", ".join("?" * len(sps))
-                where.append(f"o.Spaltbarkeit IN ({placeholders})")
-                params.extend(sps)
+        _append_enum_in_filter(where, params, spaltbarkeit_in, "Spaltbarkeit",
+                               "Spaltbarkeit", VALID_SPALTBARKEIT)
         # bruch_in: Mengen-Filter ("muschelig ODER splittrig") als Schaerfe-
         # kanten-Auswahl - Stuecke, die ohne Spaltflaechen scharfe Kanten
         # erzeugen (Obsidian/Quarz/Feuerstein), in einer Sicht ohne fasrige
@@ -973,17 +930,8 @@ class ObjectRepo:
         # magnetismus_in: validiert gegen VALID_BRUCH (muschelig/uneben/
         # splittrig/faserig/erdig/glatt), damit Tippfehler einen klaren
         # Fehler statt eines stillen Leerergebnisses erzeugen.
-        if bruch_in:
-            brs = [b for b in bruch_in if b]
-            invalid = [b for b in brs if b not in VALID_BRUCH]
-            if invalid:
-                raise ValueError(
-                    f"Unbekannte Bruch-Werte: {invalid} "
-                    f"(erwartet aus {sorted(VALID_BRUCH)})")
-            if brs:
-                placeholders = ", ".join("?" * len(brs))
-                where.append(f"o.Bruch IN ({placeholders})")
-                params.extend(brs)
+        _append_enum_in_filter(where, params, bruch_in, "Bruch", "Bruch",
+                               VALID_BRUCH)
         if varietaet:
             where.append("o.Varietaet = ?")
             params.append(varietaet)
