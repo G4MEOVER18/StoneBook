@@ -230,6 +230,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Sammlung erfasst pro Jahr:"]
         for jahr, n in st.by_erstellt_am_jahr.items():
             lines.append(f"  {jahr:40s} {n}")
+    if st.by_erstellt_am_monat:
+        # Erfassungs-Saisonalitaet (01..12, ueber alle Jahre): direkt unter dem
+        # Erfassungs-Jahres-Block, spiegelt "Funde pro Monat". Zeigt typische
+        # Indoor-Wellen (Winter/Boersenvorbereitung Januar-Maerz) vs. Aussen-
+        # Pausen waehrend der Feld-Saison. Reihenfolge bleibt 01..12.
+        lines += ["", "Sammlung erfasst pro Monat:"]
+        for monat, n in st.by_erstellt_am_monat.items():
+            lines.append(f"  {monat:40s} {n}")
     if st.by_seltenheit_global:
         # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
         # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf

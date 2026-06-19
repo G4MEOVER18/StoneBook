@@ -537,6 +537,34 @@ def test_text_ausgabe_ohne_erstellt_am_jahr_keine_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Sammlung erfasst pro Jahr:" not in out
+    assert "Sammlung erfasst pro Monat:" not in out
+
+
+def test_text_ausgabe_zeigt_sammlung_erfasst_pro_monat(tmp_path, capsys):
+    """Erfassungs-Saisonalitaet-Block liegt unter dem Jahres-Block und ist 01..12 sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-03-15 09:00:00"),
+            ("OBJ_0002", "2025-03-13 14:30:00"),
+            ("OBJ_0003", "2025-06-01 08:00:00"),
+            ("OBJ_0004", "2026-11-19 08:45:00"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Monat:" in out
+    block = out.split("Sammlung erfasst pro Monat:", 1)[1]
+    # 01..12 chronologisch: 03 vor 06 vor 11
+    assert block.index("03") < block.index("06") < block.index("11")
+    # Jahres-Block kommt zuerst (spiegelt _format_text-Reihenfolge)
+    assert (out.index("Sammlung erfasst pro Jahr:")
+            < out.index("Sammlung erfasst pro Monat:"))
 
 
 def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
