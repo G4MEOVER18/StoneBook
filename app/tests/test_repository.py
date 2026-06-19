@@ -573,6 +573,30 @@ def test_has_kristallsystem_filter(tmp_path):
     c.close()
 
 
+def test_has_varietaet_filter(tmp_path):
+    """has_varietaet: dokumentierte Varietaet (mineralogische Sub-Klassifizierung)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Bergkristall"),
+            ("OBJ_0002", "Rauchquarz"),
+            ("OBJ_0003", None),
+            ("OBJ_0004", ""),
+            ("OBJ_0005", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_varietaet=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_varietaet=False)] \
+        == ["OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_varietaet=None)) == 5
+    c.close()
+
+
 def test_has_fundort_filter(tmp_path):
     """has_fundort: dokumentierter Fundort (Standort-Achse der Sammlung)."""
     from stonebook.db.database import open_db

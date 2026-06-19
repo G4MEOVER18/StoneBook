@@ -167,6 +167,7 @@ class ObjectRepo:
                      has_confidence: bool | None = None,
                      has_funddatum: bool | None = None,
                      has_mineral: bool | None = None,
+                     has_varietaet: bool | None = None,
                      has_notizen: bool | None = None,
                      has_pruefempfehlungen: bool | None = None,
                      has_gewicht: bool | None = None,
@@ -347,6 +348,15 @@ class ObjectRepo:
             where.append("o.Confidence_Prozent IS NULL")
         _append_has_text_filter(where, has_funddatum, "Funddatum")
         _append_has_text_filter(where, has_mineral, "Mineral_Primaer")
+        # has_varietaet: tri-state Filter fuer dokumentierte Varietaet.
+        # Die Varietaet ist die feinere Sub-Klassifizierung unter dem Hauptmineral
+        # (Quarz → Bergkristall/Milchquarz/Rauchquarz/Amethyst/Citrin); ohne sie
+        # bleibt der Eintrag auf der Familien-Ebene stehen. Spiegelt has_mineral
+        # (Hauptmineral-Vollstaendigkeit) und ergaenzt den varietaet_in-Mengen-
+        # filter (der NULL/Leereintraege ohnehin uebergeht). Findet Stuecke, an
+        # denen die mineralogische Sub-Bestimmung nachzuholen ist (typisch nach
+        # KI-Vorbestimmung auf Familien-Ebene, vor manueller Varietaet-Pruefung).
+        _append_has_text_filter(where, has_varietaet, "Varietaet")
         _append_has_text_filter(where, has_notizen, "notizen")
         _append_has_text_filter(where, has_pruefempfehlungen, "Pruefempfehlungen")
         # has_gewicht: tri-state Filter fuer Objekte mit/ohne Wiegegewicht.
