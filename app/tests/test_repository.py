@@ -324,6 +324,38 @@ def test_sort_by_magnetismus(tmp_path):
     c.close()
 
 
+def test_sort_by_spaltbarkeit(tmp_path):
+    """Sortierung nach Spaltbarkeit gruppiert die Liste nach Spaltflaechen-Klasse.
+
+    Vor einer Schnitt-/Polier-Session will man die gut spaltbaren Stuecke
+    (Calcit/Fluorit/Glimmer) beisammen haben, weil sie ein anderes Werkzeug-
+    Setup brauchen als zaehe quarz-/obsidian-aehnliche Stuecke ohne Spalt-
+    flaechen. Fuenf Enum-Werte (vollkommen/gut/deutlich/undeutlich/keine),
+    alphabetisch sortiert ergibt deutlich/gut/keine/undeutlich/vollkommen.
+    Spiegelt spaltbarkeit_in / by_spaltbarkeit / wert_pro_spaltbarkeit auf
+    die Sortier-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "sp.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "vollkommen"),
+            ("OBJ_0002", "gut"),
+            ("OBJ_0003", "deutlich"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Spaltbarkeit")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Spaltbarkeit", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_sort_by_gesteinsart(tmp_path):
     """Sortierung nach Gesteinsart gruppiert die Liste petrologisch.
 

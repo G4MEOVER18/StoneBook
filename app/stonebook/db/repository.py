@@ -121,6 +121,15 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # alphabetisch ergibt ja/nein/schwach. Spiegelt magnetismus_in/by_magnetismus/
     # wert_pro_magnetismus auf die Sortier-Achse.
     "Magnetismus",
+    # Spaltbarkeit als Sortier-Achse fuer Praeparier-/Polier-Sitzungen: gruppiert
+    # die Liste nach Spaltflaechen-Klasse (vollkommen/gut/deutlich/undeutlich/
+    # keine) - vor einer Schnitt-/Polier-Session will man die gut spaltbaren
+    # Stuecke (Calcit/Fluorit/Glimmer) beisammen haben, weil sie ein anderes
+    # Werkzeug-Setup brauchen als zaehe quarz-/obsidian-aehnliche Stuecke ohne
+    # Spaltflaechen (Saege statt Hammer/Meissel). Fuenf Enum-Werte, alphabetisch
+    # ergibt deutlich/gut/keine/undeutlich/vollkommen. Spiegelt spaltbarkeit_in/
+    # by_spaltbarkeit/wert_pro_spaltbarkeit auf die Sortier-Achse.
+    "Spaltbarkeit",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })
