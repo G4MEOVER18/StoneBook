@@ -314,6 +314,49 @@ def test_by_erstellt_am_jahr_im_as_dict(tmp_path):
     c.close()
 
 
+def test_by_erstellt_am_monat_aus_seed_db(tmp_path):
+    """Erfassungs-Saisonalitaet aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "monat_e.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            # Januar (2024 + 2026)
+            ("OBJ_0001", "2024-01-15 09:00:00"),
+            ("OBJ_0002", "2026-01-04 11:30:00"),
+            # Juni (2024 + 2025 + 2026)
+            ("OBJ_0003", "2024-06-13 14:30:00"),
+            ("OBJ_0004", "2025-06-01 10:00:00"),
+            ("OBJ_0005", "2026-06-19 08:45:00"),
+            # August (2025)
+            ("OBJ_0006", "2025-08-21 16:00:00"),
+            # Ungueltig / leer
+            ("OBJ_0007", ""),
+            ("OBJ_0008", None),
+            ("OBJ_0009", "kaputt"),
+            ("OBJ_0010", "2024-13-01 00:00:00"),  # Monat 13 → ungueltig
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Aufsteigend nach Monat (01..12), kaputte Eintraege bleiben aussen vor
+    assert list(st.by_erstellt_am_monat.items()) == [
+        ("01", 2), ("06", 3), ("08", 1),
+    ]
+    c.close()
+
+
+def test_by_erstellt_am_monat_leer(tmp_path):
+    """Leere DB → leere Saison-Statistik (kein Crash)."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer_monat_e.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_erstellt_am_monat == {}
+    c.close()
+
+
 def test_by_funddatum_monat_aus_seed_db(tmp_path):
     """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
     from stonebook.db.database import open_db

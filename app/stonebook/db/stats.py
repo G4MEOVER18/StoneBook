@@ -46,6 +46,7 @@ class Statistik:
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
+    by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -160,6 +161,7 @@ class Statistik:
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
+            "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -441,6 +443,31 @@ def _count_erstellt_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY jahr ORDER BY jahr ASC"
     )
     return {r["jahr"]: r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_erstellt_am_monat(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``erstellt_am``-Monat (Erfassungs-Saisonalitaet).
+
+    Spiegelt :func:`_count_funddatum_monat` um die Erfassungs-Achse: zeigt,
+    in welchen Monaten typischerweise digitalisiert wird (Winter-Indoor-Phasen
+    vs. Sommer-Pausen waehrend Feld-Aktivitaeten). Aggregiert ueber alle Jahre,
+    Labels ``"01"`` .. ``"12"``; Monate ohne Treffer fehlen im Dict.
+
+    ``erstellt_am`` hat im Insert-Pfad das Format ``YYYY-MM-DD HH:MM:SS``;
+    Monatsteil sitzt deterministisch in Substring 6..7. Eintraege ohne
+    gueltigen Jahres-Praefix oder mit Monatsteil ausserhalb 01..12 werden
+    ausgeschlossen (defensive Behandlung historischer Imports mit kaputten
+    Stempeln), damit die Saison-Statistik nicht verzerrt wird.
+    """
+    sql = (
+        "SELECT substr(erstellt_am, 6, 2) AS monat, COUNT(*) AS n FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY monat ORDER BY monat ASC"
+    )
+    return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -816,6 +843,10 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # und macht ungleichmaessige Migrations-Wellen (z.B. eine grosse Erfassungs-
     # session 2026) sichtbar, die in der reinen Funddatums-Sicht untergehen.
     st.by_erstellt_am_jahr = _count_erstellt_am_jahr(conn)
+    # Erfassungs-Saisonalitaet (01..12, ueber alle Jahre): zeigt typische
+    # Indoor-Phasen (Winter, Boersenvorbereitung) vs. Aussen-Pausen waehrend
+    # der Feld-Saison. Spiegelt by_funddatum_monat um die Erfassungs-Achse.
+    st.by_erstellt_am_monat = _count_erstellt_am_monat(conn)
     # Rarity-Histogramm: wie verteilt sich die Sammlung auf der globalen
     # Seltenheits-Skala (1=haeufig .. 10=sehr selten)? Komplementaer zu den
     # seltenheit_global_min/max-Filtern: zeigt nicht nur "ein Stueck ist hier
