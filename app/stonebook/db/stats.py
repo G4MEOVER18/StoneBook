@@ -46,6 +46,7 @@ class Statistik:
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
+    by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
@@ -165,6 +166,7 @@ class Statistik:
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
+            "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
@@ -459,6 +461,34 @@ def _count_erstellt_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY jahr ORDER BY jahr ASC"
     )
     return {r["jahr"]: r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_erstellt_am_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``erstellt_am``-Jahrzehnt (Erfassungs-Dekade), Label ``2010er``, ``2020er`` ...
+
+    Spiegelt :func:`_count_funddatum_jahrzehnt` um die Erfassungs-Achse:
+    aggregiert die Erfassungs-Jahres-Verteilung auf 10er-Schritte. Sammler-
+    typische Antwort auf "in welcher Dekade ist mein Bestand entstanden?";
+    macht uebergreifende Erfassungs-Wellen sichtbar, die im Jahres-Histogramm
+    durch Einzeljahr-Rauschen verdeckt werden (z.B. Migration einer alten
+    Excel-Sammlung in 2020+ konzentriert auf wenige Jahre, alles davor in
+    Papier-Tagebuechern).
+
+    ``erstellt_am`` hat im Insert-Pfad das Format ``YYYY-MM-DD HH:MM:SS``;
+    Substring 1..4 reicht als Jahres-Praefix. Ohne gueltigen Jahres-Praefix
+    werden Eintraege ausgeschlossen (kaputte Stempel historischer Imports).
+    Sortierung: chronologisch aufsteigend (aelteste Dekade zuerst), damit
+    das Histogramm zeitlich lesbar bleibt. Ohne Limit, weil die Zahl der
+    Dekaden ueberschaubar bleibt (~3-5 ueber eine Sammler-Karriere).
+    """
+    sql = (
+        "SELECT (CAST(substr(erstellt_am, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "GROUP BY dekade ORDER BY dekade ASC"
+    )
+    return {f"{r['dekade']}er": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_erstellt_am_monat(conn: sqlite3.Connection) -> dict[str, int]:
@@ -923,6 +953,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # und macht ungleichmaessige Migrations-Wellen (z.B. eine grosse Erfassungs-
     # session 2026) sichtbar, die in der reinen Funddatums-Sicht untergehen.
     st.by_erstellt_am_jahr = _count_erstellt_am_jahr(conn)
+    # Erfassungs-Dekaden-Histogramm: spiegelt by_funddatum_jahrzehnt um die
+    # Erfassungs-Achse. Aggregiert das Erfassungs-Jahres-Histogramm auf 10er-
+    # Schritte und macht so uebergreifende Erfassungs-Wellen sichtbar (alte
+    # Excel-Migration in 2020+ vs. handgepflegte 2010er-Phase), die im Jahres-
+    # Histogramm durch Einzeljahr-Rauschen verdeckt werden.
+    st.by_erstellt_am_jahrzehnt = _count_erstellt_am_jahrzehnt(conn)
     # Erfassungs-Saisonalitaet (01..12, ueber alle Jahre): zeigt typische
     # Indoor-Phasen (Winter, Boersenvorbereitung) vs. Aussen-Pausen waehrend
     # der Feld-Saison. Spiegelt by_funddatum_monat um die Erfassungs-Achse.
