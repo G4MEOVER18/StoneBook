@@ -550,6 +550,26 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Funddatum-Jahrzehnt (g):"]
         for dekade, gewicht in st.gewicht_pro_funddatum_jahrzehnt:
             lines.append(f"  {dekade:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_erstellt_am_jahrzehnt:
+        # Erfassungs-Dekaden-Sicht des Sammlungswerts: spiegelt wert_pro_
+        # funddatum_jahrzehnt auf die Erfassungs-Achse - in welcher Dekade
+        # ist wertlich am meisten in die DB eingespielt worden? Komplementaer
+        # zu by_erstellt_am_jahrzehnt (Anzahl) und wert_pro_erstellt_am_jahr
+        # (Einzeljahres-Aufloesung): aggregiert auf 10er-Schritte und macht
+        # Migrations-Wellen (Excel-Altbestand 2020+) wertlich sichtbar, die
+        # im Einzeljahr-Histogramm durch Rauschen verdeckt sind.
+        lines += ["", "Wert pro Erfassungs-Jahrzehnt (CHF):"]
+        for dekade, wert in st.wert_pro_erstellt_am_jahrzehnt:
+            lines.append(f"  {dekade:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_erstellt_am_jahrzehnt:
+        # Spiegelbild Gewicht: welche Erfassungs-Dekade brachte die meiste
+        # Masse? Migrations-Wellen mit Geroell-Altbestaenden tauchen hier
+        # nach Gewicht sortiert auf, waehrend wert_pro_erstellt_am_jahrzehnt
+        # die hochpreisigen Erfassungs-Spitzen zeigt - Wert/Gewicht-Entkopplung
+        # auch auf der Erfassungs-Dekaden-Achse.
+        lines += ["", "Gewicht pro Erfassungs-Jahrzehnt (g):"]
+        for dekade, gewicht in st.gewicht_pro_erstellt_am_jahrzehnt:
+            lines.append(f"  {dekade:40s} {gewicht:>12,.1f}")
     if st.wert_pro_funddatum_monat:
         # Saison-Ertrag in CHF: welcher Monat bringt ueber alle Jahre den meisten
         # Wert? Komplementaer zu by_funddatum_monat (Anzahl) - dort die Aktivitaet,
