@@ -45,6 +45,7 @@ class Statistik:
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
+    by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -158,6 +159,7 @@ class Statistik:
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
+            "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -412,6 +414,33 @@ def _count_funddatum_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY dekade ORDER BY dekade ASC"
     )
     return {f"{r['dekade']}er": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_erstellt_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``erstellt_am``-Jahr (Sammlungswachstum).
+
+    Antwort auf die Sammler-Frage "wie ist meine Sammlung gewachsen?". Im
+    Gegensatz zu :func:`_count_funddatum_jahr` (wann wurde gefunden) zaehlt
+    dieser Block, wann das Objekt erfasst wurde - also wie aktiv pro Jahr
+    erfasst/digitalisiert wurde, unabhaengig vom Fundzeitpunkt.
+
+    ``erstellt_am`` wird beim Insert in repository.py auf
+    ``YYYY-MM-DD HH:MM:SS`` gesetzt; der Substring-Trick auf den ersten vier
+    Ziffern reicht und ist analog zu :func:`_count_funddatum_jahr`. NULL/
+    Whitespace und Eintraege ohne vierstelligen Jahres-Praefix bleiben aus
+    der Statistik (historische Imports koennten leere Stempel haben).
+
+    Sortierung: chronologisch aufsteigend (aelteste Jahre zuerst), damit das
+    Wachstums-Histogramm zeitlich lesbar bleibt. Ohne Limit, weil die Zahl der
+    Jahre ueberschaubar bleibt (~10-30 ueber eine Sammler-Karriere).
+    """
+    sql = (
+        "SELECT substr(erstellt_am, 1, 4) AS jahr, COUNT(*) AS n FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "GROUP BY jahr ORDER BY jahr ASC"
+    )
+    return {r["jahr"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -781,6 +810,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)
     st.by_funddatum_monat = _count_funddatum_monat(conn)
+    # Sammlungswachstum-Histogramm: Objekte pro Jahr ihres erstellt_am-Stempels.
+    # Komplementaer zu by_funddatum_jahr (wann gefunden) - hier wann erfasst.
+    # Beantwortet "in welchen Jahren bin ich besonders aktiv im Digitalisieren gewesen?"
+    # und macht ungleichmaessige Migrations-Wellen (z.B. eine grosse Erfassungs-
+    # session 2026) sichtbar, die in der reinen Funddatums-Sicht untergehen.
+    st.by_erstellt_am_jahr = _count_erstellt_am_jahr(conn)
     # Rarity-Histogramm: wie verteilt sich die Sammlung auf der globalen
     # Seltenheits-Skala (1=haeufig .. 10=sehr selten)? Komplementaer zu den
     # seltenheit_global_min/max-Filtern: zeigt nicht nur "ein Stueck ist hier
