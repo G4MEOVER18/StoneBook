@@ -597,6 +597,30 @@ def test_has_varietaet_filter(tmp_path):
     c.close()
 
 
+def test_has_reaktionshinweis_filter(tmp_path):
+    """has_reaktionshinweis: dokumentierter Reaktions-Kommentar (Begleit-Notiz)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hrh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Reaktionshinweis) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Reaktion warm verstaerkt"),
+            ("OBJ_0002", "nur Risskanten fluoreszieren"),
+            ("OBJ_0003", None),
+            ("OBJ_0004", ""),
+            ("OBJ_0005", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_reaktionshinweis=True)] \
+        == ["OBJ_0001", "OBJ_0002"]
+    assert [r["obj_id"] for r in repo.list_objects(has_reaktionshinweis=False)] \
+        == ["OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    assert len(repo.list_objects(has_reaktionshinweis=None)) == 5
+    c.close()
+
+
 def test_has_gesteinsart_filter(tmp_path):
     """has_gesteinsart: dokumentierte Gesteinsart (petrologische Klassifizierung)."""
     from stonebook.db.database import open_db

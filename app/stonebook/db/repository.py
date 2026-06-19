@@ -176,6 +176,7 @@ class ObjectRepo:
                      has_uv_reaktion: bool | None = None,
                      has_strichfarbe: bool | None = None,
                      has_hcl_reaktion: bool | None = None,
+                     has_reaktionshinweis: bool | None = None,
                      has_farbe: bool | None = None,
                      has_kristallsystem: bool | None = None,
                      has_fundort: bool | None = None,
@@ -410,6 +411,14 @@ class ObjectRepo:
         # Komplementaer zu has_strichfarbe (metallische Diagnostik) - HCl deckt
         # den Karbonat-Strang ab.
         _append_has_text_filter(where, has_hcl_reaktion, "HCl_Reaktion")
+        # has_reaktionshinweis: tri-state Filter fuer dokumentierten Reaktions-Kommentar.
+        # Reaktionshinweis ist die erklaerende Begleit-Notiz zu UV/HCl/Magnet-
+        # Beobachtungen ("Reaktion warm verstaerkt", "nur Risskanten fluoreszieren",
+        # "Pulver schwach blasenbildend"). Oft fehlt sie, obwohl die Trigger-
+        # Beobachtung selbst (HCl_Reaktion/UV_365nm/...) gepflegt ist - der Filter
+        # macht diese asymmetrische Pflege sichtbar, komplementaer zu
+        # has_hcl_reaktion/has_uv_reaktion (Trigger ohne Erklaerung).
+        _append_has_text_filter(where, has_reaktionshinweis, "Reaktionshinweis")
         # has_farbe: tri-state Filter fuer dokumentierte Farbe (Farbe_beobachtet).
         # Die beobachtete Farbe ist der erste Eindruck eines Stuecks und das
         # primaere Freitext-Beschreibungsfeld - ohne Farbnotiz fehlt selbst die
