@@ -80,6 +80,7 @@ class Statistik:
     wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -101,6 +102,7 @@ class Statistik:
     gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -239,6 +241,9 @@ class Statistik:
             "wert_pro_erstellt_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_erstellt_am_jahr
             ],
+            "wert_pro_erstellt_am_monat": [
+                (m, round(w, 2)) for m, w in self.wert_pro_erstellt_am_monat
+            ],
             "wert_pro_seltenheit_global": [
                 (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_global
             ],
@@ -301,6 +306,9 @@ class Statistik:
             ],
             "gewicht_pro_erstellt_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_erstellt_am_jahr
+            ],
+            "gewicht_pro_erstellt_am_monat": [
+                (m, round(g, 2)) for m, g in self.gewicht_pro_erstellt_am_monat
             ],
             "gewicht_pro_seltenheit_global": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_global
@@ -705,6 +713,37 @@ def _sum_by_funddatum_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, dekade ASC"
     )
     return [(f"{r['dekade']}er", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_erstellt_am_monat(conn: sqlite3.Connection, value_sql: str,
+                              extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``erstellt_am``-Monat (01..12).
+
+    Spiegelt :func:`_sum_by_funddatum_monat` auf die Erfassungs-Achse: zeigt,
+    in welchen Monaten ueber alle Jahre der hoechste Wert/das hoechste Gewicht
+    erfasst wurde. Komplementaer zu :func:`_count_erstellt_am_monat` (Anzahl)
+    und :func:`_sum_by_funddatum_monat` (Fund-Saison): die Erfassungs-Saison
+    deckt sich oft nicht mit der Fund-Saison (Indoor-Erfassung im Winter
+    aktuell schwerer/wertvoller als Sommer-Felderfassung).
+
+    Akzeptiert nur Eintraege mit vierstelligem Jahres-Praefix und gueltigem
+    Monatsteil 01..12 (defensive Behandlung historischer Imports mit kaputten
+    Stempeln). Top-N absteigend nach Summe, Tie-Break aufsteigend nach Monat;
+    ohne Limit, weil maximal 12 Eintraege moeglich.
+    """
+    where = ("erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+             "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT substr(erstellt_am, 6, 2) AS k, SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY k HAVING w > 0 "
+        f"ORDER BY w DESC, k ASC"
+    )
+    return [(r["k"], float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_erstellt_am_jahr(conn: sqlite3.Connection, value_sql: str,
@@ -1187,6 +1226,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.gewicht_pro_erstellt_am_jahr = _sum_by_erstellt_am_jahr(
         conn, "Gewicht_g", top_gewicht_erstellt_am_jahr,
         extra_where=gewicht_where)
+    # Erfassungs-Saison-Ertrag: welcher Monat des Jahres bringt ueber alle Jahre
+    # den hoechsten Erfassungs-Wert/-Masse-Eintrag? Komplementaer zu
+    # by_erstellt_am_monat (Anzahl) und wert_/gewicht_pro_funddatum_monat (Fund-
+    # Saison): typische Indoor-Erfassungs-Spitzen (Winter, Boersenvorbereitung
+    # Januar-Maerz) entkoppeln sich oft vom Fund-Saison-Profil.
+    st.wert_pro_erstellt_am_monat = _sum_by_erstellt_am_monat(conn, wert_sql)
+    st.gewicht_pro_erstellt_am_monat = _sum_by_erstellt_am_monat(
+        conn, "Gewicht_g", extra_where=gewicht_where)
     # Dekaden-Sicht des Sammlungswerts: "in welchem Jahrzehnt habe ich am meisten
     # Wert/Masse zusammengetragen?". Komplementaer zu wert_pro_funddatum_jahr
     # (Einzeljahres-Rauschen): zeigt grobe Aktivitaetsphasen ohne Verzerrung

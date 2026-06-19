@@ -795,6 +795,104 @@ def test_gewicht_pro_erstellt_am_jahr_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_erstellt_am_monat_aus_seed_db(tmp_path):
+    """Wertsumme pro erstellt_am-Monat aggregiert ueber alle Jahre.
+
+    Spiegelt wert_pro_funddatum_monat auf die Erfassungs-Achse: zeigt
+    Indoor-Erfassungs-Spitzen (Winter/Boersen-Vorbereitung) wertlich.
+    Sortierung absteigend nach Summe, Tie-Break aufsteigend nach Monat.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpem.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # Januar (2024+2026): 100+200 = 300
+            ("OBJ_0001", "2024-01-15 09:00:00", 100.0, None),
+            ("OBJ_0002", "2026-01-04 11:30:00", 100.0, 100.0),
+            # Juni (2024+2025+2026): 50+50+50 = 150
+            ("OBJ_0003", "2024-06-13 14:30:00", 50.0, None),
+            ("OBJ_0004", "2025-06-01 10:00:00", 50.0, None),
+            ("OBJ_0005", "2026-06-19 08:45:00", 50.0, None),
+            # August (2025): 150 - genau wie Juni → Tie-Break aufsteigend "06" vor "08"
+            ("OBJ_0006", "2025-08-21 16:00:00", 150.0, None),
+            # Ohne Wert -> faellt raus
+            ("OBJ_0007", "2024-03-01 12:00:00", None, None),
+            # Ungueltig / leer
+            ("OBJ_0008", "", 999.0, None),
+            ("OBJ_0009", None, 999.0, None),
+            ("OBJ_0010", "kaputt", 999.0, None),
+            ("OBJ_0011", "2024-13-01 00:00:00", 999.0, None),  # Monat 13 → ungueltig
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # 01 (300) > 06 (150) == 08 (150) → Tie-Break "06" vor "08"
+    assert st.wert_pro_erstellt_am_monat == [
+        ("01", 300.0),
+        ("06", 150.0),
+        ("08", 150.0),
+    ]
+    assert st.as_dict()["wert_pro_erstellt_am_monat"] == [
+        ("01", 300.0), ("06", 150.0), ("08", 150.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_erstellt_am_monat_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_erstellt_am_monat == []
+    c.close()
+
+
+def test_gewicht_pro_erstellt_am_monat_aus_seed_db(tmp_path):
+    """Gewichtsumme pro erstellt_am-Monat; NULL/0 zaehlen nicht, kaputte ignoriert.
+
+    Spiegelt wert_pro_erstellt_am_monat - schwere Erfassungs-Spitzen
+    (Geroell-Migrations-Wellen) entkoppeln sich oft vom Wert-Profil.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpem.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Gewicht_g) VALUES (?,?,?)",
+        [
+            # Januar: 600
+            ("OBJ_0001", "2024-01-15 09:00:00", 300.0),
+            ("OBJ_0002", "2026-01-04 11:30:00", 300.0),
+            # Juni: 200
+            ("OBJ_0003", "2024-06-13 14:30:00", 100.0),
+            ("OBJ_0004", "2025-06-01 10:00:00", 100.0),
+            # Mai: NULL/0 → ignoriert
+            ("OBJ_0005", "2024-05-13 09:00:00", None),
+            ("OBJ_0006", "2024-05-14 09:00:00", 0.0),
+            # Ungueltige Stempel: ignoriert
+            ("OBJ_0007", "kaputt", 9999.0),
+            ("OBJ_0008", "2024-13-01 00:00:00", 9999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_erstellt_am_monat == [
+        ("01", 600.0),
+        ("06", 200.0),
+    ]
+    assert st.as_dict()["gewicht_pro_erstellt_am_monat"] == [
+        ("01", 600.0), ("06", 200.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_erstellt_am_monat_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_erstellt_am_monat == []
+    c.close()
+
+
 def test_wert_pro_funddatum_jahrzehnt_aus_seed_db(tmp_path):
     """Wertsumme pro Dekade; absteigend nach Summe, Tie-Break chronologisch."""
     from stonebook.db.database import open_db
