@@ -59,7 +59,14 @@ VALID_BRUCH: frozenset[str] = frozenset(
 
 # Whitelist für Sortierung in list_objects (verhindert SQL-Injection bei freier Spalte).
 SORTABLE_COLUMNS: frozenset[str] = frozenset({
-    "obj_id", "Name", "Mineral_Primaer", "Varietaet", "Kategorie",
+    "obj_id", "Name", "Mineral_Primaer", "Varietaet", "Gesteinsart", "Kategorie",
+    # Gesteinsart als dritte mineralogische Sortier-Achse neben Mineral_Primaer
+    # (Familie) und Varietaet (Sub-Klassifizierung): gruppiert Listen petrologisch
+    # (Granit/Gneis/Basalt/Sandstein), waehrend Varietaet die mineralogische
+    # Sub-Achse abdeckt - oft komplementaer, weil ein Quarz-Stueck eine andere
+    # Gesteins-Einbettung hat als seine mineralogische Verwandtschaft (z.B.
+    # Pegmatit-Quarz vs. Hydrothermal-Quarz). Spiegelt has_gesteinsart/
+    # gesteinsart_in/wert_pro_gesteinsart auf die Sortier-Achse.
     "Fundort", "status",
     "Confidence_Prozent", "Funddatum", "Gewicht_g",
     # Physikalische Eigenschaften: sowohl untere (``_min``) als auch obere
