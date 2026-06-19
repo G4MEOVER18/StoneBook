@@ -113,6 +113,14 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # alphabetisch ergibt durchscheinend/durchsichtig/opak. Spiegelt
     # transparenz_in/by_transparenz/wert_pro_transparenz auf die Sortier-Achse.
     "Transparenz",
+    # Magnetismus als Sortier-Achse fuer Eisen-Sortier-Sitzungen am Magneten:
+    # gruppiert die Liste nach Reaktion (ja/schwach/nein) - vor einer Diagnostik-
+    # Runde mit dem Neodym-Magneten will man alle erwartet reagierenden Stuecke
+    # (Magnetit/Pyrrhotin: ja; Haematit/Ilmenit: schwach) beisammen testen, ohne
+    # zwischen Quarz-/Calcit-Stuecken hin- und herzuspringen. Drei Enum-Werte,
+    # alphabetisch ergibt ja/nein/schwach. Spiegelt magnetismus_in/by_magnetismus/
+    # wert_pro_magnetismus auf die Sortier-Achse.
+    "Magnetismus",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })

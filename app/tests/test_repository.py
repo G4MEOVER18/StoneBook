@@ -293,6 +293,37 @@ def test_sort_by_transparenz(tmp_path):
     c.close()
 
 
+def test_sort_by_magnetismus(tmp_path):
+    """Sortierung nach Magnetismus gruppiert die Liste nach Eisen-Reaktion.
+
+    Vor einer Magnet-Diagnostik-Runde will man alle erwartet reagierenden
+    Stuecke (ja: Magnetit/Pyrrhotin; schwach: Haematit/Ilmenit) beisammen
+    testen, ohne zwischen inerten Quarz-/Calcit-Stuecken hin- und herzuspringen.
+    Drei Enum-Werte (ja/nein/schwach), alphabetisch sortiert ergibt
+    ja/nein/schwach. Spiegelt magnetismus_in / by_magnetismus /
+    wert_pro_magnetismus auf die Sortier-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mag.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "schwach"),
+            ("OBJ_0002", "ja"),
+            ("OBJ_0003", "nein"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Magnetismus")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0002", "OBJ_0003", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Magnetismus", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0003", "OBJ_0002"]
+    c.close()
+
+
 def test_sort_by_gesteinsart(tmp_path):
     """Sortierung nach Gesteinsart gruppiert die Liste petrologisch.
 
