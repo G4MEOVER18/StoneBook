@@ -90,6 +90,13 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # passenden Stuecke beisammen sehen. Spiegelt beste_verwendung_in/by_beste_
     # verwendung/wert_pro_beste_verwendung auf die Sortier-Achse.
     "Beste_Verwendung",
+    # Kristallsystem als Sortier-Achse fuer kristallographische Vorbereitung:
+    # gruppiert die Liste nach Symmetrietyp (kubisch/tetragonal/hexagonal/
+    # trigonal/orthorhombisch/monoklin/triklin/amorph). Vor Mikroskop-/
+    # Diffraktometer-Sitzungen will man alle gleich-symmetrischen Stuecke
+    # nebeneinander sehen. Spiegelt kristallsystem_in/by_kristallsystem/
+    # wert_pro_kristallsystem auf die Sortier-Achse.
+    "Kristallsystem",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })

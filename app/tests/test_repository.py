@@ -172,6 +172,36 @@ def test_sort_by_seltenheit_und_nachfrage(tmp_path):
     c.close()
 
 
+def test_sort_by_kristallsystem(tmp_path):
+    """Sortierung nach Kristallsystem gruppiert die Liste kristallographisch.
+
+    Vor Mikroskop-/Diffraktometer-Sitzungen will man alle Stuecke gleicher
+    Symmetrie nebeneinander sehen - spiegelt kristallsystem_in /
+    by_kristallsystem / wert_pro_kristallsystem auf die Sortier-Achse.
+    Alphabetisch sortiert ergibt amorph/hexagonal/kubisch/monoklin/
+    orthorhombisch/tetragonal/trigonal/triklin.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ks.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "trigonal"),     # Quarz
+            ("OBJ_0002", "kubisch"),      # Pyrit
+            ("OBJ_0003", "amorph"),       # Obsidian
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Kristallsystem")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Kristallsystem", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_sort_by_beste_verwendung(tmp_path):
     """Sortierung nach Beste_Verwendung gruppiert die Liste nach Empfehlung.
 
