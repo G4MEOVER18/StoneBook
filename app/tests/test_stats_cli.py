@@ -540,6 +540,48 @@ def test_text_ausgabe_ohne_erstellt_am_jahr_keine_zeile(tmp_path, capsys):
     assert "Sammlung erfasst pro Monat:" not in out
 
 
+def test_text_ausgabe_zeigt_sammlung_erfasst_pro_jahrzehnt(tmp_path, capsys):
+    """Erfassungs-Dekaden-Block liegt unter dem Jahres-Block und ist chronologisch sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepd.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            # 2010er-Phase
+            ("OBJ_0001", "2014-05-12 09:00:00"),
+            ("OBJ_0002", "2018-11-03 16:45:00"),
+            # 2020er-Welle
+            ("OBJ_0003", "2024-01-15 09:00:00"),
+            ("OBJ_0004", "2025-06-13 14:30:00"),
+            ("OBJ_0005", "2026-06-19 08:45:00"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Jahrzehnt:" in out
+    block = out.split("Sammlung erfasst pro Jahrzehnt:", 1)[1]
+    # Chronologisch aufsteigend: 2010er vor 2020er
+    assert block.index("2010er") < block.index("2020er")
+    # Liegt unter dem Jahres-Block, ueber dem Monats-Block
+    assert (out.index("Sammlung erfasst pro Jahr:")
+            < out.index("Sammlung erfasst pro Jahrzehnt:")
+            < out.index("Sammlung erfasst pro Monat:"))
+
+
+def test_text_ausgabe_ohne_erstellt_am_jahrzehnt_keine_zeile(tmp_path, capsys):
+    """Leere DB → Erfassungs-Dekaden-Block bleibt aus (analog zum Jahres-Block)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepd0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Jahrzehnt:" not in out
+
+
 def test_text_ausgabe_zeigt_sammlung_erfasst_pro_monat(tmp_path, capsys):
     """Erfassungs-Saisonalitaet-Block liegt unter dem Jahres-Block und ist 01..12 sortiert."""
     from stonebook.db.database import open_db

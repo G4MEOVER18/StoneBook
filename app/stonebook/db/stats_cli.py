@@ -230,6 +230,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Sammlung erfasst pro Jahr:"]
         for jahr, n in st.by_erstellt_am_jahr.items():
             lines.append(f"  {jahr:40s} {n}")
+    if st.by_erstellt_am_jahrzehnt:
+        # Erfassungs-Dekaden-Histogramm: spiegelt "Funde pro Jahrzehnt" auf die
+        # Erfassungs-Achse. Grobe Sicht ohne Einzeljahres-Rauschen, macht
+        # uebergreifende Migrations-Wellen sichtbar (Excel-Welle 2020+ vs.
+        # handgepflegte 2010er-Phase). Reihenfolge bleibt chronologisch aus
+        # _count_erstellt_am_jahrzehnt (aelteste zuerst).
+        lines += ["", "Sammlung erfasst pro Jahrzehnt:"]
+        for dekade, n in st.by_erstellt_am_jahrzehnt.items():
+            lines.append(f"  {dekade:40s} {n}")
     if st.by_erstellt_am_monat:
         # Erfassungs-Saisonalitaet (01..12, ueber alle Jahre): direkt unter dem
         # Erfassungs-Jahres-Block, spiegelt "Funde pro Monat". Zeigt typische
