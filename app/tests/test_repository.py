@@ -832,6 +832,44 @@ def test_has_bruch_filter(tmp_path):
     c.close()
 
 
+def test_has_magnetismus_filter(tmp_path):
+    """has_magnetismus: dokumentierte Magnet-Reaktion (Eisen-Diagnose-Achse).
+
+    Magnetismus ist die Eisen-Diagnose-Achse (ja/schwach/nein) - der Test am
+    Neodym-Magneten ist schnell und zerstoerungsfrei, wird aber oft vergessen
+    oder bei offensichtlich nicht-magnetischen Stuecken nicht eingetragen.
+    Findet Stuecke ohne Magnet-Test fuer diagnostische Nachpflege, besonders
+    relevant bei dunklen/metallisch-glaenzenden Stuecken (Magnetit/Haematit/
+    Ilmenit-Trennung).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hmg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "ja"),         # Magnetit/Pyrrhotin
+            ("OBJ_0002", "schwach"),    # Haematit/Ilmenit
+            ("OBJ_0003", "nein"),       # Quarz/Calcit
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_magnetismus=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_magnetismus=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_magnetismus=None)) == 6
+    # Kombinierbar mit magnetismus_in (Schnittmenge): dokumentiert UND
+    # reagierend (ja/schwach), ohne die inerten Quarz-/Calcit-Stuecke.
+    rows = repo.list_objects(has_magnetismus=True,
+                             magnetismus_in=["ja", "schwach"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_spaltbarkeit_filter(tmp_path):
     """has_spaltbarkeit: dokumentierte Spaltbarkeit (Spaltflaechen-Achse).
 

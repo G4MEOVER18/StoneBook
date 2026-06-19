@@ -273,6 +273,7 @@ class ObjectRepo:
                      has_kristallsystem: bool | None = None,
                      has_bruch: bool | None = None,
                      has_spaltbarkeit: bool | None = None,
+                     has_magnetismus: bool | None = None,
                      has_fundort: bool | None = None,
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
@@ -532,6 +533,19 @@ class ObjectRepo:
         # Werkzeug-Setup-Achse vor Praeparier-/Polier-Sitzungen. Komplementaer
         # zum spaltbarkeit_in-Mengenfilter und zur Spaltbarkeit-Sortier-Spalte.
         _append_has_text_filter(where, has_spaltbarkeit, "Spaltbarkeit")
+        # has_magnetismus: tri-state Filter fuer dokumentierte Magnet-Reaktion.
+        # Magnetismus (ja/schwach/nein) ist die Eisen-Diagnose-Achse - der Test
+        # am Neodym-Magneten ist schnell und zerstoerungsfrei, wird aber oft
+        # vergessen oder bei offensichtlich nicht-magnetischen Stuecken (Quarz/
+        # Calcit) ueberhaupt nicht eingetragen. Findet Stuecke ohne Magnet-Test
+        # fuer diagnostische Nachpflege - besonders relevant bei dunklen/
+        # metallisch-glaenzenden Stuecken (Magnetit vs. Haematit vs. Ilmenit
+        # unterscheidet sich vor allem in der Magnet-Reaktion). Komplementaer
+        # zu has_bruch/has_spaltbarkeit (physikalische Diagnose) und zu
+        # has_uv_reaktion/has_hcl_reaktion (chemische Diagnose); spiegelt
+        # magnetismus_in (konkrete Reaktions-Klassen) und die Magnetismus-
+        # Sortier-Spalte (Magnet-Sitzungs-Vorbereitung).
+        _append_has_text_filter(where, has_magnetismus, "Magnetismus")
         # has_fundort: tri-state Filter fuer dokumentierten Fundort.
         # Der Fundort ist die Standort-Achse der Sammlung (Berg/Steinbruch/Boerse)
         # und Voraussetzung fuer alle ortsbezogenen Auswertungen (by_fundort,
