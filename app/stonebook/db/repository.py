@@ -130,6 +130,16 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # ergibt deutlich/gut/keine/undeutlich/vollkommen. Spiegelt spaltbarkeit_in/
     # by_spaltbarkeit/wert_pro_spaltbarkeit auf die Sortier-Achse.
     "Spaltbarkeit",
+    # Bruch als Sortier-Achse fuer Bruchverhalten-Fotografie (Kantenlicht-
+    # Session) und Verletzungs-Risiko-Sortierung: gruppiert die Liste nach
+    # Bruchverhalten (muschelig/uneben/splittrig/faserig/erdig/glatt) -
+    # komplementaer zu Spaltbarkeit (Spaltflaechen): muschelig brechende
+    # Quarz-/Obsidian-Stuecke erzeugen scharfe Kanten, splittrige Stuecke noch
+    # mehr - die Sortier-Achse hilft beim Beisammen-Halten der Hand-Vorsichts-
+    # Klassen vor Polier-/Schneid-Sitzungen. Sechs Enum-Werte, alphabetisch
+    # ergibt erdig/faserig/glatt/muschelig/splittrig/uneben. Spiegelt bruch_in/
+    # by_bruch/wert_pro_bruch auf die Sortier-Achse.
+    "Bruch",
     "erstellt_am", "geaendert_am",
     "bilder", "gesamtwert_chf",
 })

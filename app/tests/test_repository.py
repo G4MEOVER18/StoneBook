@@ -356,6 +356,38 @@ def test_sort_by_spaltbarkeit(tmp_path):
     c.close()
 
 
+def test_sort_by_bruch(tmp_path):
+    """Sortierung nach Bruch gruppiert die Liste nach Bruchverhalten.
+
+    Komplementaer zur Sortierung nach Spaltbarkeit (Spaltflaechen): muschelig
+    brechende Quarz-/Obsidian-Stuecke erzeugen scharfe Kanten, splittrige noch
+    mehr - die Sortier-Achse hilft beim Beisammen-Halten der Hand-Vorsichts-
+    Klassen vor Polier-/Schneid-Sitzungen. Sechs Enum-Werte (muschelig/uneben/
+    splittrig/faserig/erdig/glatt), alphabetisch sortiert ergibt erdig/faserig/
+    glatt/muschelig/splittrig/uneben. Spiegelt bruch_in / by_bruch /
+    wert_pro_bruch auf die Sortier-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "br.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "muschelig"),
+            ("OBJ_0002", "faserig"),
+            ("OBJ_0003", "erdig"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Bruch")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["obj_id"] == "OBJ_0004"  # NULL ans Ende
+    rows = repo.list_objects(sort_by="Bruch", sort_desc=True)
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_sort_by_gesteinsart(tmp_path):
     """Sortierung nach Gesteinsart gruppiert die Liste petrologisch.
 
