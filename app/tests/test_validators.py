@@ -409,11 +409,17 @@ def test_parse_iso_date_mehrjahres_spanne():
     assert parse_iso_date("1900-2000") == "1900-01-01"
     # En-Dash (U+2013, typografische Spanne-Notation)
     assert parse_iso_date("1950–1960") == "1950-01-01"
+    # Em-Dash (U+2014, Word-Autoformat in deutschen Texten fuer Spannen)
+    assert parse_iso_date("1950—1960") == "1950-01-01"
+    # Minus-Zeichen (U+2212, typografisch sauberes Print-/LaTeX-Minus)
+    assert parse_iso_date("1950−1960") == "1950-01-01"
     # Slash-Separator (Tagebuecher mit Schraegstrich-Trenner)
     assert parse_iso_date("1950/1960") == "1950-01-01"
     # Mit Whitespace um den Separator
     assert parse_iso_date("1950 - 1960") == "1950-01-01"
     assert parse_iso_date("1950 – 1960") == "1950-01-01"
+    assert parse_iso_date("1950 — 1960") == "1950-01-01"
+    assert parse_iso_date("1950 − 1960") == "1950-01-01"
     assert parse_iso_date("1950 / 1960") == "1950-01-01"
     # Inverted Spanne (Tippfehler) → erstes Jahr, spiegelt parse_range
     assert parse_iso_date("1985-1980") == "1985-01-01"

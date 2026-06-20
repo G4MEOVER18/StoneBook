@@ -30,15 +30,20 @@ _DECADE = re.compile(
 # und 1960" als Range-Notation). Konvention: Startjahr als ISO-Datum (Spanne-
 # Start), spiegelt die Dekaden-Konvention (1980er → 1980-01-01 = Dekaden-
 # Start) - die Range-Annotation bleibt im Freitext (notizen). Sowohl ASCII-
-# Bindestrich als auch En-Dash (U+2013) als typografische Spanne-Notation
-# werden akzeptiert; Slash als Alternativ-Separator deckt "1950/1960"-Varianten
-# ab (kommt in Tagebuechern mit Schraegstrich-Trenner vor). Beide Jahre muessen
-# in [1800, 2999] liegen; inverted Spanne ("1985-1980", Tippfehler) liefert das
-# erste Jahr, spiegelt das parse_range-Verhalten auf die Jahres-Achse.
+# Bindestrich als auch En-Dash (U+2013), Em-Dash (U+2014) und Minus-Zeichen
+# (U+2212) als typografische Spanne-Notation werden akzeptiert; Slash als
+# Alternativ-Separator deckt "1950/1960"-Varianten ab (kommt in Tagebuechern
+# mit Schraegstrich-Trenner vor). Em-Dash setzt Word-Autoformat in deutschen
+# Texten oft fuer "von-bis"-Spannen ("1950—1960"), das Minus-Zeichen kommt in
+# typografisch sauber gesetzten Print-Katalogen und LaTeX-Exporten vor, wo
+# der Setzer das mathematische Minus (statt ASCII-Hyphen) verwendet.
+# Beide Jahre muessen in [1800, 2999] liegen; inverted Spanne ("1985-1980",
+# Tippfehler) liefert das erste Jahr, spiegelt das parse_range-Verhalten auf
+# die Jahres-Achse.
 # Vor _YEAR_MONTH geprueft, damit "1950-12" weiterhin als YYYY-MM gilt (zwei
 # 4-Ziffer-Anker schliessen das aus: Monat-Form hat 1-2 Ziffern im zweiten
 # Teil); kollisionsfrei zu _MONTH_NUMERIC_YEAR (1-2 + 4 Ziffern).
-_YEAR_RANGE = re.compile(r"^\s*(\d{4})\s*[-–/]\s*(\d{4})\s*$")
+_YEAR_RANGE = re.compile(r"^\s*(\d{4})\s*[-–—−/]\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
