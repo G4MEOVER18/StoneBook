@@ -256,8 +256,14 @@ _DMS = re.compile(
     re.VERBOSE,
 )
 _DECIMAL_PAIR = re.compile(
+    # Tab in der Separator-Klasse deckt TSV-Exporte (Tab-getrennte Excel-/
+    # GPS-Tools) ab: "46.5\t7.5" ist dort verbreitet, aber bisher fiel die
+    # Eingabe auf None, weil nur Leerzeichen/Komma/Semikolon/Slash erkannt
+    # wurden. Spiegelt das Komma/Semikolon-Verhalten auf den Tab-Separator,
+    # ohne die bestehenden Separatoren zu beruehren - re.VERBOSE behandelt
+    # \t als gewoehnliches Tab-Literal innerhalb der Zeichenklasse.
     r"""([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # erste Zahl + opt. Richtung
-        \s*[ ,;/]\s*
+        \s*[ \t,;/]\s*
         ([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # zweite Zahl + opt. Richtung
     """,
     re.VERBOSE,

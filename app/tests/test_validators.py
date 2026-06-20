@@ -932,6 +932,27 @@ def test_parse_coordinates_compact_suffix_ohne_separator():
     assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
 
 
+def test_parse_coordinates_tab_separator():
+    """Tab als Separator (TSV-Exporte, Tab-getrennte GPS-/Excel-Spalten)."""
+    # Reines Tab-Separator-Paar
+    assert parse_coordinates("46.5\t7.5") == (46.5, 7.5)
+    assert parse_coordinates("46,5\t7,5") == (46.5, 7.5)
+    # Tab + Whitespace-Padding (Spalten in Tab-Tabellen mit zusaetzlichem Padding)
+    assert parse_coordinates("46.5 \t 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5\t\t7.5") == (46.5, 7.5)
+    # Mit Vorzeichen / Grad-Symbol / Richtung
+    assert parse_coordinates("-46.5\t-7.5") == (-46.5, -7.5)
+    assert parse_coordinates("+46.5\t+7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5°N\t7.5°E") == (46.5, 7.5)
+    assert parse_coordinates("46.5° S\t7.5° W") == (-46.5, -7.5)
+    # Out-of-range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("100\t50") is None
+    # Bestehende Separatoren weiterhin gueltig (kein Regress)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None
