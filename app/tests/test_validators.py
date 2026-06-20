@@ -393,9 +393,16 @@ def test_parse_iso_date_relative_jahresposition_ungueltig():
     assert parse_iso_date("Anfang März 2024") is None
     # Bestehende Saison-Notation bleibt unveraendert (kein Regress)
     assert parse_iso_date("Sommer 2024") == "2024-06-01"
-    # Decade-Spans wie "late 1980s" / "Anfang der 1980er" sind mehrdeutig → None
-    # (Dekaden-Notation allein wird weiterhin als 1980-01-01 erkannt)
-    assert parse_iso_date("late 1980s") is None
+    # Dekaden-Position ("late 1980s", "Anfang 1980er") wird ueber das eigene
+    # _RELATIVE_DECADE-Pattern auf das jeweilige Jahr in der Dekade gemappt
+    # (Anfang=Jahr 0, Mitte=Jahr 5, Ende=Jahr 9) - siehe
+    # ``test_parse_iso_date_relative_dekade``. Frueher fielen beide auf None
+    # (mit Begruendung "mehrdeutig"), inzwischen sind sie eindeutig verortet.
+    assert parse_iso_date("late 1980s") == "1989-01-01"
+    assert parse_iso_date("Anfang 1980er") == "1980-01-01"
+    # "Anfang der 1980er" mit Artikel-Fueller bleibt None (nicht im Vokabular,
+    # eindeutiges Stripping waere willkuerlich) - die Form ist in praktischen
+    # Sammler-Notizen extrem selten ("Anfang 1980er" ist die uebliche Form).
     assert parse_iso_date("Anfang der 1980er") is None
 
 
@@ -433,6 +440,59 @@ def test_parse_iso_date_jahrzehnt_ungueltig():
     assert parse_iso_date("3000er") is None
     # Kein Jahrzehnt ohne Suffix
     assert parse_iso_date("1980 j") is None
+
+
+def test_parse_iso_date_relative_dekade():
+    """Relative Position innerhalb einer Dekade ('Mitte 1980er', 'mid-1990s',
+    'Late 2000s') spiegelt _RELATIVE_YEAR auf die Dekaden-Achse.
+
+    Konvention: Anfang/early=Jahr 0, Mitte/mid=Jahr 5, Ende/late=Jahr 9.
+    """
+    # Deutsche Varianten
+    assert parse_iso_date("Anfang 1980er") == "1980-01-01"
+    assert parse_iso_date("Mitte 1980er") == "1985-01-01"
+    assert parse_iso_date("Ende 1980er") == "1989-01-01"
+    assert parse_iso_date("Anfang 1990er") == "1990-01-01"
+    assert parse_iso_date("Mitte 2000er") == "2005-01-01"
+    assert parse_iso_date("Ende 1990er") == "1999-01-01"
+    # Mit "Jahre"-Trailer (wie _DECADE)
+    assert parse_iso_date("Anfang 1990er Jahre") == "1990-01-01"
+    assert parse_iso_date("Mitte 1980er Jahre") == "1985-01-01"
+    # Englische Varianten
+    assert parse_iso_date("early 1980s") == "1980-01-01"
+    assert parse_iso_date("mid 1980s") == "1985-01-01"
+    assert parse_iso_date("late 1990s") == "1999-01-01"
+    # Englisch mit Bindestrich (sehr verbreitet: "mid-1990s")
+    assert parse_iso_date("Mid-1980s") == "1985-01-01"
+    assert parse_iso_date("Late-1990s") == "1999-01-01"
+    assert parse_iso_date("Early-2000s") == "2000-01-01"
+    # Case-insensitive
+    assert parse_iso_date("MITTE 1980er") == "1985-01-01"
+    assert parse_iso_date("MID 1980s") == "1985-01-01"
+    # Kombination mit bestehenden Modifikatoren
+    assert parse_iso_date("ca. Mitte 1980er") == "1985-01-01"
+    assert parse_iso_date("(Late 1990s)") == "1999-01-01"
+    assert parse_iso_date("Mitte 1980er.") == "1985-01-01"
+
+
+def test_parse_iso_date_relative_dekade_ungueltig_und_disjunkt():
+    """Out-of-Range, fehlende Suffixe, unbekannte Schluesselwoerter → None.
+    Disjunkt zu _RELATIVE_YEAR und _DECADE (kein Regress)."""
+    # 2-stellige Dekade (mehrdeutig, spiegelt _DECADE-Ablehnung)
+    assert parse_iso_date("Anfang 80er") is None
+    assert parse_iso_date("Mid 90s") is None
+    # Jahr ausserhalb [1800, 2999]
+    assert parse_iso_date("Mitte 1700er") is None
+    assert parse_iso_date("Anfang 3000er") is None
+    # Unbekanntes Position-Wort
+    assert parse_iso_date("Foo 1980er") is None
+    assert parse_iso_date("herum 1980er") is None
+    # Disjunkt zu _RELATIVE_YEAR: "Mitte 1980" (ohne er/s) bleibt Juli 1980
+    assert parse_iso_date("Mitte 1980") == "1980-07-01"
+    assert parse_iso_date("Mid-2024") == "2024-07-01"
+    # Disjunkt zu _DECADE: "1980er" ohne Position bleibt Dekaden-Start
+    assert parse_iso_date("1980er") == "1980-01-01"
+    assert parse_iso_date("1990s") == "1990-01-01"
 
 
 def test_parse_iso_date_mehrjahres_spanne():

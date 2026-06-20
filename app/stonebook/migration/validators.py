@@ -366,6 +366,45 @@ _RELATIVE_YEAR = re.compile(
     re.IGNORECASE,
 )
 
+# Relative Position innerhalb einer Dekade ("Anfang 1980er", "Mitte 1980er",
+# "Ende 1990s", "early 1980s", "mid-1990s", "late 2000s"). Spiegelt
+# _RELATIVE_YEAR (relative Position innerhalb eines Jahres) auf die Dekaden-
+# Achse - in geerbten Sammlungs-Notizen sehr verbreitet ("Funde aus den
+# fruehen 80ern", "mid-1990s collection"), weil Sammler den Fundzeitpunkt
+# oft nicht exakt jahrweise wissen, aber die Dekaden-Phase grob erinnern.
+# Bisher fielen beide Sprach-Varianten und alle drei Positionen stille auf
+# None, obwohl semantisch eindeutig in die Dekade verortbar.
+#
+# Konvention: Offset innerhalb der Dekade (0-9):
+#   Anfang/early → 0  (Dekaden-Startjahr, z.B. 1980)
+#   Mitte/mid    → 5  (Dekaden-Mitte, z.B. 1985)
+#   Ende/late    → 9  (Dekaden-Endjahr, z.B. 1989)
+# Spiegelt das _RELATIVE_MONTHS-Schema (Anfang=1/Mitte=7/Ende=12 als Mona-
+# tszahlen) auf die 10er-Skala. "Ende 1980er" liefert 1989-01-01 (letztes
+# Jahr der Dekade), "Mitte 1980er" liefert 1985-01-01 (5. Jahr der Dekade),
+# "Anfang 1980er" liefert 1980-01-01 (deckungsgleich mit _DECADE "1980er",
+# der ebenfalls den Dekaden-Start liefert - "early" und der reine
+# Dekaden-Marker meinen praktisch dasselbe).
+#
+# Pattern verlangt vierstellige Dekaden-Anker (wie _DECADE) und akzeptiert
+# beide Dekaden-Suffix-Varianten ("er" DE-Konvention, "s" EN-Konvention)
+# samt optionalem "Jahre"-Trailer. Separator zwischen Schluesselwort und
+# Decade-Anker: Whitespace oder Bindestrich (EN "mid-1990s" ist sehr
+# verbreitet, DE "Anfang-1980er" eher selten aber spec-konform). Wird
+# disjunkt zu _RELATIVE_YEAR gefuehrt (das Pattern verlangt das er/s-Suffix,
+# _RELATIVE_YEAR verbietet es implizit durch $) und disjunkt zu _DECADE
+# (das ohne Schluesselwort-Praefix matched).
+_RELATIVE_DECADE_OFFSETS: dict[str, int] = {
+    "anfang": 0, "early": 0,
+    "mitte": 5, "mid": 5,
+    "ende": 9, "late": 9,
+}
+_RELATIVE_DECADE = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+(\d{4})(?:[\- ]?(?:er|s))"
+    r"(?:\s+jahre)?\s*$",
+    re.IGNORECASE,
+)
+
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
@@ -699,6 +738,18 @@ def parse_iso_date(text) -> str | None:
         h = int(m.group(2) or m.group(3))
         if 1800 <= year <= 2999:
             return f"{year:04d}-{_HALFYEAR_MONTHS[h]:02d}-01"
+    # Relative Position innerhalb einer Dekade ("Anfang/Mitte/Ende 1980er",
+    # "early/mid/late 1990s", "Mid-1980s"). Vor _RELATIVE_YEAR geprueft -
+    # die Patterns sind disjunkt (Dekaden-Pattern verlangt er/s-Suffix), aber
+    # die Reihenfolge bleibt vom Spezifischen zum Allgemeinen lesbarer.
+    # Konvention: Anfang→Jahr 0 der Dekade, Mitte→Jahr 5, Ende→Jahr 9.
+    m = _RELATIVE_DECADE.match(s)
+    if m:
+        offset = _RELATIVE_DECADE_OFFSETS[m.group(1).lower()]
+        decade_anchor = int(m.group(2))
+        if 1800 <= decade_anchor <= 2999:
+            return f"{decade_anchor + offset:04d}-01-01"
+        return None
     # Relative Jahresposition ("Anfang/Mitte/Ende 2024", "early/mid/late 2024",
     # "mid-2024"). Vor _SEASON_YEAR geprueft, damit die Schluesselwoerter nicht
     # erst als unbekannter Saison-Name auf None fallen.
