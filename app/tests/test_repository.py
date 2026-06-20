@@ -536,6 +536,48 @@ def test_has_ki_analyse_filter(tmp_path):
     c.close()
 
 
+def test_has_ki_analyse_uebernommen_filter(tmp_path):
+    """has_ki_analyse_uebernommen findet Objekte mit mind. einem uebernommenen Vorschlag."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hkiu.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",), ("OBJ_0005",)],
+    )
+    # OBJ_0001: zwei Analysen, eine uebernommen.
+    # OBJ_0002: zwei Analysen, beide nicht uebernommen (NULL / leerer String).
+    # OBJ_0003: eine Analyse, nicht uebernommen.
+    # OBJ_0004: gar keine Analyse.
+    # OBJ_0005: eine Analyse, vollstaendig uebernommen.
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json, uebernommen_json) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "claude-sonnet-4-6", "{}", '{"a":1}'),
+            ("OBJ_0001", "claude-opus-4-7", "{}", None),
+            ("OBJ_0002", "claude-sonnet-4-6", "{}", None),
+            ("OBJ_0002", "claude-sonnet-4-6", "{}", ""),
+            ("OBJ_0003", "claude-sonnet-4-6", "{}", "   "),
+            ("OBJ_0005", "claude-sonnet-4-6", "{}", '{"x":42}'),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Wahr: OBJ_0001 (eine uebernommene Analyse) und OBJ_0005 (alles uebernommen)
+    assert [r["obj_id"] for r in repo.list_objects(has_ki_analyse_uebernommen=True)] \
+        == ["OBJ_0001", "OBJ_0005"]
+    # Falsch: OBJ_0002 (analysiert, aber nichts uebernommen), OBJ_0003 (Whitespace zaehlt
+    # wie leer), OBJ_0004 (keine Analyse vorhanden = trivially "noch nichts uebernommen")
+    assert [r["obj_id"] for r in repo.list_objects(has_ki_analyse_uebernommen=False)] \
+        == ["OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # None laesst alle durch
+    assert len(repo.list_objects(has_ki_analyse_uebernommen=None)) == 5
+    # Verworfene KI-Vorschlaege: KI-Lauf gemacht, aber nichts uebernommen
+    rows = repo.list_objects(has_ki_analyse=True, has_ki_analyse_uebernommen=False)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    c.close()
+
+
 def test_has_alias_filter(tmp_path):
     """has_alias trennt gemergte Kanon-Objekte von nicht-gemergten Originalen."""
     from stonebook.db.database import open_db

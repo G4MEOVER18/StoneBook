@@ -279,6 +279,7 @@ class ObjectRepo:
                      has_dichte: bool | None = None,
                      has_dimensionen: bool | None = None,
                      has_ki_analyse: bool | None = None,
+                     has_ki_analyse_uebernommen: bool | None = None,
                      has_alias: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
@@ -608,6 +609,28 @@ class ObjectRepo:
         elif has_ki_analyse is False:
             where.append(
                 "NOT EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id)")
+        # has_ki_analyse_uebernommen: tri-state Filter fuer Objekte mit mindestens
+        # einer uebernommenen KI-Analyse. Feinere Granularitaet als has_ki_analyse:
+        # ein KI-Lauf erzeugt zunaechst nur einen Antwort-Eintrag (antwort_json);
+        # erst wenn der User Vorschlaege auf Objektfelder uebernimmt, wird
+        # uebernommen_json gesetzt. has_ki_analyse_uebernommen=True ist also "die
+        # KI hat geliefert UND der User hat zugegriffen", komplementaer zu
+        # has_ki_analyse=True (Lauf gemacht) und has_confidence=True (Sicherheit
+        # gesetzt). Kombination has_ki_analyse=True + has_ki_analyse_uebernommen=
+        # False findet KI-Laeufe, die verworfen wurden (Vorschlaege passten nicht,
+        # Objekt blieb wie es war) - typische Pflege-Frage vor Re-Analyse-Batch.
+        # Spiegelt die ki_analysen_uebernommen-Statistik (zaehlt Eintraege mit
+        # gesetztem uebernommen_json) auf den Listen-Filter.
+        if has_ki_analyse_uebernommen is True:
+            where.append(
+                "EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id "
+                "AND k.uebernommen_json IS NOT NULL "
+                "AND TRIM(k.uebernommen_json) != '')")
+        elif has_ki_analyse_uebernommen is False:
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id "
+                "AND k.uebernommen_json IS NOT NULL "
+                "AND TRIM(k.uebernommen_json) != '')")
         # has_alias: tri-state Filter fuer Objekte mit/ohne Alias-Eintrag.
         # Aliases speichern die alten Objekt-IDs nach einem Merge (~30 dokumen-
         # tierte Duplikat-Gruppen aus der Migration plus spaeter manuell ueber
