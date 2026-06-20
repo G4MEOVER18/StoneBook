@@ -177,6 +177,28 @@ def _append_has_text_filter(where: list[str], value: bool | None, column: str) -
         where.append(f"(o.{column} IS NULL OR TRIM(o.{column}) = '')")
 
 
+def _append_has_related_filter(where: list[str], value: bool | None,
+                               table: str, fk_column: str,
+                               extra_where: str = "") -> None:
+    """tri-state Filter: existiert mind. ein verknuepfter Eintrag in ``table``?
+
+    Konsolidiert die has_bilder/has_ki_analyse/has_alias/has_ki_analyse_uebernommen-
+    Bloecke: alle folgen dem ``EXISTS (SELECT 1 FROM <table> r WHERE r.<fk> =
+    o.obj_id [AND <extra>])``-Muster. ``table``/``fk_column``/``extra_where`` sind
+    callerseitig hardcodiert (Whitelist-Validierung implizit, keine SQL-Injection-
+    Flaeche - der Caller setzt nie Nutzereingaben hierher). ``extra_where``
+    erlaubt zusaetzliche Bedingungen auf die verknuepfte Tabelle ("nur uebernommene
+    Analysen", "nur Bilder einer bestimmten Kategorie"); ``None``-Wert bleibt
+    no-op, ``True`` ergibt EXISTS, ``False`` ergibt NOT EXISTS.
+    """
+    if value is None:
+        return
+    extra = f" AND {extra_where}" if extra_where else ""
+    inner = (f"SELECT 1 FROM {table} r WHERE r.{fk_column} = o.obj_id{extra}")
+    keyword = "EXISTS" if value else "NOT EXISTS"
+    where.append(f"{keyword} ({inner})")
+
+
 def _append_scale_1_10_filter(where: list[str], params: list,
                               name: str, column: str,
                               val_min: int | None, val_max: int | None) -> None:
@@ -394,10 +416,7 @@ class ObjectRepo:
         # noch nicht gesetzt ist (kein Konflikt zwischen den beiden Flags).
         effective_has_bilder = has_bilder if has_bilder is not None else (
             True if only_images else None)
-        if effective_has_bilder is True:
-            where.append("EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
-        elif effective_has_bilder is False:
-            where.append("NOT EXISTS (SELECT 1 FROM images i WHERE i.obj_id = o.obj_id)")
+        _append_has_related_filter(where, effective_has_bilder, "images", "obj_id")
         # has_image_kategorie: nur Objekte mit mindestens einem Bild der genannten Kategorie.
         # missing_image_kategorie: nur Objekte ohne Bild dieser Kategorie - typische
         # Foto-Workflow-Frage ("welche Objekte fehlen UV365-Aufnahmen?").
@@ -603,12 +622,7 @@ class ObjectRepo:
         # ohne dass je eine KI-Analyse abgespeichert wurde. ki_analysen.obj_id
         # ist FK auf objects.obj_id mit ON DELETE CASCADE - geloeschte Objekte
         # haben automatisch keine verwaisten Analyse-Eintraege.
-        if has_ki_analyse is True:
-            where.append(
-                "EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id)")
-        elif has_ki_analyse is False:
-            where.append(
-                "NOT EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id)")
+        _append_has_related_filter(where, has_ki_analyse, "ki_analysen", "obj_id")
         # has_ki_analyse_uebernommen: tri-state Filter fuer Objekte mit mindestens
         # einer uebernommenen KI-Analyse. Feinere Granularitaet als has_ki_analyse:
         # ein KI-Lauf erzeugt zunaechst nur einen Antwort-Eintrag (antwort_json);
@@ -621,16 +635,10 @@ class ObjectRepo:
         # Objekt blieb wie es war) - typische Pflege-Frage vor Re-Analyse-Batch.
         # Spiegelt die ki_analysen_uebernommen-Statistik (zaehlt Eintraege mit
         # gesetztem uebernommen_json) auf den Listen-Filter.
-        if has_ki_analyse_uebernommen is True:
-            where.append(
-                "EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id "
-                "AND k.uebernommen_json IS NOT NULL "
-                "AND TRIM(k.uebernommen_json) != '')")
-        elif has_ki_analyse_uebernommen is False:
-            where.append(
-                "NOT EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id "
-                "AND k.uebernommen_json IS NOT NULL "
-                "AND TRIM(k.uebernommen_json) != '')")
+        _append_has_related_filter(
+            where, has_ki_analyse_uebernommen, "ki_analysen", "obj_id",
+            extra_where="r.uebernommen_json IS NOT NULL "
+                        "AND TRIM(r.uebernommen_json) != ''")
         # has_alias: tri-state Filter fuer Objekte mit/ohne Alias-Eintrag.
         # Aliases speichern die alten Objekt-IDs nach einem Merge (~30 dokumen-
         # tierte Duplikat-Gruppen aus der Migration plus spaeter manuell ueber
@@ -642,12 +650,7 @@ class ObjectRepo:
         # die parallele Existenz-Pruefung in einer verknuepften Tabelle
         # (aliases.canonical_id ist FK auf objects.obj_id mit ON DELETE CASCADE -
         # geloeschte Objekte hinterlassen keine verwaisten Alias-Eintraege).
-        if has_alias is True:
-            where.append(
-                "EXISTS (SELECT 1 FROM aliases a WHERE a.canonical_id = o.obj_id)")
-        elif has_alias is False:
-            where.append(
-                "NOT EXISTS (SELECT 1 FROM aliases a WHERE a.canonical_id = o.obj_id)")
+        _append_has_related_filter(where, has_alias, "aliases", "canonical_id")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
