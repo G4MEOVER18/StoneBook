@@ -771,6 +771,28 @@ def test_parse_coordinates_himmelsrichtung_vollnamen():
     assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
 
 
+def test_parse_coordinates_compact_suffix_ohne_separator():
+    """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
+    # Reine Suffix-Form ohne Whitespace
+    assert parse_coordinates("46.5N7.5E") == (46.5, 7.5)
+    assert parse_coordinates("46.5S7.5W") == (-46.5, -7.5)
+    assert parse_coordinates("46.5N7.5O") == (46.5, 7.5)
+    # Mit Grad-Symbol
+    assert parse_coordinates("46.5°N7.5°E") == (46.5, 7.5)
+    # Case-insensitive
+    assert parse_coordinates("46.5n7.5e") == (46.5, 7.5)
+    # Mit teilweisem Whitespace (kein Komma/Slash-Separator)
+    assert parse_coordinates("46.5N 7.5E") == (46.5, 7.5)
+    # Reihenfolge lon, lat (Suffix-Direction reorientiert korrekt)
+    assert parse_coordinates("7.5E46.5N") == (46.5, 7.5)
+    # Out-of-range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("100N50E") is None
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None

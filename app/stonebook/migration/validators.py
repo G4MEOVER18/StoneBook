@@ -237,6 +237,22 @@ _PREFIX_PAIR = re.compile(
     """,
     re.VERBOSE,
 )
+# Compact Suffix-Form ohne expliziten Separator: ``46.5N7.5E``, ``46.5°N7.5°E``,
+# ``46.5N 7.5E`` (Whitespace optional). Tritt in komprimierten GPS-Strings
+# (Online-Tools, GPX-Captions) und Hand-Notizen auf, wenn der Schreiber Platz
+# spart. Spiegelt _PREFIX_PAIR (Richtung+Zahl) als Suffix-Variante (Zahl+Richtung);
+# beide Richtungen sind hier obligatorisch, weil sie als impliziter Separator
+# zwischen den zwei Zahlen dienen (ohne Richtung waere die Eingabe ``46.57.5``
+# nicht eindeutig in zwei Zahlen zerlegbar). Wird nach _DECIMAL_PAIR geprueft,
+# damit das bestehende Verhalten fuer ``46.5N 7.5E`` (mit Separator) erhalten
+# bleibt; greift nur dort, wo der separator-basierte Fallback nichts findet.
+_SUFFIX_PAIR_NO_SEP = re.compile(
+    r"""(\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])  # Zahl + Richtung (obligatorisch)
+        \s*
+        (\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])  # Zahl + Richtung (obligatorisch)
+    """,
+    re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -553,6 +569,18 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         return _validate(lat, lon)
 
     m = _DECIMAL_PAIR.search(s)
+    if m:
+        n1, d1, n2, d2 = m.groups()
+        a = _to_float(n1) * _sign(d1)
+        b = _to_float(n2) * _sign(d2)
+        lat, lon = _orient(a, d1, b, d2)
+        return _validate(lat, lon)
+
+    # Compact-Suffix-Form ohne Separator: "46.5N7.5E" / "46.5°N7.5°E".
+    # Letzter Versuch, weil die obligatorische Richtungs-Anwesenheit hier eindeutig
+    # ist und keine der frueheren Patterns matcht (kein Separator zwischen Zahl
+    # und naechster Richtung).
+    m = _SUFFIX_PAIR_NO_SEP.search(s)
     if m:
         n1, d1, n2, d2 = m.groups()
         a = _to_float(n1) * _sign(d1)
