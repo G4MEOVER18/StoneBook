@@ -1038,6 +1038,43 @@ def test_has_spaltbarkeit_filter(tmp_path):
     c.close()
 
 
+def test_has_glanz_filter(tmp_path):
+    """has_glanz: dokumentierter Glanz (optische Oberflaechen-Reflexions-Achse).
+
+    Glanz ist die zentrale optische Diagnose- und Foto-Setup-Achse (glasig/
+    wachsig/matt/metallisch/fettig/seidig/perlmutt) - die Beleuchtung wird auf
+    den Glanz abgestimmt (diffus gegen Spiegelung bei glasig, Streiflicht zur
+    Akzentuierung bei metallisch). Findet Stuecke, an denen der Glanz-Eintrag
+    nachzuholen ist - typischerweise erste Felddatenpflege, weil der Glanz
+    unmittelbar sichtbar ist und keinen Test (Hammer/Saeure/Magnet) braucht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hgl.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "glasig"),     # Quarz/Calcit
+            ("OBJ_0002", "metallisch"), # Galenit/Pyrit
+            ("OBJ_0003", "matt"),       # Erdige Mineralien
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_glanz=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_glanz=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_glanz=None)) == 6
+    # Kombinierbar mit glanz_in (Schnittmenge): dokumentiert UND glasig/metallisch
+    # fuer die zwei "schwierigen" Foto-Setups (Spiegelungs- vs. Reflex-Lichtfuehrung).
+    rows = repo.list_objects(has_glanz=True, glanz_in=["glasig", "metallisch"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_kristallsystem_filter(tmp_path):
     """has_kristallsystem: dokumentierter Symmetrietyp (kristallographische Hauptachse)."""
     from stonebook.db.database import open_db

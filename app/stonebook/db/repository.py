@@ -293,6 +293,7 @@ class ObjectRepo:
                      has_reaktionshinweis: bool | None = None,
                      has_farbe: bool | None = None,
                      has_kristallsystem: bool | None = None,
+                     has_glanz: bool | None = None,
                      has_bruch: bool | None = None,
                      has_spaltbarkeit: bool | None = None,
                      has_magnetismus: bool | None = None,
@@ -533,6 +534,21 @@ class ObjectRepo:
         # bestaenden haeufig leer. Komplementaer zum kristallsystem_in-Mengen-
         # filter, der konkrete Symmetrien selektiert; hier nur die Anwesenheit.
         _append_has_text_filter(where, has_kristallsystem, "Kristallsystem")
+        # has_glanz: tri-state Filter fuer dokumentierten Glanz.
+        # Glanz (glasig/wachsig/matt/metallisch/fettig/seidig/perlmutt) ist die
+        # optische Oberflaechen-Reflexions-Achse - zentrales Diagnose- und
+        # Foto-Setup-Kriterium: glasige Quarz-/Calcit-Stuecke brauchen
+        # diffuse Beleuchtung gegen Spiegelung, metallische Galenit-/Pyrit-
+        # Stuecke profitieren von Streiflicht zur Akzentuierung der Reflexe,
+        # matte/erdige Stuecke vertragen direktes Licht. Komplementaer zu
+        # has_transparenz (Lichtdurchlaessigkeit) auf die optische Diagnose-
+        # Achse; ergaenzt glanz_in (konkrete Klassen-Auswahl), by_glanz (Verteilung)
+        # und wert_pro_glanz (Wertbeitrag) sowie die Glanz-Sortier-Spalte
+        # (gleiches Licht-Setup beisammen vor Foto-Sitzungen). Findet Stuecke
+        # ohne dokumentierten Glanz fuer Foto-/Diagnose-Nachpflege - oft die
+        # erste Felddatenpflege, weil der Glanz unmittelbar sichtbar ist und
+        # keinen separaten Test (Hammer/Saeure/Magnet) erfordert.
+        _append_has_text_filter(where, has_glanz, "Glanz")
         # has_bruch: tri-state Filter fuer dokumentiertes Bruchverhalten.
         # Bruch (muschelig/uneben/splittrig/faserig/erdig/glatt) ist die
         # Bruchflaechen-Achse - komplementaer zu has_spaltbarkeit (Spaltflaechen
