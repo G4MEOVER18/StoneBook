@@ -659,6 +659,17 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     s = str(text).strip()
     if not s:
         return None
+    # Typografisches Minus-Zeichen (U+2212) auf ASCII-Hyphen normalisieren, damit
+    # negative Koordinaten aus typeset-Quellen (Print-Katalogen, PDFs aus LaTeX-
+    # /Word-Autoformat, GPS-Tools mit "smart punctuation") nicht stille Lat/Lon-
+    # Vorzeichen-Verluste erzeugen. Bisher fiel ``"−46.5, 7.5"`` durch die
+    # _DECIMAL_PAIR-/_PREFIX_PAIR-Klassen [-+]? (ASCII-only) und lieferte
+    # entweder den positiven Wert (Vorzeichen "geschluckt") oder None - beides
+    # silentes Datenverlust-Risiko bei der Migration aus typografisch gesetzten
+    # Sammlungs-Etiketten. Single-Pass-Strip vor allen Pattern-Versuchen ist
+    # einfacher und sicherer als alle Zahl-Patterns parallel zu erweitern;
+    # U+2212 hat im Koordinaten-Kontext keine andere Bedeutung als "negativ".
+    s = s.replace("−", "-")
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):

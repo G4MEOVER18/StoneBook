@@ -1011,6 +1011,28 @@ def test_parse_coordinates_plus_prefix():
     assert parse_coordinates("N+46.5 E+7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_typografisches_minus():
+    """U+2212 (Minus-Zeichen) wird wie ASCII-Hyphen als Negativ-Vorzeichen behandelt."""
+    # Negative Latitude (Suedhalbkugel)
+    assert parse_coordinates("−46.5, 7.5") == (-46.5, 7.5)
+    # Negative Longitude (Westhalbkugel)
+    assert parse_coordinates("46.5, −7.5") == (46.5, -7.5)
+    # Beide Werte negativ
+    assert parse_coordinates("−46.5, −7.5") == (-46.5, -7.5)
+    # Gemischt ASCII-Hyphen + Minus-Zeichen
+    assert parse_coordinates("-46.5, −7.5") == (-46.5, -7.5)
+    assert parse_coordinates("−46.5, -7.5") == (-46.5, -7.5)
+    # Mit DMS-aehnlicher Notation (Grad-Symbol bleibt unangetastet)
+    assert parse_coordinates("−46.5° −7.5°") == (-46.5, -7.5)
+    # Mit Labels (Strip greift vor Pattern-Matching)
+    assert parse_coordinates("Lat: −46.5, Lon: −7.5") == (-46.5, -7.5)
+    # Out-of-Range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("−95.0, 7.5") is None
+    assert parse_coordinates("46.5, −200.0") is None
+    # Bestehender ASCII-Hyphen-Pfad bleibt unveraendert (Regress)
+    assert parse_coordinates("-46.5, -7.5") == (-46.5, -7.5)
+
+
 def test_parse_coordinates_mit_labels():
     """Geo-Notation mit Lat/Lon/Breite/Längen-Labels (Excel, GIS-Exports)."""
     # Englische Labels mit/ohne Doppelpunkt/Gleichheit
