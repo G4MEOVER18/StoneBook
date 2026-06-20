@@ -69,7 +69,7 @@ class IntegrityReport:
     future_erstellt_am: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, erstellt_am) - in der Zukunft (Clock-Skew / JSON-Import / manuelle Editierung)
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
-    range_inverted: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, feldpaar)
+    range_inverted: list[tuple[str, str, float, float]] = field(default_factory=list)  # (obj_id, "min_feld>max_feld", min_wert, max_wert)
     unknown_image_kategorie: list[tuple[int, str]] = field(default_factory=list)  # (id, kategorie)
     aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
     platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
@@ -260,8 +260,17 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
             lo, hi = row[lo_field], row[hi_field]
             if lo is None or hi is None:
                 continue
-            if float(lo) > float(hi):
-                rep.range_inverted.append((row["obj_id"], f"{lo_field}>{hi_field}"))
+            lo_f, hi_f = float(lo), float(hi)
+            if lo_f > hi_f:
+                # Format spiegelt numeric_out_of_range: konkrete Werte direkt im
+                # Report, damit die Diagnose ohne SQL-Roundtrip moeglich ist
+                # ("min=10.0 vs max=5.0" laesst die Vertauschung sofort erkennen,
+                # waehrend die reine Feldpaar-Marke nur sagt _dass_ etwas
+                # vertauscht ist). _format_example joint die Tupel ":"-getrennt,
+                # was im CLI als ``OBJ_0042:Mohs_Haerte_min>Mohs_Haerte_max:10.0:5.0``
+                # erscheint - kompakt und ohne Schema-Bruch fuer JSON-Konsumenten.
+                rep.range_inverted.append(
+                    (row["obj_id"], f"{lo_field}>{hi_field}", lo_f, hi_f))
 
     # Zeitstempel-Konsistenz: geaendert_am muss >= erstellt_am sein. Die App
     # selbst setzt beide bei create() auf denselben _now()-Stempel und ueber-

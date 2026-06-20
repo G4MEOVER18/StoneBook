@@ -106,11 +106,14 @@ def test_range_inverted_wird_erkannt(tmp_path):
     )
     c.commit()
     rep = check_integrity(c)
-    inverted = {(oid, p) for oid, p in rep.range_inverted}
-    assert ("OBJ_0001", "Mohs_Haerte_min>Mohs_Haerte_max") in inverted
-    assert ("OBJ_0002", "Dichte_min_gcm3>Dichte_max_gcm3") in inverted
-    assert not any(oid == "OBJ_0003" for oid, _ in rep.range_inverted)
-    assert not any(oid == "OBJ_0004" for oid, _ in rep.range_inverted)
+    # Vier-Tupel ``(obj_id, feldpaar, min_wert, max_wert)``: die konkreten
+    # Werte stehen direkt im Report, sodass die Vertauschung ohne SQL-Roundtrip
+    # zur Originaltabelle diagnostizierbar ist.
+    inverted = {(oid, pair, lo, hi) for oid, pair, lo, hi in rep.range_inverted}
+    assert ("OBJ_0001", "Mohs_Haerte_min>Mohs_Haerte_max", 7.0, 5.0) in inverted
+    assert ("OBJ_0002", "Dichte_min_gcm3>Dichte_max_gcm3", 3.0, 2.5) in inverted
+    assert not any(row[0] == "OBJ_0003" for row in rep.range_inverted)
+    assert not any(row[0] == "OBJ_0004" for row in rep.range_inverted)
     c.close()
 
 
