@@ -506,6 +506,65 @@ def test_has_confidence_filter(tmp_path):
     c.close()
 
 
+def test_has_ki_analyse_filter(tmp_path):
+    """has_ki_analyse trennt bereits analysierte Objekte von ausstehenden Batches."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hki.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",), ("OBJ_0005",)],
+    )
+    # OBJ_0001: eine Analyse; OBJ_0002: mehrere (Mehrfach-Eintraege zaehlen einmal);
+    # OBJ_0005: eine Analyse - sollen alle has_ki_analyse=True ergeben.
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "claude-sonnet-4-6", "{}"),
+            ("OBJ_0002", "claude-sonnet-4-6", "{}"),
+            ("OBJ_0002", "claude-opus-4-7", "{}"),
+            ("OBJ_0005", "claude-sonnet-4-6", "{}"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_ki_analyse=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    assert [r["obj_id"] for r in repo.list_objects(has_ki_analyse=False)] \
+        == ["OBJ_0003", "OBJ_0004"]
+    # None laesst alle durch
+    assert len(repo.list_objects(has_ki_analyse=None)) == 5
+    c.close()
+
+
+def test_has_ki_analyse_kombinierbar_mit_has_confidence(tmp_path):
+    """KI-analysiert ohne Confidence-Wert: noch nicht uebernommener Vorschlag."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hki_combo.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 80),     # KI-analysiert + Confidence gesetzt
+            ("OBJ_0002", None),   # KI-analysiert, aber Confidence noch leer
+            ("OBJ_0003", 90),     # Confidence gesetzt, aber ohne KI-Lauf (manuell)
+            ("OBJ_0004", None),   # weder noch
+        ],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) VALUES (?, ?, ?)",
+        [("OBJ_0001", "claude-sonnet-4-6", "{}"),
+         ("OBJ_0002", "claude-sonnet-4-6", "{}")],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Asymmetrische Pflege: KI-Lauf gemacht, aber Confidence nie uebernommen.
+    rows = repo.list_objects(has_ki_analyse=True, has_confidence=False)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Umgekehrt: manueller Confidence-Wert ohne KI-Lauf.
+    rows = repo.list_objects(has_ki_analyse=False, has_confidence=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    c.close()
+
+
 def test_has_mineral_filter(tmp_path):
     """has_mineral findet noch nicht mineralogisch identifizierte Objekte."""
     from stonebook.db.database import open_db

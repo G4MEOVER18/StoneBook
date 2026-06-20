@@ -278,6 +278,7 @@ class ObjectRepo:
                      has_mohs: bool | None = None,
                      has_dichte: bool | None = None,
                      has_dimensionen: bool | None = None,
+                     has_ki_analyse: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -591,6 +592,21 @@ class ObjectRepo:
         elif has_dimensionen is False:
             where.append("(o.Laenge_mm IS NULL AND o.Breite_mm IS NULL "
                          "AND o.Hoehe_mm IS NULL)")
+        # has_ki_analyse: tri-state Filter fuer Objekte mit/ohne KI-Analyse-Eintrag.
+        # Spiegelt das objekte_mit_ki_analyse-Aggregat in der Statistik (EXISTS
+        # in ki_analysen). Findet Bestaende, an denen die KI-Analyse nachzuholen
+        # ist (False) bzw. die bereits durchgelaufen sind (True) - typische
+        # Workflow-Achse vor Sammel-Batches. Komplementaer zu has_confidence
+        # (gesetzter Confidence-Wert): Confidence kann manuell vergeben sein,
+        # ohne dass je eine KI-Analyse abgespeichert wurde. ki_analysen.obj_id
+        # ist FK auf objects.obj_id mit ON DELETE CASCADE - geloeschte Objekte
+        # haben automatisch keine verwaisten Analyse-Eintraege.
+        if has_ki_analyse is True:
+            where.append(
+                "EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id)")
+        elif has_ki_analyse is False:
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id)")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
