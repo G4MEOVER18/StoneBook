@@ -66,6 +66,7 @@ class IntegrityReport:
     # (Kette A->B->C: A->B ist defekt, sollte direkt A->C zeigen)
     invalid_funddatum: list[str] = field(default_factory=list)      # obj_id
     future_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, iso)
+    future_erstellt_am: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, erstellt_am) - in der Zukunft (Clock-Skew / JSON-Import / manuelle Editierung)
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
     range_inverted: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, feldpaar)
@@ -82,6 +83,7 @@ class IntegrityReport:
                     or self.alias_id_collisions or self.alias_self_referencing
                     or self.alias_canonical_is_alias
                     or self.invalid_funddatum or self.future_funddatum
+                    or self.future_erstellt_am
                     or self.missing_image_files or self.numeric_out_of_range
                     or self.range_inverted or self.unknown_image_kategorie
                     or self.aktiv_ohne_inhalt
@@ -99,6 +101,7 @@ class IntegrityReport:
             "alias_canonical_is_alias": [list(t) for t in self.alias_canonical_is_alias],
             "invalid_funddatum": list(self.invalid_funddatum),
             "future_funddatum": [list(t) for t in self.future_funddatum],
+            "future_erstellt_am": [list(t) for t in self.future_erstellt_am],
             "missing_image_files": [list(t) for t in self.missing_image_files],
             "numeric_out_of_range": [list(t) for t in self.numeric_out_of_range],
             "range_inverted": [list(t) for t in self.range_inverted],
@@ -114,17 +117,24 @@ class IntegrityReport:
 
 def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
                     check_files: bool = False,
-                    today: datetime.date | None = None) -> IntegrityReport:
+                    today: datetime.date | None = None,
+                    now: datetime.datetime | None = None) -> IntegrityReport:
     """Sammelt typische Inkonsistenzen.
 
     ``check_files=True`` und ``root`` gesetzt → prüft zusätzlich, ob die in
     ``images.rel_path`` referenzierten Dateien auf der Platte existieren.
     ``today`` setzt das Referenzdatum fuer die Zukunfts-Pruefung des Funddatums
     (Default: ``datetime.date.today()``); explizit setzen macht den Test
-    deterministisch.
+    deterministisch. ``now`` setzt analog den Zeitstempel-Referenzpunkt fuer
+    die Zukunfts-Pruefung von ``erstellt_am`` (Default:
+    ``datetime.datetime.now()``); spiegelt ``today`` auf die Sekunden-Achse.
     """
     rep = IntegrityReport()
     today_iso = (today or datetime.date.today()).isoformat()
+    # _now()-Format ist "YYYY-MM-DD HH:MM:SS" (siehe repository.py); spiegelt
+    # das hier exakt, damit der String-Vergleich gegen erstellt_am sortierbar
+    # und kollisionsfrei zur DB-Konvention bleibt.
+    now_iso = (now or datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
 
     rep.orphan_images = [r[0] for r in conn.execute(
         "SELECT i.id FROM images i "
@@ -265,6 +275,30 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
             "AND geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
             "AND geaendert_am < erstellt_am "
             "ORDER BY obj_id"
+        ).fetchall()
+    ]
+
+    # Zukunfts-Pruefung auf erstellt_am: ein Erfassungs-Zeitstempel in der
+    # Zukunft ist logisch unmoeglich (das Objekt kann nicht "morgen" erfasst
+    # worden sein), kann aber durch Clock-Skew zwischen Migrationsmaschinen,
+    # manuelle DB-Editierung (Excel-CSV-Re-Import mit verstellter System-Uhr),
+    # JSON-Restore aus einem inkonsistenten Backup oder Reise mit verstellter
+    # Laptop-Zeit (z.B. ueber Datumsgrenze) entstehen. Spiegelt
+    # future_funddatum auf die erstellt_am-Achse (Erfassungs-Zeitpunkt statt
+    # Fund-Zeitpunkt) und ergaenzt geaendert_vor_erstellt (Inter-Stempel-
+    # Konsistenz): hier geht es um die absolute Zukunfts-Lage, dort um die
+    # relative Reihenfolge. Lexikographischer Vergleich reicht, weil _now()
+    # ISO-8601-Format "YYYY-MM-DD HH:MM:SS" schreibt (sortierbar) und now_iso
+    # exakt dieses Format spiegelt. Leere/NULL-Stempel werden ignoriert
+    # (Format-Validitaet ist ein separates Anliegen).
+    rep.future_erstellt_am = [
+        (r["obj_id"], r["erstellt_am"])
+        for r in conn.execute(
+            "SELECT obj_id, erstellt_am FROM objects "
+            "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+            "AND erstellt_am > ? "
+            "ORDER BY obj_id",
+            (now_iso,),
         ).fetchall()
     ]
 

@@ -477,6 +477,48 @@ def test_geaendert_vor_erstellt_migrierte_db_clean(migrated_conn):
     assert rep.geaendert_vor_erstellt == []
 
 
+def test_future_erstellt_am_wird_erkannt(tmp_path):
+    """erstellt_am in der Zukunft ist logisch unmoeglich (Clock-Skew / JSON-Restore).
+
+    Spiegelt future_funddatum auf die erstellt_am-Achse: das Objekt kann nicht
+    "morgen" erfasst worden sein. Tritt durch Clock-Skew zwischen Migrations-
+    maschinen, JSON-Restore aus einem inkonsistenten Backup, manuelle DB-
+    Editierung oder Reisen mit verstellter Laptop-Zeit auf.
+    """
+    c = open_db(tmp_path / "fut_erstellt.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 10:00:00"),  # Vergangenheit → ok
+            ("OBJ_0002", "2024-06-13 11:59:59"),  # eine Sekunde vor now → ok
+            ("OBJ_0003", "2024-06-13 12:00:01"),  # eine Sekunde nach now → flag
+            ("OBJ_0004", "2099-12-31 23:59:59"),  # weit in der Zukunft → flag
+            ("OBJ_0005", None),                    # NULL → uebergangen
+            ("OBJ_0006", ""),                      # leer → uebergangen
+            ("OBJ_0007", "   "),                   # Whitespace → uebergangen
+        ],
+    )
+    c.commit()
+    rep = check_integrity(
+        c, now=datetime.datetime(2024, 6, 13, 12, 0, 0))
+    flagged = {oid for oid, _ in rep.future_erstellt_am}
+    assert flagged == {"OBJ_0003", "OBJ_0004"}
+    assert ("OBJ_0004", "2099-12-31 23:59:59") in rep.future_erstellt_am
+    assert not rep.is_clean
+    # as_dict serialisierbar (neuer Feldname enthalten)
+    import json
+    d = rep.as_dict()
+    assert ["OBJ_0004", "2099-12-31 23:59:59"] in d["future_erstellt_am"]
+    json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
+def test_future_erstellt_am_default_now_keine_falsch_positiven(migrated_conn):
+    """Die migrierte Beispiel-DB hat keine Zukunfts-erstellt_am (Pipeline-Garantie)."""
+    rep = check_integrity(migrated_conn)
+    assert rep.future_erstellt_am == []
+
+
 def test_find_duplicate_image_sha256(tmp_path):
     """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
     from stonebook.db.integrity import find_duplicate_image_sha256
