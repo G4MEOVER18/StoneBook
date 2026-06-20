@@ -1915,8 +1915,46 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_bildern_prozent is None
     assert st.quote_mit_funddatum_prozent is None
     assert st.quote_mit_wert_prozent is None
+    assert st.quote_mit_gewicht_prozent is None
+    assert st.quote_mit_ki_analyse_prozent is None
     d = st.as_dict()
     assert d["quote_mit_bildern_prozent"] is None
+    assert d["quote_mit_gewicht_prozent"] is None
+    assert d["quote_mit_ki_analyse_prozent"] is None
+    c.close()
+
+
+def test_quote_mit_gewicht_und_ki_analyse_aus_seed_db(tmp_path):
+    """Coverage-Quoten fuer Gewicht und KI-Analyse spiegeln die Bildern-/Wert-Quoten:
+    Anteil der Objekte mit mindestens einem Gewicht-Wert bzw. mit einer
+    KI-Analyse, gerechnet ueber objekte_total."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qkw.sqlite3")
+    # 4 Objekte: zwei mit Gewicht (50%), eines mit KI-Analyse (25%; zwei
+    # Eintraege auf demselben Objekt zaehlen distinkt nur einmal).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?,?)",
+        [
+            ("OBJ_0001", 12.5),
+            ("OBJ_0002", 0.0),       # 0 zaehlt wie kein Gewicht
+            ("OBJ_0003", 7.0),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "claude-sonnet-4-6", "{}"),
+            ("OBJ_0001", "claude-opus-4-7", "{}"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.quote_mit_gewicht_prozent == 50.0
+    assert st.quote_mit_ki_analyse_prozent == 25.0
+    d = st.as_dict()
+    assert d["quote_mit_gewicht_prozent"] == 50.0
+    assert d["quote_mit_ki_analyse_prozent"] == 25.0
     c.close()
 
 

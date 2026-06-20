@@ -138,6 +138,14 @@ class Statistik:
     def quote_mit_wert_prozent(self) -> float | None:
         return self._quote(self.objekte_mit_wert)
 
+    @property
+    def quote_mit_gewicht_prozent(self) -> float | None:
+        return self._quote(self.objekte_mit_gewicht)
+
+    @property
+    def quote_mit_ki_analyse_prozent(self) -> float | None:
+        return self._quote(self.objekte_mit_ki_analyse)
+
     def as_dict(self) -> dict:
         return {
             "objekte_total": self.objekte_total,
@@ -353,6 +361,8 @@ class Statistik:
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
+            "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
+            "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
         }
 
 

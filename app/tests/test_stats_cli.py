@@ -242,6 +242,29 @@ def test_text_ausgabe_ohne_objekte_keine_coverage(tmp_path, capsys):
     assert "Coverage:" not in out
 
 
+def test_text_ausgabe_zeigt_gewicht_und_ki_quoten(tmp_path, capsys):
+    """Coverage-Block fuehrt Gewicht- und KI-Analyse-Quoten zusaetzlich zu Bildern/Funddatum/Wert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gki.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?,?)",
+        [("OBJ_0001", 12.5), ("OBJ_0002", None),
+         ("OBJ_0003", 0.0), ("OBJ_0004", 7.0)],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) VALUES (?,?,?)",
+        [("OBJ_0001", "claude-sonnet-4-6", "{}")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Gewicht:" in out
+    assert "KI-Analyse:" in out
+
+
 def test_text_ausgabe_zeigt_bilder_pro_kategorie(tmp_path, capsys):
     """Bilder-pro-Kategorie-Block zeigt Foto-Coverage je Aufnahme-Art."""
     from stonebook.db.database import open_db

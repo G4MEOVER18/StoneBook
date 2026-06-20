@@ -78,6 +78,8 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(f"  Bilder:              {st.quote_mit_bildern_prozent:.1f} %")
         lines.append(f"  Funddatum:           {st.quote_mit_funddatum_prozent:.1f} %")
         lines.append(f"  Wertschaetzung:      {st.quote_mit_wert_prozent:.1f} %")
+        lines.append(f"  Gewicht:             {st.quote_mit_gewicht_prozent:.1f} %")
+        lines.append(f"  KI-Analyse:          {st.quote_mit_ki_analyse_prozent:.1f} %")
     if st.confidence_buckets and any(st.confidence_buckets.values()):
         lines += ["", "Confidence-Verteilung:"]
         for label, n in st.confidence_buckets.items():
