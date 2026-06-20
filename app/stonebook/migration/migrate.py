@@ -5,7 +5,6 @@ CLI:
                                           [--db PATH] [--report-json] [--quiet]
 """
 import argparse
-import csv
 import json
 import sys
 from pathlib import Path
@@ -36,14 +35,19 @@ def migrate(root: Path, db_file: Path, log=print) -> dict:
     aliases = AliasRepo(conn)
     csv_dir = root / "data" / "csv"
 
-    # 1. Skelett aus object_index.csv
+    # 1. Skelett aus object_index.csv. Verwendet denselben tolerant-Reader wie
+    # die uebrigen CSV-Loader (Encoding-Fallback utf-8-sig -> utf-8 -> cp1252 ->
+    # latin-1, Delimiter-Detection, Blank-Row-Skip, UTF-16-BOM): damit greift die
+    # Re-Editier-Toleranz aus den Loader-Schichten auch fuer das Index-Skelett
+    # (User oeffnet object_index.csv in Excel, speichert mit cp1252-Encoding
+    # oder Semikolon-Delimiter - bisher brach Schritt 1 mit UnicodeDecodeError
+    # bzw. KeyError("obj_id") ab).
     log("1/5 Objekt-Skelett aus object_index.csv …")
     index_file = csv_dir / OBJECT_INDEX
-    with index_file.open(encoding="utf-8-sig", newline="") as f:
-        for row in csv.DictReader(f):
-            obj_id = normalize_id(row.get("obj_id"))
-            if obj_id and not objects.exists(obj_id):
-                objects.create(obj_id, folder_path=f"objects/{obj_id}")
+    for row in csv_loaders._read_csv_robust(index_file):
+        obj_id = normalize_id(row.get("obj_id"))
+        if obj_id and not objects.exists(obj_id):
+            objects.create(obj_id, folder_path=f"objects/{obj_id}")
     log(f"   {objects.count()} Objekte angelegt")
 
     # 2. CSV-Schichten (spätere Schicht überschreibt nur nicht-leere Werte nicht-leerer Quellen)
