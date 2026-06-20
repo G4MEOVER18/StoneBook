@@ -25,15 +25,35 @@ _EN_THOUSANDS_PURE = re.compile(
 _DE_THOUSANDS_PURE = re.compile(
     r"(?<!\d)(\d{1,3}(?:\.\d{3}){2,})(?!\d)"
 )
+# Whitespace als Tausender-Trenner (FR/Swiss-French/SI-Konvention). Im
+# Gegensatz zum ASCII-Komma/Punkt wird die SI-Empfehlung ISO 31-0 (NBSP
+# oder schmales NBSP) genauso wie das ASCII-Leerzeichen unterstuetzt -
+# franzoesische Excel-/LibreOffice-Exporte schreiben Tausender meist als
+# NBSP (``1\xa0234,56``), Hand-Eingaben dagegen oft mit gewoehnlichem
+# Leerzeichen (``1 234,56``). Symmetrisch zu den EN/DE-Patterns: bei
+# vorhandener Dezimal-Trennung reicht eine Gruppe, ohne Dezimal sind
+# mindestens zwei Gruppen noetig - die einzelne Gruppe ``1 234`` bleibt
+# ambivalent (koennte Range-Tippfehler "Wert 1 bis 234" oder
+# Tausender sein) und wird wie bei den EN/DE-Patterns nicht angetastet.
+_SP_THOUSAND_CHARS = r"[ \xa0 ]"
+_SPACE_THOUSANDS_WITH_DECIMAL = re.compile(
+    rf"(?<!\d)(\d{{1,3}}(?:{_SP_THOUSAND_CHARS}\d{{3}})+[.,]\d+)(?!\d)"
+)
+_SPACE_THOUSANDS_PURE = re.compile(
+    rf"(?<!\d)(\d{{1,3}}(?:{_SP_THOUSAND_CHARS}\d{{3}}){{2,}})(?!\d)"
+)
+_SPACE_THOUSAND_CHAR_RE = re.compile(_SP_THOUSAND_CHARS)
 
 
 def _strip_locale_thousands(s: str) -> str:
-    """Entfernt eindeutig erkennbare Tausender-Trenner aus EN/DE-Excel-Exporten.
+    """Entfernt eindeutig erkennbare Tausender-Trenner aus EN/DE/FR-Excel-Exporten.
 
     Beruehrt nur Zahl-Token, deren Struktur unmissverstaendlich ist:
-    ``1,000.50``/``1.000,50`` (gemischte Trenner ⇒ rechter ist Dezimal) oder
-    ``1,000,000``/``1.000.000`` (≥2 gleichartige Trennergruppen ⇒ Tausender).
-    Mehrdeutige Faelle wie ``1,000`` oder ``1.000`` (eine Trennergruppe) werden
+    ``1,000.50``/``1.000,50`` (gemischte Trenner ⇒ rechter ist Dezimal),
+    ``1,000,000``/``1.000.000`` (≥2 gleichartige Trennergruppen ⇒ Tausender)
+    sowie die SI-/FR-Whitespace-Form ``1 234,56``/``1\xa0234.56``/
+    ``1 234 567`` (Leerzeichen, NBSP, schmales NBSP). Mehrdeutige Faelle
+    wie ``1,000`` / ``1.000`` / ``1 234`` (eine Trennergruppe) werden
     nicht angetastet, damit ``2,55`` weiterhin als Dezimal-2.55 gelesen wird.
     """
     s = _EN_THOUSANDS_WITH_DECIMAL.sub(lambda m: m.group(1).replace(",", ""), s)
@@ -41,6 +61,10 @@ def _strip_locale_thousands(s: str) -> str:
         lambda m: m.group(1).replace(".", "").replace(",", "."), s)
     s = _EN_THOUSANDS_PURE.sub(lambda m: m.group(1).replace(",", ""), s)
     s = _DE_THOUSANDS_PURE.sub(lambda m: m.group(1).replace(".", ""), s)
+    s = _SPACE_THOUSANDS_WITH_DECIMAL.sub(
+        lambda m: _SPACE_THOUSAND_CHAR_RE.sub("", m.group(1)), s)
+    s = _SPACE_THOUSANDS_PURE.sub(
+        lambda m: _SPACE_THOUSAND_CHAR_RE.sub("", m.group(1)), s)
     return s
 
 

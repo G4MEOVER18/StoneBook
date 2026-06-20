@@ -108,6 +108,53 @@ def test_parse_range_ambivalente_einzeltrenner_bleiben_dezimal():
     assert csv_loaders.parse_range("2,55") == (2.55, 2.55)
 
 
+def test_parse_range_whitespace_tausender_mit_dezimal():
+    """FR/SI-Konvention: Whitespace als Tausendertrenner mit Dezimalanteil.
+
+    Franzoesische Excel-/LibreOffice-Exporte und ISO 31-0-konforme Tools
+    schreiben Tausender als NBSP/schmales NBSP/ASCII-Leerzeichen. Vor dem
+    Fix lieferte ``'1 000.50'`` (1.0, 0.5) statt (1000.5, 1000.5).
+    """
+    # ASCII-Leerzeichen (Hand-Eingabe, einige Tools)
+    assert csv_loaders.parse_range("1 000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1 234 567.89") == (1234567.89, 1234567.89)
+    # FR-Konvention: Whitespace-Tausender + Komma-Dezimal
+    assert csv_loaders.parse_range("1 000,50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("12 345 678,90") == (12345678.9, 12345678.9)
+    # NBSP (U+00A0) - Default in franzoesischen Office-Suites
+    assert csv_loaders.parse_range("1\xa0000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1\xa0234\xa0567,89") == (1234567.89, 1234567.89)
+    # Schmales NBSP (U+202F) - ISO 31-0 / SI-Empfehlung
+    assert csv_loaders.parse_range("1 000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1 234 567,89") == (1234567.89, 1234567.89)
+
+
+def test_parse_range_whitespace_tausender_reine_gruppen():
+    """Zwei oder mehr Whitespace-Trennergruppen sind eindeutig Tausender."""
+    assert csv_loaders.parse_range("1 000 000") == (1000000.0, 1000000.0)
+    assert csv_loaders.parse_range("1 234 567") == (1234567.0, 1234567.0)
+    assert csv_loaders.parse_range("1 000 000 000") == (1000000000.0, 1000000000.0)
+    # NBSP-Variante
+    assert csv_loaders.parse_range("1\xa0000\xa0000") == (1000000.0, 1000000.0)
+    # Range mit Whitespace-Tausendern auf beiden Seiten
+    assert csv_loaders.parse_range("1 000 000-2 000 000") == (1000000.0, 2000000.0)
+
+
+def test_parse_range_einzelne_whitespace_gruppe_bleibt_ambivalent():
+    """``'1 234'`` (eine Gruppe, kein Dezimal) bleibt mehrdeutig wie ``'1,000'``.
+
+    Spiegelt das EN/DE-Verhalten: ohne Dezimal und ohne zweite Trennergruppe
+    ist die Whitespace-Form nicht eindeutig (koennte Range-Tippfehler "1 bis
+    234" sein). Der Fall bleibt unangetastet - der bestehende Range-Parser
+    liefert weiter zwei separate Zahlen.
+    """
+    # Wuerde sonst als 1234 missinterpretiert; existierender Range-Parser
+    # zerlegt in zwei Zahlen (kein Regress fuer "5 7" o.ae.).
+    assert csv_loaders.parse_range("1 234") == (1.0, 234.0)
+    # Bestaetigung: gleicher Mechanismus wie "5 7"
+    assert csv_loaders.parse_range("5 7") == (5.0, 7.0)
+
+
 def test_parse_range_schweizer_apostroph_tausender():
     """Schweizer Tausendertrenner ''' wird ignoriert (CHF-Betraege aus Excel)."""
     # Ohne Fix waere "1'000.00" als (1, 0) gelesen worden.
