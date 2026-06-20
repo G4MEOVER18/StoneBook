@@ -64,7 +64,7 @@ class IntegrityReport:
     alias_canonical_is_alias: list[tuple[str, str]] = field(default_factory=list)
     # (alias_id, canonical_id) - canonical_id taucht zugleich als alias_id auf
     # (Kette A->B->C: A->B ist defekt, sollte direkt A->C zeigen)
-    invalid_funddatum: list[str] = field(default_factory=list)      # obj_id
+    invalid_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, roher Funddatum-Wert)
     future_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, iso)
     future_erstellt_am: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, erstellt_am) - in der Zukunft (Clock-Skew / JSON-Import / manuelle Editierung)
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
@@ -99,7 +99,7 @@ class IntegrityReport:
             "alias_id_collisions": list(self.alias_id_collisions),
             "alias_self_referencing": list(self.alias_self_referencing),
             "alias_canonical_is_alias": [list(t) for t in self.alias_canonical_is_alias],
-            "invalid_funddatum": list(self.invalid_funddatum),
+            "invalid_funddatum": [list(t) for t in self.invalid_funddatum],
             "future_funddatum": [list(t) for t in self.future_funddatum],
             "future_erstellt_am": [list(t) for t in self.future_erstellt_am],
             "missing_image_files": [list(t) for t in self.missing_image_files],
@@ -231,7 +231,12 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
     ).fetchall():
         iso = parse_iso_date(row["Funddatum"])
         if iso is None:
-            rep.invalid_funddatum.append(row["obj_id"])
+            # Format spiegelt unknown_status / unknown_kategorie / future_funddatum:
+            # (obj_id, roh-Wert)-Tupel, damit sowohl die betroffene ID als auch
+            # der konkrete unparsbare Eintrag direkt im Report stehen - ohne
+            # zusaetzliche SQL-Abfrage zur Diagnose. Vorher war es eine reine
+            # obj_id-Liste, was die Sicht auf den Falschwert verzoegerte.
+            rep.invalid_funddatum.append((row["obj_id"], row["Funddatum"]))
         elif iso > today_iso:
             rep.future_funddatum.append((row["obj_id"], iso))
 

@@ -48,7 +48,9 @@ def test_invalid_funddatum_wird_erkannt(tmp_path):
     )
     c.commit()
     rep = check_integrity(c)
-    assert rep.invalid_funddatum == ["OBJ_0001"]
+    # (obj_id, roh-Wert)-Tupel: der konkrete Falschwert ist direkt im Report
+    # sichtbar (spiegelt unknown_status / unknown_kategorie / future_funddatum).
+    assert rep.invalid_funddatum == [("OBJ_0001", "32.13.2024")]
     c.close()
 
 
