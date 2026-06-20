@@ -28,6 +28,7 @@ class Statistik:
     ki_analysen_total: int = 0
     ki_analysen_uebernommen: int = 0
     objekte_mit_ki_analyse: int = 0
+    objekte_mit_ki_analyse_uebernommen: int = 0
     mineral_arten_total: int = 0
     fundorte_total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
@@ -151,6 +152,7 @@ class Statistik:
             "ki_analysen_total": self.ki_analysen_total,
             "ki_analysen_uebernommen": self.ki_analysen_uebernommen,
             "objekte_mit_ki_analyse": self.objekte_mit_ki_analyse,
+            "objekte_mit_ki_analyse_uebernommen": self.objekte_mit_ki_analyse_uebernommen,
             "mineral_arten_total": self.mineral_arten_total,
             "fundorte_total": self.fundorte_total,
             "by_status": dict(self.by_status),
@@ -930,6 +932,18 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     ).fetchone()[0]
     st.objekte_mit_ki_analyse = conn.execute(
         "SELECT COUNT(DISTINCT obj_id) FROM ki_analysen"
+    ).fetchone()[0]
+    # objekte_mit_ki_analyse_uebernommen: feinere Granularitaet als
+    # objekte_mit_ki_analyse - zaehlt nur Objekte, in denen mindestens einer der
+    # KI-Vorschlaege uebernommen wurde (uebernommen_json gesetzt). ki_analysen_
+    # uebernommen ist die Summe aller uebernommenen Einzeleintraege (ein Objekt
+    # kann mehrfach uebernommene Vorschlaege haben), hier die Anzahl der
+    # tatsaechlich profitierenden Stuecke - "wie viele Objekte sind durch die
+    # KI verbessert worden?" unabhaengig davon, wie oft die KI je Stueck lief.
+    # Whitespace zaehlt wie leer, spiegelt has_ki_analyse_uebernommen.
+    st.objekte_mit_ki_analyse_uebernommen = conn.execute(
+        "SELECT COUNT(DISTINCT obj_id) FROM ki_analysen "
+        "WHERE uebernommen_json IS NOT NULL AND TRIM(uebernommen_json) != ''"
     ).fetchone()[0]
 
     st.by_status = {

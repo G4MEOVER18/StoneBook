@@ -1393,6 +1393,8 @@ def test_ki_analysen_zaehler(tmp_path):
     assert st.ki_analysen_total == 4
     assert st.ki_analysen_uebernommen == 1   # nur OBJ_0001's erste
     assert st.objekte_mit_ki_analyse == 2    # OBJ_0001 und OBJ_0002
+    # Nur OBJ_0001 hat eine uebernommene Analyse (die zweite mit None zaehlt nicht)
+    assert st.objekte_mit_ki_analyse_uebernommen == 1
     c.close()
 
 
@@ -1404,6 +1406,40 @@ def test_ki_analysen_leere_db(tmp_path):
     assert st.ki_analysen_total == 0
     assert st.ki_analysen_uebernommen == 0
     assert st.objekte_mit_ki_analyse == 0
+    assert st.objekte_mit_ki_analyse_uebernommen == 0
+    c.close()
+
+
+def test_objekte_mit_ki_analyse_uebernommen_distinct(tmp_path):
+    """Mehrere uebernommene Analysen am selben Objekt zaehlen einmal (DISTINCT obj_id)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "kiu_distinct.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",)],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json, uebernommen_json) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            # OBJ_0001: zwei uebernommene Analysen - zaehlt als ein Objekt
+            ("OBJ_0001", "claude-sonnet-4-6", "{}", '{"a":1}'),
+            ("OBJ_0001", "claude-opus-4-7", "{}", '{"b":2}'),
+            # OBJ_0002: eine uebernommen, eine nicht (None / Whitespace)
+            ("OBJ_0002", "claude-sonnet-4-6", "{}", None),
+            ("OBJ_0002", "claude-sonnet-4-6", "{}", '{"c":3}'),
+            # OBJ_0003: nur nicht-uebernommene Analysen
+            ("OBJ_0003", "claude-sonnet-4-6", "{}", None),
+            ("OBJ_0003", "claude-sonnet-4-6", "{}", "   "),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.ki_analysen_total == 6
+    # Summe der uebernommenen Eintraege (Doppelzaehlung pro Objekt erlaubt)
+    assert st.ki_analysen_uebernommen == 3
+    # Anzahl Objekte mit mind. einer uebernommenen Analyse (DISTINCT)
+    assert st.objekte_mit_ki_analyse_uebernommen == 2
     c.close()
 
 
