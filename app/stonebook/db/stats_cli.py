@@ -30,7 +30,8 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         f"  archiviert:          {st.objekte_archiviert}",
         f"Bilder:                {st.bilder_total} "
         f"(in {st.objekte_mit_bildern} Objekten)",
-        f"Aliase (Merges):       {st.aliase_total}",
+        f"Aliase (Merges):       {st.aliase_total} "
+        f"(in {st.objekte_mit_alias} Kanon-Objekten)",
         f"KI-Analysen:           {st.ki_analysen_total} "
         f"(in {st.objekte_mit_ki_analyse} Objekten, "
         f"{st.ki_analysen_uebernommen} uebernommen)",

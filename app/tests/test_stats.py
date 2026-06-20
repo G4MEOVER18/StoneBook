@@ -24,6 +24,9 @@ def test_grundkennzahlen(conn):
     assert st.objekte_total == 546
     assert st.bilder_total == 63
     assert st.aliase_total == 54
+    # objekte_mit_alias <= aliase_total (mehrere Aliase pro Kanon-Objekt moeglich,
+    # daher Anzahl gemergter Kanon-Objekte i.d.R. kleiner als Summe der Aliase)
+    assert 0 < st.objekte_mit_alias <= st.aliase_total
     assert st.objekte_aktiv + st.objekte_platzhalter + st.objekte_archiviert == 546
     assert st.objekte_aktiv > 0
 
@@ -1401,6 +1404,43 @@ def test_ki_analysen_leere_db(tmp_path):
     assert st.ki_analysen_total == 0
     assert st.ki_analysen_uebernommen == 0
     assert st.objekte_mit_ki_analyse == 0
+    c.close()
+
+
+def test_objekte_mit_alias_distinct_canonical(tmp_path):
+    """objekte_mit_alias zaehlt die unique Kanon-IDs, nicht die Alias-Eintraege."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "alias.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",)],
+    )
+    # OBJ_0001 hat drei Aliase (drei alte IDs reingefolgt), OBJ_0002 einen,
+    # OBJ_0003 keinen.
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0100", "OBJ_0001", "duplikat_gruppen.json"),
+            ("OBJ_0101", "OBJ_0001", "manuell"),
+            ("OBJ_0102", "OBJ_0001", "manuell"),
+            ("OBJ_0103", "OBJ_0002", "duplikat_gruppen.json"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.aliase_total == 4         # vier Alias-Eintraege
+    assert st.objekte_mit_alias == 2    # OBJ_0001 und OBJ_0002 sind Kanon-Objekte mit Aliasen
+    c.close()
+
+
+def test_objekte_mit_alias_leere_db(tmp_path):
+    """Leere DB / keine Aliase → 0 (kein Crash)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_alias.sqlite3")
+    st = compute_statistics(c)
+    assert st.aliase_total == 0
+    assert st.objekte_mit_alias == 0
     c.close()
 
 

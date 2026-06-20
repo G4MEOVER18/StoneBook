@@ -24,6 +24,7 @@ class Statistik:
     objekte_mit_funddatum: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
+    objekte_mit_alias: int = 0
     ki_analysen_total: int = 0
     ki_analysen_uebernommen: int = 0
     objekte_mit_ki_analyse: int = 0
@@ -146,6 +147,7 @@ class Statistik:
             "objekte_mit_funddatum": self.objekte_mit_funddatum,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
+            "objekte_mit_alias": self.objekte_mit_alias,
             "ki_analysen_total": self.ki_analysen_total,
             "ki_analysen_uebernommen": self.ki_analysen_uebernommen,
             "objekte_mit_ki_analyse": self.objekte_mit_ki_analyse,
@@ -913,6 +915,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
     st.bilder_total = conn.execute("SELECT COUNT(*) FROM images").fetchone()[0]
     st.aliase_total = conn.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+    # Spiegelt objekte_mit_ki_analyse (zaehlt unique obj_id mit mindestens einem
+    # Eintrag) - aliase_total ist die Summe aller Eintraege (eine Kanon-ID kann
+    # mehrere Aliase haben), objekte_mit_alias die Anzahl verschmolzener Kanon-
+    # Objekte (Provenienz-Sicht: "wie viele Stuecke sind tatsaechlich aus Duplikat-
+    # Merges hervorgegangen?", unabhaengig von der Merge-Tiefe).
+    st.objekte_mit_alias = conn.execute(
+        "SELECT COUNT(DISTINCT canonical_id) FROM aliases"
+    ).fetchone()[0]
     st.ki_analysen_total = conn.execute("SELECT COUNT(*) FROM ki_analysen").fetchone()[0]
     st.ki_analysen_uebernommen = conn.execute(
         "SELECT COUNT(*) FROM ki_analysen "
