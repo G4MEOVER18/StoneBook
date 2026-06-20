@@ -9,6 +9,7 @@ import re
 import urllib.request
 
 from stonebook.ai.analysis_schema import AI_FIELDS, build_tool, field_definitions_text
+from stonebook.migration.csv_loaders import normalize_numeric_locale
 
 # Fuehrende Zahl (mit Komma- oder Punkt-Dezimal, optional Vorzeichen) aus einem
 # Freitext-Wert extrahieren. Faengt KI-Antworten wie "41.0g", "6.5 Mohs",
@@ -53,7 +54,15 @@ def coerce_result(raw: dict) -> dict:
         if isinstance(wert, str) and not wert.strip():
             wert = None
         if wert is not None and (name in num_fields or name in float_fields):
-            m = _LEADING_NUMBER.search(str(wert))
+            # Locale-Tausender ('1.500,00 CHF' / '1,500.00 CHF' / '1\'500.00' /
+            # '1\xa0500.00') vor der Zahl-Extraktion strippen - sonst zerlegt
+            # _LEADING_NUMBER die EN-Notation '1,500.00' in '1,500' (= 1.5) und
+            # die DE-Notation '1.500,00' in '1.500' (= 1.5) statt 1500.0. KI-
+            # Modelle geben Preise gern mit der Lokal-Formatierung des System-
+            # Prompts wieder (DE-Prompt -> DE-Format), und Tausender-Pfade
+            # entstehen rasch bei Sammler-/Industrie-Wertschaetzungen.
+            cleaned = normalize_numeric_locale(str(wert))
+            m = _LEADING_NUMBER.search(cleaned)
             if m is None:
                 wert = None
             else:

@@ -68,6 +68,29 @@ def _strip_locale_thousands(s: str) -> str:
     return s
 
 
+def normalize_numeric_locale(text: str) -> str:
+    """Bereitet einen Freitext fuers Zahl-Token-Parsing vor.
+
+    Spiegelt die Vorverarbeitung, die :func:`parse_range` intern macht, in
+    eine eigene Funktion fuer andere Module mit lokaler Zahl-Extraktion
+    (z.B. die KI-Antwort-Koerzitierung in :mod:`stonebook.ai.providers`).
+    Strippt den Schweizer Apostroph-Tausender (``1'500.00`` → ``1500.00``)
+    und die eindeutig erkennbaren EN/DE/FR-Tausender-Strukturen via
+    :func:`_strip_locale_thousands`; mehrdeutige Einzel-Trenner
+    (``1,000`` / ``1.000`` / ``1 234``) bleiben unangetastet, damit
+    ``2,55`` weiterhin als Dezimal-2,55 lesbar bleibt.
+
+    Der Caller entscheidet selbst, ob er das Ergebnis als Range parst
+    (``parse_range``) oder per ``_LEADING_NUMBER.search`` nur die erste
+    Zahl extrahiert (Providers): die Kommazahl-zu-Punktzahl-Umsetzung
+    macht jeder fuer sich, weil sie auf den jeweiligen Match-String
+    geht und nicht auf den ganzen Freitext (sonst wuerden Tausenderpunkte
+    in DE-Notation unbeabsichtigt zu Dezimalpunkten).
+    """
+    s = text.replace("'", "").replace("’", "")
+    return _strip_locale_thousands(s)
+
+
 def parse_range(text) -> tuple[float | None, float | None]:
     """'6.5–7' → (6.5, 7.0); 'ca. 2.65' → (2.65, 2.65); '' → (None, None).
 
@@ -82,10 +105,7 @@ def parse_range(text) -> tuple[float | None, float | None]:
     """
     if text is None:
         return None, None
-    # Apostroph als Tausendertrenner (CH-Locale) vor dem Tokenisieren entfernen,
-    # dann EN/DE-Tausender strukturell erkennen.
-    s = str(text).replace("'", "").replace("’", "")
-    s = _strip_locale_thousands(s)
+    s = normalize_numeric_locale(str(text))
     nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
     if not nums:
         return None, None
