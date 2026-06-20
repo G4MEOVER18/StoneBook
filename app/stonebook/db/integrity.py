@@ -9,6 +9,13 @@ from pathlib import Path
 from stonebook.fields import DATA_FIELDS, IMAGE_CATEGORIES
 from stonebook.migration.validators import parse_iso_date
 
+# Status-Werte, die das Schema (status TEXT NOT NULL DEFAULT 'platzhalter')
+# zulaesst, aber die Anwendungslogik kennt nur diese drei. Spiegelt
+# repository.VALID_STATUSES; lokal redefiniert statt importiert, weil
+# integrity.py keine Abhaengigkeit auf den repository-Modul-Layer haben
+# soll (das Modul wird vom CLI auch ohne ObjectRepo-Initialisierung importiert).
+_VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"})
+
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
 # Format: feldname -> (untergrenze | None, obergrenze | None)
 NUMERIC_RANGES: dict[str, tuple[float | None, float | None]] = {
@@ -56,6 +63,7 @@ class IntegrityReport:
     unknown_image_kategorie: list[tuple[int, str]] = field(default_factory=list)  # (id, kategorie)
     aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
     platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
+    unknown_status: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, status) - status nicht in {aktiv,platzhalter,archiviert}
 
     @property
     def is_clean(self) -> bool:
@@ -66,7 +74,8 @@ class IntegrityReport:
                     or self.missing_image_files or self.numeric_out_of_range
                     or self.range_inverted or self.unknown_image_kategorie
                     or self.aktiv_ohne_inhalt
-                    or self.platzhalter_mit_inhalt)
+                    or self.platzhalter_mit_inhalt
+                    or self.unknown_status)
 
     def as_dict(self) -> dict:
         return {
@@ -83,6 +92,7 @@ class IntegrityReport:
             "unknown_image_kategorie": [list(t) for t in self.unknown_image_kategorie],
             "aktiv_ohne_inhalt": list(self.aktiv_ohne_inhalt),
             "platzhalter_mit_inhalt": list(self.platzhalter_mit_inhalt),
+            "unknown_status": [list(t) for t in self.unknown_status],
             "is_clean": self.is_clean,
         }
 
@@ -140,6 +150,25 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         (r["id"], r["kategorie"])
         for r in conn.execute("SELECT id, kategorie FROM images ORDER BY id").fetchall()
         if r["kategorie"] not in known_categories
+    ]
+
+    # Status-Validierung: das Schema hat keine CHECK-Klausel auf status, daher
+    # koennen invalide Werte durch direkte DB-Editierung, fehlerhafte CSV-/
+    # JSON-Imports (load_standard kopiert ``status`` ohne Validierung) oder
+    # aeltere Migrations-Versionen entstehen. ObjectRepo.set_status validiert
+    # zwar gegen VALID_STATUSES, fasst aber nur die laufende Anwendung ab -
+    # die Integrity-Pruefung deckt die DB-Sicht ab und macht stille Workflow-
+    # Fehlbedienungen ("aktiv/Aktiv/Active"-Tippfehler) sichtbar. Komplementaer
+    # zu aktiv_ohne_inhalt / platzhalter_mit_inhalt (semantische Status-
+    # Konsistenz): hier geht es um den syntaktischen Wertebereich, dort um den
+    # Daten-/Bilder-Kontext. NULL waere durch das NOT-NULL-Constraint im
+    # Schema bereits verhindert, taucht hier also nicht auf.
+    rep.unknown_status = [
+        (r["obj_id"], r["status"])
+        for r in conn.execute(
+            "SELECT obj_id, status FROM objects ORDER BY obj_id"
+        ).fetchall()
+        if r["status"] not in _VALID_STATUSES
     ]
 
     for row in conn.execute(

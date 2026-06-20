@@ -336,6 +336,50 @@ def test_platzhalter_mit_inhalt_repariert_durch_refresh_status(tmp_path):
     c.close()
 
 
+def test_unknown_status_wird_erkannt(tmp_path):
+    """Status ausserhalb {aktiv,platzhalter,archiviert} wird gemeldet (obj_id, status)."""
+    c = open_db(tmp_path / "us.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, status) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "aktiv"),          # ok
+            ("OBJ_0002", "Aktiv"),          # Tippfehler Case
+            ("OBJ_0003", "platzhalter"),    # ok
+            ("OBJ_0004", "Archiv"),         # nicht ganz: kein 'archiviert'
+            ("OBJ_0005", "fertig"),         # frei erfundener Status
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    # Sortiert nach obj_id (Reihenfolge der SELECT-Klausel)
+    assert rep.unknown_status == [
+        ("OBJ_0002", "Aktiv"),
+        ("OBJ_0004", "Archiv"),
+        ("OBJ_0005", "fertig"),
+    ]
+    assert not rep.is_clean
+    c.close()
+
+
+def test_unknown_status_migrierte_db_clean(migrated_conn):
+    """Migrierte DB nutzt ausschliesslich die drei gueltigen Status-Werte."""
+    rep = check_integrity(migrated_conn)
+    assert rep.unknown_status == []
+
+
+def test_unknown_status_in_as_dict_serialisierbar(tmp_path):
+    """as_dict liefert Tuples als Listen, damit das JSON-Format roundtrip-fest ist."""
+    import json
+    c = open_db(tmp_path / "as.sqlite3")
+    c.execute("INSERT INTO objects (obj_id, status) VALUES (?, ?)",
+              ("OBJ_0001", "fertig"))
+    c.commit()
+    d = check_integrity(c).as_dict()
+    assert d["unknown_status"] == [["OBJ_0001", "fertig"]]
+    json.dumps(d, ensure_ascii=False)  # darf nicht crashen
+    c.close()
+
+
 def test_find_duplicate_image_sha256(tmp_path):
     """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
     from stonebook.db.integrity import find_duplicate_image_sha256
