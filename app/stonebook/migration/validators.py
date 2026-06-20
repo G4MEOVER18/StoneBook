@@ -275,6 +275,55 @@ _QUARTER_LONG_YEAR_FIRST = re.compile(
     re.IGNORECASE,
 )
 
+# Halbjahres-Notation (Halfyear) + Jahr - spiegelt das Quartals-Vokabular auf
+# die 6-Monats-Achse, die im finanziellen/business-Kontext (Geschaeftsberichte:
+# "H1 2024 Umsatz", "Halbjahresbericht 2024") und in einigen Sammlungs-
+# Tagebuechern ("1. Halbjahr 2024 - Tucson-Boerse + Schweizer Bergtour")
+# verbreitet ist. Konvention: H1 → Januar (Halbjahres-Startmonat), H2 → Juli;
+# spiegelt die Quartals-Konvention (Quartals-Startmonat) auf die 6-Monats-Achse.
+# Akzeptiert sowohl deutsche ("Halbjahr") als auch englische ("Halfyear"/
+# "Half-year") Schreibweise. Bisher fielen alle Formen stille auf None und
+# wurden dadurch in der Sammler-Statistik nicht zeitlich verortet.
+_HALFYEAR_MONTHS: dict[int, int] = {1: 1, 2: 7}
+# "H1 2024" / "H1/2024" / "H1-2024" / "1H 2024" - Kurzform symmetrisch zu
+# _QUARTER_SHORT. Akzeptiert Q-Stil ("H1") und Postfix-Stil ("1H"); optionaler
+# Separator [/.\-,] zwischen H und Jahr (analog Quartal).
+_HALFYEAR_SHORT = re.compile(
+    r"^\s*(?:H\s*([1-2])|([1-2])\s*H)\s*[/.\-,]?\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
+# "1. Halbjahr 2024" / "Halbjahr 1 2024" / "2. Halfyear 1985" / "1. Half-Year 2024"
+# - Langform symmetrisch zu _QUARTER_LONG. Beide Reihenfolgen (Zahl-vor-Wort
+# und Wort-vor-Zahl) werden akzeptiert. Englisch "half year" (zwei Worte) wird
+# bewusst nicht erfasst, weil es zu mehrdeutig mit normalen Saetzen waere
+# ("the half year ended..."); EN-Form lebt von der Bindestrich-/Compound-
+# Variante ("half-year"/"halfyear"), die in Reports der ueblichen Praxis
+# entspricht.
+_HALFYEAR_LONG = re.compile(
+    r"^\s*(?:([1-2])\s*\.?\s*(?:halbjahr|half-?year)"
+    r"|(?:halbjahr|half-?year)\s+([1-2]))"
+    r"\s*[/.\-, ]?\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
+# Year-first Halbjahres-Notation ("2024-H1", "2024 H1", "2024H1", "2024-1H")
+# - spiegelt _QUARTER_YEAR_FIRST auf die Halbjahres-Achse. Geschaeftsperioden-
+# Reports und Excel-Auto-Format sortieren oft Year-First-formatiert
+# ("2024-H1" sortiert lexikographisch korrekt vor "2024-H2").
+_HALFYEAR_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})\s*[/.\-, ]?\s*(?:H\s*([1-2])|([1-2])\s*H)\s*$",
+    re.IGNORECASE,
+)
+# Year-first Langform-Halbjahr ("2024 1. Halbjahr", "2024 Halbjahr 1",
+# "2024-2. Halfyear") - spiegelt _QUARTER_LONG_YEAR_FIRST. Wie bei der
+# Quartals-Langform-Year-First werden beide Reihenfolgen innerhalb der
+# Langform akzeptiert.
+_HALFYEAR_LONG_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})\s*[/.\-, ]?\s*"
+    r"(?:([1-2])\s*\.?\s*(?:halbjahr|half-?year)"
+    r"|(?:halbjahr|half-?year)\s+([1-2]))\s*$",
+    re.IGNORECASE,
+)
+
 # ISO 8601 Ordinal-Datum (Tag des Jahres): "2024-165", "2024165" (compact, 7 Ziffern),
 # "2024-001". Konvention: Tag 1..366 (366 nur in Schaltjahren). Verbreitet in
 # NASA-/wissenschaftlichen Exporten und Astro-Sammler-Notizen ("Julianischer Tag");
@@ -618,6 +667,38 @@ def parse_iso_date(text) -> str | None:
         q = int(m.group(2) or m.group(3))
         if 1800 <= year <= 2999:
             return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
+    # Halbjahres-Notation: spiegelt die Quartals-Block (Kurz-/Lang-/Year-First-
+    # Varianten) auf die 6-Monats-Achse. Konvention: H1 → Januar (Halbjahres-
+    # Startmonat), H2 → Juli. Verbreitet in Geschaeftsberichten ("H1 2024
+    # Umsatz", "Halbjahresbericht 2024") und einigen Sammlungs-Tagebuechern
+    # ("1. Halbjahr 2024 - Tucson-Boerse + Bergtour"). Vor _RELATIVE_YEAR
+    # geprueft, weil dort u.a. "Anfang"/"Mitte"/"Ende" gepruefte werden und
+    # "Halbjahr" lexikalisch zwar weit weg ist, aber zur konsistenten Block-
+    # Reihenfolge passt.
+    m = _HALFYEAR_SHORT.match(s)
+    if m:
+        h = int(m.group(1) or m.group(2))
+        year = int(m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_HALFYEAR_MONTHS[h]:02d}-01"
+    m = _HALFYEAR_LONG.match(s)
+    if m:
+        h = int(m.group(1) or m.group(2))
+        year = int(m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_HALFYEAR_MONTHS[h]:02d}-01"
+    m = _HALFYEAR_YEAR_FIRST.match(s)
+    if m:
+        year = int(m.group(1))
+        h = int(m.group(2) or m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_HALFYEAR_MONTHS[h]:02d}-01"
+    m = _HALFYEAR_LONG_YEAR_FIRST.match(s)
+    if m:
+        year = int(m.group(1))
+        h = int(m.group(2) or m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_HALFYEAR_MONTHS[h]:02d}-01"
     # Relative Jahresposition ("Anfang/Mitte/Ende 2024", "early/mid/late 2024",
     # "mid-2024"). Vor _SEASON_YEAR geprueft, damit die Schluesselwoerter nicht
     # erst als unbekannter Saison-Name auf None fallen.

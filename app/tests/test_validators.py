@@ -626,6 +626,67 @@ def test_parse_iso_date_quartale_year_first():
     assert parse_iso_date("3000-Q1") is None
 
 
+def test_parse_iso_date_halbjahr():
+    """Halbjahres-Notation (Kurz-/Lang-/Year-First, DE/EN) spiegelt das
+    Quartals-Vokabular auf die 6-Monats-Achse. H1 → Januar, H2 → Juli."""
+    # Kurzform Q-Stil: "H1 2024", verschiedene Separatoren
+    assert parse_iso_date("H1 2024") == "2024-01-01"
+    assert parse_iso_date("H2 2024") == "2024-07-01"
+    assert parse_iso_date("H1/2024") == "2024-01-01"
+    assert parse_iso_date("H2-2024") == "2024-07-01"
+    assert parse_iso_date("H1.2024") == "2024-01-01"
+    assert parse_iso_date("H2,1985") == "1985-07-01"
+    # Kurzform Postfix: "1H 2024"
+    assert parse_iso_date("1H 2024") == "2024-01-01"
+    assert parse_iso_date("2H/1985") == "1985-07-01"
+    # Langform DE
+    assert parse_iso_date("1. Halbjahr 2024") == "2024-01-01"
+    assert parse_iso_date("2. Halbjahr 1985") == "1985-07-01"
+    assert parse_iso_date("Halbjahr 1 2024") == "2024-01-01"
+    assert parse_iso_date("Halbjahr 2 1999") == "1999-07-01"
+    # Langform EN (Compound mit/ohne Bindestrich)
+    assert parse_iso_date("1. Halfyear 2024") == "2024-01-01"
+    assert parse_iso_date("2. Half-year 1985") == "1985-07-01"
+    assert parse_iso_date("Halfyear 2 2020") == "2020-07-01"
+    assert parse_iso_date("Half-year 1 2020") == "2020-01-01"
+    # Case-insensitive
+    assert parse_iso_date("h1 2024") == "2024-01-01"
+    assert parse_iso_date("HALBJAHR 1 2024") == "2024-01-01"
+    # Year-first Kurzform: "2024-H1", "2024H1"
+    assert parse_iso_date("2024-H1") == "2024-01-01"
+    assert parse_iso_date("2024-H2") == "2024-07-01"
+    assert parse_iso_date("2024 H1") == "2024-01-01"
+    assert parse_iso_date("2024H1") == "2024-01-01"
+    assert parse_iso_date("2024-1H") == "2024-01-01"
+    assert parse_iso_date("2024 2H") == "2024-07-01"
+    # Year-first Langform
+    assert parse_iso_date("2024 1. Halbjahr") == "2024-01-01"
+    assert parse_iso_date("2024 Halbjahr 2") == "2024-07-01"
+    assert parse_iso_date("2024-1. Halbjahr") == "2024-01-01"
+    assert parse_iso_date("2024,Halbjahr 1") == "2024-01-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / trailing Satzzeichen
+    assert parse_iso_date("ca. H1 2024") == "2024-01-01"
+    assert parse_iso_date("(H1 2024)") == "2024-01-01"
+    assert parse_iso_date("H1 2024.") == "2024-01-01"
+
+
+def test_parse_iso_date_halbjahr_ungueltig():
+    """H0/H3, Jahr ausserhalb Spanne → None; bestehende Pattern bleiben."""
+    assert parse_iso_date("H0 2024") is None
+    assert parse_iso_date("H3 2024") is None
+    assert parse_iso_date("H1 1700") is None
+    assert parse_iso_date("H1 3000") is None
+    assert parse_iso_date("H1") is None              # Jahr fehlt
+    assert parse_iso_date("Halbjahr 2024") is None    # H-Zahl fehlt
+    assert parse_iso_date("2024-H3") is None
+    assert parse_iso_date("3000-H1") is None
+    # Bestehende Q-/Seasons-/YYYY-MM-Patterns unveraendert (kein Regress)
+    assert parse_iso_date("Q1 2024") == "2024-01-01"
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("2024-06") == "2024-06-01"
+    assert parse_iso_date("1985 bis 1990") == "1985-01-01"
+
+
 def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Sommer 1700") is None    # ausserhalb 1800-2999
     assert parse_iso_date("Foosaison 2020") is None  # kein bekannter Saison-Name
