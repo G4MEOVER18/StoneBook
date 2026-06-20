@@ -136,6 +136,21 @@ def _read_csv(path: Path) -> list[dict]:
 
 _COMMON_DELIMS = (",", ";", "\t", "|")
 _ENCODING_FALLBACKS = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
+# UTF-16-Byte-Order-Marks: \xff\xfe = LE, \xfe\xff = BE. Excel speichert beim
+# Export-Typ "Unicode Text (*.txt)" UTF-16-LE mit BOM und Tab-Separator; in
+# einigen DE-/CH-Office-Installationen ist das der Default fuer "CSV mit
+# Sonderzeichen". Ohne BOM-Erkennung fiele die Datei aktuell durch utf-8-sig/
+# utf-8 (beide scheitern an \xff bzw. \xfe als ungueltigem Startbyte) auf
+# cp1252 zurueck und wuerde dort als Doppel-Byte-Muell dekodiert (jeder ASCII-
+# Buchstabe als ``X\x00``, dann auch der ID-Header zerfaellt). Die explizite
+# BOM-Pruefung vor dem Fallback-Loop liefert sauberen Unicode-Text fuer beide
+# UTF-16-Varianten; ohne BOM bleiben wir bei der bestehenden Heuristik (keine
+# stille UTF-16-Annahme, weil reine ASCII-Daten als BOM-loses UTF-16-LE
+# fast immer Unsinn waeren).
+_UTF16_BOMS: tuple[tuple[bytes, str], ...] = (
+    (b"\xff\xfe", "utf-16"),  # LE - Excel "Unicode Text" Default
+    (b"\xfe\xff", "utf-16"),  # BE - selten, aber spec-konform
+)
 
 
 def _read_text_any_encoding(path: Path) -> str:
@@ -143,8 +158,17 @@ def _read_text_any_encoding(path: Path) -> str:
 
     Excel-Exporte aus aelteren Windows-Versionen sind oft cp1252-kodiert.
     Latin-1 als letzter Schritt ist verlustfrei fuer Single-Byte-Streams.
+    UTF-16-mit-BOM (Excel "Unicode Text"-Export) wird via BOM-Pruefung erkannt,
+    damit ``\\xff\\xfe...``-Bytes nicht durch cp1252 als Doppelbyte-Muell
+    dekodiert werden.
     """
     raw = path.read_bytes()
+    for bom, enc in _UTF16_BOMS:
+        if raw.startswith(bom):
+            try:
+                return raw.decode(enc)
+            except UnicodeDecodeError:
+                break
     for enc in _ENCODING_FALLBACKS:
         try:
             return raw.decode(enc)

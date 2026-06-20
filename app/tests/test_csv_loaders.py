@@ -343,6 +343,56 @@ def test_load_standard_latin1_fallback(tmp_path):
     assert data["OBJ_0001"]["Mineral_Primaer"] == "Calcít"
 
 
+def test_load_standard_utf16_le_bom(tmp_path):
+    """Excel 'Unicode Text'-Export ist UTF-16-LE mit BOM und Tab-Separator.
+
+    Ohne BOM-Erkennung fiele die Datei aktuell durch utf-8-sig/utf-8 (beide
+    scheitern an ``\\xff`` als ungueltigem Startbyte) auf cp1252 zurueck und
+    wuerde als Doppelbyte-Muell dekodiert (jeder ASCII-Buchstabe als
+    ``X\\x00``, ID-Header zerfaellt). Mit BOM-Pruefung wird der korrekte
+    UTF-16-Decoder benutzt; Umlaute bleiben intakt.
+    """
+    csv_path = tmp_path / "u16le.csv"
+    csv_path.write_bytes(
+        ("ID\tMineral_Primaer\tFundort\n"
+         "OBJ_0001\tQuarz\tZürich\n"
+         "OBJ_0002\tCalcit\tDavos\n").encode("utf-16")  # encode() addiert BOM \xff\xfe
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert set(data.keys()) == {"OBJ_0001", "OBJ_0002"}
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+    assert data["OBJ_0001"]["Fundort"] == "Zürich"
+    assert data["OBJ_0002"]["Mineral_Primaer"] == "Calcit"
+
+
+def test_load_standard_utf16_be_bom(tmp_path):
+    """UTF-16-BE mit BOM (selten, aber spec-konform) wird ebenfalls erkannt."""
+    csv_path = tmp_path / "u16be.csv"
+    # encode('utf-16-be') addiert KEIN BOM; BOM \xfe\xff manuell voranstellen,
+    # damit die BOM-Pruefung in _read_text_any_encoding greift
+    csv_path.write_bytes(
+        b"\xfe\xff" + (
+            "ID,Mineral_Primaer\nOBJ_0001,Quarz\n"
+        ).encode("utf-16-be")
+    )
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+
+
+def test_load_standard_utf16_ohne_bom_faellt_auf_cp1252_zurueck(tmp_path):
+    """Ohne BOM keine stille UTF-16-Annahme: BOM-loses UTF-16 ist von ASCII-
+    Daten in cp1252 nicht eindeutig unterscheidbar; bestehende Fallback-Logik
+    bleibt unveraendert. Eine reine ASCII-CSV ohne BOM funktioniert weiter.
+    """
+    csv_path = tmp_path / "ascii.csv"
+    csv_path.write_bytes(b"ID,Mineral_Primaer\nOBJ_0001,Quarz\n")
+    from stonebook.migration.csv_loaders import load_standard
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Mineral_Primaer"] == "Quarz"
+
+
 def test_load_standard_quoted_multiline(tmp_path):
     """Zellen mit eingebetteten Zeilenumbruechen (quoted) werden korrekt geparst."""
     csv_path = tmp_path / "multi.csv"
