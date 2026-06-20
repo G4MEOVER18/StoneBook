@@ -368,6 +368,43 @@ def test_parse_iso_date_quartale_ungueltig():
     assert parse_iso_date("Quartal 2024") is None  # Quartalzahl fehlt
 
 
+def test_parse_iso_date_quartale_langform_year_first():
+    """Year-first Langform-Quartal ('2024 Quartal 1', '2024-1. Quartal')."""
+    # Verschiedene Separatoren zwischen Jahr und Langform
+    assert parse_iso_date("2024 Quartal 1") == "2024-01-01"
+    assert parse_iso_date("2024 Quartal 2") == "2024-04-01"
+    assert parse_iso_date("2024 Quartal 3") == "2024-07-01"
+    assert parse_iso_date("2024 Quartal 4") == "2024-10-01"
+    # Zahl-vor-Wort Reihenfolge ("1. Quartal")
+    assert parse_iso_date("2024 1. Quartal") == "2024-01-01"
+    assert parse_iso_date("2024 3. Quartal") == "2024-07-01"
+    assert parse_iso_date("1985 4. Quartal") == "1985-10-01"
+    # Bindestrich / Komma / Punkt als Separator zwischen Jahr und Langform
+    assert parse_iso_date("2024-1. Quartal") == "2024-01-01"
+    assert parse_iso_date("2024-Quartal 1") == "2024-01-01"
+    assert parse_iso_date("2024,Quartal 1") == "2024-01-01"
+    assert parse_iso_date("2024.Quartal 1") == "2024-01-01"
+    # Englische Langform Quarter
+    assert parse_iso_date("2024 Quarter 1") == "2024-01-01"
+    assert parse_iso_date("1985 3. Quarter") == "1985-07-01"
+    assert parse_iso_date("1985-Quarter 2") == "1985-04-01"
+    # Case-insensitive
+    assert parse_iso_date("2024 quartal 1") == "2024-01-01"
+    assert parse_iso_date("2024 QUARTAL 1") == "2024-01-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / trailing Satzzeichen
+    assert parse_iso_date("ca. 2024 Quartal 1") == "2024-01-01"
+    assert parse_iso_date("(2024 Quartal 1)") == "2024-01-01"
+    assert parse_iso_date("2024 Quartal 1.") == "2024-01-01"
+    # Bestehende Year-Last-Langform unveraendert (kein Regress)
+    assert parse_iso_date("1. Quartal 2024") == "2024-01-01"
+    assert parse_iso_date("Quartal 1 2024") == "2024-01-01"
+    # Ungueltig: Q0/Q5, Jahr ausserhalb Spanne
+    assert parse_iso_date("2024 Quartal 5") is None
+    assert parse_iso_date("2024 Quartal 0") is None
+    assert parse_iso_date("1700 Quartal 1") is None
+    assert parse_iso_date("3000 Quartal 1") is None
+
+
 def test_parse_iso_date_quartale_year_first():
     """Year-first Quartals-Notation ('2024-Q1', '2024Q1') - Excel/Finanzreports."""
     # Verschiedene Separatoren zwischen Jahr und Q

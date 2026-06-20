@@ -194,6 +194,19 @@ _QUARTER_YEAR_FIRST = re.compile(
     r"^\s*(\d{4})\s*[/.\-, ]?\s*(?:Q\s*([1-4])|([1-4])\s*Q)\s*$",
     re.IGNORECASE,
 )
+# Year-first Langform-Quartal: "2024 1. Quartal" / "2024 Quartal 1" /
+# "2024-3. Quarter" / "1985, Quartal 4". Spiegelt _QUARTER_LONG auf die
+# Jahr-zuerst-Reihenfolge - kommt in Geschaeftsperioden-Reports und einigen
+# Sammlungs-Tagebuechern vor, wenn das Jahr als ordnender Schluessel
+# vorangestellt wird ("Aktivitaeten 2024 - 1. Quartal: Foto-Session ..."). Wie
+# bei _QUARTER_LONG werden beide Reihenfolgen innerhalb der Langform
+# akzeptiert (Zahl-vor-Wort "1. Quartal" und Wort-vor-Zahl "Quartal 1"),
+# sodass "2024 1. Quartal" und "2024 Quartal 1" identisch behandelt werden.
+_QUARTER_LONG_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})\s*[/.\-, ]?\s*"
+    r"(?:([1-4])\s*\.?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))\s*$",
+    re.IGNORECASE,
+)
 
 # ISO 8601 Ordinal-Datum (Tag des Jahres): "2024-165", "2024165" (compact, 7 Ziffern),
 # "2024-001". Konvention: Tag 1..366 (366 nur in Schaltjahren). Verbreitet in
@@ -504,6 +517,15 @@ def parse_iso_date(text) -> str | None:
     # zur Year-Last-Form _QUARTER_SHORT; kommt in Quartalsreports und
     # Excel-Auto-Format vor ("2024-Q1" sortiert lexikographisch korrekt).
     m = _QUARTER_YEAR_FIRST.match(s)
+    if m:
+        year = int(m.group(1))
+        q = int(m.group(2) or m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
+    # Year-first Langform-Quartal ("2024 1. Quartal", "2024 Quartal 1").
+    # Symmetrisch zur Year-Last-Form _QUARTER_LONG; kommt in Geschaefts-
+    # perioden-Reports und einigen Sammlungs-Tagebuechern vor.
+    m = _QUARTER_LONG_YEAR_FIRST.match(s)
     if m:
         year = int(m.group(1))
         q = int(m.group(2) or m.group(3))
