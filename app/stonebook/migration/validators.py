@@ -103,6 +103,17 @@ _MONTH_NAMES: dict[str, int] = {
     "oktober": 10, "october": 10, "okt": 10, "oct": 10,
     "november": 11, "nov": 11,
     "dezember": 12, "december": 12, "dez": 12, "dec": 12,
+    # Roemische Monatsziffern (I..XII) - traditionelle Schreibweise auf aelteren
+    # mineralogischen Etiketten, Museums-Eingangsbuechern und in osteuropaeischen
+    # Sammlungs-Notizen ("13.VI.1985" = 13. Juni 1985). Wird durch
+    # _normalize_month_name via lower() angesprochen; die Patterns
+    # _DAY_MONTH_YEAR / _ENGLISH_MONTH_DAY_YEAR / _MONTH_YEAR akzeptieren
+    # Buchstaben-Tokens beliebiger Laenge, daher kein separates Regex noetig.
+    # Einbuchstabige Eintraege (i/v/x) sind formal mehrdeutig (Pronomen "I",
+    # Tippfehler), greifen aber nur in Datum-Strukturen mit Tag + 4-Ziffer-Jahr
+    # bzw. Monat + 4-Ziffer-Jahr - dort ist Datums-Semantik eindeutig.
+    "i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6,
+    "vii": 7, "viii": 8, "ix": 9, "x": 10, "xi": 11, "xii": 12,
 }
 # "13. Juni 2024" / "13 Juni 2024" / "13.Juni.2024" / "13/Jun/2024" / "13-Jun-2024"
 # Separator zwischen den Teilen: Punkt, Slash, Bindestrich, Komma oder reines Whitespace.

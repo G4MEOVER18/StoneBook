@@ -685,6 +685,55 @@ def test_parse_iso_date_kw_notation():
     assert parse_iso_date("KW 25") is None
 
 
+def test_parse_iso_date_roemische_monate():
+    """Roemische Monatsziffern (I..XII) auf aelteren Etiketten / Eingangsbuechern."""
+    # DD.MM.YYYY mit Punkt-Separator (klassische Etiketten-Form)
+    assert parse_iso_date("13.VI.1985") == "1985-06-13"
+    assert parse_iso_date("1.I.2020") == "2020-01-01"
+    assert parse_iso_date("31.XII.1999") == "1999-12-31"
+    assert parse_iso_date("15.IV.2024") == "2024-04-15"
+    assert parse_iso_date("28.II.2024") == "2024-02-28"
+    assert parse_iso_date("30.IX.2020") == "2020-09-30"
+    # Mit Whitespace zwischen den Teilen ("13. VI. 1985")
+    assert parse_iso_date("13. VI. 1985") == "1985-06-13"
+    assert parse_iso_date("13 VI 2024") == "2024-06-13"
+    # Bindestrich-Separator ("13-VI-2024")
+    assert parse_iso_date("13-VI-2024") == "2024-06-13"
+    # Nur Monat + Jahr ("VI 2024" / "VI/2024")
+    assert parse_iso_date("VI 2024") == "2024-06-01"
+    assert parse_iso_date("XII 1999") == "1999-12-01"
+    assert parse_iso_date("VI/2024") == "2024-06-01"
+    assert parse_iso_date("XII-1999") == "1999-12-01"
+    # Englische Reihenfolge ("VI 13 2024")
+    assert parse_iso_date("VI 13 2024") == "2024-06-13"
+    # Case-insensitive (Etiketten teilweise klein geschrieben)
+    assert parse_iso_date("13.vi.2024") == "2024-06-13"
+    assert parse_iso_date("vi 2024") == "2024-06-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / trailing Satzzeichen
+    assert parse_iso_date("ca. 13.VI.1985") == "1985-06-13"
+    assert parse_iso_date("(13.VI.1985)") == "1985-06-13"
+    assert parse_iso_date("13.VI.1985.") == "1985-06-13"
+    # Mit Zeit-Suffix (kommt z.B. in Logbuch-Eintraegen vor)
+    assert parse_iso_date("13.VI.1985 14:30") == "1985-06-13"
+    # Einzelbuchstaben-Mai ("13.V.2024" = 13. Mai 2024)
+    assert parse_iso_date("13.V.2024") == "2024-05-13"
+    assert parse_iso_date("13.X.2024") == "2024-10-13"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("13. Juni 1985") == "1985-06-13"
+    assert parse_iso_date("13.06.1985") == "1985-06-13"
+
+
+def test_parse_iso_date_roemische_monate_ungueltig():
+    # XIII / XIV / hoeher gibt keinen gueltigen Monat
+    assert parse_iso_date("13.XIII.2024") is None
+    assert parse_iso_date("13.XIV.2024") is None
+    # Ungueltiger Tag bleibt None
+    assert parse_iso_date("32.VI.2024") is None
+    assert parse_iso_date("30.II.2024") is None  # Februar 30
+    # Jahr ausserhalb 1800..2999
+    assert parse_iso_date("13.VI.1700") is None
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None
