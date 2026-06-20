@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from stonebook.fields import DATA_FIELDS, IMAGE_CATEGORIES
+from stonebook.fields import DATA_FIELDS, FIELD_BY_NAME, IMAGE_CATEGORIES
 from stonebook.migration.validators import parse_iso_date
 
 # Status-Werte, die das Schema (status TEXT NOT NULL DEFAULT 'platzhalter')
@@ -15,6 +15,15 @@ from stonebook.migration.validators import parse_iso_date
 # integrity.py keine Abhaengigkeit auf den repository-Modul-Layer haben
 # soll (das Modul wird vom CLI auch ohne ObjectRepo-Initialisierung importiert).
 _VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"})
+# Gueltige Kategorie-Werte aus dem Feldwoerterbuch (ohne Default-Leerstring,
+# der "noch nicht kategorisiert" bedeutet und legitim ist). Spiegelt
+# repository.VALID_KATEGORIEN. Aus FIELD_BY_NAME abgeleitet statt als Literal,
+# weil die Liste Umlaute und Bindestriche enthaelt ("Mineral-Korn", "Handstück",
+# "Dünnschliff", "Geröll") und re-typische Tippfehler hier still Daten
+# verfaelschen wuerden - die Single-Source-of-Truth bleibt im Feldwoerterbuch.
+_VALID_KATEGORIEN: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Kategorie"].enum_values if v
+)
 
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
 # Format: feldname -> (untergrenze | None, obergrenze | None)
@@ -64,6 +73,7 @@ class IntegrityReport:
     aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
     platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
     unknown_status: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, status) - status nicht in {aktiv,platzhalter,archiviert}
+    unknown_kategorie: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kategorie) - Kategorie nicht im Feldwoerterbuch-Enum
     geaendert_vor_erstellt: list[tuple[str, str, str]] = field(default_factory=list)  # (obj_id, erstellt_am, geaendert_am) - logisch unmoeglich
 
     @property
@@ -77,6 +87,7 @@ class IntegrityReport:
                     or self.aktiv_ohne_inhalt
                     or self.platzhalter_mit_inhalt
                     or self.unknown_status
+                    or self.unknown_kategorie
                     or self.geaendert_vor_erstellt)
 
     def as_dict(self) -> dict:
@@ -95,6 +106,7 @@ class IntegrityReport:
             "aktiv_ohne_inhalt": list(self.aktiv_ohne_inhalt),
             "platzhalter_mit_inhalt": list(self.platzhalter_mit_inhalt),
             "unknown_status": [list(t) for t in self.unknown_status],
+            "unknown_kategorie": [list(t) for t in self.unknown_kategorie],
             "geaendert_vor_erstellt": [list(t) for t in self.geaendert_vor_erstellt],
             "is_clean": self.is_clean,
         }
@@ -172,6 +184,35 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
             "SELECT obj_id, status FROM objects ORDER BY obj_id"
         ).fetchall()
         if r["status"] not in _VALID_STATUSES
+    ]
+
+    # Kategorie-Validierung: das Schema hat keine CHECK-Klausel auf Kategorie,
+    # daher koennen invalide Werte durch direkte DB-Editierung, fehlerhafte
+    # CSV-/JSON-Imports (load_standard kopiert ``Kategorie`` ohne Validierung
+    # in den text-Pfad von _convert_standard) oder Migration aus inkonsistenten
+    # Quell-CSVs (v1 hatte z.B. teilweise "Handstück" als Sub-Bezeichnung im
+    # Notizfeld statt im Kategorie-Feld) entstehen. ObjectRepo.list_objects mit
+    # kategorie_in validiert zwar gegen VALID_KATEGORIEN, fasst aber nur die
+    # Filter-Eingabe ab - die Integrity-Pruefung deckt die DB-Sicht ab und macht
+    # stille Tippfehler/Falschwerte ("Handstuck" ohne Umlaut, "Mineralkorn" ohne
+    # Bindestrich, "kristall" mit Kleinbuchstabe, frei erfundene Werte wie
+    # "Probe"/"Fossil") sichtbar. Komplementaer zu unknown_status (status-Wert-
+    # Validierung) und unknown_image_kategorie (Bildkategorie auf der image-
+    # Tabelle): hier geht es um den syntaktischen Wertebereich der Objekt-
+    # Kategorie auf der objects-Tabelle. Leerstring "" und NULL sind gueltig
+    # ("noch nicht kategorisiert") und werden uebergangen, damit der Pflege-
+    # Restbestand (noch nicht kategorisierte Stuecke) keine falsch-positiven
+    # erzeugt; tatsaechliche Tippfehler werden so isoliert sichtbar. Format
+    # spiegelt unknown_status: (obj_id, kategorie)-Tuples, damit sowohl die
+    # betroffene ID als auch der konkrete Falschwert direkt im Report stehen.
+    rep.unknown_kategorie = [
+        (r["obj_id"], r["Kategorie"])
+        for r in conn.execute(
+            "SELECT obj_id, Kategorie FROM objects "
+            "WHERE Kategorie IS NOT NULL AND TRIM(Kategorie) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        if r["Kategorie"] not in _VALID_KATEGORIEN
     ]
 
     for row in conn.execute(

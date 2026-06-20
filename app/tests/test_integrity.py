@@ -380,6 +380,62 @@ def test_unknown_status_in_as_dict_serialisierbar(tmp_path):
     c.close()
 
 
+def test_unknown_kategorie_wird_erkannt(tmp_path):
+    """Kategorie ausserhalb des Feldwoerterbuch-Enums wird gemeldet (obj_id, kategorie).
+
+    Schema hat keine CHECK-Klausel auf Kategorie - Tippfehler ("Handstuck" ohne
+    Umlaut), Falschwerte ("Probe", "Fossil") oder Case-Varianten ("kristall")
+    koennen durch direkten DB-Zugriff oder fehlerhaften CSV-/JSON-Import
+    entstehen, ohne dass die Anwendung sie bemerkt. Leerstring/NULL bleiben
+    legitim als "noch nicht kategorisiert".
+    """
+    c = open_db(tmp_path / "uk.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Handstück"),     # ok (Umlaut-Form aus Feldwoerterbuch)
+            ("OBJ_0002", "Handstuck"),     # Tippfehler ohne Umlaut
+            ("OBJ_0003", "Kristall"),      # ok
+            ("OBJ_0004", "kristall"),      # Case-Tippfehler (Kleinbuchstabe)
+            ("OBJ_0005", "Probe"),         # frei erfunden
+            ("OBJ_0006", "Mineralkorn"),   # ohne Bindestrich (Soll: Mineral-Korn)
+            ("OBJ_0007", None),            # legitim (noch nicht kategorisiert)
+            ("OBJ_0008", ""),              # legitim (Default-Leerstring)
+            ("OBJ_0009", "   "),           # legitim (Whitespace = leer)
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    # Sortiert nach obj_id; NULL/Leerstring/Whitespace tauchen nicht auf.
+    assert rep.unknown_kategorie == [
+        ("OBJ_0002", "Handstuck"),
+        ("OBJ_0004", "kristall"),
+        ("OBJ_0005", "Probe"),
+        ("OBJ_0006", "Mineralkorn"),
+    ]
+    assert not rep.is_clean
+    c.close()
+
+
+def test_unknown_kategorie_migrierte_db_clean(migrated_conn):
+    """Migrierte Beispiel-DB nutzt ausschliesslich gueltige Kategorie-Werte."""
+    rep = check_integrity(migrated_conn)
+    assert rep.unknown_kategorie == []
+
+
+def test_unknown_kategorie_in_as_dict_serialisierbar(tmp_path):
+    """as_dict liefert Tuples als Listen, damit das JSON-Format roundtrip-fest ist."""
+    import json
+    c = open_db(tmp_path / "ak.sqlite3")
+    c.execute("INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+              ("OBJ_0001", "Probe"))
+    c.commit()
+    d = check_integrity(c).as_dict()
+    assert d["unknown_kategorie"] == [["OBJ_0001", "Probe"]]
+    json.dumps(d, ensure_ascii=False)  # darf nicht crashen
+    c.close()
+
+
 def test_geaendert_vor_erstellt_wird_erkannt(tmp_path):
     """geaendert_am < erstellt_am ist logisch unmoeglich und sollte gemeldet werden.
 
