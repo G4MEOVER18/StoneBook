@@ -64,6 +64,7 @@ class IntegrityReport:
     aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
     platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
     unknown_status: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, status) - status nicht in {aktiv,platzhalter,archiviert}
+    geaendert_vor_erstellt: list[tuple[str, str, str]] = field(default_factory=list)  # (obj_id, erstellt_am, geaendert_am) - logisch unmoeglich
 
     @property
     def is_clean(self) -> bool:
@@ -75,7 +76,8 @@ class IntegrityReport:
                     or self.range_inverted or self.unknown_image_kategorie
                     or self.aktiv_ohne_inhalt
                     or self.platzhalter_mit_inhalt
-                    or self.unknown_status)
+                    or self.unknown_status
+                    or self.geaendert_vor_erstellt)
 
     def as_dict(self) -> dict:
         return {
@@ -93,6 +95,7 @@ class IntegrityReport:
             "aktiv_ohne_inhalt": list(self.aktiv_ohne_inhalt),
             "platzhalter_mit_inhalt": list(self.platzhalter_mit_inhalt),
             "unknown_status": [list(t) for t in self.unknown_status],
+            "geaendert_vor_erstellt": [list(t) for t in self.geaendert_vor_erstellt],
             "is_clean": self.is_clean,
         }
 
@@ -203,6 +206,26 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
                 continue
             if float(lo) > float(hi):
                 rep.range_inverted.append((row["obj_id"], f"{lo_field}>{hi_field}"))
+
+    # Zeitstempel-Konsistenz: geaendert_am muss >= erstellt_am sein. Die App
+    # selbst setzt beide bei create() auf denselben _now()-Stempel und ueber-
+    # schreibt geaendert_am bei jedem update_fields(); die umgekehrte Reihen-
+    # folge ist logisch unmoeglich, kann aber durch JSON-Import aus einer
+    # korrupten Quelle, manuelle DB-Editierung oder Clock-Skew zwischen
+    # Migrationsmaschinen entstehen. Lexikographischer Vergleich reicht, weil
+    # _now() ISO-8601-Format "YYYY-MM-DD HH:MM:SS" schreibt (sortierbar).
+    # Leere oder NULL-Stempel werden ignoriert (die Format-Validitaet ist
+    # ein separates Anliegen und wuerde hier falsch-positive erzeugen).
+    rep.geaendert_vor_erstellt = [
+        (r["obj_id"], r["erstellt_am"], r["geaendert_am"])
+        for r in conn.execute(
+            "SELECT obj_id, erstellt_am, geaendert_am FROM objects "
+            "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+            "AND geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+            "AND geaendert_am < erstellt_am "
+            "ORDER BY obj_id"
+        ).fetchall()
+    ]
 
     # 'aktiv' impliziert: irgendwo Daten oder mindestens ein Bild. Wenn beides
     # fehlt, ist der Status verkettet falsch (typischerweise nachtraegliches

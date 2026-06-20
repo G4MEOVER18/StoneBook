@@ -380,6 +380,47 @@ def test_unknown_status_in_as_dict_serialisierbar(tmp_path):
     c.close()
 
 
+def test_geaendert_vor_erstellt_wird_erkannt(tmp_path):
+    """geaendert_am < erstellt_am ist logisch unmoeglich und sollte gemeldet werden.
+
+    Die App-Pipeline (create/update_fields) setzt beide Stempel monoton wachsend;
+    die Inkonsistenz kann nur durch JSON-Import aus einer korrupten Quelle,
+    manuelle DB-Editierung oder Clock-Skew zwischen Migrationsmaschinen entstehen.
+    """
+    c = open_db(tmp_path / "ts.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 10:00:00", "2024-06-13 10:00:00"),  # gleich → ok
+            ("OBJ_0002", "2024-06-13 10:00:00", "2024-06-13 12:00:00"),  # geaendert > erstellt → ok
+            ("OBJ_0003", "2024-06-13 12:00:00", "2024-06-13 10:00:00"),  # invertiert → flag
+            ("OBJ_0004", "2024-06-13 10:00:00", "2023-06-13 10:00:00"),  # Jahr invertiert → flag
+            ("OBJ_0005", None, None),                                     # beide leer → uebergangen
+            ("OBJ_0006", "", ""),                                         # leere Strings → uebergangen
+            ("OBJ_0007", "2024-06-13 10:00:00", None),                    # nur erstellt → uebergangen
+            ("OBJ_0008", None, "2024-06-13 10:00:00"),                    # nur geaendert → uebergangen
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    flagged = {oid for oid, _, _ in rep.geaendert_vor_erstellt}
+    assert flagged == {"OBJ_0003", "OBJ_0004"}
+    assert ("OBJ_0003", "2024-06-13 12:00:00", "2024-06-13 10:00:00") in rep.geaendert_vor_erstellt
+    assert not rep.is_clean
+    # as_dict serialisierbar
+    import json
+    d = rep.as_dict()
+    assert ["OBJ_0003", "2024-06-13 12:00:00", "2024-06-13 10:00:00"] in d["geaendert_vor_erstellt"]
+    json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
+def test_geaendert_vor_erstellt_migrierte_db_clean(migrated_conn):
+    """Die migrierte Beispiel-DB hat monotone Zeitstempel (Pipeline-Garantie)."""
+    rep = check_integrity(migrated_conn)
+    assert rep.geaendert_vor_erstellt == []
+
+
 def test_find_duplicate_image_sha256(tmp_path):
     """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
     from stonebook.db.integrity import find_duplicate_image_sha256
