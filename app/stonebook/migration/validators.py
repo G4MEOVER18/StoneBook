@@ -56,13 +56,25 @@ _MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\-](\d{4})\s*$")
 # DE-Sammler-Vokabular umfasst zusaetzlich ``etwa``, ``vermutlich``,
 # ``schaetzungsweise``/``schätzungsweise`` (alle "geschaetzter Wert", semantisch
 # identisch mit ``ca.``); EN ergaenzt ``estimated``/``est.``/``roughly``.
+# Symbolische Annaeherungs-Marker (Tilde ``~`` und Almost-Equal ``≈`` U+2248)
+# decken die typografisch-knappe Notation aus Print-Katalogen, Auktions-PDFs und
+# LaTeX-Exporten ab (``\approx`` rendert als ``≈``); auch verbreitet in Tabellen-
+# Captions/Foto-EXIF-Notizen, wo der Schreiber Platz spart (``~1985``, ``≈
+# Juni 2024``). Bisher fielen beide Formen stille auf None, obwohl semantisch
+# identisch zu ``ca.``. Wird via Alternation zur Wort-Variante eingefuegt: die
+# symbolische Form akzeptiert auch null Leerzeichen (``~1985``), waehrend die
+# Wort-Variante weiter mindestens eines verlangt (sonst wuerde ``ca1985`` als
+# ``ca`` + ``1985`` zerlegt).
 _APPROX_PREFIX = re.compile(
-    r"^(?:ca\.?|circa|approx\.?|approximately"
+    r"^(?:"
+    r"(?:ca\.?|circa|approx\.?|approximately"
     r"|around|about|roughly|estimated|est\."
     r"|um|gegen|etwa|vermutlich"
     # Umlaut-Variante und Transliteration ae (gemischte Sammlungs-Notizen)
     r"|sch[äa]tzungsweise|schaetzungsweise"
-    r")\s+",
+    r")\s+"
+    r"|[~≈]\s*"
+    r")",
     re.IGNORECASE,
 )
 # Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen

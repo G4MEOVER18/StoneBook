@@ -288,6 +288,40 @@ def test_parse_iso_date_annaeherungs_praefix_erweitert():
     assert parse_iso_date("approx 2024") == "2024-01-01"
 
 
+def test_parse_iso_date_annaeherungs_symbol():
+    """Tilde (``~``) und Almost-Equal (``≈``) als Annaeherungs-Symbol vor dem Datum."""
+    # Tilde - typografisch knappe Notation aus Tabellen-Captions / Foto-EXIF
+    assert parse_iso_date("~1985") == "1985-01-01"
+    assert parse_iso_date("~ 1985") == "1985-01-01"
+    assert parse_iso_date("~Juni 2024") == "2024-06-01"
+    assert parse_iso_date("~ Juni 2024") == "2024-06-01"
+    assert parse_iso_date("~13.06.2024") == "2024-06-13"
+    assert parse_iso_date("~2024-06") == "2024-06-01"
+    # Almost-Equal (U+2248) - LaTeX-Exports (``\approx``), Print-Kataloge
+    assert parse_iso_date("≈1985") == "1985-01-01"
+    assert parse_iso_date("≈ 1985") == "1985-01-01"
+    assert parse_iso_date("≈Juni 2024") == "2024-06-01"
+    assert parse_iso_date("≈13.06.2024") == "2024-06-13"
+    # Verkettet mit Wort-Praefix (rekursive Strippung): semantisch redundant,
+    # aber unschaedlich - jeder Praefix wird einmal pro Rekursionsebene gestrippt.
+    assert parse_iso_date("~ca. 1985") == "1985-01-01"
+    assert parse_iso_date("≈ circa 2020") == "2020-01-01"
+    assert parse_iso_date("~~1985") == "1985-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("~") is None
+    assert parse_iso_date("≈") is None
+    assert parse_iso_date("~abc") is None
+    assert parse_iso_date("~1700") is None  # ausserhalb 1800-2999
+    # Tilde nur als Praefix (am Anfang) gestrippt - mittendrin/am Ende bleibt
+    # die Eingabe wie sie ist und matcht keinen Datums-Parser.
+    assert parse_iso_date("1985~") is None
+    assert parse_iso_date("X ~ 1985") is None
+    # Bestehende Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("etwa 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_jahreszeiten():
     """Sammlungs-Notizen mit Jahreszeit + Jahr ergeben den meteorologischen Saison-Start."""
     # Deutsch
