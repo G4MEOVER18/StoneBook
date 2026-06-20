@@ -1312,6 +1312,22 @@ class AnalysisRepo:
             "ORDER BY zeitpunkt DESC, id DESC",
             (obj_id,)).fetchall()
 
+    def reassign(self, from_obj: str, to_obj: str) -> int:
+        """Haengt alle KI-Analysen von ``from_obj`` auf ``to_obj`` um.
+
+        Wird beim Merge zweier Objekte in :func:`stonebook.db.merge.
+        merge_into_canonical` gerufen, damit die Analyse-Historie des Members
+        nicht via ON DELETE CASCADE verloren geht (Member wird nach dem Merge
+        geloescht). Spiegelt :meth:`ImageRepo.reassign` exakt auf die parallele
+        FK-Tabelle. Gibt die Zahl umgehaengter Zeilen zurueck (0 wenn ``from_obj``
+        keine Analysen hatte).
+        """
+        cur = self.conn.execute(
+            "UPDATE ki_analysen SET obj_id = ? WHERE obj_id = ?",
+            (to_obj, from_obj))
+        self.conn.commit()
+        return cur.rowcount
+
     def get(self, analysis_id: int) -> sqlite3.Row | None:
         return self.conn.execute(
             "SELECT * FROM ki_analysen WHERE id = ?", (analysis_id,)).fetchone()
