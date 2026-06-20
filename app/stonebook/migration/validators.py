@@ -180,6 +180,20 @@ _QUARTER_LONG = re.compile(
     r"\s*[/.\-, ]?\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
+# Year-first Quartals-Notation: "2024-Q1", "2024/Q1", "2024 Q1", "2024Q1",
+# "2024-1Q". Spiegelt _QUARTER_SHORT auf die finanzielle/business-typische
+# Jahr-zuerst-Reihenfolge (Quartalsreports, Excel-Auto-Format "2024-Q1",
+# Buchhaltungsperioden). Konvention identisch zum Year-Last-Pattern:
+# Quartals-Startmonat (Jan/Apr/Jul/Okt). Optionaler Separator [/.\- ,] zwischen
+# Jahr und Q deckt sowohl ASCII-Bindestrich als auch Whitespace und kein-
+# Separator-Compact-Form ("2024Q1") ab. Vor _QUARTER_SHORT geprueft waere
+# unschaedlich (kollisionsfreie Reihenfolge: Jahr-zuerst beginnt mit 4 Ziffern,
+# Q-zuerst beginnt mit Q oder Ziffer 1-4), wird aber konsistent mit den
+# anderen Year-First-Patterns am gleichen Block-Ende einsortiert.
+_QUARTER_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})\s*[/.\-, ]?\s*(?:Q\s*([1-4])|([1-4])\s*Q)\s*$",
+    re.IGNORECASE,
+)
 
 # ISO 8601 Ordinal-Datum (Tag des Jahres): "2024-165", "2024165" (compact, 7 Ziffern),
 # "2024-001". Konvention: Tag 1..366 (366 nur in Schaltjahren). Verbreitet in
@@ -478,6 +492,15 @@ def parse_iso_date(text) -> str | None:
     if m:
         q = int(m.group(1) or m.group(2))
         year = int(m.group(3))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
+    # Year-first Quartals-Notation ("2024-Q1", "2024Q1", "2024 Q1"). Symmetrisch
+    # zur Year-Last-Form _QUARTER_SHORT; kommt in Quartalsreports und
+    # Excel-Auto-Format vor ("2024-Q1" sortiert lexikographisch korrekt).
+    m = _QUARTER_YEAR_FIRST.match(s)
+    if m:
+        year = int(m.group(1))
+        q = int(m.group(2) or m.group(3))
         if 1800 <= year <= 2999:
             return f"{year:04d}-{_QUARTER_MONTHS[q]:02d}-01"
     # Relative Jahresposition ("Anfang/Mitte/Ende 2024", "early/mid/late 2024",

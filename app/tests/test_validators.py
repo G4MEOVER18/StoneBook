@@ -368,6 +368,41 @@ def test_parse_iso_date_quartale_ungueltig():
     assert parse_iso_date("Quartal 2024") is None  # Quartalzahl fehlt
 
 
+def test_parse_iso_date_quartale_year_first():
+    """Year-first Quartals-Notation ('2024-Q1', '2024Q1') - Excel/Finanzreports."""
+    # Verschiedene Separatoren zwischen Jahr und Q
+    assert parse_iso_date("2024-Q1") == "2024-01-01"
+    assert parse_iso_date("2024-Q2") == "2024-04-01"
+    assert parse_iso_date("2024-Q3") == "2024-07-01"
+    assert parse_iso_date("2024-Q4") == "2024-10-01"
+    assert parse_iso_date("2024/Q1") == "2024-01-01"
+    assert parse_iso_date("2024 Q1") == "2024-01-01"
+    assert parse_iso_date("2024.Q1") == "2024-01-01"
+    assert parse_iso_date("2024,Q1") == "2024-01-01"
+    # Compact-Form ohne Separator (Excel-Auto-Format)
+    assert parse_iso_date("2024Q1") == "2024-01-01"
+    assert parse_iso_date("1985Q3") == "1985-07-01"
+    assert parse_iso_date("1999Q4") == "1999-10-01"
+    # Year-first mit Q nachgestellt: "2024-1Q"
+    assert parse_iso_date("2024-1Q") == "2024-01-01"
+    assert parse_iso_date("2024 3Q") == "2024-07-01"
+    # Case-insensitive (Excel-Default ist GROSS, manche Tools klein)
+    assert parse_iso_date("2024-q1") == "2024-01-01"
+    assert parse_iso_date("2024q1") == "2024-01-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / trailing Satzzeichen
+    assert parse_iso_date("ca. 2024-Q1") == "2024-01-01"
+    assert parse_iso_date("(2024-Q1)") == "2024-01-01"
+    assert parse_iso_date("2024-Q1.") == "2024-01-01"
+    # Bestehende Year-Last-Form unveraendert (kein Regress)
+    assert parse_iso_date("Q1 2024") == "2024-01-01"
+    assert parse_iso_date("1Q 2024") == "2024-01-01"
+    # Ungueltig: Q5/Q0, Jahr ausserhalb Spanne
+    assert parse_iso_date("2024-Q5") is None
+    assert parse_iso_date("2024-Q0") is None
+    assert parse_iso_date("1700-Q1") is None
+    assert parse_iso_date("3000-Q1") is None
+
+
 def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Sommer 1700") is None    # ausserhalb 1800-2999
     assert parse_iso_date("Foosaison 2020") is None  # kein bekannter Saison-Name
