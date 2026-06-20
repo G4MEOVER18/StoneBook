@@ -61,8 +61,12 @@ _WEEKDAY_PREFIX = re.compile(
 )
 # Trailing time component (T/space getrennt) inkl. optionaler Zonenangabe.
 # Wird vor dem Re-Parsing gestrichen, damit auch "13.06.2024 14:30" funktioniert.
+# Sekunden-Dezimalbruch akzeptiert sowohl Punkt als auch Komma als Trennzeichen;
+# ISO 8601 schreibt explizit Komma als bevorzugten Dezimal-Separator vor und
+# erlaubt Punkt als Alternative ("preferring comma is permitted"), in
+# europaeischen Locales (DE/FR/IT) ist Komma der Default.
 _TRAILING_TIME = re.compile(
-    r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
+    r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
 )
 # Trailing-Satzzeichen ("2024-06-13.", "1985!", "13. Juni 2024;").
@@ -81,9 +85,14 @@ _BRACKET_PAIRS: tuple[tuple[str, str], ...] = (
 )
 # ISO 8601 mit Zeitanteil: "2024-06-13T10:00:00", "2024-06-13 10:00:00Z",
 # auch EXIF-Stil "2024:06:13 10:00:00" → Zeit wird verworfen, nur Datum bleibt.
+# Sekunden-Dezimalbruch akzeptiert sowohl Punkt als auch Komma als Trennzeichen
+# (ISO 8601 schreibt Komma als bevorzugten Dezimal-Separator vor; EU-Locales
+# nutzen Komma als Default - der Zeitanteil wird ohnehin verworfen, daher
+# spielt das fuer das ISO-Datum-Output keine Rolle, aber das Pattern muss
+# matchen, sonst faellt die Eingabe auf None).
 _ISO_DATETIME = re.compile(
     r"^\s*(\d{4})[-:/.](\d{1,2})[-:/.](\d{1,2})"
-    r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?"
+    r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
 )
 

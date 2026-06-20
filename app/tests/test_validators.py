@@ -114,6 +114,27 @@ def test_parse_iso_date_iso_datetime():
     assert parse_iso_date("2024-06-13T10:00:00-0500") == "2024-06-13"
 
 
+def test_parse_iso_date_iso_datetime_komma_dezimal():
+    """ISO 8601 schreibt Komma als bevorzugten Dezimal-Separator im Zeitanteil vor."""
+    # Reines ISO mit Komma-Decimal in Sekundenbruch
+    assert parse_iso_date("2024-06-13T10:00:00,123") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 10:00:00,123") == "2024-06-13"
+    # Mit Zeitzonen-Suffix (UTC und Offset)
+    assert parse_iso_date("2024-06-13T10:00:00,123Z") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00,123+02:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00,5-0500") == "2024-06-13"
+    # DE-Datum + Zeit mit Komma-Decimal (Logbuch-/Excel-Eintrag DE-Locale)
+    assert parse_iso_date("13.06.2024 14:30:00,123") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30:00,5") == "2024-06-13"
+    # EXIF mit Komma-Decimal (sehr selten, aber spec-compliant)
+    assert parse_iso_date("2024:06:13 10:00:00,123") == "2024-06-13"
+    # Mit deutschem Monatsnamen + Komma-Decimal
+    assert parse_iso_date("13. Juni 2024 14:30:00,123") == "2024-06-13"
+    # Bestehende Punkt-Dezimal-Form unveraendert (kein Regress)
+    assert parse_iso_date("2024-06-13T10:00:00.123") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00.123Z") == "2024-06-13"
+
+
 def test_parse_iso_date_deutsche_zeitangaben():
     """DE-Datum mit Zeit (Excel/Logbuch) - Zeitanteil wird ignoriert."""
     assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"
