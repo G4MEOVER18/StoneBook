@@ -135,6 +135,57 @@ def test_parse_iso_date_iso_datetime_komma_dezimal():
     assert parse_iso_date("2024-06-13T10:00:00.123Z") == "2024-06-13"
 
 
+def test_parse_iso_date_named_timezones():
+    """Benannte Zeitzonen-Suffixe (UTC/GMT/CET/CEST/MEZ/MESZ/EST/PST/...).
+
+    Symmetrisch zur numerischen Form (``+02:00``/``Z``) - System-Logs, Foto-
+    Captions und EXIF-Tools schreiben die TZ oft als 2-5-Buchstaben-
+    Abkuerzung statt als Offset. Der Datumsanteil ist eindeutig, der
+    Zeitanteil (inkl. TZ) wird ohnehin verworfen.
+    """
+    # UTC/GMT (Coordinated Universal Time)
+    assert parse_iso_date("2024-06-13T10:00:00 UTC") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 GMT") == "2024-06-13"
+    # Mitteleuropa (Sommer/Winter)
+    assert parse_iso_date("2024-06-13T10:00:00 CET") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 CEST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 MEZ") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 MESZ") == "2024-06-13"
+    # USA-Zeitzonen
+    assert parse_iso_date("2024-06-13T10:00:00 EST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 EDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 PST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 PDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 CST") == "2024-06-13"
+    # Weitere (Asia/Australia)
+    assert parse_iso_date("2024-06-13T10:00:00 JST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00 IST") == "2024-06-13"
+    # Mit Space-statt-T-Separator
+    assert parse_iso_date("2024-06-13 14:30 UTC") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30:00 CEST") == "2024-06-13"
+    # DE-Datum + Zeit + named TZ (Excel/Logbuch DE-Locale)
+    assert parse_iso_date("13.06.2024 14:30 CEST") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30:00 UTC") == "2024-06-13"
+    # Monatsname + Zeit + named TZ
+    assert parse_iso_date("13. Juni 2024 14:30 GMT") == "2024-06-13"
+    assert parse_iso_date("Jun 13 2024 14:30 EST") == "2024-06-13"
+    # Bestehende Formen bleiben unveraendert (kein Regress)
+    assert parse_iso_date("2024-06-13T10:00:00Z") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00+02:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T10:00:00") == "2024-06-13"
+    # Kleinbuchstaben-Suffixe matchen nicht (nicht-TZ wie ``Uhr``, ``abc``):
+    assert parse_iso_date("2024-06-13T10:00:00 abc") is None
+    assert parse_iso_date("2024-06-13T10:00:00 Uhr") is None
+    # Gemischter Case (UTc) ebenfalls nicht - bewusste Konvention,
+    # weil TZ-Standardschreibung Grossbuchstaben sind.
+    assert parse_iso_date("2024-06-13T10:00:00 UTc") is None
+    # Sechs Buchstaben (zu lang) matched nicht
+    assert parse_iso_date("2024-06-13T10:00:00 TOOLONG") is None
+    # Einzelner Grossbuchstabe matched nicht (Z wird separat als Zulu erkannt,
+    # aber 'X' o.ae. nicht - Mindestlaenge 2 verhindert Kollision)
+    assert parse_iso_date("2024-06-13T10:00:00 X") is None
+
+
 def test_parse_iso_date_deutsche_zeitangaben():
     """DE-Datum mit Zeit (Excel/Logbuch) - Zeitanteil wird ignoriert."""
     assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"

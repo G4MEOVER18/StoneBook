@@ -65,9 +65,17 @@ _WEEKDAY_PREFIX = re.compile(
 # ISO 8601 schreibt explizit Komma als bevorzugten Dezimal-Separator vor und
 # erlaubt Punkt als Alternative ("preferring comma is permitted"), in
 # europaeischen Locales (DE/FR/IT) ist Komma der Default.
+# Benannte Zeitzonen-Suffixe (``UTC``, ``GMT``, ``CET``, ``CEST``, ``EST``,
+# ``PST``, ``MEZ``, ``MESZ`` etc.) werden symmetrisch zur numerischen Form
+# (``+02:00``/``Z``) erkannt - System-Logs, Foto-Captions und EXIF-Tools
+# schreiben die TZ oft als 2-5-Buchstaben-Abkuerzung statt als Offset. Nur
+# Grossbuchstaben matchen, damit zufaellige Kleinbuchstaben-Suffixe (``Uhr``,
+# ``abc``) nicht als TZ interpretiert werden; einzelnes ``Z`` ist Zulu und
+# wird durch den vorhandenen ``[Zz]``-Branch abgedeckt (deshalb hier
+# Mindestlaenge 2, um Kollision zu vermeiden).
 _TRAILING_TIME = re.compile(
     r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
-    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
+    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2}|\s+[A-Z]{2,5})?\s*$"
 )
 # Trailing-Satzzeichen ("2024-06-13.", "1985!", "13. Juni 2024;").
 # Geerbte Sammlungs-Notizen sind oft ganze Saetze mit Datum am Ende; das Punkt-
@@ -93,7 +101,7 @@ _BRACKET_PAIRS: tuple[tuple[str, str], ...] = (
 _ISO_DATETIME = re.compile(
     r"^\s*(\d{4})[-:/.](\d{1,2})[-:/.](\d{1,2})"
     r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
-    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2})?\s*$"
+    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2}|\s+[A-Z]{2,5})?\s*$"
 )
 
 # Monatsnamen (Deutsch + Englisch, lang/kurz, ohne Punkt; Umlaute via Normalisierung).
