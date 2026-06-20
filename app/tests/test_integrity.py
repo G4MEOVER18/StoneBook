@@ -524,6 +524,55 @@ def test_future_erstellt_am_default_now_keine_falsch_positiven(migrated_conn):
     assert rep.future_erstellt_am == []
 
 
+def test_future_geaendert_am_wird_erkannt(tmp_path):
+    """geaendert_am in der Zukunft ist logisch unmoeglich (Clock-Skew / JSON-Restore).
+
+    Spiegelt future_erstellt_am auf die letzte-Aenderungs-Achse und schliesst
+    die Luecke, die geaendert_vor_erstellt offen liess: ein Stempel-Paar mit
+    erstellt_am=2024 und geaendert_am=2099 bestaende den Inter-Stempel-Test
+    (geaendert > erstellt → ok), waere aber offensichtlich falsch (Aenderung
+    in der Zukunft). Das Trio future_funddatum / future_erstellt_am /
+    future_geaendert_am deckt jetzt alle drei Zeit-Achsen ab.
+    """
+    c = open_db(tmp_path / "fut_geaendert.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2020-01-01 00:00:00", "2024-06-13 10:00:00"),  # Vergangenheit → ok
+            ("OBJ_0002", "2020-01-01 00:00:00", "2024-06-13 11:59:59"),  # eine Sekunde vor now → ok
+            ("OBJ_0003", "2020-01-01 00:00:00", "2024-06-13 12:00:01"),  # eine Sekunde nach now → flag
+            ("OBJ_0004", "2020-01-01 00:00:00", "2099-12-31 23:59:59"),  # weit in der Zukunft → flag
+            ("OBJ_0005", "2020-01-01 00:00:00", None),                    # NULL → uebergangen
+            ("OBJ_0006", "2020-01-01 00:00:00", ""),                      # leer → uebergangen
+            ("OBJ_0007", "2020-01-01 00:00:00", "   "),                   # Whitespace → uebergangen
+        ],
+    )
+    c.commit()
+    rep = check_integrity(
+        c, now=datetime.datetime(2024, 6, 13, 12, 0, 0))
+    flagged = {oid for oid, _ in rep.future_geaendert_am}
+    assert flagged == {"OBJ_0003", "OBJ_0004"}
+    assert ("OBJ_0004", "2099-12-31 23:59:59") in rep.future_geaendert_am
+    assert not rep.is_clean
+    # geaendert_vor_erstellt darf NICHT triggern (geaendert > erstellt, korrekte
+    # Reihenfolge) - das ist genau die Luecke, die future_geaendert_am schliesst:
+    # eine Zukunfts-Aenderung mit Vergangenheits-Erstellung ist offensichtlich
+    # falsch, bestand aber den relativen Reihenfolge-Test.
+    assert rep.geaendert_vor_erstellt == []
+    # as_dict serialisierbar (neuer Feldname enthalten)
+    import json
+    d = rep.as_dict()
+    assert ["OBJ_0004", "2099-12-31 23:59:59"] in d["future_geaendert_am"]
+    json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
+def test_future_geaendert_am_default_now_keine_falsch_positiven(migrated_conn):
+    """Die migrierte Beispiel-DB hat keine Zukunfts-geaendert_am (Pipeline-Garantie)."""
+    rep = check_integrity(migrated_conn)
+    assert rep.future_geaendert_am == []
+
+
 def test_find_duplicate_image_sha256(tmp_path):
     """Bilder mit identischem SHA-256 werden gruppiert (id-Liste pro Hash)."""
     from stonebook.db.integrity import find_duplicate_image_sha256

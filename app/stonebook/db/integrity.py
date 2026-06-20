@@ -67,6 +67,7 @@ class IntegrityReport:
     invalid_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, roher Funddatum-Wert)
     future_funddatum: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, iso)
     future_erstellt_am: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, erstellt_am) - in der Zukunft (Clock-Skew / JSON-Import / manuelle Editierung)
+    future_geaendert_am: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, geaendert_am) - in der Zukunft (Clock-Skew / JSON-Import / manuelle Editierung)
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
     range_inverted: list[tuple[str, str, float, float]] = field(default_factory=list)  # (obj_id, "min_feld>max_feld", min_wert, max_wert)
@@ -84,6 +85,7 @@ class IntegrityReport:
                     or self.alias_canonical_is_alias
                     or self.invalid_funddatum or self.future_funddatum
                     or self.future_erstellt_am
+                    or self.future_geaendert_am
                     or self.missing_image_files or self.numeric_out_of_range
                     or self.range_inverted or self.unknown_image_kategorie
                     or self.aktiv_ohne_inhalt
@@ -102,6 +104,7 @@ class IntegrityReport:
             "invalid_funddatum": [list(t) for t in self.invalid_funddatum],
             "future_funddatum": [list(t) for t in self.future_funddatum],
             "future_erstellt_am": [list(t) for t in self.future_erstellt_am],
+            "future_geaendert_am": [list(t) for t in self.future_geaendert_am],
             "missing_image_files": [list(t) for t in self.missing_image_files],
             "numeric_out_of_range": [list(t) for t in self.numeric_out_of_range],
             "range_inverted": [list(t) for t in self.range_inverted],
@@ -311,6 +314,28 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
             "SELECT obj_id, erstellt_am FROM objects "
             "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
             "AND erstellt_am > ? "
+            "ORDER BY obj_id",
+            (now_iso,),
+        ).fetchall()
+    ]
+
+    # Zukunfts-Pruefung auf geaendert_am: spiegelt future_erstellt_am auf die
+    # letzte-Aenderungs-Achse und vervollstaendigt das Trio der Zukunfts-Stempel-
+    # Pruefungen (Funddatum / Erfassungs-Zeit / Aenderungs-Zeit). Eine geaendert_am
+    # in der Zukunft entsteht nicht durch die Anwendung selbst (update_fields setzt
+    # _now()), kann aber durch JSON-Restore aus einem Backup mit verstellter
+    # System-Uhr, manuelle DB-Editierung oder Sync ueber Maschinen mit Clock-Skew
+    # entstehen. geaendert_vor_erstellt deckt nur die relative Reihenfolge zwischen
+    # den zwei Stempeln ab (geaendert < erstellt → Inversion); ein Stempel-Paar
+    # erstellt_am=2024 + geaendert_am=2099 bestaende den Inter-Stempel-Test, waere
+    # aber offensichtlich falsch - jetzt deckt future_geaendert_am diese Achse ab.
+    # Lexikographischer Vergleich reicht (gleiche Konvention wie future_erstellt_am).
+    rep.future_geaendert_am = [
+        (r["obj_id"], r["geaendert_am"])
+        for r in conn.execute(
+            "SELECT obj_id, geaendert_am FROM objects "
+            "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+            "AND geaendert_am > ? "
             "ORDER BY obj_id",
             (now_iso,),
         ).fetchall()
