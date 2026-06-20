@@ -129,11 +129,6 @@ def _join_notes(*parts) -> str:
     return "\n".join(p.strip() for p in parts if p and str(p).strip())
 
 
-def _read_csv(path: Path) -> list[dict]:
-    with path.open(encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
-
-
 _COMMON_DELIMS = (",", ";", "\t", "|")
 _ENCODING_FALLBACKS = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
 # UTF-16-Byte-Order-Marks: \xff\xfe = LE, \xfe\xff = BE. Excel speichert beim
@@ -228,7 +223,7 @@ def _read_csv_robust(path: Path) -> list[dict]:
 def load_v1(path: Path) -> dict[str, dict]:
     """21 Spalten, Objekte 1-42."""
     result = {}
-    for row in _read_csv(path):
+    for row in _read_csv_robust(path):
         obj_id = normalize_id(row.get("ID"))
         if not obj_id:
             continue
@@ -278,7 +273,7 @@ def _convert_standard(col: str, raw) -> tuple[bool, object]:
 def load_v2(path: Path) -> dict[str, dict]:
     """41 Spalten ≈ Feldwörterbuch-Standard, 1:1-Übernahme mit Typkonvertierung."""
     result = {}
-    for row in _read_csv(path):
+    for row in _read_csv_robust(path):
         obj_id = normalize_id(row.get("ID"))
         if not obj_id:
             continue
@@ -337,7 +332,7 @@ def load_standard(path: Path) -> dict[str, dict]:
 def load_obj043(path: Path) -> dict[str, dict]:
     """10-Spalten-Einzelobjektformat (voll verifiziert, höchste Priorität)."""
     result = {}
-    for row in _read_csv(path):
+    for row in _read_csv_robust(path):
         obj_id = normalize_id(row.get("ID"))
         if not obj_id:
             continue

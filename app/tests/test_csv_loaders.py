@@ -453,3 +453,55 @@ def test_load_obj043():
     assert o43["Dichte_min_gcm3"] == 2.65
     assert o43["Dichte_max_gcm3"] == 2.65
     assert o43["Mohs_Haerte_min"] == 7.0
+
+
+def test_load_v1_cp1252_fallback(tmp_path):
+    """v1-Loader greift jetzt auf den gleichen tolerant-Reader wie load_standard zu.
+
+    Re-editierte Historik-CSVs aus Excel/Notepad mit cp1252-Encoding (typisch beim
+    "Speichern unter..."-Dialog auf aelteren Windows-Versionen) wurden bisher von
+    ``_read_csv`` mit utf-8-sig-only stillschweigend zur ``UnicodeDecodeError``-
+    Exception eskaliert. Nach der Konsolidierung auf ``_read_csv_robust`` greift
+    der Encoding-Fallback (utf-8-sig -> utf-8 -> cp1252 -> latin-1) auch fuer die
+    historischen Loader.
+    """
+    p = tmp_path / "v1_cp1252.csv"
+    # Volle v1-Spaltenliste mit Härte/Dichte/Wert-Spalten; nur die kritischen
+    # Umlaute (Härte, Rötlich) testen den Encoding-Fallback.
+    header = ("ID,Name,Beschreibung,Mineralart,Fundort,UV-Reaktion,Härte,Dichte,"
+              "Transparenz,Farbe,Wert_CHF_roh,Wert_CHF_poliert,Wert_CHF_Schmuck,"
+              "Wert_USD_Talisman,Marktwert,Wissenschaftlicher_Wert,"
+              "Seltenheit_global,Seltenheit_Fundort,Nachfrage,Inhaltsstoffe,"
+              "Beste_Verwendung\n")
+    row = ("OBJ_0001,Jaspis,Rötlicher Stein,Jaspis,Schweiz,keine,6.5-7,2.65,"
+           "opak,rot,100,200,300,50,150,80,7,5,6,SiO2,Sammlung\n")
+    p.write_bytes((header + row).encode("cp1252"))
+    data = csv_loaders.load_v1(p)
+    assert "OBJ_0001" in data
+    o = data["OBJ_0001"]
+    assert o["Mineral_Primaer"] == "Jaspis"
+    assert o["Mohs_Haerte_min"] == 6.5
+    assert o["Mohs_Haerte_max"] == 7.0
+    assert "Rötlich" in o["notizen"]
+
+
+def test_load_v2_semicolon_delimiter(tmp_path):
+    """v2-Loader erkennt jetzt ``;`` als Delimiter (DE-Excel-Default).
+
+    DE-/CH-Excel speichert beim CSV-Export per Default mit Semikolon, weil das
+    Komma als Dezimal-Trenner reserviert ist. Vor der Konsolidierung scheiterte
+    ``load_v2`` auf solchen Re-Exports stille mit leerem Dict (Header als
+    Einzelspalte ``ID;Name;...`` interpretiert, keine ID-Spalte gefunden).
+    Der tolerant-Reader detektiert jetzt den haeufigsten Trenner aus der
+    Header-Zeile.
+    """
+    p = tmp_path / "v2_semicolon.csv"
+    header = "ID;Name;Mineral_Primaer;Mohs_Haerte_min;Mohs_Haerte_max\n"
+    row = "OBJ_0007;Bergkristall;Quarz;7;7\n"
+    p.write_text(header + row, encoding="utf-8")
+    data = csv_loaders.load_v2(p)
+    assert "OBJ_0007" in data
+    o = data["OBJ_0007"]
+    assert o["Mineral_Primaer"] == "Quarz"
+    assert o["Mohs_Haerte_min"] == 7.0
+    assert o["Mohs_Haerte_max"] == 7.0
