@@ -133,6 +133,23 @@ def test_parse_iso_date_exif_datetime():
     assert parse_iso_date("2024:13:01 10:00:00") is None
 
 
+def test_parse_iso_date_exif_date_ohne_zeit():
+    """EXIF DateTime ohne Zeit-Suffix (stripped Camera-Stempel) - tritt nach Datenextraktion auf."""
+    assert parse_iso_date("2024:06:13") == "2024-06-13"
+    assert parse_iso_date("1999:12:31") == "1999-12-31"
+    assert parse_iso_date("2020:01:01") == "2020-01-01"
+    # Ungueltige Werte bleiben None
+    assert parse_iso_date("2024:13:01") is None    # Monat 13
+    assert parse_iso_date("2024:02:30") is None    # Februar 30
+    assert parse_iso_date("1700:01:01") is None    # vor 1800
+    # Mit trailing Satzzeichen / Klammern / Annaeherungspraefix
+    assert parse_iso_date("2024:06:13.") == "2024-06-13"
+    assert parse_iso_date("(2024:06:13)") == "2024-06-13"
+    assert parse_iso_date("ca. 2024:06:13") == "2024-06-13"
+    # Bestehende EXIF-Form mit Zeit bleibt unveraendert (kein Regress)
+    assert parse_iso_date("2024:06:13 10:00:00") == "2024-06-13"
+
+
 def test_parse_iso_date_annaeherungs_praefix():
     """Sammlungs-Notizen wie 'ca. 1985' / 'um 1980' / 'circa Juni 2024' ergeben das Datum."""
     # Jahres-Naeherung (typisch fuer geerbte Sammlung)
