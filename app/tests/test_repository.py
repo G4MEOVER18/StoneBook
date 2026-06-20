@@ -1113,6 +1113,43 @@ def test_has_transparenz_filter(tmp_path):
     c.close()
 
 
+def test_has_beste_verwendung_filter(tmp_path):
+    """has_beste_verwendung: dokumentierte Verwendungs-Empfehlung (Markt-/Anwendungs-Positionierung).
+
+    Beste_Verwendung (Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration)
+    ist die Markt-/Anwendungs-Positionierung - die Empfehlung, was das Stueck
+    letztlich werden soll. In der Praxis erst nach mineralogischer Bestimmung
+    und Wert-Einschaetzung gesetzt, daher in Sammlungsbestaenden mit Pflege-
+    Rueckstaenden oft die letzte Felddatenachse, die ausgefuellt wird.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hbv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Schmuck"),
+            ("OBJ_0002", "Sammlung"),
+            ("OBJ_0003", "Forschung"),
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_beste_verwendung=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_beste_verwendung=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_beste_verwendung=None)) == 6
+    # Kombinierbar mit beste_verwendung_in (Schnittmenge): dokumentiert UND
+    # Sammler-orientiert (Schmuck/Sammlung), ohne Forschungs-Stuecke.
+    rows = repo.list_objects(has_beste_verwendung=True,
+                             beste_verwendung_in=["Schmuck", "Sammlung"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_kristallsystem_filter(tmp_path):
     """has_kristallsystem: dokumentierter Symmetrietyp (kristallographische Hauptachse)."""
     from stonebook.db.database import open_db

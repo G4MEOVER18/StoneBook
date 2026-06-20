@@ -295,6 +295,7 @@ class ObjectRepo:
                      has_kristallsystem: bool | None = None,
                      has_glanz: bool | None = None,
                      has_transparenz: bool | None = None,
+                     has_beste_verwendung: bool | None = None,
                      has_bruch: bool | None = None,
                      has_spaltbarkeit: bool | None = None,
                      has_magnetismus: bool | None = None,
@@ -566,6 +567,23 @@ class ObjectRepo:
         # in der Praxis oft mit has_glanz zusammen gepflegt (beide Diagnose-
         # Eintragspunkte am visuell sichtbaren Stueck, kein Test noetig).
         _append_has_text_filter(where, has_transparenz, "Transparenz")
+        # has_beste_verwendung: tri-state Filter fuer dokumentierte Verwendungs-
+        # Empfehlung. Beste_Verwendung (Schmuck/Sammlung/Forschung/Industrie/
+        # Talisman/Dekoration) ist die Markt-/Anwendungs-Positionierungs-Achse -
+        # die Empfehlung, was das Stueck letztlich werden soll: Polierter Schmuck-
+        # Cabochon? Vitrinen-Stueck fuer die wissenschaftliche Sammlung? Roh-
+        # material fuer Talisman-Schnitzerei? In der Praxis erst nach mineralogischer
+        # Bestimmung und Wert-/Seltenheits-Einschaetzung gesetzt - daher in
+        # Sammlungsbestaenden mit Pflege-Rueckstaenden oft die letzte Felddaten-
+        # achse, die ausgefuellt wird. Komplementaer zum beste_verwendung_in-
+        # Mengenfilter (konkrete Auswahl: nur "Schmuck" und "Sammlung"); findet
+        # Stuecke ohne Verwendungs-Empfehlung fuer den Workflow "was tun mit
+        # diesem Stueck?" - typisch nach Massen-Migration oder Erbschafts-Import,
+        # wo die Positionierung der einzelnen Stuecke nach Bestimmung noch
+        # nachgereicht werden muss. Ergaenzt by_beste_verwendung (Verteilung),
+        # wert_pro_beste_verwendung (Wertbeitrag) und die Beste_Verwendung-
+        # Sortier-Spalte (gleiche Verwendungs-Klasse beisammen vor Sitzungen).
+        _append_has_text_filter(where, has_beste_verwendung, "Beste_Verwendung")
         # has_bruch: tri-state Filter fuer dokumentiertes Bruchverhalten.
         # Bruch (muschelig/uneben/splittrig/faserig/erdig/glatt) ist die
         # Bruchflaechen-Achse - komplementaer zu has_spaltbarkeit (Spaltflaechen
