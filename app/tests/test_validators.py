@@ -478,6 +478,43 @@ def test_parse_iso_date_mehrjahres_spanne_ungueltig():
     assert parse_iso_date("1950") == "1950-01-01"     # Einzeljahr
 
 
+def test_parse_iso_date_mehrjahres_spanne_wortform():
+    """Wort-Form der Mehrjahres-Spanne ('1950 bis 1960' / '1950 to 1960')
+    spiegelt die symbolische Form (Startjahr als ISO-Datum)."""
+    # Deutsche Wort-Form (typisch in geerbten Sammlungs-Tagebuechern)
+    assert parse_iso_date("1950 bis 1960") == "1950-01-01"
+    assert parse_iso_date("1985 bis 1990") == "1985-01-01"
+    assert parse_iso_date("2000 bis 2024") == "2000-01-01"
+    # Englische Varianten (auktionskataloge mit EN-Notation, mining-Logs)
+    assert parse_iso_date("1950 to 1960") == "1950-01-01"
+    assert parse_iso_date("1950 till 1960") == "1950-01-01"
+    assert parse_iso_date("1950 until 1960") == "1950-01-01"
+    # Case-insensitiv (BIS/TO/Till/Until aus Caps-Lock-Notizen)
+    assert parse_iso_date("1950 BIS 1960") == "1950-01-01"
+    assert parse_iso_date("1950 To 1960") == "1950-01-01"
+    # Inverted Spanne (Tippfehler) liefert das erste Jahr, spiegelt _YEAR_RANGE
+    assert parse_iso_date("1985 bis 1980") == "1985-01-01"
+    # Kombinationen mit bestehenden Modifikatoren (ca./Klammern/Trailing-Punkt)
+    assert parse_iso_date("ca. 1950 bis 1960") == "1950-01-01"
+    assert parse_iso_date("(1950 to 1960)") == "1950-01-01"
+    assert parse_iso_date("1950 bis 1960.") == "1950-01-01"
+
+
+def test_parse_iso_date_mehrjahres_spanne_wortform_ungueltig():
+    """Jahr ausserhalb [1800, 2999] oder fehlender Whitespace → None."""
+    assert parse_iso_date("1700 bis 1960") is None
+    assert parse_iso_date("1950 to 3000") is None
+    # Ohne Whitespace um das Schluesselwort kein Match (lebt von der Satzform)
+    assert parse_iso_date("1950bis1960") is None
+    assert parse_iso_date("1950to1960") is None
+    # Unbekanntes Schluesselwort
+    assert parse_iso_date("1950 oder 1960") is None
+    # 'zwischen 1950 und 1960' braucht eine andere Pattern-Struktur und ist
+    # bewusst nicht abgedeckt (das Wort 'zwischen' allein ist kein Range-
+    # Separator zwischen zwei Jahren, sondern ein Praefix vor dem ersten).
+    assert parse_iso_date("zwischen 1950 und 1960") is None
+
+
 def test_parse_iso_date_quartale():
     """Quartal + Jahr ergeben den Quartals-Startmonat (Jan/Apr/Jul/Okt)."""
     # Kurzform "Q1 2024" mit verschiedenen Separatoren

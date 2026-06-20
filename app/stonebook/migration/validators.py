@@ -44,6 +44,24 @@ _DECADE = re.compile(
 # 4-Ziffer-Anker schliessen das aus: Monat-Form hat 1-2 Ziffern im zweiten
 # Teil); kollisionsfrei zu _MONTH_NUMERIC_YEAR (1-2 + 4 Ziffern).
 _YEAR_RANGE = re.compile(r"^\s*(\d{4})\s*[-–—−/]\s*(\d{4})\s*$")
+# Wort-Form der Mehrjahres-Spanne ("1950 bis 1960", "1950 to 1960",
+# "1950 till 1960", "1950 until 1960") - spiegelt _YEAR_RANGE auf die
+# Wort-Variante des Range-Separators. In geerbten Sammlungs-Notizen oft
+# in vollstaendigen Saetzen geschrieben ("Fund 1950 bis 1960 im Aaregebiet")
+# statt mit Bindestrich/Slash; ohne Wort-Form fiele die Eingabe stille auf
+# None. Konvention identisch zum symbolischen _YEAR_RANGE: Startjahr als
+# ISO-Datum (Spanne-Start), inverted Spanne ("1985 bis 1980", Tippfehler)
+# liefert das erste Jahr. Mindestens ein Whitespace links und rechts vom
+# Schluesselwort, damit "1950bis1960" (extrem unkonventionell, keine
+# Lese-Tradition in Sammler-Notizen) kein Match wird; die Wort-Form lebt
+# von der natuerlichen Satzform. Wird vor _MONTH_NUMERIC_YEAR geprueft (das
+# auf "(1-2 Ziffern) Separator (4 Ziffern)" matched) und vor _YEAR_MONTH
+# (das auf "(4 Ziffern) Separator (1-2 Ziffern)" matched) - kollisionsfrei,
+# weil beide Jahre hier 4 Ziffern haben.
+_YEAR_RANGE_WORD = re.compile(
+    r"^\s*(\d{4})\s+(?:bis|to|till|until)\s+(\d{4})\s*$",
+    re.IGNORECASE,
+)
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
@@ -476,6 +494,15 @@ def parse_iso_date(text) -> str | None:
     # 1980-01-01). Inverted Spanne ("1985-1980", Tippfehler) liefert das erste
     # Jahr (spiegelt parse_range-Verhalten auf die Jahres-Achse).
     m = _YEAR_RANGE.match(s)
+    if m:
+        year_start, year_end = int(m.group(1)), int(m.group(2))
+        if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
+            return f"{year_start:04d}-01-01"
+        return None
+    # Wort-Form der Mehrjahres-Spanne ("1950 bis 1960", "1950 to 1960").
+    # Spiegelt _YEAR_RANGE auf die natuerliche Satz-Notation und folgt
+    # exakt derselben Konvention (Startjahr als ISO-Datum).
+    m = _YEAR_RANGE_WORD.match(s)
     if m:
         year_start, year_end = int(m.group(1)), int(m.group(2))
         if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
