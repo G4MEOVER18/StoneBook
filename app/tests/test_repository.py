@@ -536,6 +536,36 @@ def test_has_ki_analyse_filter(tmp_path):
     c.close()
 
 
+def test_has_alias_filter(tmp_path):
+    """has_alias trennt gemergte Kanon-Objekte von nicht-gemergten Originalen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ha.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    # OBJ_0001 hat zwei Aliase (zwei alte IDs reingefolgt), OBJ_0003 einen.
+    # Mehrfach-Eintraege duerfen die Liste nicht duplizieren (EXISTS, nicht JOIN).
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0100", "OBJ_0001", "duplikat_gruppen.json"),
+            ("OBJ_0101", "OBJ_0001", "manuell"),
+            ("OBJ_0102", "OBJ_0003", "manuell"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_alias=True)] \
+        == ["OBJ_0001", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_alias=False)] \
+        == ["OBJ_0002", "OBJ_0004"]
+    # None laesst alle durch
+    assert len(repo.list_objects(has_alias=None)) == 4
+    c.close()
+
+
 def test_has_ki_analyse_kombinierbar_mit_has_confidence(tmp_path):
     """KI-analysiert ohne Confidence-Wert: noch nicht uebernommener Vorschlag."""
     from stonebook.db.database import open_db

@@ -279,6 +279,7 @@ class ObjectRepo:
                      has_dichte: bool | None = None,
                      has_dimensionen: bool | None = None,
                      has_ki_analyse: bool | None = None,
+                     has_alias: bool | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -607,6 +608,23 @@ class ObjectRepo:
         elif has_ki_analyse is False:
             where.append(
                 "NOT EXISTS (SELECT 1 FROM ki_analysen k WHERE k.obj_id = o.obj_id)")
+        # has_alias: tri-state Filter fuer Objekte mit/ohne Alias-Eintrag.
+        # Aliases speichern die alten Objekt-IDs nach einem Merge (~30 dokumen-
+        # tierte Duplikat-Gruppen aus der Migration plus spaeter manuell ueber
+        # merge_into_canonical zusammengefuehrte Stuecke). has_alias=True findet
+        # alle Kanon-Objekte, in die mindestens ein Duplikat geflossen ist -
+        # zentrale Schluesselrolle fuer Provenienz-Recherche ("welche alten
+        # IDs sind im aktuellen OBJ_0007 versammelt?"). has_alias=False bleibt
+        # die Mehrheit (nicht-gemergte Originale). Spiegelt has_ki_analyse auf
+        # die parallele Existenz-Pruefung in einer verknuepften Tabelle
+        # (aliases.canonical_id ist FK auf objects.obj_id mit ON DELETE CASCADE -
+        # geloeschte Objekte hinterlassen keine verwaisten Alias-Eintraege).
+        if has_alias is True:
+            where.append(
+                "EXISTS (SELECT 1 FROM aliases a WHERE a.canonical_id = o.obj_id)")
+        elif has_alias is False:
+            where.append(
+                "NOT EXISTS (SELECT 1 FROM aliases a WHERE a.canonical_id = o.obj_id)")
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:
