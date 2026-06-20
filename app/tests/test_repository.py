@@ -1075,6 +1075,44 @@ def test_has_glanz_filter(tmp_path):
     c.close()
 
 
+def test_has_transparenz_filter(tmp_path):
+    """has_transparenz: dokumentierte Transparenz (Lichtdurchlaessigkeits-Achse).
+
+    Transparenz (durchsichtig/durchscheinend/opak) ist die Lichtdurchlaessigkeits-
+    Achse - komplementaer zu has_glanz (Oberflaechen-Reflexion) auf die andere
+    optische Achse: durchsichtige Stuecke brauchen Hintergrund-Beleuchtung
+    (Lichttisch/Backlight), opake Stuecke direkte Front-Beleuchtung. Findet
+    Stuecke ohne Transparenz-Eintrag fuer die Foto-Vorbereitung.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "htr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "durchsichtig"),    # Bergkristall
+            ("OBJ_0002", "durchscheinend"),  # Milchquarz/Calcit
+            ("OBJ_0003", "opak"),            # Granit/Sandstein
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_transparenz=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_transparenz=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_transparenz=None)) == 6
+    # Kombinierbar mit transparenz_in (Schnittmenge): dokumentiert UND Licht-
+    # durchlassend (durchsichtig/durchscheinend) fuer Backlight-Foto-Setup,
+    # ohne die opaken Stuecke (die direkte Front-Beleuchtung brauchen).
+    rows = repo.list_objects(has_transparenz=True,
+                             transparenz_in=["durchsichtig", "durchscheinend"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_kristallsystem_filter(tmp_path):
     """has_kristallsystem: dokumentierter Symmetrietyp (kristallographische Hauptachse)."""
     from stonebook.db.database import open_db

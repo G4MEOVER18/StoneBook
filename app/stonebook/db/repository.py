@@ -294,6 +294,7 @@ class ObjectRepo:
                      has_farbe: bool | None = None,
                      has_kristallsystem: bool | None = None,
                      has_glanz: bool | None = None,
+                     has_transparenz: bool | None = None,
                      has_bruch: bool | None = None,
                      has_spaltbarkeit: bool | None = None,
                      has_magnetismus: bool | None = None,
@@ -549,6 +550,22 @@ class ObjectRepo:
         # erste Felddatenpflege, weil der Glanz unmittelbar sichtbar ist und
         # keinen separaten Test (Hammer/Saeure/Magnet) erfordert.
         _append_has_text_filter(where, has_glanz, "Glanz")
+        # has_transparenz: tri-state Filter fuer dokumentierte Transparenz.
+        # Transparenz (durchsichtig/durchscheinend/opak) ist die Lichtdurchlaessigkeits-
+        # Achse - komplementaer zu has_glanz (Oberflaechen-Reflexion) auf die
+        # optische Diagnose-Doppel-Achse: Glanz beschreibt, wie Licht reflektiert
+        # wird (Oberflaechen-Wirkung), Transparenz, wie Licht durchgelassen wird
+        # (Volumen-Wirkung). Beide zusammen liefern die optische Vorsortierung
+        # vor jeder Foto-Sitzung - durchsichtige/durchscheinende Stuecke brauchen
+        # Hintergrund-Beleuchtung (Lichttisch/Backlight), opake Stuecke direkte
+        # Front-Beleuchtung. Spiegelt has_glanz auf die orthogonale optische
+        # Achse; ergaenzt transparenz_in (konkrete Klassen-Auswahl), by_transparenz
+        # (Verteilung) und wert_pro_transparenz (Wertbeitrag) sowie die
+        # Transparenz-Sortier-Spalte (gleiches Licht-Setup beisammen). Findet
+        # Stuecke ohne dokumentierte Transparenz fuer Foto-/Diagnose-Nachpflege -
+        # in der Praxis oft mit has_glanz zusammen gepflegt (beide Diagnose-
+        # Eintragspunkte am visuell sichtbaren Stueck, kein Test noetig).
+        _append_has_text_filter(where, has_transparenz, "Transparenz")
         # has_bruch: tri-state Filter fuer dokumentiertes Bruchverhalten.
         # Bruch (muschelig/uneben/splittrig/faserig/erdig/glatt) ist die
         # Bruchflaechen-Achse - komplementaer zu has_spaltbarkeit (Spaltflaechen
