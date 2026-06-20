@@ -685,6 +685,44 @@ def test_parse_iso_date_kw_notation():
     assert parse_iso_date("KW 25") is None
 
 
+def test_parse_iso_date_monat_jahr_punkt_separator():
+    """Punkt als Separator zwischen Monatsname und Jahr ('Juni.2024', Excel-CSV-Form)."""
+    # Deutsche Voll-/Kurzformen
+    assert parse_iso_date("Juni.2024") == "2024-06-01"
+    assert parse_iso_date("Jun.2024") == "2024-06-01"
+    assert parse_iso_date("Mai.2024") == "2024-05-01"
+    assert parse_iso_date("Dezember.1999") == "1999-12-01"
+    assert parse_iso_date("März.2022") == "2022-03-01"
+    # Englisch
+    assert parse_iso_date("Dec.1999") == "1999-12-01"
+    assert parse_iso_date("March.2024") == "2024-03-01"
+    assert parse_iso_date("May.2020") == "2020-05-01"
+    # Case-insensitive (via Normalisierung)
+    assert parse_iso_date("JUN.2024") == "2024-06-01"
+    assert parse_iso_date("dec.2024") == "2024-12-01"
+    # Roemische Monatsziffern mit Punkt-Separator
+    assert parse_iso_date("VI.2024") == "2024-06-01"
+    assert parse_iso_date("XII.1999") == "1999-12-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / trailing Satzzeichen
+    assert parse_iso_date("ca. Juni.2024") == "2024-06-01"
+    assert parse_iso_date("(Juni.2024)") == "2024-06-01"
+    assert parse_iso_date("Juni.2024.") == "2024-06-01"
+    # Bestehende Formate weiterhin gueltig (kein Regress)
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Juni, 2024") == "2024-06-01"
+    assert parse_iso_date("Juni/2024") == "2024-06-01"
+    assert parse_iso_date("Juni-2024") == "2024-06-01"
+    assert parse_iso_date("Jun. 2024") == "2024-06-01"
+    # Voll qualifizierte DD.Mon.YYYY-Notation bleibt erhalten
+    assert parse_iso_date("13.Juni.2024") == "2024-06-13"
+    assert parse_iso_date("13.Jun.2024") == "2024-06-13"
+    # Unbekannter Monat → None (nicht jeder Punkt-Token ist ein Monat)
+    assert parse_iso_date("Foo.2024") is None
+    assert parse_iso_date("abc.2024") is None
+    # Jahr ausserhalb 1800-2999
+    assert parse_iso_date("Jun.1700") is None
+
+
 def test_parse_iso_date_roemische_monate():
     """Roemische Monatsziffern (I..XII) auf aelteren Etiketten / Eingangsbuechern."""
     # DD.MM.YYYY mit Punkt-Separator (klassische Etiketten-Form)
