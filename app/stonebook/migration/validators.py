@@ -24,6 +24,21 @@ _DECADE = re.compile(
     r"^\s*(\d{4})(?:[\- ]?(?:er|s))(?:\s+jahre)?\s*$",
     re.IGNORECASE,
 )
+# Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960", "1950 - 1960") -
+# verbreitet in geerbten Sammlungs-Notizen mit unsicherem Funddatum, wenn der
+# vorherige Besitzer den Fund nicht genauer datieren konnte ("zwischen 1950
+# und 1960" als Range-Notation). Konvention: Startjahr als ISO-Datum (Spanne-
+# Start), spiegelt die Dekaden-Konvention (1980er → 1980-01-01 = Dekaden-
+# Start) - die Range-Annotation bleibt im Freitext (notizen). Sowohl ASCII-
+# Bindestrich als auch En-Dash (U+2013) als typografische Spanne-Notation
+# werden akzeptiert; Slash als Alternativ-Separator deckt "1950/1960"-Varianten
+# ab (kommt in Tagebuechern mit Schraegstrich-Trenner vor). Beide Jahre muessen
+# in [1800, 2999] liegen; inverted Spanne ("1985-1980", Tippfehler) liefert das
+# erste Jahr, spiegelt das parse_range-Verhalten auf die Jahres-Achse.
+# Vor _YEAR_MONTH geprueft, damit "1950-12" weiterhin als YYYY-MM gilt (zwei
+# 4-Ziffer-Anker schliessen das aus: Monat-Form hat 1-2 Ziffern im zweiten
+# Teil); kollisionsfrei zu _MONTH_NUMERIC_YEAR (1-2 + 4 Ziffern).
+_YEAR_RANGE = re.compile(r"^\s*(\d{4})\s*[-–/]\s*(\d{4})\s*$")
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
@@ -438,6 +453,17 @@ def parse_iso_date(text) -> str | None:
             if d.year == year:
                 return d.isoformat()
             return None
+    # Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960"). Vor _YEAR_MONTH
+    # geprueft, damit klar wird: zwei 4-Ziffer-Anker, nicht YYYY-MM mit grossem
+    # Monat. Konvention: Startjahr als ISO-Datum (analog zu Dekaden 1980er →
+    # 1980-01-01). Inverted Spanne ("1985-1980", Tippfehler) liefert das erste
+    # Jahr (spiegelt parse_range-Verhalten auf die Jahres-Achse).
+    m = _YEAR_RANGE.match(s)
+    if m:
+        year_start, year_end = int(m.group(1)), int(m.group(2))
+        if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
+            return f"{year_start:04d}-01-01"
+        return None
     m = _YEAR_MONTH.match(s)
     if m:
         year, month = int(m.group(1)), int(m.group(2))

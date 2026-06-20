@@ -401,6 +401,43 @@ def test_parse_iso_date_jahrzehnt_ungueltig():
     assert parse_iso_date("1980 j") is None
 
 
+def test_parse_iso_date_mehrjahres_spanne():
+    """Mehrjahres-Spanne ('1950-1960') ergibt das Startjahr (analog Dekaden)."""
+    # ASCII-Bindestrich (gaengigste Form in Sammlungs-Notizen)
+    assert parse_iso_date("1950-1960") == "1950-01-01"
+    assert parse_iso_date("1985-1990") == "1985-01-01"
+    assert parse_iso_date("1900-2000") == "1900-01-01"
+    # En-Dash (U+2013, typografische Spanne-Notation)
+    assert parse_iso_date("1950–1960") == "1950-01-01"
+    # Slash-Separator (Tagebuecher mit Schraegstrich-Trenner)
+    assert parse_iso_date("1950/1960") == "1950-01-01"
+    # Mit Whitespace um den Separator
+    assert parse_iso_date("1950 - 1960") == "1950-01-01"
+    assert parse_iso_date("1950 – 1960") == "1950-01-01"
+    assert parse_iso_date("1950 / 1960") == "1950-01-01"
+    # Inverted Spanne (Tippfehler) → erstes Jahr, spiegelt parse_range
+    assert parse_iso_date("1985-1980") == "1985-01-01"
+    # Kombinationen mit bestehenden Modifikatoren
+    assert parse_iso_date("ca. 1950-1960") == "1950-01-01"
+    assert parse_iso_date("circa 1950–1960") == "1950-01-01"
+    assert parse_iso_date("(1950-1960)") == "1950-01-01"
+    assert parse_iso_date("[1950-1960]") == "1950-01-01"
+    assert parse_iso_date("1950-1960.") == "1950-01-01"
+    assert parse_iso_date("1950-1960,") == "1950-01-01"
+
+
+def test_parse_iso_date_mehrjahres_spanne_ungueltig():
+    """Jahr ausserhalb [1800, 2999] in einem der zwei Teile → None."""
+    assert parse_iso_date("1700-1960") is None
+    assert parse_iso_date("1950-3000") is None
+    assert parse_iso_date("1700-1750") is None
+    # Bestehende YYYY-MM-/MM-YYYY-/Decade-Formen bleiben unveraendert (kein Regress)
+    assert parse_iso_date("1950-12") == "1950-12-01"  # YYYY-MM (Monat 1-12)
+    assert parse_iso_date("06-2024") == "2024-06-01"  # MM-YYYY
+    assert parse_iso_date("1980er") == "1980-01-01"   # Dekade
+    assert parse_iso_date("1950") == "1950-01-01"     # Einzeljahr
+
+
 def test_parse_iso_date_quartale():
     """Quartal + Jahr ergeben den Quartals-Startmonat (Jan/Apr/Jul/Okt)."""
     # Kurzform "Q1 2024" mit verschiedenen Separatoren
