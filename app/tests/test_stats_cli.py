@@ -308,6 +308,38 @@ def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_ki_analyse_uebernommen_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt die uebernommene-KI-Quote zusaetzlich zur reinen
+    KI-Analyse-Quote. Die Differenz beider Zeilen beziffert die Akzeptanz-
+    Luecke (KI lief, aber Vorschlaege wurden noch nicht uebernommen)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "kiu.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json, uebernommen_json) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "claude-opus-4-7", "{}", '{"a":1}'),
+            # OBJ_0002: KI lief, aber Vorschlag noch nicht uebernommen
+            ("OBJ_0002", "claude-opus-4-7", "{}", None),
+            # OBJ_0003, OBJ_0004: keine Analyse
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "KI-Analyse (ueb.):" in out
+    # 2 von 4 mit Analyse (50%), 1 von 4 uebernommen (25%)
+    assert "50.0 %" in out
+    assert "25.0 %" in out
+
+
 def test_text_ausgabe_zeigt_bilder_pro_kategorie(tmp_path, capsys):
     """Bilder-pro-Kategorie-Block zeigt Foto-Coverage je Aufnahme-Art."""
     from stonebook.db.database import open_db

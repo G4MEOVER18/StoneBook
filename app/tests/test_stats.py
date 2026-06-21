@@ -2023,6 +2023,53 @@ def test_quote_mit_fundort_aus_seed_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_ki_analyse_uebernommen_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer uebernommene KI-Analysen spiegelt quote_mit_ki_analyse
+    auf die feinere Granularitaet "Anteil der Sammlung, der durch KI tatsaechlich
+    verbessert wurde". Differenz beider Quoten beziffert die Akzeptanz-/Pflege-
+    Luecke (KI lief, aber Vorschlaege wurden nicht uebernommen)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qkiu.sqlite3")
+    # 5 Objekte: zwei mit uebernommener KI-Analyse (40%), eines mit KI-Analyse
+    # ohne Uebernahme (zaehlt nicht), zwei ohne Analyse.
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",), ("OBJ_0005",)],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json, uebernommen_json) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "claude-opus-4-7", "{}", '{"a":1}'),
+            ("OBJ_0002", "claude-opus-4-7", "{}", '{"b":2}'),
+            # OBJ_0003: KI lief, aber kein uebernommen_json - zaehlt nicht
+            ("OBJ_0003", "claude-opus-4-7", "{}", None),
+            ("OBJ_0003", "claude-opus-4-7", "{}", "   "),
+            # OBJ_0004, OBJ_0005: keine Analyse
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # objekte_mit_ki_analyse = 3 (OBJ_0001/02/03), uebernommen = 2 (OBJ_0001/02)
+    assert st.objekte_mit_ki_analyse == 3
+    assert st.objekte_mit_ki_analyse_uebernommen == 2
+    assert st.quote_mit_ki_analyse_prozent == 60.0
+    assert st.quote_mit_ki_analyse_uebernommen_prozent == 40.0
+    d = st.as_dict()
+    assert d["quote_mit_ki_analyse_uebernommen_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_ki_analyse_uebernommen_leere_db(tmp_path):
+    """Leere DB: quote_mit_ki_analyse_uebernommen_prozent ist None (nicht 0%)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_ki_analyse_uebernommen_prozent is None
+    assert st.as_dict()["quote_mit_ki_analyse_uebernommen_prozent"] is None
+    c.close()
+
+
 def test_mineral_und_fundort_arten_total(tmp_path):
     """mineral_arten_total/fundorte_total zaehlen distinct Werte (unabhaengig von Top-N)."""
     from stonebook.db.database import open_db

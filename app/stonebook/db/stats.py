@@ -165,6 +165,24 @@ class Statistik:
         # Whitespace zaehlt wie leer (spiegelt has_fundort-Filter-Konvention).
         return self._quote(self.objekte_mit_fundort)
 
+    @property
+    def quote_mit_ki_analyse_uebernommen_prozent(self) -> float | None:
+        # Coverage-Quote fuer tatsaechlich uebernommene KI-Analysen. Spiegelt
+        # quote_mit_ki_analyse auf die feinere Granularitaet "wieviel Anteil
+        # der Sammlung wurde durch die KI tatsaechlich verbessert?" - die
+        # Differenz beider Quoten beziffert die Akzeptanz-/Pflege-Luecke:
+        # Objekte, fuer die zwar KI-Vorschlaege erzeugt wurden, deren
+        # uebernommen_json aber leer/NULL geblieben ist (Sammler hat die
+        # Vorschlaege noch nicht gepflegt/geprueft, oder bewusst verworfen).
+        # quote_mit_ki_analyse misst Anwendungs-Durchdringung (wo lief die KI
+        # schon?), quote_mit_ki_analyse_uebernommen misst Nutzungs-Tiefe (wo
+        # wurde der Output integriert?). Aus Datenpflege-Sicht ist die
+        # zweite Achse die aussagekraeftigere - sie spiegelt die operative
+        # Wirkung der KI auf das tatsaechliche Datenbild, waehrend die erste
+        # nur die Reichweite des KI-Laufs misst. Whitespace zaehlt wie leer
+        # (spiegelt has_ki_analyse_uebernommen-Filter-Konvention).
+        return self._quote(self.objekte_mit_ki_analyse_uebernommen)
+
     def as_dict(self) -> dict:
         return {
             "objekte_total": self.objekte_total,
@@ -386,6 +404,9 @@ class Statistik:
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
+            "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
+                self.quote_mit_ki_analyse_uebernommen_prozent
+            ),
         }
 
 
