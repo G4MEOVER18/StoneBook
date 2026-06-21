@@ -117,6 +117,56 @@ def test_range_inverted_wird_erkannt(tmp_path):
     c.close()
 
 
+def test_dimension_order_inverted_wird_erkannt(tmp_path):
+    """Konvention Laenge_mm >= Breite_mm >= Hoehe_mm laut Feldwoerterbuch.
+
+    Verstoesse entstehen durch verwechselte Achsen beim Vermessen oder durch
+    verdrehte Eingabe ins Datenblatt; symmetrisch zu ``range_inverted``
+    (Mohs/Dichte min<=max), aber semantisch eine Achsen-Verwechslung statt
+    einer logischen Unmoeglichkeit.
+    """
+    c = open_db(tmp_path / "x.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 10.0, 20.0, 5.0),   # Laenge < Breite verwechselt
+            ("OBJ_0002", 30.0, 20.0, 25.0),  # Breite < Hoehe verwechselt
+            ("OBJ_0003", 5.0, 10.0, 20.0),   # beide invertiert
+            ("OBJ_0004", 30.0, 20.0, 10.0),  # konventionsgerecht
+            ("OBJ_0005", 30.0, 30.0, 30.0),  # Wuerfel: Gleichheit zulaessig
+            ("OBJ_0006", 20.0, None, 10.0),  # Breite NULL → ueberspringen
+            ("OBJ_0007", None, 20.0, 10.0),  # Laenge NULL → ueberspringen
+            ("OBJ_0008", 30.0, 20.0, None),  # Hoehe NULL → nur erstes Paar
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    inverted = {(oid, pair, big, small)
+                for oid, pair, big, small in rep.dimension_order_inverted}
+    assert ("OBJ_0001", "Laenge_mm<Breite_mm", 10.0, 20.0) in inverted
+    assert ("OBJ_0002", "Breite_mm<Hoehe_mm", 20.0, 25.0) in inverted
+    # Beide Paare invertiert: Laenge=5 < Breite=10 UND Breite=10 < Hoehe=20.
+    assert ("OBJ_0003", "Laenge_mm<Breite_mm", 5.0, 10.0) in inverted
+    assert ("OBJ_0003", "Breite_mm<Hoehe_mm", 10.0, 20.0) in inverted
+    # Konventionsgerecht und Wuerfel: keine Meldung.
+    assert not any(row[0] == "OBJ_0004" for row in rep.dimension_order_inverted)
+    assert not any(row[0] == "OBJ_0005" for row in rep.dimension_order_inverted)
+    # Halb leere Eintraege werden uebergangen (keine falsch-positiven), das
+    # gesetzte Paar in OBJ_0008 bleibt konsistent und wird nicht gemeldet.
+    assert not any(row[0] == "OBJ_0006" for row in rep.dimension_order_inverted)
+    assert not any(row[0] == "OBJ_0007" for row in rep.dimension_order_inverted)
+    assert not any(row[0] == "OBJ_0008" for row in rep.dimension_order_inverted)
+    assert not rep.is_clean
+    c.close()
+
+
+def test_dimension_order_inverted_migrierte_db_clean(migrated_conn):
+    """Die migrierte DB hat (noch) keine Dimensionsdaten; clean Baseline."""
+    rep = check_integrity(migrated_conn)
+    assert rep.dimension_order_inverted == []
+
+
 def test_alias_self_referencing_wird_erkannt(tmp_path):
     """Ein Alias auf sich selbst ist eine Inkonsistenz (Migration produziert das nie)."""
     c = open_db(tmp_path / "self.sqlite3")

@@ -54,6 +54,24 @@ RANGE_PAIRS: tuple[tuple[str, str], ...] = (
     ("Dichte_min_gcm3", "Dichte_max_gcm3"),
 )
 
+# Geometrische Dimensionen in der durch das Feldwoerterbuch festgelegten
+# Reihenfolge: Laenge_mm = "Maximale Ausdehnung", Breite_mm = "Zweite
+# Ausdehnung", Hoehe_mm = "Dritte Ausdehnung". Per Definition muss daher
+# Laenge_mm >= Breite_mm >= Hoehe_mm gelten - wer Laenge=10 und Breite=20
+# einträgt, hat die Achsen verwechselt (entweder Laenge ist tatsaechlich 20
+# oder Breite ist tatsaechlich 10). Im Gegensatz zu RANGE_PAIRS (Mohs/Dichte
+# min<=max - logische Unmoeglichkeit, kein Ausnahmefall) ist die Dimension-
+# Reihenfolge eine Konvention auf Feldwoerterbuch-Ebene, deren Verletzung
+# semantisch falsch ist (das Stueck wird unter falschen Achsen-Labels gefuehrt,
+# Foto-Setup/Inventar-Sortierung passen nicht). Spiegelt RANGE_PAIRS auf die
+# Dimensions-Achse: paarweise statt 3-tupel, weil so ein Verstoss exakt das
+# verwechselte Paar nennt (Laenge<Breite vs. Breite<Hoehe) statt der gesamten
+# 3er-Reihenfolge - das macht die Diagnose im Report unmittelbar lesbar.
+DIMENSION_ORDER_PAIRS: tuple[tuple[str, str], ...] = (
+    ("Laenge_mm", "Breite_mm"),
+    ("Breite_mm", "Hoehe_mm"),
+)
+
 
 @dataclass
 class IntegrityReport:
@@ -71,6 +89,7 @@ class IntegrityReport:
     missing_image_files: list[tuple[int, str]] = field(default_factory=list)  # (id, rel_path)
     numeric_out_of_range: list[tuple[str, str, float]] = field(default_factory=list)
     range_inverted: list[tuple[str, str, float, float]] = field(default_factory=list)  # (obj_id, "min_feld>max_feld", min_wert, max_wert)
+    dimension_order_inverted: list[tuple[str, str, float, float]] = field(default_factory=list)  # (obj_id, "groesseres_feld<kleineres_feld", groesseres_wert, kleineres_wert) - Konvention Laenge>=Breite>=Hoehe verletzt
     unknown_image_kategorie: list[tuple[int, str]] = field(default_factory=list)  # (id, kategorie)
     aktiv_ohne_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='aktiv', aber keine Daten und keine Bilder
     platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
@@ -87,7 +106,9 @@ class IntegrityReport:
                     or self.future_erstellt_am
                     or self.future_geaendert_am
                     or self.missing_image_files or self.numeric_out_of_range
-                    or self.range_inverted or self.unknown_image_kategorie
+                    or self.range_inverted
+                    or self.dimension_order_inverted
+                    or self.unknown_image_kategorie
                     or self.aktiv_ohne_inhalt
                     or self.platzhalter_mit_inhalt
                     or self.unknown_status
@@ -108,6 +129,7 @@ class IntegrityReport:
             "missing_image_files": [list(t) for t in self.missing_image_files],
             "numeric_out_of_range": [list(t) for t in self.numeric_out_of_range],
             "range_inverted": [list(t) for t in self.range_inverted],
+            "dimension_order_inverted": [list(t) for t in self.dimension_order_inverted],
             "unknown_image_kategorie": [list(t) for t in self.unknown_image_kategorie],
             "aktiv_ohne_inhalt": list(self.aktiv_ohne_inhalt),
             "platzhalter_mit_inhalt": list(self.platzhalter_mit_inhalt),
@@ -274,6 +296,29 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
                 # erscheint - kompakt und ohne Schema-Bruch fuer JSON-Konsumenten.
                 rep.range_inverted.append(
                     (row["obj_id"], f"{lo_field}>{hi_field}", lo_f, hi_f))
+
+    # Dimensions-Konvention: Laenge_mm >= Breite_mm >= Hoehe_mm laut Feldwoerter-
+    # buch ("Maximale/Zweite/Dritte Ausdehnung"). Verstoesse entstehen typisch
+    # durch verwechselte Achsen beim Vermessen (Schiebelehre quer statt laengs
+    # angesetzt) oder durch verdrehte Eingabe ins Datenblatt (Werte richtig
+    # gemessen, aber in der falschen Spalte gelandet). Spiegelt RANGE_PAIRS auf
+    # die Dimensions-Achse, mit demselben 4-Tupel-Format
+    # ``(obj_id, "groesseres_feld<kleineres_feld", groesseres_wert, kleineres_wert)``
+    # damit die Diagnose ohne SQL-Roundtrip direkt im Report steht. Beide Werte
+    # muessen gesetzt sein - halb leere Eintraege (nur Laenge ohne Breite) sind
+    # legitim und werden uebergangen. Gleichheit (Wuerfel: 30x30x30) bleibt
+    # zulaessig: nur strikte Inversion wird gemeldet.
+    dim_cols = {c for pair in DIMENSION_ORDER_PAIRS for c in pair}
+    cols3 = ", ".join(dim_cols)
+    for row in conn.execute(f"SELECT obj_id, {cols3} FROM objects").fetchall():
+        for big_field, small_field in DIMENSION_ORDER_PAIRS:
+            big, small = row[big_field], row[small_field]
+            if big is None or small is None:
+                continue
+            big_f, small_f = float(big), float(small)
+            if big_f < small_f:
+                rep.dimension_order_inverted.append(
+                    (row["obj_id"], f"{big_field}<{small_field}", big_f, small_f))
 
     # Zeitstempel-Konsistenz: geaendert_am muss >= erstellt_am sein. Die App
     # selbst setzt beide bei create() auf denselben _now()-Stempel und ueber-
