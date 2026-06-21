@@ -280,6 +280,7 @@ class ObjectRepo:
                      max_confidence: int | None = None,
                      has_confidence: bool | None = None,
                      has_funddatum: bool | None = None,
+                     has_kategorie: bool | None = None,
                      has_mineral: bool | None = None,
                      has_varietaet: bool | None = None,
                      has_gesteinsart: bool | None = None,
@@ -451,6 +452,24 @@ class ObjectRepo:
         elif has_confidence is False:
             where.append("o.Confidence_Prozent IS NULL")
         _append_has_text_filter(where, has_funddatum, "Funddatum")
+        # has_kategorie: tri-state Filter fuer dokumentierte Objekt-Kategorie.
+        # Kategorie (Mineral-Korn/Handstueck/Duennschliff/Kristall/Geroell/Sonstiges)
+        # ist die erste Identifikations-/Inventar-Achse - sie sagt, was das Stueck
+        # physisch ueberhaupt ist, bevor mineralogische Bestimmung (Mineral_Primaer)
+        # oder geografische Provenienz (Fundort) ueberhaupt sinnvoll werden.
+        # Spiegelt has_mineral/has_kristallsystem/has_glanz auf die ID-Gruppen-Achse
+        # und ergaenzt den kategorie_in-Mengenfilter ("Handstueck ODER Kristall"):
+        # has_kategorie selektiert die Anwesenheits-Dimension (irgendeine Kategorie
+        # vs. keine), kategorie_in selektiert die konkrete Kategorien-Auswahl.
+        # Findet unkategorisierte Stuecke (typisch fuer frisch importierte Bestaende
+        # ohne Inventar-Vorklassifizierung oder Migrations-Restbestaende, wo
+        # Kategorie weder im v1/obj043-Loader noch im v2-Schema gesetzt war) -
+        # zentrale Pflege-Achse, weil die Kategorie das Foto-Setup vorgibt
+        # (Duennschliff: Mikroskop-Aufnahme, Handstueck: Uebersichts-Foto,
+        # Mineral-Korn: Makro/Mikroskop, Kristall: Lichttisch fuer durchsichtige).
+        # Whitespace zaehlt wie leer (spiegelt _append_has_text_filter-Konvention,
+        # kompatibel zur Enum-Liste mit Leerstring als "noch nicht kategorisiert"-Wert).
+        _append_has_text_filter(where, has_kategorie, "Kategorie")
         _append_has_text_filter(where, has_mineral, "Mineral_Primaer")
         # has_varietaet: tri-state Filter fuer dokumentierte Varietaet.
         # Die Varietaet ist die feinere Sub-Klassifizierung unter dem Hauptmineral

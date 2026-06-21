@@ -662,6 +662,45 @@ def test_has_mineral_filter(tmp_path):
     c.close()
 
 
+def test_has_kategorie_filter(tmp_path):
+    """has_kategorie: dokumentierte Objekt-Kategorie (Inventar-/ID-Gruppen-Achse).
+
+    Kategorie (Mineral-Korn/Handstueck/Duennschliff/Kristall/Geroell/Sonstiges)
+    ist die erste Identifikations-/Inventar-Achse - was ist das Stueck
+    physisch? Findet unkategorisierte Stuecke fuer die Inventar-
+    Vorklassifizierung, typisch nach Migration alter v1/obj043-Bestaende
+    ohne Kategorie-Spalte. Spiegelt has_mineral/has_kristallsystem auf
+    die ID-Gruppe; ergaenzt den kategorie_in-Mengenfilter (konkrete
+    Kategorien-Auswahl). Whitespace zaehlt wie leer.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hk.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Handstück"),
+            ("OBJ_0002", "Kristall"),
+            ("OBJ_0003", "Mineral-Korn"),
+            ("OBJ_0004", None),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", "   "),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert [r["obj_id"] for r in repo.list_objects(has_kategorie=True)] \
+        == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["obj_id"] for r in repo.list_objects(has_kategorie=False)] \
+        == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    assert len(repo.list_objects(has_kategorie=None)) == 6
+    # Kombinierbar mit kategorie_in (Schnittmenge): dokumentiert UND
+    # konkret aus {Handstueck, Kristall}, ohne Mineral-Korn-Stueck OBJ_0003.
+    rows = repo.list_objects(has_kategorie=True,
+                             kategorie_in=["Handstück", "Kristall"])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_has_pruefempfehlungen_filter(tmp_path):
     """has_pruefempfehlungen findet Objekte mit offenen Bestaetigungstests."""
     from stonebook.db.database import open_db
