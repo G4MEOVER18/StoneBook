@@ -1918,11 +1918,13 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_gewicht_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
     assert st.quote_mit_mineral_prozent is None
+    assert st.quote_mit_fundort_prozent is None
     d = st.as_dict()
     assert d["quote_mit_bildern_prozent"] is None
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
+    assert d["quote_mit_fundort_prozent"] is None
     c.close()
 
 
@@ -1985,6 +1987,39 @@ def test_quote_mit_mineral_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_mineral"] == 2
     assert d["quote_mit_mineral_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_fundort_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Fundort spiegelt die Funddatum-/Mineral-Quote: Anteil
+    der Objekte mit dokumentiertem Fundort, gerechnet ueber objekte_total.
+    Whitespace/NULL zaehlt wie leer (spiegelt die has_fundort-Filter-Konvention).
+    Komplementaer zu fundorte_total, das distinkte Fundorte zaehlt (Diversitaet):
+    quote_mit_fundort beziffert Coverage, fundorte_total Streuung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qf.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Fundort (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei dokumentierte
+    # Stuecke vom selben Fundort: Coverage 40%, Diversitaet (fundorte_total) 1.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Davos"),
+            ("OBJ_0002", "Davos"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_fundort == 2
+    assert st.quote_mit_fundort_prozent == 40.0
+    # Diversitaets-Achse bleibt orthogonal: 2 Objekte am selben Fundort = 1 Ort.
+    assert st.fundorte_total == 1
+    d = st.as_dict()
+    assert d["objekte_mit_fundort"] == 2
+    assert d["quote_mit_fundort_prozent"] == 40.0
     c.close()
 
 

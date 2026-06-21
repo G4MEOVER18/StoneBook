@@ -285,6 +285,29 @@ def test_text_ausgabe_zeigt_mineral_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
+    Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die
+    geografische Provenienz-Achse - symmetrische CLI-Sichtbarkeit fuer das
+    Datenpflege-Dashboard."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fundort.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [("OBJ_0001", "Davos"), ("OBJ_0002", "Zermatt"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Fundort:" in out
+    # 2 von 4 Objekten haben dokumentierten Fundort → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_bilder_pro_kategorie(tmp_path, capsys):
     """Bilder-pro-Kategorie-Block zeigt Foto-Coverage je Aufnahme-Art."""
     from stonebook.db.database import open_db

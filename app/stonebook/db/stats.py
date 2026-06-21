@@ -23,6 +23,7 @@ class Statistik:
     objekte_mit_bildern: int = 0
     objekte_mit_funddatum: int = 0
     objekte_mit_mineral: int = 0
+    objekte_mit_fundort: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
     objekte_mit_alias: int = 0
@@ -151,6 +152,19 @@ class Statistik:
     def quote_mit_mineral_prozent(self) -> float | None:
         return self._quote(self.objekte_mit_mineral)
 
+    @property
+    def quote_mit_fundort_prozent(self) -> float | None:
+        # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
+        # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
+        # geografische Provenienz-Achse - ohne ihn fehlt der Sammlungs-Kontext
+        # ("Quarz aus dem Berner Oberland" vs. "Quarz, unbekannte Herkunft"
+        # haben fuer Sammler/Forscher/Versicherung unterschiedlichen Aussage-
+        # gehalt). Spiegelt die mineralogische Identifikations-Achse
+        # (quote_mit_mineral) auf die geografische Provenienz-Achse - beide
+        # zusammen liefern die Kern-Identitaet eines Sammlungsstuecks.
+        # Whitespace zaehlt wie leer (spiegelt has_fundort-Filter-Konvention).
+        return self._quote(self.objekte_mit_fundort)
+
     def as_dict(self) -> dict:
         return {
             "objekte_total": self.objekte_total,
@@ -160,6 +174,7 @@ class Statistik:
             "objekte_mit_bildern": self.objekte_mit_bildern,
             "objekte_mit_funddatum": self.objekte_mit_funddatum,
             "objekte_mit_mineral": self.objekte_mit_mineral,
+            "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
             "objekte_mit_alias": self.objekte_mit_alias,
@@ -370,6 +385,7 @@ class Statistik:
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
+            "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
         }
 
 
@@ -1094,6 +1110,22 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_mineral = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != ''"
+    ).fetchone()[0]
+    # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
+    # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die
+    # Provenienz-Achse - "wo wurde das Stueck gefunden" ist symmetrisch zu
+    # "wann" und "was" eine der drei Kern-Identifikations-Achsen jedes Sammlungs-
+    # stuecks (Provenienz, Datierung, Bestimmung). Ohne Fundort fehlt der
+    # geografische Kontext fuer Sammlungs-Recherche (welche Stuecke vom selben
+    # Aufschluss?), Versicherungs-/Erbschafts-Wert (Provenienz-Nachweis) und
+    # wissenschaftliche Verwertung (Vergleichs-Material mit dokumentierter
+    # Herkunft). Whitespace zaehlt wie leer, spiegelt has_fundort. fundorte_total
+    # zaehlt distinkte Fundorte (Diversitaet); diese Kennzahl zaehlt Objekte
+    # mit irgendeinem Fundort (Coverage) - komplementaer, beide gemeinsam
+    # geben Auskunft ueber Konzentration vs. Streuung der Sammlung.
+    st.objekte_mit_fundort = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
     ).fetchone()[0]
 
     sums = conn.execute(
