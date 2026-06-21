@@ -962,6 +962,85 @@ def test_parse_iso_date_boundary_praefix():
     assert parse_iso_date("im Juni 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_range_praefix():
+    """Unidirektionaler Range-Praefix (ab/seit/bis/from/since/until/till) wird gestrippt.
+
+    Spiegelt das _BOUNDARY_PREFIX-Konzept (Praefix wird gestrippt, Datum bleibt
+    unveraendert) auf unidirektionale Spanne-Marker, wie sie in geerbten
+    Sammlungs-Notizen fuer den Start-/Endpunkt einer Erfassungs-/Fund-Periode
+    auftauchen ("Sammlung ab 1985", "Fundort seit 1990 zugaenglich",
+    "Fundort bis 1995 aktiv"). Das ISO-Datum nimmt das Jahr als bekannten
+    Anker; die Richtungs-/Spannenform bleibt im Freitext (notizen).
+    """
+    # DE Wort-Formen
+    assert parse_iso_date("ab 1985") == "1985-01-01"
+    assert parse_iso_date("seit 1985") == "1985-01-01"
+    assert parse_iso_date("bis 1985") == "1985-01-01"
+    assert parse_iso_date("Ab 2024") == "2024-01-01"
+    assert parse_iso_date("Seit 2024") == "2024-01-01"
+    assert parse_iso_date("Bis 2024") == "2024-01-01"
+    # EN Wort-Formen
+    assert parse_iso_date("from 1985") == "1985-01-01"
+    assert parse_iso_date("since 1985") == "1985-01-01"
+    assert parse_iso_date("until 1985") == "1985-01-01"
+    assert parse_iso_date("till 1985") == "1985-01-01"
+    assert parse_iso_date("From 2024") == "2024-01-01"
+    assert parse_iso_date("Since 2024") == "2024-01-01"
+    assert parse_iso_date("Until 2024") == "2024-01-01"
+    # Range-Praefix + alle Datums-Untertypen (rekursiv)
+    assert parse_iso_date("ab Juni 2024") == "2024-06-01"
+    assert parse_iso_date("seit Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("bis 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("from 1980er") == "1980-01-01"
+    assert parse_iso_date("since June 2024") == "2024-06-01"
+    assert parse_iso_date("until 2024-06-13") == "2024-06-13"
+    assert parse_iso_date("ab 1950-1960") == "1950-01-01"
+    # Case-insensitive
+    assert parse_iso_date("AB 1985") == "1985-01-01"
+    assert parse_iso_date("SEIT JUNI 2024") == "2024-06-01"
+    assert parse_iso_date("FROM 1985") == "1985-01-01"
+    # Verkettete Praefixe (rekursive Strippung)
+    assert parse_iso_date("ab ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. ab 1985") == "1985-01-01"
+    assert parse_iso_date("seit circa Juni 2024") == "2024-06-01"
+    # Range-Praefix + temporale Praeposition (semantisch redundant, unschaedlich)
+    assert parse_iso_date("ab im Jahr 1985") == "1985-01-01"
+    # WICHTIG: "bis" als Range-Separator in der Mitte bleibt erhalten - der
+    # ^-Anker schliesst Kollision mit _YEAR_RANGE_WORD aus. Regression-Test:
+    assert parse_iso_date("1985 bis 1990") == "1985-01-01"
+    assert parse_iso_date("1985-1990") == "1985-01-01"
+    # Praefix ohne Inhalt / mit ungueltigem Rest → None
+    assert parse_iso_date("ab") is None
+    assert parse_iso_date("seit") is None
+    assert parse_iso_date("bis") is None
+    assert parse_iso_date("from") is None
+    assert parse_iso_date("since") is None
+    assert parse_iso_date("until") is None
+    assert parse_iso_date("till") is None
+    assert parse_iso_date("ab abc") is None
+    assert parse_iso_date("seit garten") is None
+    # Praefix vor Jahr ausserhalb 1800-2999 → None
+    assert parse_iso_date("ab 1700") is None
+    assert parse_iso_date("bis 3000") is None
+    # Wortanfang muss exakt sein - kein Anschneiden laengerer Worte
+    # ("Ablagerung", "Abschnitt", "seitlich", "seitens", "bissel", "fromage",
+    # "sincerely", "tilltrigger", "untilst" duerfen NICHT matchen)
+    assert parse_iso_date("Ablagerung 1985") is None
+    assert parse_iso_date("Abschnitt 1985") is None
+    assert parse_iso_date("abgesehen 1985") is None
+    assert parse_iso_date("seitlich 1985") is None
+    assert parse_iso_date("seitens 1985") is None
+    assert parse_iso_date("bissel 1985") is None
+    assert parse_iso_date("fromage 1985") is None
+    assert parse_iso_date("sincerely 1985") is None
+    # Bestehende Datumsangaben ohne Range-Praefix bleiben gleich (kein Regress)
+    assert parse_iso_date("1985") == "1985-01-01"
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("vor 1985") == "1985-01-01"
+    assert parse_iso_date("im Juni 2024") == "2024-06-01"
+
+
 def test_parse_iso_date_bindestrich_separator_mit_monatsname():
     """Bindestrich als Separator zwischen Tag/Monatsname/Jahr (Oracle/Log-Exporte)."""
     # DD-MMM-YYYY (Oracle-Default-Format)

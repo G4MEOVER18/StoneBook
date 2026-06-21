@@ -165,6 +165,41 @@ _BOUNDARY_PREFIX = re.compile(
     r"^(?:vor|nach|before|after|pre|post)[-\s]+",
     re.IGNORECASE,
 )
+# Unidirektionale Range-Praefix (DE/EN) vor dem Datum: "ab 1985", "seit 1985",
+# "bis 1985", "from 1985", "since 1985", "until 1985", "till 1985". Sehr
+# verbreitet in geerbten Sammlungs-Notizen, wenn der Sammler den Startpunkt
+# einer Erfassungs-/Fund-Periode notiert ("Sammlung ab 1985", "Fundort seit
+# 1990 zugaenglich") oder ihr Ende ("Fundort bis 1995 aktiv", "until 2000
+# accessible"). Semantisch komplementaer zu _BOUNDARY_PREFIX (vor/nach als
+# bilaterale Grenze, ab/seit/bis als unidirektionale Spanne-Start-/Ende-
+# Marker); aus parser-Sicht identisch (das Jahr ist der bekannte Anker,
+# die Richtung bleibt im Freitext). Bisher fielen alle Formen mit
+# unidirektionalem Praefix stille auf None, obwohl das Jahr/Datum selbst
+# eindeutig ist - aus typischen Tagebuch-/Etikett-Eintraegen wie "seit
+# 1985" wurde silenter Funddatum-Datenverlust. Spiegelt das Konzept von
+# _BOUNDARY_PREFIX (Strip + Rekursion, Boundary-Jahr als ISO-Datum). DE-
+# Sammler-Vokabular: "ab" (von da an), "seit" (von da an, dauerhaft),
+# "bis" (bis zu da); EN: "from" (von da an), "since" (von da an, dauer-
+# haft), "until"/"till" (bis zu da). Hinweis zur Kollision mit
+# _YEAR_RANGE_WORD: dort ist "bis"/"to"/"till"/"until" als Range-Trenner
+# in der Mitte gelistet ("1950 bis 1960"); hier am Anfang strippt es als
+# unidirektionaler Marker ("bis 1985"). Beide funktionieren ohne Konflikt,
+# weil _RANGE_PREFIX mit ``^`` ankerkt - "1985 bis 1990" beginnt mit
+# einer Ziffer, nicht mit "bis", und faellt damit nicht in den Prefix-
+# Strip-Pfad. "von" ist bereits in _TEMPORAL_PREFIX gelistet und wird
+# dort gestrippt; hier nicht doppelt aufgenommen. Trenner ``\s+`` deckt
+# alle Wort-Formen ab (keine Bindestrich-Kompositum-Form ueblich bei
+# DE/EN-Unidirektionalen). Nach _BOUNDARY_PREFIX einsortiert, weil
+# semantisch verwandt aber konzeptionell unterschiedlich (bilateral vs.
+# unidirektional) und damit beide Praefix-Klassen lesbar getrennt
+# bleiben. Kollision mit Praefixen wie "Ablagerung", "Abschnitt",
+# "abgesehen", "seitlich", "seitens", "bissel", "fromage", "sincerely",
+# "tilltrigger": ausgeschlossen durch das trailing ``\s+`` (Wort-Ende-
+# Pruefung).
+_RANGE_PREFIX = re.compile(
+    r"^(?:ab|seit|bis|from|since|until|till)\s+",
+    re.IGNORECASE,
+)
 # Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen
 # ("Mo 13.06.2024", "Donnerstag, 13. Juni 2024", "Thu Jun 13 2024").
 # Voll- und Kurzformen (DE: Mo/Di/Mi/Do/Fr/Sa/So; EN: Mon-Sun) werden gestrippt,
@@ -762,6 +797,17 @@ def parse_iso_date(text) -> str | None:
     # zur reinen Form, die Richtung bleibt im Freitext (notizen).
     if _BOUNDARY_PREFIX.match(s):
         rest = _BOUNDARY_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_iso_date(rest)
+        return None
+    # Unidirektionalen Range-Praefix abstreifen ("ab 1985" → "1985", "seit
+    # Juni 2024" → "Juni 2024", "bis 1985" → "1985", "from 2024" → "2024").
+    # Nach _BOUNDARY_PREFIX einsortiert, weil semantisch verwandt aber
+    # konzeptionell unterschiedlich (bilateral vs. unidirektional). Strip +
+    # Rekursion analog _APPROX_PREFIX/_BOUNDARY_PREFIX: das Jahr ist der
+    # bekannte Anker, die Richtung (ab/seit/bis) bleibt im Freitext (notizen).
+    if _RANGE_PREFIX.match(s):
+        rest = _RANGE_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_iso_date(rest)
         return None
