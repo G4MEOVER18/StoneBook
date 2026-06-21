@@ -95,6 +95,42 @@ _APPROX_PREFIX = re.compile(
     r")",
     re.IGNORECASE,
 )
+# Temporale Praeposition (DE/EN) vor dem Datum: "im Sommer 1985", "im Juni 2024",
+# "im Jahr 1985", "in den Jahren 1985-1990", "vom 13. Juni 2024", "am 13.06.2024",
+# "in 2024", "on June 13, 2024", "year 2024", "Jahr 1985". Sehr verbreitet in
+# geerbten Sammlungs-Notizen, die das Datum in einen vollstaendigen Satz einbetten
+# ("Im Sommer 1985 in den Schweizer Alpen gefunden", "Foto vom 13. Juni 2024",
+# "Aufgenommen am 13.06.2024"); bisher fielen alle Formen mit Praeposition stille
+# auf None, obwohl semantisch eindeutig - die Datums-Bedeutung selbst bleibt
+# identisch (die Praeposition ist Satz-Gluekel, keine Datums-Modifikation),
+# spiegelt damit das Konzept von _APPROX_PREFIX (Praefix wird gestrippt, Datum
+# bleibt unveraendert) auf die temporale-Satz-Achse.
+# DE: "im" (=in dem), "in", "vom" (=von dem), "von", "am" (=an dem) sind die
+# ueblichen temporalen Praepositionen vor Tag/Monat/Saison/Jahr.
+# EN: "in" (Praeposition vor Monat/Jahr), "on" (vor Tag mit Jahr) sind verbreitet.
+# Optional zwischen Praeposition und Datum ein Artikel (DE: "dem"/"den"/"der";
+# EN: "the") und ein Fueller-Wort ("Jahr"/"Jahre"/"Jahren"/"year"), das in
+# Saetzen wie "im Jahr 1985" / "in den Jahren 1985-1990" / "in dem Jahre 1985"
+# / "in the year 1985" / "in the 1980s" oft auftaucht.
+# "Jahr 1985" ohne Praeposition kommt ebenfalls vor (Listen-/Tabellen-Stichwort,
+# "Jahr 1985: Erste Sammlung"). Wird via Rekursion identisch zu _APPROX_PREFIX/
+# _WEEKDAY_PREFIX behandelt: einmal gestrippt, dann uebernimmt parse_iso_date
+# das eigentliche Parsen vom Rest. Verkettung mit anderen Praefixen funktioniert
+# durch wiederholte Rekursion ("im ca. Sommer 1985" → "ca. Sommer 1985" → "Sommer
+# 1985" → "1985-06-01"). Nach _WEEKDAY_PREFIX einsortiert, damit "Donnerstag, im
+# Juni 2024" zuerst den Wochentag und dann die Praeposition strippt.
+_TEMPORAL_PREFIX = re.compile(
+    r"^(?:"
+    # Praeposition + optional Artikel + optional "Jahr"-Wort + Whitespace
+    r"(?:im|in|am|vom|von|on)\s+"
+    r"(?:(?:dem|den|der|the)\s+)?"
+    r"(?:(?:jahr|jahre|jahren|year)\s+)?"
+    r"|"
+    # Nur "Jahr"-Wort ohne Praeposition (Listen-/Tabellen-Stil)
+    r"(?:jahr|jahre|jahren|year)\s+"
+    r")",
+    re.IGNORECASE,
+)
 # Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen
 # ("Mo 13.06.2024", "Donnerstag, 13. Juni 2024", "Thu Jun 13 2024").
 # Voll- und Kurzformen (DE: Mo/Di/Mi/Do/Fr/Sa/So; EN: Mon-Sun) werden gestrippt,
@@ -540,6 +576,17 @@ def parse_iso_date(text) -> str | None:
     # als _DAY_MONTH_YEAR mit "Donnerstag" als Monat versucht wird.
     if _WEEKDAY_PREFIX.match(s):
         rest = _WEEKDAY_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_iso_date(rest)
+        return None
+    # Temporale Praeposition abstreifen ("im Juni 2024" → "Juni 2024", "vom
+    # 13.06.2024" → "13.06.2024", "im Jahr 1985" → "1985", "Jahr 1985" → "1985").
+    # Nach Wochentag-Strip, damit "Donnerstag, im Juni 2024" zuerst den Wochentag
+    # und dann die Praeposition aufloest. Strip + Rekursion analog _APPROX_PREFIX:
+    # die Praeposition ist Satz-Gluekel, keine Datums-Modifikation - das ISO-
+    # Datum-Output bleibt identisch zur reinen Datums-Form.
+    if _TEMPORAL_PREFIX.match(s):
+        rest = _TEMPORAL_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_iso_date(rest)
         return None

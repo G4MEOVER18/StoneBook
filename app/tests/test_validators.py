@@ -807,6 +807,86 @@ def test_parse_iso_date_wochentag_praefix():
     assert parse_iso_date("May 5, 2020") == "2020-05-05"
 
 
+def test_parse_iso_date_temporale_praeposition():
+    """Temporale Praeposition (im/in/vom/am/von/on) vor dem Datum wird gestrippt.
+
+    Spiegelt das _APPROX_PREFIX-Konzept (Praefix wird gestrippt, Datum bleibt
+    unveraendert) auf temporale Satz-Praepositionen, wie sie in Sammlungs-Notizen
+    in vollstaendigen Saetzen auftauchen.
+    """
+    # DE "im" + Jahr
+    assert parse_iso_date("im 2024") == "2024-01-01"
+    # DE "im" + Monat + Jahr
+    assert parse_iso_date("im Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Im Juni 2024") == "2024-06-01"
+    # DE "im" + Saison + Jahr
+    assert parse_iso_date("im Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("Im Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("im Frühling 2020") == "2020-03-01"
+    # DE "im" + Jahrzehnt
+    assert parse_iso_date("im 1980er") == "1980-01-01"
+    # DE "im Jahr"
+    assert parse_iso_date("im Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("Im Jahr 2024") == "2024-01-01"
+    assert parse_iso_date("im Jahre 1985") == "1985-01-01"
+    # DE "in dem Jahr" / "in den Jahren" (Vollform mit Artikel)
+    assert parse_iso_date("in dem Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("in den Jahren 1985-1990") == "1985-01-01"
+    # DE "vom" - typisch fuer Foto-/Brief-Captions
+    assert parse_iso_date("vom 13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("vom 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("vom 2024-06-13") == "2024-06-13"
+    # DE "von" + Jahr
+    assert parse_iso_date("von 1985") == "1985-01-01"
+    # DE "am" - typisch fuer "aufgenommen am"-Captions
+    assert parse_iso_date("am 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("am 13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("Am 1. Januar 2020") == "2020-01-01"
+    # EN "in" + Monat/Jahr
+    assert parse_iso_date("in 2024") == "2024-01-01"
+    assert parse_iso_date("in June 2024") == "2024-06-01"
+    assert parse_iso_date("in the year 1985") == "1985-01-01"
+    assert parse_iso_date("in the year 2024") == "2024-01-01"
+    assert parse_iso_date("in the 1980s") == "1980-01-01"
+    # EN "on" + voller Datums-Form
+    assert parse_iso_date("on June 13, 2024") == "2024-06-13"
+    assert parse_iso_date("on 2024-06-13") == "2024-06-13"
+    # "Jahr"/"year" als Listen-Stichwort ohne Praeposition
+    assert parse_iso_date("Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("Jahre 1985") == "1985-01-01"
+    assert parse_iso_date("year 2024") == "2024-01-01"
+    assert parse_iso_date("Year 2024") == "2024-01-01"
+    # Case-insensitive (DE/EN gemischt)
+    assert parse_iso_date("IM JUNI 2024") == "2024-06-01"
+    assert parse_iso_date("VOM 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("ON JUNE 13, 2024") == "2024-06-13"
+    # Praeposition + Quartal/Halbjahr
+    assert parse_iso_date("im Q1 2024") == "2024-01-01"
+    assert parse_iso_date("im H1 2024") == "2024-01-01"
+    assert parse_iso_date("im 1. Quartal 2024") == "2024-01-01"
+    # Verkettete Praefixe (rekursive Strippung): semantisch redundant, aber
+    # unschaedlich - die Rekursion strippt einen nach dem anderen.
+    assert parse_iso_date("im ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. im Juni 2024") == "2024-06-01"
+    # Praefix ohne Inhalt / mit ungueltigem Rest → None
+    assert parse_iso_date("im") is None
+    assert parse_iso_date("vom") is None
+    assert parse_iso_date("Jahr") is None
+    assert parse_iso_date("im abc") is None
+    assert parse_iso_date("im garten") is None
+    # Praefix vor Jahr ausserhalb 1800-2999 → None
+    assert parse_iso_date("im 1700") is None
+    assert parse_iso_date("im Jahr 1700") is None
+    # Wortanfang muss exakt sein - kein Anschneiden laengerer Worte
+    assert parse_iso_date("important 2024") is None
+    assert parse_iso_date("immer 1985") is None
+    # Bestehende Datumsangaben ohne Praeposition bleiben gleich (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+
+
 def test_parse_iso_date_bindestrich_separator_mit_monatsname():
     """Bindestrich als Separator zwischen Tag/Monatsname/Jahr (Oracle/Log-Exporte)."""
     # DD-MMM-YYYY (Oracle-Default-Format)
