@@ -459,6 +459,32 @@ _DMS = re.compile(
     """,
     re.VERBOSE,
 )
+# Colon-separierte DMS-Notation ohne Grad-/Minuten-/Sekunden-Symbole:
+# "46:30:15 N" / "46:30:15.5 S" / "7:30:0E". Verbreitet in GPS-Logs,
+# Marine-/Luftfahrt-Notation und maschinen-lesbaren Exporten, wo das ° / ' / "
+# weggelassen wird (typische CSV-Exports aus GPS-Tools, NMEA-Konvertierungen,
+# Wikipedia-Koordinaten in der maschinen-lesbaren Form). Drei Doppelpunkt-
+# getrennte Zahlen mit obligatorischer Himmelsrichtung am Ende decken Grad,
+# Minuten und Sekunden ab; die Himmelsrichtung ist hier obligatorisch, um
+# Kollision mit Zeit-Notation (``14:30:00`` Uhrzeit) zu vermeiden - ohne den
+# N/S/E/W/O-Marker ist die Drei-Doppelpunkt-Folge nicht eindeutig als
+# Koordinate erkennbar. Sekunden duerfen Dezimalpunkt/-Komma haben
+# (``46:30:15.5 N``). Spiegelt die Struktur von _DMS (4 Capture-Gruppen:
+# Grad, Minuten, Sekunden, Richtung), damit _dms_to_decimal ohne Anpassung
+# funktioniert. Bisher fielen alle drei colon-DMS-Formen auf falsche Werte
+# (das _DECIMAL_PAIR-Pattern greift mit den letzten beiden Zahlen statt mit
+# den ersten Grad-Anteilen, sodass ``46:30:15 N, 7:30:0 E`` als ``(15.0, 7.0)``
+# gelesen wurde - silenter Koordinaten-Datenverlust). Wird vor _DMS gepruft
+# (kollisionsfrei: _DMS verlangt °, colon-DMS verbietet es), damit die Reihen-
+# folge dem Spezifischen-vor-Allgemeinen-Prinzip folgt.
+_DMS_COLON = re.compile(
+    r"""(\d+(?:[.,]\d+)?)\s*:               # Grad + Doppelpunkt
+        \s*(\d+(?:[.,]\d+)?)\s*:            # Minuten + Doppelpunkt
+        \s*(\d+(?:[.,]\d+)?)                # Sekunden (Dezimalpunkt/Komma erlaubt)
+        \s*([NSEWOnsewo])                   # obligatorische Himmelsrichtung
+    """,
+    re.VERBOSE,
+)
 _DECIMAL_PAIR = re.compile(
     # Tab in der Separator-Klasse deckt TSV-Exporte (Tab-getrennte Excel-/
     # GPS-Tools) ab: "46.5\t7.5" ist dort verbreitet, aber bisher fiel die
@@ -904,6 +930,17 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         a = _dms_to_decimal(*dms_hits[0])
         b = _dms_to_decimal(*dms_hits[1])
         lat, lon = _orient(a, dms_hits[0][3], b, dms_hits[1][3])
+        return _validate(lat, lon)
+
+    # Colon-separierte DMS-Notation ohne ° / ' / "-Symbole ("46:30:15 N").
+    # Vor _PREFIX_PAIR/_DECIMAL_PAIR geprueft, damit die Drei-Zahlen-Folge nicht
+    # vorzeitig als (Sekunden, naechste Zahl)-Paar interpretiert wird; spiegelt
+    # die _DMS-Logik (findall, _dms_to_decimal, _orient) auf die colon-Variante.
+    dms_colon_hits = _DMS_COLON.findall(s)
+    if len(dms_colon_hits) >= 2:
+        a = _dms_to_decimal(*dms_colon_hits[0])
+        b = _dms_to_decimal(*dms_colon_hits[1])
+        lat, lon = _orient(a, dms_colon_hits[0][3], b, dms_colon_hits[1][3])
         return _validate(lat, lon)
 
     m = _PREFIX_PAIR.search(s)

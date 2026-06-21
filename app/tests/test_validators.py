@@ -1399,6 +1399,55 @@ def test_parse_coordinates_tab_separator():
     assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_colon_dms():
+    """Colon-separierte DMS-Notation: '46:30:15 N' (GPS-Logs, NMEA-Konvertierungen).
+
+    Spiegelt die _DMS-Logik auf die ° / ' / " - lose Variante; obligatorische
+    Himmelsrichtung verhindert Kollision mit Zeit-Notation (``14:30:00``).
+    """
+    # Standard mit Whitespace zwischen Sekunden und Richtung
+    assert parse_coordinates("46:30:15 N, 7:30:0 E") == (46.5 + 15/3600, 7.5)
+    # Ohne Whitespace zwischen Sekunden und Richtung
+    assert parse_coordinates("46:30:15N, 7:30:0E") == (46.5 + 15/3600, 7.5)
+    # Dezimal-Sekunden (Komma oder Punkt)
+    lat, lon = parse_coordinates("46:30:15.5 N, 7:30:0 E")
+    assert abs(lat - (46.5 + 15.5/3600)) < 1e-9
+    assert lon == 7.5
+    lat, lon = parse_coordinates("46:30:15,5 N, 7:30:0 E")
+    assert abs(lat - (46.5 + 15.5/3600)) < 1e-9
+    # Suedhalbkugel / Westhalbkugel
+    lat, lon = parse_coordinates("46:30:15 S, 7:30:0 W")
+    assert abs(lat - -(46.5 + 15/3600)) < 1e-9
+    assert lon == -7.5
+    # O = Ost (deutsche Notation)
+    assert parse_coordinates("46:30:0 N, 7:30:0 O") == (46.5, 7.5)
+    # Null-gepolsterte Sekunden
+    assert parse_coordinates("46:00:00 N, 7:00:00 E") == (46.0, 7.0)
+    # Verschiedene Pair-Separatoren (Komma/Semikolon/Slash/Tab/Whitespace)
+    assert parse_coordinates("46:30:0 N 7:30:0 E") == (46.5, 7.5)
+    assert parse_coordinates("46:30:0 N; 7:30:0 E") == (46.5, 7.5)
+    assert parse_coordinates("46:30:0 N / 7:30:0 E") == (46.5, 7.5)
+    # Case-insensitive Richtung
+    assert parse_coordinates("46:30:0 n, 7:30:0 e") == (46.5, 7.5)
+    # Mit umschliessenden Klammern (wird aktuell nicht extra gestrippt;
+    # die _DMS_COLON-findall greift trotzdem auf den inhalt)
+    assert parse_coordinates("(46:30:0 N, 7:30:0 E)") == (46.5, 7.5)
+    # Reine Zeit-Notation ohne Richtung → kein colon-DMS-Match (Schutz vor
+    # Kollision mit der Drei-Doppelpunkt-Form). Ohne Himmelsrichtung greift
+    # _DMS_COLON nicht; das eindeutige "Zeit"-Stueck ``14:30:00`` ohne
+    # zweite Zahl fallt durch alle Pattern auf None.
+    assert parse_coordinates("14:30:00") is None
+    # Out-of-Range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("100:00:00 N, 7:30:0 E") is None
+    assert parse_coordinates("46:30:0 N, 200:00:00 E") is None
+    # Bestehende DMS-Form mit ° / ' / " bleibt unveraendert (kein Regress)
+    assert parse_coordinates("46° 30' 15\" N, 7° 30' 0\" E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Bestehende dezimale Form bleibt unveraendert (kein Regress)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None
