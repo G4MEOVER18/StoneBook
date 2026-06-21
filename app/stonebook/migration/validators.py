@@ -289,6 +289,39 @@ _MONTH_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[,./ \-]\s*(\d{4})\s*$",
 )
 
+# Year-first Notation mit Monatsnamen: "2024-Juni" / "2024 June" / "2024-Jun" /
+# "2024.Juni" / "2024/Juni" / "2024, June". Spiegelt _MONTH_YEAR ("Juni 2024")
+# auf die Year-First-Reihenfolge - die ISO-/sortierbare Form mit ausgeschriebenem
+# Monatsnamen kommt in Excel-Auto-Fill-Spalten ("2024-Jan", "2024-Feb"
+# als sortierbare Monatsgruppen), Listen-Headern in Sammlungs-Tagebuechern
+# ("2024 Juni: 5 neue Stuecke vom Aaregebiet"), LaTeX-/Markdown-Dokumenten
+# mit chronologisch gruppierten Eintraegen und in Excel-Pivot-Auto-Format
+# vor, wenn der Sammler die Jahre als ordnenden Schluessel vor dem Monatsnamen
+# stellt. Bisher fielen alle Formen stille auf None, obwohl semantisch
+# identisch zur Month-First-Variante. Konvention: Tag wird auf den 1. gesetzt
+# (Monatsstart), spiegelt _MONTH_YEAR. Wird nach _MONTH_YEAR geprueft, weil
+# beide disjunkt sind (Month-First beginnt mit Buchstaben, Year-First mit
+# 4 Ziffern - kollisionsfrei) und die Reihenfolge die ueblichere Month-First-
+# Variante zuerst behandelt.
+_YEAR_MONTH_NAME = re.compile(
+    r"^\s*(\d{4})\s*[,./ \-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
+)
+# Year-first DD-Monatsname-YYYY-Notation: "2024-Juni-13" / "2024 June 13" /
+# "2024.Juni.13" / "2024-Jun-13" / "2024/Juni/13". Spiegelt _DAY_MONTH_YEAR
+# ("13. Juni 2024") und _ENGLISH_MONTH_DAY_YEAR ("Juni 13, 2024") auf die
+# Year-First-Reihenfolge - die voll qualifizierte sortierbare ISO-aehnliche
+# Form mit ausgeschriebenem Monatsnamen kommt in den gleichen Quellen wie
+# _YEAR_MONTH_NAME vor (Excel-Auto-Fill, Listen-Header, LaTeX). Optionales
+# englisches Tag-Ordinal-Suffix ``st|nd|rd|th`` symmetrisch zu den anderen
+# named-month Patterns. Konvention identisch zu _DAY_MONTH_YEAR/
+# _ENGLISH_MONTH_DAY_YEAR: voll qualifiziertes Datum (Y/M/D). Wird vor
+# _YEAR_MONTH_NAME geprueft, weil die 3-Teil-Form spezifischer ist; beide
+# Patterns sind durch das ``$``-Anker disjunkt (3 Teile vs. 2 Teile).
+_YEAR_MONTH_NAME_DAY = re.compile(
+    r"^\s*(\d{4})\s*[,./ \-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*"
+    r"[,./ \-]\s*(\d{1,2})(?:st|nd|rd|th)?\s*$",
+)
+
 # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024", "Frühjahr 2020").
 # Konvention: meteorologischer Saison-Start im genannten Jahr (Maerz/Juni/Sep/Dez).
 # Winter wird auf Dezember desselben Jahres gelegt; "Winter 1999/2000" o.ae. werden
@@ -752,6 +785,32 @@ def parse_iso_date(text) -> str | None:
     if m:
         month = _normalize_month_name(m.group(1))
         year = int(m.group(2))
+        if month and 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
+    # Year-first DD-Monatsname-YYYY ("2024-Juni-13" / "2024 June 13"). Voll
+    # qualifiziertes Datum mit ausgeschriebenem Monatsnamen in der ISO-aehnlichen
+    # Year-First-Reihenfolge - spiegelt _DAY_MONTH_YEAR und
+    # _ENGLISH_MONTH_DAY_YEAR. Vor _YEAR_MONTH_NAME geprueft, weil die 3-Teil-
+    # Form spezifischer ist als die 2-Teil-Form (Pattern sind durch $-Anker
+    # disjunkt, Reihenfolge nur fuer Lesbarkeit).
+    m = _YEAR_MONTH_NAME_DAY.match(s)
+    if m:
+        year = int(m.group(1))
+        month = _normalize_month_name(m.group(2))
+        day = int(m.group(3))
+        if month and 1 <= day <= 31 and 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
+    # Year-first Monatsname + Jahr ("2024-Juni" / "2024 June" / "2024.Juni").
+    # Spiegelt _MONTH_YEAR auf die Year-First-Reihenfolge - sortierbare Form mit
+    # ausgeschriebenem Monat, wie sie in Excel-Auto-Fill und Listen-Headern
+    # vorkommt. Konvention: Tag auf den 1. gesetzt (Monatsstart).
+    m = _YEAR_MONTH_NAME.match(s)
+    if m:
+        year = int(m.group(1))
+        month = _normalize_month_name(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
     # ISO 8601 Wochendatum ("2024-W25", "2024W25", "2024-W25-3"). Vor den

@@ -1299,6 +1299,87 @@ def test_parse_iso_date_roemische_monate_ungueltig():
     assert parse_iso_date("13.VI.1700") is None
 
 
+def test_parse_iso_date_year_first_monatsname():
+    """Year-first Notation mit ausgeschriebenem Monatsnamen ('2024-Juni', '2024 June')."""
+    # 2-Teil-Form (Monatsstart): verschiedene Separatoren
+    assert parse_iso_date("2024-Juni") == "2024-06-01"
+    assert parse_iso_date("2024 Juni") == "2024-06-01"
+    assert parse_iso_date("2024.Juni") == "2024-06-01"
+    assert parse_iso_date("2024/Juni") == "2024-06-01"
+    assert parse_iso_date("2024, Juni") == "2024-06-01"
+    # EN-Voll-/Kurzformen
+    assert parse_iso_date("2024-June") == "2024-06-01"
+    assert parse_iso_date("2024-Jun") == "2024-06-01"
+    assert parse_iso_date("2024 June") == "2024-06-01"
+    assert parse_iso_date("1999-Dezember") == "1999-12-01"
+    assert parse_iso_date("1999-Dec") == "1999-12-01"
+    # DE-Kurzformen und Umlaut
+    assert parse_iso_date("2024-Mrz") == "2024-03-01"
+    assert parse_iso_date("2024-Mar") == "2024-03-01"
+    assert parse_iso_date("2024-Maerz") == "2024-03-01"
+    assert parse_iso_date("2024-März") == "2024-03-01"
+    # Case-insensitive (Normalisierung)
+    assert parse_iso_date("2024-JUNI") == "2024-06-01"
+    assert parse_iso_date("2024-juni") == "2024-06-01"
+    # Optionales Punkt-Suffix am Monatsnamen ("2024-Jun.")
+    assert parse_iso_date("2024-Jun.") == "2024-06-01"
+    assert parse_iso_date("2024 Jun.") == "2024-06-01"
+    # Roemische Monatsziffern: 2024-VI / 2024 XII
+    assert parse_iso_date("2024-VI") == "2024-06-01"
+    assert parse_iso_date("2024 XII") == "2024-12-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / trailing Satzzeichen
+    assert parse_iso_date("ca. 2024-Juni") == "2024-06-01"
+    assert parse_iso_date("(2024-Juni)") == "2024-06-01"
+    assert parse_iso_date("2024-Juni.") == "2024-06-01"
+
+
+def test_parse_iso_date_year_first_monatsname_mit_tag():
+    """Year-first DD-Monatsname-YYYY ('2024-Juni-13', voll qualifiziert)."""
+    # 3-Teil-Form mit verschiedenen Separatoren
+    assert parse_iso_date("2024-Juni-13") == "2024-06-13"
+    assert parse_iso_date("2024 Juni 13") == "2024-06-13"
+    assert parse_iso_date("2024.Juni.13") == "2024-06-13"
+    assert parse_iso_date("2024/Juni/13") == "2024-06-13"
+    # EN + DE Voll-/Kurzformen
+    assert parse_iso_date("2024 June 13") == "2024-06-13"
+    assert parse_iso_date("2024-Jun-13") == "2024-06-13"
+    assert parse_iso_date("2024 Jan 1") == "2024-01-01"
+    assert parse_iso_date("1985-Dezember-31") == "1985-12-31"
+    # Englisches Tag-Ordinal-Suffix
+    assert parse_iso_date("2024-June-1st") == "2024-06-01"
+    assert parse_iso_date("2024 June 13th") == "2024-06-13"
+    assert parse_iso_date("2024-Mar-3rd") == "2024-03-03"
+    # Gemischte Separatoren (verschiedene zwischen Year/Month und Month/Day)
+    assert parse_iso_date("2024 Juni-13") == "2024-06-13"
+    assert parse_iso_date("2024-Juni 13") == "2024-06-13"
+    # Roemische Monatsziffern
+    assert parse_iso_date("2024-VI-13") == "2024-06-13"
+    assert parse_iso_date("1985 XII 31") == "1985-12-31"
+    # Kombiniert mit Annaeherungspraefix / Klammern / Anfuehrungszeichen
+    assert parse_iso_date("ca. 2024-Juni-13") == "2024-06-13"
+    assert parse_iso_date("(2024-Juni-13)") == "2024-06-13"
+    assert parse_iso_date('"2024-Juni-13"') == "2024-06-13"
+
+
+def test_parse_iso_date_year_first_monatsname_ungueltig():
+    """Year-first Monatsname mit ungueltigen Werten faellt auf None."""
+    # Unbekannter Monatsname (kein Wort aus _MONTH_NAMES)
+    assert parse_iso_date("2024-Foo") is None
+    assert parse_iso_date("2024-Foo-13") is None
+    assert parse_iso_date("2024 abc") is None
+    # Jahr ausserhalb 1800..2999
+    assert parse_iso_date("0000-Juni") is None
+    assert parse_iso_date("3000-Juni") is None
+    assert parse_iso_date("1700-Juni-13") is None
+    # Ungueltiger Tag
+    assert parse_iso_date("2024-Juni-32") is None
+    assert parse_iso_date("2024-Februar-30") is None  # Februar 30
+    assert parse_iso_date("2024-Juni-00") is None
+    # Roemische Monatsziffer ausser Range (XIII)
+    assert parse_iso_date("2024-XIII") is None
+    assert parse_iso_date("2024-XIII-13") is None
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None
