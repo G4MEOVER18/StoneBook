@@ -1919,12 +1919,14 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_ki_analyse_prozent is None
     assert st.quote_mit_mineral_prozent is None
     assert st.quote_mit_fundort_prozent is None
+    assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
     assert d["quote_mit_bildern_prozent"] is None
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
+    assert d["quote_mit_alias_prozent"] is None
     c.close()
 
 
@@ -2067,6 +2069,69 @@ def test_quote_mit_ki_analyse_uebernommen_leere_db(tmp_path):
     st = compute_statistics(c)
     assert st.quote_mit_ki_analyse_uebernommen_prozent is None
     assert st.as_dict()["quote_mit_ki_analyse_uebernommen_prozent"] is None
+    c.close()
+
+
+def test_quote_mit_alias_aus_seed_db(tmp_path):
+    """Merge-Quote (Provenienz-Coverage) spiegelt das Coverage-Vokabular auf die
+    Aliase-Achse: Anteil der Kanon-Objekte mit mindestens einem Alias, gerechnet
+    ueber objekte_total. Komplementaer zu aliase_total (Roh-Volumen aller
+    Eintraege, eine Kanon-ID kann mehrfach gemergt sein) und objekte_mit_alias
+    (Anzahl-Sicht) - quote_mit_alias bezieht das auf den Gesamtbestand."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qal.sqlite3")
+    # 5 Objekte: OBJ_0001 hat zwei Aliase (zweimal gemergt), OBJ_0002 einen,
+    # OBJ_0003/04/05 keinen. objekte_mit_alias = 2 (DISTINCT canonical_id),
+    # aliase_total = 3 (Summe Eintraege), quote_mit_alias = 2/5 = 40 %.
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",),
+         ("OBJ_0004",), ("OBJ_0005",)],
+    )
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0100", "OBJ_0001", "duplikat_gruppen.json"),
+            ("OBJ_0101", "OBJ_0001", "manuell"),
+            ("OBJ_0102", "OBJ_0002", "duplikat_gruppen.json"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.aliase_total == 3
+    assert st.objekte_mit_alias == 2
+    assert st.quote_mit_alias_prozent == 40.0
+    d = st.as_dict()
+    assert d["quote_mit_alias_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_alias_leere_db(tmp_path):
+    """Leere DB: quote_mit_alias_prozent ist None (nicht 0%), spiegelt das
+    Verhalten der uebrigen Coverage-Quoten bei 0 Objekten."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_alias_prozent is None
+    assert st.as_dict()["quote_mit_alias_prozent"] is None
+    c.close()
+
+
+def test_quote_mit_alias_ohne_merges(tmp_path):
+    """Sammlung ohne Merges: quote_mit_alias_prozent = 0 % (saubere Erfassungs-Linie)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nomerge.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.aliase_total == 0
+    assert st.objekte_mit_alias == 0
+    assert st.quote_mit_alias_prozent == 0.0
+    assert st.as_dict()["quote_mit_alias_prozent"] == 0.0
     c.close()
 
 

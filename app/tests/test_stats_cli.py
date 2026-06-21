@@ -308,6 +308,39 @@ def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_merge_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt die Merge-Quote (Anteil der Kanon-Objekte aus
+    Duplikat-Merges) zusaetzlich zu den Feld-Coverage-Quoten auf. Spiegelt das
+    Coverage-Vokabular auf die Provenienz-Achse - symmetrische CLI-Sichtbarkeit
+    fuer die Sammlungs-Konsolidierungs-Tiefe."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "merge.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    # OBJ_0001 hat zwei Aliase, OBJ_0002 einen -> 2 von 4 Kanon-Objekten
+    # sind aus Merges hervorgegangen (Merge-Quote 50 %).
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0100", "OBJ_0001", "duplikat_gruppen.json"),
+            ("OBJ_0101", "OBJ_0001", "manuell"),
+            ("OBJ_0102", "OBJ_0002", "duplikat_gruppen.json"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Merge (Aliase):" in out
+    # 2 von 4 Kanon-Objekten haben mindestens einen Alias -> 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_ki_analyse_uebernommen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt die uebernommene-KI-Quote zusaetzlich zur reinen
     KI-Analyse-Quote. Die Differenz beider Zeilen beziffert die Akzeptanz-

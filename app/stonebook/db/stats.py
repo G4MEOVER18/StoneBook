@@ -183,6 +183,26 @@ class Statistik:
         # (spiegelt has_ki_analyse_uebernommen-Filter-Konvention).
         return self._quote(self.objekte_mit_ki_analyse_uebernommen)
 
+    @property
+    def quote_mit_alias_prozent(self) -> float | None:
+        # Coverage-Quote fuer Kanon-Objekte mit mindestens einem Alias (Merge-
+        # Quote). Spiegelt das Coverage-Vokabular auf die Provenienz-Achse:
+        # "wie viel Anteil der Sammlung ist tatsaechlich aus Duplikat-Merges
+        # hervorgegangen?" - eine sehr aussagekraeftige Dokumentations-Qualitaets-
+        # Kennzahl, weil sie zeigt, wie stark das Migrations-/Pflege-Verfahren
+        # die rohen historischen Eintraege konsolidiert hat. aliase_total ist die
+        # Summe aller Alias-Eintraege (ein Kanon-Objekt kann mehrere alte IDs
+        # auf sich vereinigen), objekte_mit_alias die Anzahl der verschmolzenen
+        # Kanon-Objekte (unabhaengig von der Merge-Tiefe), quote_mit_alias_prozent
+        # rechnet das auf den Anteil der Gesamtsammlung um. Hoher Wert deutet auf
+        # Sammler-Bestand mit vielen historischen Doppelungen (z.B. aus zwei
+        # parallelen Erfassungs-Systemen zusammengefuehrt), niedriger Wert auf
+        # eine sauber verwaltete Erfassungs-Linie. Komplementaer zu aliase_total
+        # (Roh-Volumen) und objekte_mit_alias (Anzahl-Sicht); orthogonal zu den
+        # Feld-Coverage-Quoten (Bildern/Funddatum/Mineral/...), die die
+        # inhaltliche Pflege je Stueck messen.
+        return self._quote(self.objekte_mit_alias)
+
     def as_dict(self) -> dict:
         return {
             "objekte_total": self.objekte_total,
@@ -407,6 +427,7 @@ class Statistik:
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
             ),
+            "quote_mit_alias_prozent": _round_or_none(self.quote_mit_alias_prozent),
         }
 
 

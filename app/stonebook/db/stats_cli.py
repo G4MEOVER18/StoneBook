@@ -85,6 +85,11 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
             f"{st.quote_mit_ki_analyse_uebernommen_prozent:.1f} %")
         lines.append(f"  Mineral_Primaer:     {st.quote_mit_mineral_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
+        # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
+        # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt
+        # das Roh-Volumen, hier die Quote als Sammler-typische "wie konsolidiert
+        # ist mein Bestand?"-Sicht.
+        lines.append(f"  Merge (Aliase):      {st.quote_mit_alias_prozent:.1f} %")
     if st.confidence_buckets and any(st.confidence_buckets.values()):
         lines += ["", "Confidence-Verteilung:"]
         for label, n in st.confidence_buckets.items():
