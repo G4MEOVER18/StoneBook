@@ -1049,6 +1049,64 @@ def test_parse_iso_date_trailing_satzzeichen():
     assert parse_iso_date("unbekannt.") is None
 
 
+def test_parse_iso_date_trailing_paren_annotation():
+    """Trailing parenthesized Annotation ("13.06.2024 (Foto)") wird gestrippt.
+
+    Sammlungs-Notizen haengen oft eine Kontext-/Provenienz-Annotation in
+    runden/eckigen/geschwungenen Klammern an das Datum an; das Datum selbst
+    bleibt parsbar. Strip + Rekursion analog _TRAILING_TIME/_TRAILING_PUNCT.
+    """
+    # Runde Klammern (haeufigste Form)
+    assert parse_iso_date("13.06.2024 (Foto)") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 (verifiziert)") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024 (gefunden)") == "2024-06-13"
+    # Eckige Klammern (technische/maschinen-lesbare Annotation)
+    assert parse_iso_date("2024-06-13 [Foto]") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 [verifiziert]") == "2024-06-13"
+    # Geschwungene Klammern (selten, aber spec-konform)
+    assert parse_iso_date("1985 {geerbt}") == "1985-01-01"
+    # Mit Annaeherungspraefix kombiniert
+    assert parse_iso_date("ca. 1985 (Schaetzung)") == "1985-01-01"
+    assert parse_iso_date("circa 2024-06-13 (verifiziert)") == "2024-06-13"
+    # Mit Jahreszeit kombiniert
+    assert parse_iso_date("Sommer 1985 (geerbt)") == "1985-06-01"
+    assert parse_iso_date("Mitte 1985 (Schaetzung)") == "1985-07-01"
+    # Mit Dekaden-Form kombiniert
+    assert parse_iso_date("1980er (Sammler-Notiz)") == "1980-01-01"
+    # Mehrere sequentielle Annotationen (Rekursion strippt eine nach der anderen)
+    assert parse_iso_date("13.06.2024 (Foto) (gefunden)") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 [Foto] (gefunden)") == "2024-06-13"
+    assert parse_iso_date("ca. 1985 (Schaetzung) (geerbt)") == "1985-01-01"
+    # Annotation + trailing Satzzeichen (beide Strips greifen via Rekursion)
+    assert parse_iso_date("2024-06-13 (Foto).") == "2024-06-13"
+    assert parse_iso_date("1985 (geerbt)!") == "1985-01-01"
+    # Whitespace-Variationen zwischen Datum und Klammer
+    assert parse_iso_date("2024-06-13(Foto)") == "2024-06-13"
+    assert parse_iso_date("2024-06-13  (Foto)") == "2024-06-13"
+    # Mit Inhalt-Inhalt mit Sonderzeichen (Klammern bleiben Single-Level)
+    assert parse_iso_date("2024-06-13 (Foto: gut.)") == "2024-06-13"
+    assert parse_iso_date("1985 (Schaetzung +/- 2 Jahre)") == "1985-01-01"
+    # Leere Klammern werden gestrippt (Annotation ohne Inhalt)
+    assert parse_iso_date("2024-06-13 ()") == "2024-06-13"
+    # Nur Klammer-Inhalt ohne Datum → None
+    assert parse_iso_date("(Foto)") is None
+    assert parse_iso_date("[verifiziert]") is None
+    # Klammern ohne gueltiges Datum davor → None (Rekursion strippt, Rest ungueltig)
+    assert parse_iso_date("abc (Foto)") is None
+    # Nur ein offener/schliessender Bracket (unbalanciert) → kein Strip, kein Match
+    assert parse_iso_date("2024-06-13 (Foto") is None
+    assert parse_iso_date("2024-06-13 Foto)") is None
+    # Bestehende Datumsformen ohne Annotation bleiben gleich (kein Regress)
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    # Whole-string Klammer-Wrap bleibt von bracket-strip am Anfang behandelt
+    # (kein Regress in der bestehenden Wrap-Logik)
+    assert parse_iso_date("(2024)") == "2024-01-01"
+    assert parse_iso_date("[2024-06-13]") == "2024-06-13"
+
+
 def test_parse_iso_date_iso_ordinaldatum():
     """ISO 8601 Ordinal-Datum (Tag des Jahres) wird auf das Kalenderdatum projeziert."""
     # ISO-Standard mit Bindestrich

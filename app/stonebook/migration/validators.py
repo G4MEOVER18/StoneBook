@@ -168,6 +168,28 @@ _TRAILING_TIME = re.compile(
 # /Doppelpunkt-Suffix gehoert nicht zum Datum selbst und wird vor dem Re-Parsing
 # entfernt. ISO-Datumformate enden auf Ziffern, kollidieren also nicht.
 _TRAILING_PUNCT = re.compile(r"[.,;:!?]+\s*$")
+# Trailing parenthesized remark ("13.06.2024 (Foto)", "ca. 1985 [Schaetzung]",
+# "Sommer 1985 {geerbt}", "Juni 2024 (verifiziert)"). In Sammlungs-Notizen sehr
+# verbreitet als Kontext-/Annotations-Suffix nach dem Datum: Foto-/Pflege-
+# Vermerke ("(Foto)"), Provenienz ("(geerbt von Onkel)"), Verlaesslichkeits-
+# Hinweise ("(verifiziert)", "(Schaetzung)"), Quelle ("(Auktion 2024)"). Drei
+# Klammer-Varianten: runde Klammern (haeufigste Form), eckige Klammern
+# (technische/maschinen-lesbare Annotation), geschwungene Klammern (selten,
+# aber spec-konform). Bisher fielen alle drei Klammer-Annotationen am
+# Ende auf None, weil die strukturellen Pattern den Klammer-Suffix als
+# Format-Bruch sehen und _TRAILING_PUNCT nur Satzzeichen [.,;:!?] abdeckt,
+# nicht die strukturelle Klammer-Form - aus einem typischen Sammler-
+# Etikett wie "13.06.2024 (Foto)" wurde silenter Funddatum-Datenverlust.
+# Single-Level (keine geschachtelten Klammern im Annotations-Inhalt); fuer
+# verschachtelte Annotationen ("(Foto (gut))") loest die Rekursion das
+# innen-nach-aussen auf: nach Strip der inneren Klammer wird der Rest mit
+# verbliebenem aeusserer Klammer wieder geparst. Vor _TRAILING_PUNCT
+# einsortiert, weil parenthesierte Annotation eine eigenstaendige strukturelle
+# Form ist und nicht erst durch Satzzeichen-Vorstufe gefiltert werden muss.
+# Strip + Rekursion analog _TRAILING_TIME/_TRAILING_PUNCT.
+_TRAILING_PAREN_REMARK = re.compile(
+    r"\s*[\(\[\{][^\(\)\[\]\{\}]*[\)\]\}]\s*$"
+)
 # Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
 # "(2024)", "[2024-06-13]", '"13. Juni 2024"', '„Sommer 1985"'.
 # Genau ein Paar wird gestrippt; danach Re-Parsing per Rekursion.
@@ -844,6 +866,14 @@ def parse_iso_date(text) -> str | None:
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
     # Faengt nicht-ISO-Eingaben wie "13.06.2024 14:30" oder "13. Juni 2024 10:00" ab.
     stripped = _TRAILING_TIME.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # Trailing parenthesized Annotation abstreifen ("13.06.2024 (Foto)",
+    # "ca. 1985 [Schaetzung]"). In Sammlungs-Notizen verbreitet als Kontext-
+    # Suffix nach dem Datum; gehoert nicht zum Datum selbst. Strip + Rekursion
+    # vor _TRAILING_PUNCT, weil die Klammer-Form eine eigenstaendige strukturelle
+    # Notation ist (die _TRAILING_PUNCT-Klasse deckt nur Satzzeichen ab).
+    stripped = _TRAILING_PAREN_REMARK.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     # Trailing-Satzzeichen abstreifen ("Funddatum 2024-06-13.", "ca. 1985!").
