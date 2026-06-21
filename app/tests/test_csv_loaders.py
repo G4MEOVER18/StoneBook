@@ -127,6 +127,18 @@ def test_parse_range_whitespace_tausender_mit_dezimal():
     # Schmales NBSP (U+202F) - ISO 31-0 / SI-Empfehlung
     assert csv_loaders.parse_range("1 000.50") == (1000.5, 1000.5)
     assert csv_loaders.parse_range("1 234 567,89") == (1234567.89, 1234567.89)
+    # THIN SPACE (U+2009) - das eigentlich BIPM-SI-Brochure / NIST-konforme
+    # Tausender-Zeichen (NBSP ist Excel-Praxis, U+2009 ist die SI-Empfehlung
+    # im SI-Brochure 8th edition, section 5.3.4). Verbreitet in wissenschaft-
+    # lichen Publikationen, LaTeX-Output mit ``\,`` und ISO-31-0-konformen
+    # Datensaetzen. Vor dem Fix lieferte ``"1 000.50"`` (1.0, 1.0)
+    # statt (1000.5, 1000.5) - silenter Wert-Datenverlust bei der Migration
+    # aus typografisch sauber gesetzten Mineralogie-Publikationen.
+    assert csv_loaders.parse_range("1 000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1 234 567,89") == (1234567.89, 1234567.89)
+    # Kombiniert mit Punkt-Dezimal (EN-Konvention): THIN SPACE Tausender +
+    # ASCII-Punkt-Dezimal aus internationalen Print-Quellen.
+    assert csv_loaders.parse_range("12 345.67") == (12345.67, 12345.67)
 
 
 def test_parse_range_whitespace_tausender_reine_gruppen():
@@ -136,6 +148,10 @@ def test_parse_range_whitespace_tausender_reine_gruppen():
     assert csv_loaders.parse_range("1 000 000 000") == (1000000000.0, 1000000000.0)
     # NBSP-Variante
     assert csv_loaders.parse_range("1\xa0000\xa0000") == (1000000.0, 1000000.0)
+    # THIN SPACE (U+2009) - reine Tausendergruppen ohne Dezimalanteil,
+    # spiegelt die NBSP-Variante auf das SI-spezifizierte Trennzeichen.
+    assert csv_loaders.parse_range("1 000 000") == (1000000.0, 1000000.0)
+    assert csv_loaders.parse_range("1 234 567") == (1234567.0, 1234567.0)
     # Range mit Whitespace-Tausendern auf beiden Seiten
     assert csv_loaders.parse_range("1 000 000-2 000 000") == (1000000.0, 2000000.0)
 

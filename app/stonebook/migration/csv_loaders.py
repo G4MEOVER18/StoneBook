@@ -26,16 +26,29 @@ _DE_THOUSANDS_PURE = re.compile(
     r"(?<!\d)(\d{1,3}(?:\.\d{3}){2,})(?!\d)"
 )
 # Whitespace als Tausender-Trenner (FR/Swiss-French/SI-Konvention). Im
-# Gegensatz zum ASCII-Komma/Punkt wird die SI-Empfehlung ISO 31-0 (NBSP
-# oder schmales NBSP) genauso wie das ASCII-Leerzeichen unterstuetzt -
-# franzoesische Excel-/LibreOffice-Exporte schreiben Tausender meist als
-# NBSP (``1\xa0234,56``), Hand-Eingaben dagegen oft mit gewoehnlichem
-# Leerzeichen (``1 234,56``). Symmetrisch zu den EN/DE-Patterns: bei
-# vorhandener Dezimal-Trennung reicht eine Gruppe, ohne Dezimal sind
-# mindestens zwei Gruppen noetig - die einzelne Gruppe ``1 234`` bleibt
-# ambivalent (koennte Range-Tippfehler "Wert 1 bis 234" oder
-# Tausender sein) und wird wie bei den EN/DE-Patterns nicht angetastet.
-_SP_THOUSAND_CHARS = r"[ \xa0 ]"
+# Gegensatz zum ASCII-Komma/Punkt werden die typografischen Whitespace-
+# Varianten (NBSP U+00A0, schmales NBSP U+202F, THIN SPACE U+2009)
+# genauso wie das ASCII-Leerzeichen unterstuetzt - franzoesische Excel-/
+# LibreOffice-Exporte schreiben Tausender meist als NBSP (``1\xa0234,56``),
+# Hand-Eingaben dagegen oft mit gewoehnlichem Leerzeichen
+# (``1 234,56``), und das BIPM-SI-Brochure / NIST-konforme Typografie
+# (wissenschaftliche Publikationen, LaTeX-Output mit ``\,``) verwendet
+# THIN SPACE U+2009 als das eigentliche spec-empfohlene Tausender-
+# Zeichen (NBSP ist Excel-Praxis, aber das SI-Brochure 8th edition,
+# section 5.3.4 schreibt explizit "thin space"). Bisher fielen alle
+# THIN-SPACE-Formen stille auf eine Mehrfach-Zahl-Zerlegung
+# (``"1 000.50"`` lieferte ``(1.0, 1.0)`` statt ``(1000.5, 1000.5)``,
+# weil die Whitespace-Klasse THIN SPACE nicht enthielt und das
+# Re-Pattern statt einer Zahl ``1000.5`` zwei Token ``1`` und ``000.5``
+# fand), was bei der Migration aus typografisch sauber gesetzten
+# Mineralogie-Publikationen, LaTeX-/TeX-Exporten oder ISO-31-0-
+# konformen Datensaetzen silenten Wert-Datenverlust erzeugte.
+# Symmetrisch zu den EN/DE-Patterns: bei vorhandener Dezimal-Trennung
+# reicht eine Gruppe, ohne Dezimal sind mindestens zwei Gruppen noetig -
+# die einzelne Gruppe ``1 234`` bleibt ambivalent (koennte Range-
+# Tippfehler "Wert 1 bis 234" oder Tausender sein) und wird wie bei
+# den EN/DE-Patterns nicht angetastet.
+_SP_THOUSAND_CHARS = r"[ \xa0  ]"
 _SPACE_THOUSANDS_WITH_DECIMAL = re.compile(
     rf"(?<!\d)(\d{{1,3}}(?:{_SP_THOUSAND_CHARS}\d{{3}})+[.,]\d+)(?!\d)"
 )
