@@ -1917,6 +1917,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_wert_prozent is None
     assert st.quote_mit_gewicht_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
+    assert st.quote_mit_kategorie_prozent is None
     assert st.quote_mit_mineral_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_alias_prozent is None
@@ -1924,6 +1925,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_bildern_prozent"] is None
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
+    assert d["quote_mit_kategorie_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
@@ -1961,6 +1963,37 @@ def test_quote_mit_gewicht_und_ki_analyse_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["quote_mit_gewicht_prozent"] == 50.0
     assert d["quote_mit_ki_analyse_prozent"] == 25.0
+    c.close()
+
+
+def test_quote_mit_kategorie_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Kategorie (Inventar-Klassifizierung) spiegelt die
+    Mineral-/Fundort-Quoten: Anteil der Objekte mit dokumentierter Kategorie,
+    gerechnet ueber objekte_total. Whitespace/NULL zaehlt wie leer (spiegelt
+    die has_kategorie-Filter-Konvention). Komplementaer zu by_kategorie, das
+    distinkte Kategorien-Werte zaehlt (Verteilung): quote_mit_kategorie beziffert
+    Coverage (Anteil-Sicht), by_kategorie die Streuung ueber die Klassen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qk.sqlite3")
+    # 5 Objekte: drei mit dokumentierter Kategorie (60%), zwei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Handstück"),
+            ("OBJ_0002", "Kristall"),
+            ("OBJ_0003", "Mineral-Korn"),
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_kategorie == 3
+    assert st.quote_mit_kategorie_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_kategorie"] == 3
+    assert d["quote_mit_kategorie_prozent"] == 60.0
     c.close()
 
 

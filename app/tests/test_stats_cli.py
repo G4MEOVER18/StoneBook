@@ -265,6 +265,30 @@ def test_text_ausgabe_zeigt_gewicht_und_ki_quoten(tmp_path, capsys):
     assert "KI-Analyse:" in out
 
 
+def test_text_ausgabe_zeigt_kategorie_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Kategorie-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI auf.
+
+    Kategorie (Inventar-Klassifizierung) ist die erste ID-Achse - vor Mineral/Fundort
+    in der CLI-Ausgabe, weil sie die vorgelagerte Inventar-Sortierung steuert.
+    Symmetrische CLI-Sichtbarkeit fuer das Datenpflege-Dashboard."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "kat.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?,?)",
+        [("OBJ_0001", "Handstück"), ("OBJ_0002", "Kristall"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Kategorie:" in out
+    # 2 von 4 Objekten haben dokumentierte Kategorie → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_mineral_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Mineral_Primaer-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI auf."""
     from stonebook.db.database import open_db

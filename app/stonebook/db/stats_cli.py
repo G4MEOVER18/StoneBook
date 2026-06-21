@@ -83,6 +83,11 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  KI-Analyse (ueb.):   "
             f"{st.quote_mit_ki_analyse_uebernommen_prozent:.1f} %")
+        # Inventar-Klassifizierung: was ist das Stueck physisch (Handstueck/
+        # Kristall/Duennschliff/...)? Vor Mineral/Fundort, weil Kategorie die
+        # vorgelagerte ID-Achse ist - ohne sie macht die mineralogische /
+        # geografische Spezifizierung wenig Sinn fuer Inventar-Sortierung.
+        lines.append(f"  Kategorie:           {st.quote_mit_kategorie_prozent:.1f} %")
         lines.append(f"  Mineral_Primaer:     {st.quote_mit_mineral_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges

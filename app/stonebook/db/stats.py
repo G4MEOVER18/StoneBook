@@ -22,6 +22,7 @@ class Statistik:
     objekte_archiviert: int = 0
     objekte_mit_bildern: int = 0
     objekte_mit_funddatum: int = 0
+    objekte_mit_kategorie: int = 0
     objekte_mit_mineral: int = 0
     objekte_mit_fundort: int = 0
     bilder_total: int = 0
@@ -149,6 +150,22 @@ class Statistik:
         return self._quote(self.objekte_mit_ki_analyse)
 
     @property
+    def quote_mit_kategorie_prozent(self) -> float | None:
+        # Coverage-Quote fuer Objekt-Kategorie (Inventar-Klassifizierung)
+        # symmetrisch zu Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral/Fundort.
+        # Kategorie (Mineral-Korn/Handstueck/Duennschliff/Kristall/Geroell/Sonstiges)
+        # ist die erste Inventar-Achse - sie sagt, was das Stueck physisch ueberhaupt
+        # ist, bevor mineralogische Bestimmung (Mineral_Primaer) oder Provenienz
+        # (Fundort) sinnvoll werden. Vervollstaendigt die ID-Gruppe der Coverage-
+        # Quoten neben quote_mit_mineral_prozent (Was ist das Mineral?) und
+        # quote_mit_fundort_prozent (Wo wurde es gefunden?). Niedriger Wert
+        # deutet auf einen frisch importierten Bestand vor Inventar-Vorklassifizierung
+        # oder Migrations-Restbestaende ohne Kategorie-Spalte in den alten v1/
+        # obj043-CSVs (die haben keine Kategorie). Whitespace zaehlt wie leer
+        # (spiegelt has_kategorie-Filter-Konvention).
+        return self._quote(self.objekte_mit_kategorie)
+
+    @property
     def quote_mit_mineral_prozent(self) -> float | None:
         return self._quote(self.objekte_mit_mineral)
 
@@ -211,6 +228,7 @@ class Statistik:
             "objekte_archiviert": self.objekte_archiviert,
             "objekte_mit_bildern": self.objekte_mit_bildern,
             "objekte_mit_funddatum": self.objekte_mit_funddatum,
+            "objekte_mit_kategorie": self.objekte_mit_kategorie,
             "objekte_mit_mineral": self.objekte_mit_mineral,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
@@ -422,6 +440,7 @@ class Statistik:
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
+            "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
@@ -1139,6 +1158,24 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_funddatum = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != ''"
+    ).fetchone()[0]
+    # objekte_mit_kategorie: Anzahl Objekte mit dokumentierter Objekt-Kategorie
+    # (Mineral-Korn/Handstueck/Duennschliff/Kristall/Geroell/Sonstiges).
+    # Spiegelt objekte_mit_mineral/objekte_mit_fundort auf die Inventar-/ID-Gruppen-
+    # Achse - Kategorie ist die erste Identifikations-Achse, sie sagt, was das
+    # Stueck physisch ueberhaupt ist. Ohne Kategorie laesst sich das Stueck nur
+    # mit der Objekt-ID adressieren; die Inventar-Sortierung (Vitrine fuer
+    # Handstuecke, Schubladen fuer Mineral-Koerner, Mikroskop-Box fuer Duennschliffe)
+    # wird unmoeglich. Niedriger Wert deutet auf einen Bestand vor der Inventar-
+    # Vorklassifizierung oder Migrations-Restbestaende ohne Kategorie-Spalte in
+    # den alten v1/obj043-CSVs. Whitespace zaehlt wie leer, spiegelt has_kategorie.
+    # by_kategorie zaehlt distinkte Kategorien-Werte (Verteilung); diese Kennzahl
+    # zaehlt Objekte mit irgendeiner Kategorie (Coverage) - komplementaer, beide
+    # gemeinsam geben Auskunft ueber Vollstaendigkeit vs. Verteilung der Inventar-
+    # Klassifizierung.
+    st.objekte_mit_kategorie = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Kategorie IS NOT NULL AND TRIM(Kategorie) != ''"
     ).fetchone()[0]
     # objekte_mit_mineral: Anzahl Objekte mit dokumentiertem Mineral_Primaer
     # (Hauptmineral-Bestimmung). Spiegelt objekte_mit_funddatum auf die
