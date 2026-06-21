@@ -265,6 +265,26 @@ def test_text_ausgabe_zeigt_gewicht_und_ki_quoten(tmp_path, capsys):
     assert "KI-Analyse:" in out
 
 
+def test_text_ausgabe_zeigt_mineral_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Mineral_Primaer-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI auf."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "min.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer) VALUES (?,?)",
+        [("OBJ_0001", "Quarz"), ("OBJ_0002", "Calcit"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Mineral_Primaer:" in out
+    # 2 von 4 Objekten haben dokumentiertes Mineral → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_bilder_pro_kategorie(tmp_path, capsys):
     """Bilder-pro-Kategorie-Block zeigt Foto-Coverage je Aufnahme-Art."""
     from stonebook.db.database import open_db

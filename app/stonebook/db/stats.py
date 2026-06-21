@@ -22,6 +22,7 @@ class Statistik:
     objekte_archiviert: int = 0
     objekte_mit_bildern: int = 0
     objekte_mit_funddatum: int = 0
+    objekte_mit_mineral: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
     objekte_mit_alias: int = 0
@@ -146,6 +147,10 @@ class Statistik:
     def quote_mit_ki_analyse_prozent(self) -> float | None:
         return self._quote(self.objekte_mit_ki_analyse)
 
+    @property
+    def quote_mit_mineral_prozent(self) -> float | None:
+        return self._quote(self.objekte_mit_mineral)
+
     def as_dict(self) -> dict:
         return {
             "objekte_total": self.objekte_total,
@@ -154,6 +159,7 @@ class Statistik:
             "objekte_archiviert": self.objekte_archiviert,
             "objekte_mit_bildern": self.objekte_mit_bildern,
             "objekte_mit_funddatum": self.objekte_mit_funddatum,
+            "objekte_mit_mineral": self.objekte_mit_mineral,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
             "objekte_mit_alias": self.objekte_mit_alias,
@@ -363,6 +369,7 @@ class Statistik:
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
+            "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
         }
 
 
@@ -1074,6 +1081,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_funddatum = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != ''"
+    ).fetchone()[0]
+    # objekte_mit_mineral: Anzahl Objekte mit dokumentiertem Mineral_Primaer
+    # (Hauptmineral-Bestimmung). Spiegelt objekte_mit_funddatum auf die
+    # mineralogische Identifikations-Achse - ohne Mineral_Primaer ist das
+    # Stueck im Prinzip "noch nicht bestimmt" (entweder neu in der Sammlung
+    # und noch nicht beurteilt, oder Migration-Restbestand aus alten CSVs
+    # ohne Bestimmung). Eine fundamentalere Datenpflege-Kennzahl als
+    # Wertschaetzung oder Gewicht, weil ohne Mineral_Primaer der ganze
+    # mineralogische Block (Mohs/Dichte/Glanz/Bruch/Spaltbarkeit) im Datenblatt
+    # ungenutzt bleibt. Whitespace zaehlt wie leer, spiegelt has_mineral.
+    st.objekte_mit_mineral = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != ''"
     ).fetchone()[0]
 
     sums = conn.execute(

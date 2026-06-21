@@ -1917,10 +1917,12 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_wert_prozent is None
     assert st.quote_mit_gewicht_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
+    assert st.quote_mit_mineral_prozent is None
     d = st.as_dict()
     assert d["quote_mit_bildern_prozent"] is None
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
+    assert d["quote_mit_mineral_prozent"] is None
     c.close()
 
 
@@ -1955,6 +1957,34 @@ def test_quote_mit_gewicht_und_ki_analyse_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["quote_mit_gewicht_prozent"] == 50.0
     assert d["quote_mit_ki_analyse_prozent"] == 25.0
+    c.close()
+
+
+def test_quote_mit_mineral_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Mineral_Primaer spiegelt die Funddatum-Quote: Anteil
+    der Objekte mit dokumentiertem Hauptmineral, gerechnet ueber objekte_total.
+    Whitespace/NULL zaehlt wie leer (spiegelt die has_mineral-Filter-Konvention)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qm.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Mineral (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Quarz"),
+            ("OBJ_0002", "Calcit"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_mineral == 2
+    assert st.quote_mit_mineral_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_mineral"] == 2
+    assert d["quote_mit_mineral_prozent"] == 40.0
     c.close()
 
 
