@@ -887,6 +887,81 @@ def test_parse_iso_date_temporale_praeposition():
     assert parse_iso_date("13.06.2024") == "2024-06-13"
 
 
+def test_parse_iso_date_boundary_praefix():
+    """Boundary-/Richtungs-Praefix (vor/nach/before/after/pre-/post-) wird gestrippt.
+
+    Spiegelt das _APPROX_PREFIX-Konzept (Praefix wird gestrippt, Datum bleibt
+    unveraendert) auf Richtungs-Marker, wie sie in geerbten Sammlungs-Notizen
+    fuer grob datierte Funde auftauchen ("vor 1985 gefunden, genaues Jahr
+    unbekannt"). Das ISO-Datum nimmt den Grenzwert als bekannten Anker; die
+    Richtungs-Information (vor/nach) bleibt im Freitext (notizen).
+    """
+    # DE Wort-Formen
+    assert parse_iso_date("vor 1985") == "1985-01-01"
+    assert parse_iso_date("nach 1985") == "1985-01-01"
+    assert parse_iso_date("Vor 1985") == "1985-01-01"
+    assert parse_iso_date("Nach 2024") == "2024-01-01"
+    # EN Wort-Formen
+    assert parse_iso_date("before 1985") == "1985-01-01"
+    assert parse_iso_date("after 1985") == "1985-01-01"
+    assert parse_iso_date("Before 2024") == "2024-01-01"
+    assert parse_iso_date("After 1985") == "1985-01-01"
+    # EN Bindestrich-Kompositum (pre-/post-)
+    assert parse_iso_date("pre-1985") == "1985-01-01"
+    assert parse_iso_date("post-1985") == "1985-01-01"
+    assert parse_iso_date("Pre-1985") == "1985-01-01"
+    assert parse_iso_date("Post-2024") == "2024-01-01"
+    # Mit Whitespace statt Bindestrich (EN-Pre/Post-Form mit Leerzeichen)
+    assert parse_iso_date("pre 1985") == "1985-01-01"
+    assert parse_iso_date("post 1985") == "1985-01-01"
+    # Boundary + Monat/Jahr (alle Datums-Untertypen, rekursiv)
+    assert parse_iso_date("vor Juni 2024") == "2024-06-01"
+    assert parse_iso_date("nach 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("nach 13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("before June 2024") == "2024-06-01"
+    assert parse_iso_date("after 2024-06-13") == "2024-06-13"
+    # Boundary + Jahrzehnt / Saison / Range
+    assert parse_iso_date("vor 1980er") == "1980-01-01"
+    assert parse_iso_date("nach Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("vor 1950-1960") == "1950-01-01"
+    assert parse_iso_date("nach 1950 bis 1960") == "1950-01-01"
+    # Case-insensitive (DE/EN gemischt)
+    assert parse_iso_date("VOR 1985") == "1985-01-01"
+    assert parse_iso_date("NACH JUNI 2024") == "2024-06-01"
+    assert parse_iso_date("BEFORE 1985") == "1985-01-01"
+    # Verkettete Praefixe (rekursive Strippung)
+    assert parse_iso_date("vor ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. vor 1985") == "1985-01-01"
+    assert parse_iso_date("nach circa Juni 2024") == "2024-06-01"
+    # Boundary + temporale Praeposition (semantisch redundant, unschaedlich)
+    assert parse_iso_date("vor im Jahr 1985") == "1985-01-01"
+    # Praefix ohne Inhalt / mit ungueltigem Rest → None
+    assert parse_iso_date("vor") is None
+    assert parse_iso_date("nach") is None
+    assert parse_iso_date("before") is None
+    assert parse_iso_date("after") is None
+    assert parse_iso_date("vor abc") is None
+    assert parse_iso_date("nach garten") is None
+    assert parse_iso_date("pre-abc") is None
+    # Praefix vor Jahr ausserhalb 1800-2999 → None
+    assert parse_iso_date("vor 1700") is None
+    assert parse_iso_date("nach 3000") is None
+    # Wortanfang muss exakt sein - kein Anschneiden laengerer Worte
+    # ("vorhin", "vormittags", "preset", "posten" duerfen NICHT matchen)
+    assert parse_iso_date("vorhin 1985") is None
+    assert parse_iso_date("vormittags 1985") is None
+    assert parse_iso_date("preset 1985") is None
+    assert parse_iso_date("president 1985") is None
+    assert parse_iso_date("posten 1985") is None
+    assert parse_iso_date("nachher 1985") is None
+    assert parse_iso_date("Nachfrage 1985") is None
+    # Bestehende Datumsangaben ohne Boundary-Praefix bleiben gleich (kein Regress)
+    assert parse_iso_date("1985") == "1985-01-01"
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("im Juni 2024") == "2024-06-01"
+
+
 def test_parse_iso_date_bindestrich_separator_mit_monatsname():
     """Bindestrich als Separator zwischen Tag/Monatsname/Jahr (Oracle/Log-Exporte)."""
     # DD-MMM-YYYY (Oracle-Default-Format)

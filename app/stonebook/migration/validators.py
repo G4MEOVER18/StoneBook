@@ -131,6 +131,40 @@ _TEMPORAL_PREFIX = re.compile(
     r")",
     re.IGNORECASE,
 )
+# Boundary-/Richtungs-Praefix (DE/EN) vor dem Datum: "vor 1985", "nach 1985",
+# "before 1985", "after 1985", "pre-1985", "post-1985". Sehr verbreitet in
+# geerbten Sammlungs-Notizen, wenn der vorherige Besitzer den Fund nur grob
+# in Bezug auf ein Jahr datieren konnte ("vor 1985 gefunden, genaues Jahr
+# unbekannt"). Bisher fielen alle Boundary-Formen stille auf None, obwohl
+# das Jahr selbst eindeutig ist - die Richtungsinformation (vor/nach) bleibt
+# im Freitext (notizen) erhalten, das ISO-Datum nimmt den Grenzwert als
+# bekannten Anker. Spiegelt das Konzept von _APPROX_PREFIX (Praefix wird
+# gestrippt, Datum bleibt unveraendert): die Richtungsangabe ist semantisch
+# "Wert-Anmerkung", keine Datums-Modifikation - das ISO-Output ist identisch
+# zur reinen Form. Konvention spiegelt _APPROX_PREFIX und _YEAR_RANGE (Start-
+# /Boundary-Jahr als ISO-Datum), sodass "vor 1985" und "1985-1990" beide auf
+# 1985-01-01 abbilden und die Range-/Boundary-Annotation im Freitext bleibt.
+# DE-Sammler-Vokabular: "vor"/"nach" sind die Standard-Richtungsangaben,
+# "pre"/"post" decken hyphen-typische Kompositformen aus englischen Quellen
+# ab (Auktions-Beschreibungen, Mineralogie-Reviews). EN: "before"/"after"
+# sind die ueblichen Wort-Formen. Trenner ``[-\s]+`` deckt sowohl Bindestrich-
+# Kompositum ("pre-1985", "post-1985" - typische EN-Compound-Form) als auch
+# Wort-Trennung ("vor 1985", "before 1985") ab; verbleibender Whitespace
+# wird durch das strip() vor der Rekursion abgefangen. Wird via Rekursion
+# identisch zu _APPROX_PREFIX/_WEEKDAY_PREFIX/_TEMPORAL_PREFIX behandelt:
+# einmal gestrippt, dann uebernimmt parse_iso_date das eigentliche Parsen
+# vom Rest. Verkettung mit anderen Praefixen funktioniert durch wiederholte
+# Rekursion ("vor ca. 1985" → "ca. 1985" → "1985" → "1985-01-01";
+# "ca. vor 1985" → "vor 1985" → "1985"). Nach _TEMPORAL_PREFIX einsortiert,
+# damit "im vor 1985" (semantisch redundant, aber unschaedlich) erst die
+# Praeposition und dann die Richtungsangabe strippt. Kollision mit Praefixen
+# wie "vorheriger", "Nachmittag", "preset", "posten": ausgeschlossen, weil
+# der trailing ``[-\s]+`` ein echtes Wort-Ende verlangt - "vorhin 1985"
+# matchet nicht, weil nach "vor" kein Whitespace/Bindestrich kommt.
+_BOUNDARY_PREFIX = re.compile(
+    r"^(?:vor|nach|before|after|pre|post)[-\s]+",
+    re.IGNORECASE,
+)
 # Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen
 # ("Mo 13.06.2024", "Donnerstag, 13. Juni 2024", "Thu Jun 13 2024").
 # Voll- und Kurzformen (DE: Mo/Di/Mi/Do/Fr/Sa/So; EN: Mon-Sun) werden gestrippt,
@@ -715,6 +749,19 @@ def parse_iso_date(text) -> str | None:
     # Datum-Output bleibt identisch zur reinen Datums-Form.
     if _TEMPORAL_PREFIX.match(s):
         rest = _TEMPORAL_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_iso_date(rest)
+        return None
+    # Boundary-/Richtungs-Praefix abstreifen ("vor 1985" → "1985", "nach Juni
+    # 2024" → "Juni 2024", "pre-1985" → "1985", "before 1985" → "1985"). Nach
+    # Temporal-Praefix einsortiert, damit "im vor 1985" (semantisch redundant,
+    # aber unschaedlich) erst die Praeposition und dann die Richtungsangabe
+    # strippt. Strip + Rekursion analog _APPROX_PREFIX: die Richtungsangabe
+    # ist semantische Wert-Anmerkung ("Grenzwert", "ungefaehre Ober-/Unter-
+    # grenze"), keine Datums-Modifikation - das ISO-Datum-Output ist identisch
+    # zur reinen Form, die Richtung bleibt im Freitext (notizen).
+    if _BOUNDARY_PREFIX.match(s):
+        rest = _BOUNDARY_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_iso_date(rest)
         return None
