@@ -589,6 +589,40 @@ _SUFFIX_PAIR_NO_SEP = re.compile(
     """,
     re.VERBOSE,
 )
+# ISO 6709 Compact-Decimal-Form: ``+46.5+007.5/`` / ``+46.5+7.5`` / ``-46.5-7.5``.
+# Internationaler Standard fuer Punkt-Koordinaten ohne Separator zwischen Lat
+# und Lon - die beiden Vorzeichen dienen als impliziter Separator. Verbreitet
+# in KML-Captions, HTML5-Microformats (z.B. Wikipedia-Geo-Microformat),
+# GeoRSS-Feeds, exiftool GPS-Output und maschinen-lesbaren Exporten aus
+# GIS-Tools. Der abschliessende ``/`` ist im Standard die Format-Trenner-
+# Konvention (kann bei einzeln stehenden Koordinaten weggelassen werden).
+# Sowohl Lat als auch Lon haben obligatorisches Vorzeichen (+ oder -); dadurch
+# kollisionsfrei zu _DECIMAL_PAIR, das Vorzeichen optional behandelt und einen
+# expliziten Separator [ \t,;/] zwischen den zwei Zahlen verlangt - hier ist
+# das zweite + / - selbst der Separator. Die Lat-Komponente hat 1-2 Ziffern
+# vor dem optionalen Dezimal (range ±90), die Lon-Komponente 1-3 Ziffern
+# (range ±180) - Spec-konform mit ISO 6709, aber die Validierung erfolgt
+# in _validate, sodass das Pattern selbst weniger restriktiv bleibt und
+# auch nicht-fuehrend-genullte Eingaben akzeptiert (``+46.5+7.5`` ohne
+# fuehrende Null in der Lon-Komponente, wie aus Tools mit minimaler Formatierung).
+# Bisher fielen alle ISO-6709-Compact-Formen stille auf None: _DECIMAL_PAIR
+# verlangt einen Separator [ \t,;/] zwischen den zwei Zahlen, den die compact-
+# Form nicht hat; _PREFIX_PAIR verlangt Richtungs-Buchstaben (NSEWO), die
+# hier durch Vorzeichen ersetzt sind; _SUFFIX_PAIR_NO_SEP verlangt ebenfalls
+# Richtungs-Buchstaben am Ende. Aus typischen KML-/GIS-Exporten und HTML5-
+# Microformat-Captions wurde damit silenter Koordinaten-Datenverlust bei
+# der Migration. Der trailing-Slash ist optional, weil viele Tools (besonders
+# GPS-Logger und Photo-EXIF-Schreiber) ihn weglassen, sobald die Koordinate
+# einzeln steht; ISO 6709 verlangt ihn nur zum Trennen, wenn mehrere Koordi-
+# naten hintereinander folgen.
+_ISO6709_COMPACT_DECIMAL = re.compile(
+    r"""^\s*
+        ([+-]\d{1,2}(?:[.,]\d+)?)    # Lat: Vorzeichen + 1-2 Ziffern + opt. Dezimal
+        ([+-]\d{1,3}(?:[.,]\d+)?)    # Lon: Vorzeichen + 1-3 Ziffern + opt. Dezimal
+        /?\s*$                       # optionaler ISO-6709-Format-Trenner
+    """,
+    re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -1071,6 +1105,20 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         a = _to_float(n1) * _sign(d1)
         b = _to_float(n2) * _sign(d2)
         lat, lon = _orient(a, d1, b, d2)
+        return _validate(lat, lon)
+
+    # ISO 6709 Compact-Decimal-Form: "+46.5+007.5/" / "+46.5+7.5" / "-46.5-7.5".
+    # Letzter Versuch (nach _SUFFIX_PAIR_NO_SEP), weil die obligatorischen Vorzeichen
+    # die Form eindeutig machen, aber als Anker-basierter Match (^...$) restriktiver
+    # ist als die uebrigen .search()-Patterns - er greift nur, wenn der gesamte
+    # Input dem Compact-Format entspricht (keine zusaetzlichen Tokens davor/danach).
+    # Dadurch bleibt sie kollisionsfrei zu allen Decimal-/DMS-/Prefix-/Suffix-Formen
+    # mit Separator oder Richtungs-Buchstaben. Reihenfolge Lat→Lon ist im ISO-6709-
+    # Standard fix vorgegeben - kein _orient noetig.
+    m = _ISO6709_COMPACT_DECIMAL.match(s)
+    if m:
+        lat = _to_float(m.group(1))
+        lon = _to_float(m.group(2))
         return _validate(lat, lon)
 
     return None

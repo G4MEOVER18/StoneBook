@@ -1432,6 +1432,49 @@ def test_parse_coordinates_plus_prefix():
     assert parse_coordinates("N+46.5 E+7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_iso6709_compact_decimal():
+    """ISO 6709 Compact-Decimal-Form: ``+46.5+007.5/`` / ``+46.5+7.5`` / ``-46.5-7.5``.
+
+    Internationaler Standard fuer Punkt-Koordinaten ohne Separator zwischen
+    Lat und Lon - die beiden Vorzeichen dienen als impliziter Separator.
+    Verbreitet in KML-Captions, HTML5-Microformats (Wikipedia-Geo-Microformat),
+    GeoRSS-Feeds, exiftool-GPS-Output und maschinen-lesbaren GIS-Tool-Exporten.
+    Vor dieser Erweiterung fielen alle Compact-Formen still auf None
+    (_DECIMAL_PAIR verlangt expliziten Separator, _PREFIX_PAIR/_SUFFIX_PAIR_NO_SEP
+    verlangen Richtungs-Buchstaben).
+    """
+    # Standard-Form mit fuehrender Null in Lon (spec-konform) und Trenner
+    assert parse_coordinates("+46.5+007.5/") == (46.5, 7.5)
+    # Ohne fuehrende Null in Lon (verbreitet in minimal formatierenden Tools)
+    assert parse_coordinates("+46.5+7.5") == (46.5, 7.5)
+    # Ohne trailing-Slash (einzelne Koordinate ohne Format-Trenner)
+    assert parse_coordinates("+46.5+007.5") == (46.5, 7.5)
+    # Negative Lat (Suedhalbkugel) + negative Lon (Westhalbkugel)
+    assert parse_coordinates("-46.5-7.5") == (-46.5, -7.5)
+    assert parse_coordinates("-46.5-007.5") == (-46.5, -7.5)
+    # Gemischte Vorzeichen
+    assert parse_coordinates("-46.5+7.5") == (-46.5, 7.5)
+    assert parse_coordinates("+46.5-7.5") == (46.5, -7.5)
+    # Null-Koordinaten (Aequator/Greenwich)
+    assert parse_coordinates("+0+0") == (0.0, 0.0)
+    assert parse_coordinates("-0-0") == (0.0, 0.0)
+    # Ganzzahl ohne Dezimal
+    assert parse_coordinates("+46+7") == (46.0, 7.0)
+    # Whitespace um den ganzen Ausdruck ist toleriert
+    assert parse_coordinates("  +46.5+7.5/  ") == (46.5, 7.5)
+    # Out-of-Range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("+95.0+7.5") is None       # Lat ausserhalb [-90, 90]
+    assert parse_coordinates("+46.5+185.0") is None     # Lon ausserhalb [-180, 180]
+    # Regression: bestehende Decimal-Pair-Form mit Plus-Vorzeichen UND Separator
+    # bleibt unveraendert (faellt durch das _DECIMAL_PAIR-Pattern, nicht durch
+    # das neue ISO-6709-Pattern, weil dort der Separator zwischen den Zahlen
+    # nicht akzeptiert wird - der ^...$-Anker macht das Pattern restriktiv).
+    assert parse_coordinates("+46.5, +7.5") == (46.5, 7.5)
+    # Decimal mit Vorzeichen UND DMS-Markern wird NICHT als ISO 6709 interpretiert
+    # (das ^...$-Anker laesst zusaetzliche Tokens nicht zu) - faellt zurueck
+    # auf das _DECIMAL_PAIR/_PREFIX_PAIR-Verhalten ohne stille Doppeldeutung.
+
+
 def test_parse_coordinates_typografisches_minus():
     """U+2212 (Minus-Zeichen) wird wie ASCII-Hyphen als Negativ-Vorzeichen behandelt."""
     # Negative Latitude (Suedhalbkugel)
