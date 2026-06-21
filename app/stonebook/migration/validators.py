@@ -193,11 +193,24 @@ _TRAILING_PAREN_REMARK = re.compile(
 # Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
 # "(2024)", "[2024-06-13]", '"13. Juni 2024"', '„Sommer 1985"'.
 # Genau ein Paar wird gestrippt; danach Re-Parsing per Rekursion.
+# Englische typografische Anfuehrungszeichen (U+201C / U+201D Doppel; U+2018 /
+# U+2019 Einzel) sind Standard-Output von Word-/Office-Autoformat in englischen
+# Texten und sehr verbreitet in Foto-Captions, Auktions-Beschreibungen und
+# Sammlungs-Notizen, wo der Schreiber Datumsangaben mit "smart quotes" zitiert.
+# Bisher fielen Eingaben wie ``"2024-06-13"`` (U+201C..U+201D) auf None, obwohl
+# semantisch identisch zur ASCII-Quote-Form - die Single-Source-of-Truth
+# (Datum) ging stillschweigend verloren. Komplementaer zu den bereits gelisteten
+# Single-Char-Identicals (ASCII '/' /'`'), die nur eine Doppelung als oeffnend+
+# schliessend sind, und zur German-Form (U+201E + U+201C als „...“).
 _BRACKET_PAIRS: tuple[tuple[str, str], ...] = (
     ("(", ")"), ("[", "]"), ("{", "}"),
     ('"', '"'), ("'", "'"), ("`", "`"),
     ("«", "»"), ("‹", "›"),
     ("„", "\""), ("„", "“"), ("‚", "‘"),
+    # Englisch typografisch ("..."): U+201C "left double" + U+201D "right double"
+    ("“", "”"),
+    # Englisch typografisch einzel ('...'): U+2018 "left single" + U+2019 "right single"
+    ("‘", "’"),
 )
 # ISO 8601 mit Zeitanteil: "2024-06-13T10:00:00", "2024-06-13 10:00:00Z",
 # auch EXIF-Stil "2024:06:13 10:00:00" → Zeit wird verworfen, nur Datum bleibt.

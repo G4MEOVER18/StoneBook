@@ -1011,6 +1011,16 @@ def test_parse_iso_date_umschliessende_klammern():
     assert parse_iso_date("‹2024-06-13›") == "2024-06-13"
     assert parse_iso_date('„2024-06-13"') == "2024-06-13"
     assert parse_iso_date("„2024-06-13“") == "2024-06-13"
+    # Englisch-typografische Quote-Paare (Word-/Office-Autoformat):
+    # U+201C..U+201D (doppelt) und U+2018..U+2019 (einzeln).
+    assert parse_iso_date("“2024-06-13”") == "2024-06-13"
+    assert parse_iso_date("‘2024-06-13’") == "2024-06-13"
+    assert parse_iso_date("“13. Juni 2024”") == "2024-06-13"
+    assert parse_iso_date("‘ca. 1985’") == "1985-01-01"
+    assert parse_iso_date("“Sommer 1985”") == "1985-06-01"
+    # Leere englisch-typografische Paare → None (spiegelt ASCII-/„..."-Form)
+    assert parse_iso_date("“”") is None
+    assert parse_iso_date("‘’") is None
     # Geschachtelt mit Praefixen/Suffixen
     assert parse_iso_date("[ca. 1985]") == "1985-01-01"
     assert parse_iso_date("«Sommer 1985»") == "1985-06-01"
