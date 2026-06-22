@@ -141,6 +141,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # geografische Provenienz-Achse (Fundort) drankommt.
         lines.append(
             f"  Kristallsystem:      {st.quote_mit_kristallsystem_prozent:.1f} %")
+        # Magnetismus (qualitative magnetische Reaktion) direkt unter
+        # Kristallsystem, weil sie die physikalisch-magnetische Pruef-Achse
+        # spiegelt - parallel zur kristallographischen Symmetrie-Achse, beide
+        # sind kurze Enum-Skalen aus dem Feldwoerterbuch (nein/schwach/ja vs.
+        # kubisch/tetragonal/...). Die Coverage-Quote misst die Pflege-Tiefe
+        # auf der qualitativen Pruefparameter-Achse (neben HCl-Reaktion und
+        # Strichfarbe, die als freie str-Felder keine vergleichbare Enum-
+        # Coverage haben). Niedriger Wert ist normal - Sammler dokumentieren
+        # haeufig nur positive Magnetismus-Treffer (Magnetit, Pyrrhotin) und
+        # lassen offensichtlich-negative Mineralen (Quarz, Calcit, Pyrit) ohne
+        # expliziten "nein"-Eintrag, bevor die geografische Provenienz-Achse
+        # (Fundort) drankommt.
+        lines.append(
+            f"  Magnetismus:         {st.quote_mit_magnetismus_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
         # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt

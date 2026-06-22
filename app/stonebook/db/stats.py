@@ -27,6 +27,7 @@ class Statistik:
     objekte_mit_varietaet: int = 0
     objekte_mit_gesteinsart: int = 0
     objekte_mit_kristallsystem: int = 0
+    objekte_mit_magnetismus: int = 0
     objekte_mit_fundort: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -294,6 +295,35 @@ class Statistik:
         return self._quote(self.objekte_mit_kristallsystem)
 
     @property
+    def quote_mit_magnetismus_prozent(self) -> float | None:
+        # Coverage-Quote fuer Magnetismus (qualitative magnetische Reaktion)
+        # symmetrisch zu quote_mit_kristallsystem_prozent auf die magnetisch-
+        # physikalische Pruef-Achse. Spiegelt die kristallographische Symmetrie-
+        # Achse auf die magnetische Reaktions-Achse: Kristallsystem klassifiziert
+        # den inneren Symmetrie-Aufbau (kubisch/tetragonal/...), Magnetismus die
+        # qualitative Eisengehalts-Reaktion (nein/schwach/ja - die drei Enum-
+        # Werte aus dem Feldwoerterbuch). Aussenkontext-bedingt orthogonal zur
+        # mineralogischen Identifikations-Achse (Mineral_Primaer): Magnetismus
+        # ist ein billig zu testender Pruefparameter (Hand-/Neodym-Magnet),
+        # der bei vielen typischen Sammler-Mineralen (Quarz, Calcit, Pyrit) das
+        # offensichtlich-negative Ergebnis liefert, aber dort ueberhaupt nicht
+        # dokumentiert wird, weil die Reaktion erwartet-negativ war - das
+        # entspricht der typischen Pflege-Luecke bei objekte_mit_magnetismus.
+        # Komplementaer zu by_magnetismus (distinkte Werte, Streuung-Sicht)
+        # und wert_/gewicht_pro_magnetismus (Wert-/Gewicht-Aufteilung pro
+        # Reaktions-Stufe): hier die Coverage-Sicht ueber den Gesamtbestand
+        # ("welcher Anteil der Sammlung ist auf der magnetischen Achse
+        # geprueft?"). Niedriger Wert ist normal - Sammler dokumentieren
+        # haeufig nur die positiven Magnetismus-Treffer (Magnetit, Pyrrhotin)
+        # und lassen die offensichtlich-negativen Mineralen ohne expliziten
+        # "nein"-Eintrag stehen. Aus Datenpflege-Sicht ist die Quote ein
+        # direkter Indikator fuer die Vollstaendigkeit der qualitativen
+        # Pruefparameter-Achse (neben HCl-Reaktion und Strichfarbe, die als
+        # freie str-Felder keine vergleichbare Enum-Coverage haben). Whitespace
+        # zaehlt wie leer (spiegelt has_magnetismus-Filter-Konvention).
+        return self._quote(self.objekte_mit_magnetismus)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -357,6 +387,7 @@ class Statistik:
             "objekte_mit_varietaet": self.objekte_mit_varietaet,
             "objekte_mit_gesteinsart": self.objekte_mit_gesteinsart,
             "objekte_mit_kristallsystem": self.objekte_mit_kristallsystem,
+            "objekte_mit_magnetismus": self.objekte_mit_magnetismus,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -581,6 +612,8 @@ class Statistik:
             "quote_mit_gesteinsart_prozent": _round_or_none(self.quote_mit_gesteinsart_prozent),
             "quote_mit_kristallsystem_prozent": _round_or_none(
                 self.quote_mit_kristallsystem_prozent),
+            "quote_mit_magnetismus_prozent": _round_or_none(
+                self.quote_mit_magnetismus_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -1460,6 +1493,24 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_kristallsystem = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Kristallsystem IS NOT NULL AND TRIM(Kristallsystem) != ''"
+    ).fetchone()[0]
+    # objekte_mit_magnetismus: Anzahl Objekte mit dokumentiertem Magnetismus
+    # (qualitative magnetische Reaktion: nein/schwach/ja, die drei Enum-Werte
+    # aus dem Feldwoerterbuch). Spiegelt objekte_mit_kristallsystem auf die
+    # magnetisch-physikalische Pruef-Achse: Kristallsystem klassifiziert die
+    # innere Symmetrie, Magnetismus die qualitative Eisengehalts-Reaktion -
+    # beide kurze Enum-Skalen unter den 43 Standardfeldern, beide bisher ohne
+    # Coverage-Quote. Niedriger Wert ist normal - Sammler dokumentieren
+    # haeufig nur die positiven Magnetismus-Treffer (Magnetit, Pyrrhotin) und
+    # lassen offensichtlich-negative Mineralen (Quarz, Calcit, Pyrit) ohne
+    # expliziten "nein"-Eintrag stehen. Whitespace zaehlt wie leer, spiegelt
+    # has_magnetismus. by_magnetismus zaehlt distinkte Reaktions-Werte
+    # (Streuung); diese Kennzahl zaehlt Objekte mit irgendeinem dokumentierten
+    # Magnetismus-Wert (Coverage) - komplementaer, beide gemeinsam geben
+    # Auskunft ueber Vollstaendigkeit vs. Streuung der magnetischen Pruefung.
+    st.objekte_mit_magnetismus = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Magnetismus IS NOT NULL AND TRIM(Magnetismus) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

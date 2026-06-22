@@ -441,6 +441,32 @@ def test_text_ausgabe_zeigt_kristallsystem_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_magnetismus_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Magnetismus-Quote direkt unter Kristallsystem auf.
+    Magnetisch-physikalische Pruef-Achse (nein/schwach/ja) symmetrisch zur
+    kristallographischen Symmetrie-Achse (kubisch/tetragonal/...) - beide sind
+    kurze Enum-Skalen aus dem Feldwoerterbuch und beide spiegeln den Pflege-
+    Stand qualitativer Pruefparameter. Symmetrische CLI-Sichtbarkeit fuer das
+    Datenpflege-Dashboard auf der Achse "wieviele Stuecke wurden mit dem
+    (Hand-)Magneten geprueft?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?,?)",
+        [("OBJ_0001", "nein"), ("OBJ_0002", "ja"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Magnetismus:" in out
+    # 2 von 4 Objekten haben dokumentierten Magnetismus → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

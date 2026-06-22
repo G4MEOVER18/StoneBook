@@ -2029,6 +2029,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_varietaet_prozent is None
     assert st.quote_mit_gesteinsart_prozent is None
     assert st.quote_mit_kristallsystem_prozent is None
+    assert st.quote_mit_magnetismus_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
@@ -2042,6 +2043,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_varietaet_prozent"] is None
     assert d["quote_mit_gesteinsart_prozent"] is None
     assert d["quote_mit_kristallsystem_prozent"] is None
+    assert d["quote_mit_magnetismus_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
     c.close()
@@ -2307,6 +2309,43 @@ def test_quote_mit_kristallsystem_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_kristallsystem"] == 2
     assert d["quote_mit_kristallsystem_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_magnetismus_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Magnetismus (qualitative magnetische Reaktion)
+    spiegelt die Kristallsystem-Quote auf die physikalisch-magnetische Pruef-
+    Achse: Anteil der Objekte mit dokumentiertem Magnetismus, gerechnet ueber
+    objekte_total. Magnetismus klassifiziert die qualitative Eisengehalts-
+    Reaktion (nein/schwach/ja - die drei Enum-Werte aus dem Feldwoerterbuch),
+    spiegelt das has_magnetismus-Filter-Verhalten exakt. Whitespace/NULL
+    zaehlt wie leer (spiegelt has_magnetismus-Filter-Konvention).
+    Komplementaer zu by_magnetismus, das distinkte Werte zaehlt (Streuung):
+    quote_mit_magnetismus beziffert Coverage."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qmg.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Magnetismus (40%), drei ohne (NULL/
+    # leer/nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei mit
+    # demselben "nein"-Wert sind in der Coverage gleichwertig zu zwei
+    # unterschiedlichen Reaktions-Stufen - die Coverage-Sicht ist ortho-
+    # gonal zur Streuung-Sicht (by_magnetismus).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?,?)",
+        [
+            ("OBJ_0001", "nein"),
+            ("OBJ_0002", "ja"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_magnetismus == 2
+    assert st.quote_mit_magnetismus_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_magnetismus"] == 2
+    assert d["quote_mit_magnetismus_prozent"] == 40.0
     c.close()
 
 
