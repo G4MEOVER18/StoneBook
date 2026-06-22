@@ -560,6 +560,78 @@ def test_unknown_kristallsystem_in_as_dict_serialisierbar(tmp_path):
     c.close()
 
 
+def test_unknown_magnetismus_wird_erkannt(tmp_path):
+    """Magnetismus ausserhalb des Feldwoerterbuch-Enums wird gemeldet
+    (obj_id, magnetismus). Spiegelt unknown_kristallsystem auf die magnetische
+    Reaktions-Achse: Schema hat keine CHECK-Klausel auf Magnetismus, daher
+    koennen Tippfehler ("Nein" mit Grossbuchstabe), englische Form ("no"),
+    physikalische Sub-Klassifizierung ("ferromagnetisch", "paramagnetisch")
+    oder freie Werte ("magnetisch", "kein") durch direkten DB-Zugriff oder
+    fehlerhaften CSV-/JSON-Import einfliessen, ohne dass die Anwendung sie
+    bemerkt. Leerstring/NULL bleibt legitim als "noch nicht geprueft" (der
+    Normalfall, bevor das Stueck mit einem Magneten getestet wurde).
+    """
+    c = open_db(tmp_path / "umg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "nein"),                  # ok (Feldwoerterbuch-Form)
+            ("OBJ_0002", "Nein"),                  # Case-Tippfehler
+            ("OBJ_0003", "schwach"),               # ok
+            ("OBJ_0004", "ja"),                    # ok
+            ("OBJ_0005", "no"),                    # englische Form
+            ("OBJ_0006", "ferromagnetisch"),       # physikalische Sub-Klassifizierung
+            ("OBJ_0007", "magnetisch"),            # freier Wert (statt ja/schwach)
+            ("OBJ_0008", "kein"),                  # ohne Endung
+            # Trailing-Klammer-Annotation: Basis-Stufe bleibt im Enum-Wert,
+            # die Sub-Klassifizierung in Klammern (Erklaerung der Reaktion,
+            # vermutete Ursache) wird vor dem Vergleich gestrippt - ueblich in
+            # Pruef-Notizen ("schwach (Haematit-Beimischung)").
+            ("OBJ_0009", "schwach (Haematit-Beimischung)"),  # ok (Annotation)
+            ("OBJ_0010", "ja [stark]"),                       # ok (eckige Klammern)
+            ("OBJ_0011", "nein {gepruefter Neodym-Magnet}"),  # ok (geschwungene Klammern)
+            ("OBJ_0012", "Schwach (Haematit-Beimischung)"),   # Case-Tippfehler trotz Annotation
+            ("OBJ_0013", None),                    # legitim (noch nicht geprueft)
+            ("OBJ_0014", ""),                      # legitim (Default-Leerstring)
+            ("OBJ_0015", "   "),                   # legitim (Whitespace = leer)
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    # Sortiert nach obj_id; NULL/Leerstring/Whitespace und Werte mit gueltigem
+    # Enum-Kern (mit oder ohne Klammer-Annotation) tauchen nicht auf.
+    assert rep.unknown_magnetismus == [
+        ("OBJ_0002", "Nein"),
+        ("OBJ_0005", "no"),
+        ("OBJ_0006", "ferromagnetisch"),
+        ("OBJ_0007", "magnetisch"),
+        ("OBJ_0008", "kein"),
+        ("OBJ_0012", "Schwach (Haematit-Beimischung)"),
+    ]
+    assert not rep.is_clean
+    c.close()
+
+
+def test_unknown_magnetismus_migrierte_db_clean(migrated_conn):
+    """Migrierte Beispiel-DB nutzt ausschliesslich gueltige Magnetismus-Werte
+    (oder NULL/leer als "noch nicht geprueft")."""
+    rep = check_integrity(migrated_conn)
+    assert rep.unknown_magnetismus == []
+
+
+def test_unknown_magnetismus_in_as_dict_serialisierbar(tmp_path):
+    """as_dict liefert Tuples als Listen, damit das JSON-Format roundtrip-fest ist."""
+    import json
+    c = open_db(tmp_path / "amg.sqlite3")
+    c.execute("INSERT INTO objects (obj_id, Magnetismus) VALUES (?, ?)",
+              ("OBJ_0001", "Nein"))
+    c.commit()
+    d = check_integrity(c).as_dict()
+    assert d["unknown_magnetismus"] == [["OBJ_0001", "Nein"]]
+    json.dumps(d, ensure_ascii=False)  # darf nicht crashen
+    c.close()
+
+
 def test_geaendert_vor_erstellt_wird_erkannt(tmp_path):
     """geaendert_am < erstellt_am ist logisch unmoeglich und sollte gemeldet werden.
 

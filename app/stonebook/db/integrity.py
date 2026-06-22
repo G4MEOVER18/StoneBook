@@ -55,6 +55,21 @@ _VALID_KATEGORIEN: frozenset[str] = frozenset(
 _VALID_KRISTALLSYSTEME: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Kristallsystem"].enum_values if v
 )
+# Gueltige Magnetismus-Werte aus dem Feldwoerterbuch (ohne Default-Leerstring,
+# der "noch nicht geprueft" bedeutet und legitim ist). Spiegelt
+# _VALID_KRISTALLSYSTEME / _VALID_KATEGORIEN auf die magnetische Reaktions-Achse:
+# das Schema hat keine CHECK-Klausel auf Magnetismus, daher koennen invalide
+# Werte durch direkte DB-Editierung, fehlerhafte CSV-/JSON-Imports
+# (load_standard kopiert das Feld ueber _convert_standard ohne Enum-Validierung)
+# oder Migration aus inkonsistenten Quell-CSVs einfliessen. Aus FIELD_BY_NAME
+# abgeleitet statt als Literal, weil die Liste die drei Standard-Reaktions-
+# Stufen (nein/schwach/ja) umfasst und re-typische Tippfehler ("Nein" mit
+# Grossbuchstabe, "ferromagnetisch" als physikalische Sub-Klassifizierung,
+# "kein" ohne Endung) hier still Daten verfaelschen wuerden - die Single-
+# Source-of-Truth bleibt im Feldwoerterbuch.
+_VALID_MAGNETISMUS: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Magnetismus"].enum_values if v
+)
 
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
 # Format: feldname -> (untergrenze | None, obergrenze | None)
@@ -127,6 +142,7 @@ class IntegrityReport:
     unknown_status: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, status) - status nicht in {aktiv,platzhalter,archiviert}
     unknown_kategorie: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kategorie) - Kategorie nicht im Feldwoerterbuch-Enum
     unknown_kristallsystem: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kristallsystem) - Kristallsystem nicht im Feldwoerterbuch-Enum
+    unknown_magnetismus: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, magnetismus) - Magnetismus nicht im Feldwoerterbuch-Enum
     geaendert_vor_erstellt: list[tuple[str, str, str]] = field(default_factory=list)  # (obj_id, erstellt_am, geaendert_am) - logisch unmoeglich
 
     @property
@@ -146,6 +162,7 @@ class IntegrityReport:
                     or self.unknown_status
                     or self.unknown_kategorie
                     or self.unknown_kristallsystem
+                    or self.unknown_magnetismus
                     or self.geaendert_vor_erstellt)
 
     def as_dict(self) -> dict:
@@ -169,6 +186,7 @@ class IntegrityReport:
             "unknown_status": [list(t) for t in self.unknown_status],
             "unknown_kategorie": [list(t) for t in self.unknown_kategorie],
             "unknown_kristallsystem": [list(t) for t in self.unknown_kristallsystem],
+            "unknown_magnetismus": [list(t) for t in self.unknown_magnetismus],
             "geaendert_vor_erstellt": [list(t) for t in self.geaendert_vor_erstellt],
             "is_clean": self.is_clean,
         }
@@ -318,6 +336,44 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         ).fetchall()
         if _TRAILING_ENUM_ANNOTATION.sub("", r["Kristallsystem"]).strip()
         not in _VALID_KRISTALLSYSTEME
+    ]
+
+    # Magnetismus-Validierung: spiegelt unknown_kristallsystem / unknown_kategorie
+    # auf die magnetische Reaktions-Achse. Das Schema hat keine CHECK-Klausel auf
+    # Magnetismus; load_standard / _convert_standard kopiert das Feld ohne
+    # Enum-Validierung, sodass Tippfehler ("Nein" mit Grossbuchstabe vs. "nein"
+    # im Feldwoerterbuch), englische Form ("no" statt "nein"), physikalische
+    # Sub-Klassifizierung ("ferromagnetisch", "paramagnetisch", "diamagnetisch"
+    # statt der grobkoernigen 3-Stufen-Skala) oder veraltete/freie Werte
+    # ("magnetisch", "kein") still durch CSV-/JSON-Imports oder direkte
+    # DB-Editierung einfliessen koennen. Komplementaer zu unknown_kategorie
+    # (Objekt-Kategorie), unknown_status (Lifecycle) und unknown_kristallsystem
+    # (kristallographische Symmetrie): hier die magnetische Reaktions-Achse als
+    # einer der wichtigsten qualitativen Pruefparameter neben HCl-Reaktion und
+    # Strichfarbe. Leerstring/NULL bleibt legitim als "noch nicht geprueft"
+    # (der Normalfall, bevor das Stueck mit einem Magneten getestet wurde, oder
+    # Migration-Restbestaende aus alten v1/obj043-CSVs ohne Magnetismus-Spalte)
+    # und wird uebergangen, damit der Pflege-Restbestand keine falsch-positiven
+    # erzeugt; tatsaechliche Tippfehler werden so isoliert sichtbar. Trailing-
+    # Klammer-Annotationen ("schwach (Haematit-Beimischung)", "ja [stark]",
+    # "nein {gepruefter Neodym-Magnet}") werden vor dem Enum-Vergleich gestrippt
+    # - die Sub-Klassifizierung in Klammern (Erklaerung der Reaktion, Mess-
+    # Bedingungen, vermutete Ursache) aendert die Basis-Stufe nicht und ist in
+    # mineralogischen Pruef-Notizen ueblich; spiegelt das parse_iso_date-Konzept
+    # exakt wie bei unknown_kristallsystem. Format spiegelt unknown_kategorie /
+    # unknown_status / unknown_kristallsystem: (obj_id, magnetismus)-Tuples mit
+    # dem Roh-Wert (nicht der gestrippten Form), damit sowohl die betroffene ID
+    # als auch der konkrete Falschwert direkt im Report stehen - ohne
+    # zusaetzliche SQL-Abfrage zur Diagnose.
+    rep.unknown_magnetismus = [
+        (r["obj_id"], r["Magnetismus"])
+        for r in conn.execute(
+            "SELECT obj_id, Magnetismus FROM objects "
+            "WHERE Magnetismus IS NOT NULL AND TRIM(Magnetismus) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        if _TRAILING_ENUM_ANNOTATION.sub("", r["Magnetismus"]).strip()
+        not in _VALID_MAGNETISMUS
     ]
 
     for row in conn.execute(
