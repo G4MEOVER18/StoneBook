@@ -26,6 +26,7 @@ class Statistik:
     objekte_mit_mineral: int = 0
     objekte_mit_varietaet: int = 0
     objekte_mit_gesteinsart: int = 0
+    objekte_mit_kristallsystem: int = 0
     objekte_mit_fundort: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -242,6 +243,28 @@ class Statistik:
         return self._quote(self.objekte_mit_gesteinsart)
 
     @property
+    def quote_mit_kristallsystem_prozent(self) -> float | None:
+        # Coverage-Quote fuer Kristallsystem (kristallographische Symmetrie-
+        # Klassifizierung) symmetrisch zu quote_mit_mineral_prozent /
+        # quote_mit_varietaet_prozent / quote_mit_gesteinsart_prozent. Spiegelt
+        # die mineralogischen / petrologischen Achsen auf die kristallographische:
+        # Mineral_Primaer beantwortet "welche Mineral-Familie?" (Quarz/Calcit/
+        # Pyrit), Varietaet "welche Auspraegung in der Familie?" (Bergkristall/
+        # Milchquarz), Gesteinsart "in welcher Gesteins-Einbettung?" (Granit/
+        # Basalt), Kristallsystem "welcher Symmetrietyp?" (kubisch/tetragonal/
+        # hexagonal/trigonal/orthorhombisch/monoklin/triklin/amorph - 7+1 Enum-
+        # Werte aus dem Feldwoerterbuch). Niedriger Wert ist normal - Kristall-
+        # system wird typisch erst nach Mineral_Primaer-Bestimmung gepflegt
+        # (deterministisch aus der Mineralart ableitbar, aber haendisch zu
+        # uebernehmen), viele mineralogisch klare Stuecke bleiben ohne
+        # Symmetrietyp-Einordnung. Komplementaer zu by_kristallsystem
+        # (Streuung-Sicht ueber die Symmetrietypen) und has_kristallsystem
+        # (Listen-Filter): hier die Coverage-Sicht ("welcher Anteil der
+        # Sammlung ist kristallographisch eingeordnet?"). Whitespace zaehlt
+        # wie leer (spiegelt has_kristallsystem-Filter-Konvention).
+        return self._quote(self.objekte_mit_kristallsystem)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -304,6 +327,7 @@ class Statistik:
             "objekte_mit_mineral": self.objekte_mit_mineral,
             "objekte_mit_varietaet": self.objekte_mit_varietaet,
             "objekte_mit_gesteinsart": self.objekte_mit_gesteinsart,
+            "objekte_mit_kristallsystem": self.objekte_mit_kristallsystem,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -524,6 +548,8 @@ class Statistik:
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
             "quote_mit_gesteinsart_prozent": _round_or_none(self.quote_mit_gesteinsart_prozent),
+            "quote_mit_kristallsystem_prozent": _round_or_none(
+                self.quote_mit_kristallsystem_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -1382,6 +1408,27 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_gesteinsart = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Gesteinsart IS NOT NULL AND TRIM(Gesteinsart) != ''"
+    ).fetchone()[0]
+    # objekte_mit_kristallsystem: Anzahl Objekte mit dokumentiertem
+    # Kristallsystem (kristallographische Symmetrie-Klassifizierung). Spiegelt
+    # objekte_mit_mineral / objekte_mit_varietaet / objekte_mit_gesteinsart auf
+    # die kristallographische Achse - Mineral_Primaer beantwortet "welche
+    # Mineral-Familie?" (mineralogisch), Varietaet "welche Auspraegung in der
+    # Familie?" (mineralogische Sub-Achse), Gesteinsart "in welcher Gesteins-
+    # Einbettung?" (petrologische Achse), Kristallsystem "welcher Symmetrietyp?"
+    # (kristallographische Achse, kubisch/tetragonal/hexagonal/trigonal/...).
+    # Niedriger Wert ist normal - Kristallsystem wird typisch erst nach
+    # Mineral_Primaer-Bestimmung gepflegt (deterministisch aus der Mineralart
+    # ableitbar, aber haendisch zu uebernehmen), viele mineralogisch klare
+    # Stuecke bleiben ohne Symmetrietyp-Einordnung stehen. Whitespace zaehlt
+    # wie leer, spiegelt has_kristallsystem. by_kristallsystem zaehlt distinkte
+    # Symmetrietyp-Werte (Streuung); diese Kennzahl zaehlt Objekte mit
+    # irgendeinem Kristallsystem (Coverage) - komplementaer, beide gemeinsam
+    # geben Auskunft ueber Vollstaendigkeit vs. Streuung der kristallographischen
+    # Einordnung.
+    st.objekte_mit_kristallsystem = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Kristallsystem IS NOT NULL AND TRIM(Kristallsystem) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

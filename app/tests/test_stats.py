@@ -2027,6 +2027,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_mineral_prozent is None
     assert st.quote_mit_varietaet_prozent is None
     assert st.quote_mit_gesteinsart_prozent is None
+    assert st.quote_mit_kristallsystem_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
@@ -2038,6 +2039,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_mineral_prozent"] is None
     assert d["quote_mit_varietaet_prozent"] is None
     assert d["quote_mit_gesteinsart_prozent"] is None
+    assert d["quote_mit_kristallsystem_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
     c.close()
@@ -2235,6 +2237,43 @@ def test_quote_mit_gesteinsart_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_gesteinsart"] == 2
     assert d["quote_mit_gesteinsart_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_kristallsystem_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Kristallsystem (kristallographische Symmetrie-
+    Klassifizierung) spiegelt die Mineral_Primaer-/Varietaet-/Gesteinsart-Quoten
+    auf die strukturelle Achse: Anteil der Objekte mit dokumentiertem
+    Kristallsystem, gerechnet ueber objekte_total. Mineral_Primaer beantwortet
+    "welche Mineral-Familie?" (mineralogisch), Varietaet "welche Auspraegung?"
+    (mineralogische Sub-Achse), Gesteinsart "in welcher Gesteins-Einbettung?"
+    (petrologische Achse), Kristallsystem "welcher Symmetrietyp?" (kubisch/
+    tetragonal/hexagonal/trigonal/orthorhombisch/monoklin/triklin/amorph -
+    7+1 Enum-Werte aus dem Feldwoerterbuch). Whitespace/NULL zaehlt wie leer
+    (spiegelt has_kristallsystem-Filter-Konvention). Komplementaer zu
+    by_kristallsystem, das distinkte Werte zaehlt (Streuung):
+    quote_mit_kristallsystem beziffert Coverage."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qks.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Kristallsystem (40%), drei ohne (NULL/
+    # leer/nur Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?,?)",
+        [
+            ("OBJ_0001", "trigonal"),
+            ("OBJ_0002", "kubisch"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_kristallsystem == 2
+    assert st.quote_mit_kristallsystem_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_kristallsystem"] == 2
+    assert d["quote_mit_kristallsystem_prozent"] == 40.0
     c.close()
 
 

@@ -123,6 +123,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Achse, bevor die geografische Provenienz-Achse (Fundort) drankommt.
         lines.append(
             f"  Gesteinsart:         {st.quote_mit_gesteinsart_prozent:.1f} %")
+        # Kristallsystem (kristallographische Symmetrie-Einordnung) direkt unter
+        # Gesteinsart, weil sie die strukturelle Achse spiegelt - parallel zur
+        # petrologischen Achse: Gesteinsart sagt etwas ueber den Bildungs-Kontext,
+        # Kristallsystem ueber den inneren Aufbau. Beide gemeinsam mit Mineral_
+        # Primaer / Varietaet ergeben die vier mineralogisch-strukturellen
+        # Bestimmungs-Achsen (Familie / Sub / Einbettung / Symmetrie), bevor die
+        # geografische Provenienz-Achse (Fundort) drankommt.
+        lines.append(
+            f"  Kristallsystem:      {st.quote_mit_kristallsystem_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
         # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt

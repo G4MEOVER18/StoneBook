@@ -387,6 +387,33 @@ def test_text_ausgabe_zeigt_gesteinsart_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_kristallsystem_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Kristallsystem-Quote direkt unter Gesteinsart auf.
+    Kristallographische Symmetrie-Achse (kubisch/tetragonal/hexagonal/trigonal/
+    orthorhombisch/monoklin/triklin/amorph) symmetrisch zur mineralogischen
+    Achse (Mineral_Primaer/Varietaet) und zur petrologischen Achse (Gesteinsart)
+    - das Kristallsystem sagt etwas anderes ueber das Stueck aus als die
+    Mineral-Familie oder die Gesteins-Einbettung (es beschreibt den inneren
+    Symmetrie-Aufbau, der haendisch aus der Mineralart abzuleiten ist).
+    Symmetrische CLI-Sichtbarkeit fuer das Datenpflege-Dashboard."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "ks.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?,?)",
+        [("OBJ_0001", "trigonal"), ("OBJ_0002", "kubisch"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Kristallsystem:" in out
+    # 2 von 4 Objekten haben dokumentiertes Kristallsystem → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die
