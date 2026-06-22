@@ -516,6 +516,32 @@ def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
+    der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-
+    Achse jenseits der 43 strukturierten Standardfelder; eine niedrige Quote
+    ist typisch, weil der Sammler die Spalte nur bei Beobachtungs-Anlass
+    pflegt. Symmetrische CLI-Sichtbarkeit fuer das Datenpflege-Dashboard auf
+    der Achse "wie viel Anteil der Sammlung traegt eine handgepflegte freie
+    Beobachtung?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "nz.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, notizen) VALUES (?,?)",
+        [("OBJ_0001", "Habitus saeulenfoermig"), ("OBJ_0002", "Geerbt von Onkel"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Notizen:" in out
+    # 2 von 4 Objekten haben Notizen → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_merge_quote(tmp_path, capsys):
     """Coverage-Block fuehrt die Merge-Quote (Anteil der Kanon-Objekte aus
     Duplikat-Merges) zusaetzlich zu den Feld-Coverage-Quoten auf. Spiegelt das

@@ -2032,6 +2032,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_magnetismus_prozent is None
     assert st.quote_mit_glanz_prozent is None
     assert st.quote_mit_fundort_prozent is None
+    assert st.quote_mit_notizen_prozent is None
     assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
     assert d["quote_mit_bildern_prozent"] is None
@@ -2047,6 +2048,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_magnetismus_prozent"] is None
     assert d["quote_mit_glanz_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
+    assert d["quote_mit_notizen_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
     c.close()
 
@@ -2418,6 +2420,40 @@ def test_quote_mit_fundort_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_fundort"] == 2
     assert d["quote_mit_fundort_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_notizen_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
+    Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die
+    unstrukturierte Freitext-Achse: Anteil der Objekte mit irgendeinem
+    nicht-leeren notizen-Eintrag, gerechnet ueber objekte_total. Whitespace/
+    NULL zaehlt wie leer (spiegelt has_notizen-Filter-Konvention). Niedriger
+    Wert ist typisch - notizen ist die "Sonstiges"-Spalte, die nur bei
+    Beobachtungs-Anlass gepflegt wird."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qn.sqlite3")
+    # 5 Objekte: zwei mit Notizen (40%), drei ohne (NULL/leer/Whitespace
+    # zaehlen alle wie nicht-dokumentiert). Multi-Line-Eintrag (Newline) ist
+    # legitim und zaehlt mit, weil der TRIM nur fuehrende/abschliessende
+    # Whitespace strippt.
+    c.executemany(
+        "INSERT INTO objects (obj_id, notizen) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Auffaelliger Habitus, saeulenfoermig"),
+            ("OBJ_0002", "Geerbt von Onkel\nProvenienz unsicher"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_notizen == 2
+    assert st.quote_mit_notizen_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_notizen"] == 2
+    assert d["quote_mit_notizen_prozent"] == 40.0
     c.close()
 
 

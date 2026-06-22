@@ -30,6 +30,7 @@ class Statistik:
     objekte_mit_magnetismus: int = 0
     objekte_mit_glanz: int = 0
     objekte_mit_fundort: int = 0
+    objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
     objekte_mit_alias: int = 0
@@ -368,6 +369,34 @@ class Statistik:
         return self._quote(self.objekte_mit_fundort)
 
     @property
+    def quote_mit_notizen_prozent(self) -> float | None:
+        # Coverage-Quote fuer freie Notizen (notizen-Spalte). Spiegelt die
+        # Feld-Coverage-Quoten (Bildern/Funddatum/Wert/Gewicht/Mineral/Fundort)
+        # auf die unstrukturierte Freitext-Achse - "wie viel Anteil der
+        # Sammlung traegt ueberhaupt eine handgepflegte Beobachtung neben den
+        # 43 Standardfeldern?". Komplementaer zu den enum-/typ-validierten
+        # Feld-Coverage-Quoten: dort geht es um die Vollstaendigkeit der
+        # strukturierten Erfassungs-Achsen (Mineral/Fundort/Glanz/...), hier
+        # um die Tiefe der freien Beobachtung (Habitus-Beschreibung, Pflege-
+        # Hinweise, Provenienz-Geschichte, Mess-Notizen, Vermutungen, die
+        # nicht in eines der 43 Standardfelder passen). Aussenkontext-bedingt
+        # niedriger Wert ist typisch - notizen ist die "Sonstiges"-Spalte, die
+        # erst gepflegt wird, wenn der Sammler einen Beobachtungs-Anlass hat
+        # (auffaelliger Habitus, ungewoehnliche Pflege-Anforderung, Sammler-
+        # Erinnerung an Fund-Umstand, Hinweis auf zukuenftige Pruefung), nicht
+        # routinemaessig fuer jedes Stueck. Aus Datenpflege-Sicht ein Indikator
+        # fuer die Erfassungs-Tiefe jenseits der strukturierten Pflicht-Achsen:
+        # eine Sammlung mit hoher Strukturfeld-Coverage und niedriger Notizen-
+        # Quote ist katalogisiert (alle Felder gefuellt), aber nicht
+        # interpretiert; umgekehrt deutet eine niedrige Strukturfeld-Coverage
+        # mit hoher Notizen-Quote auf eine Beobachtungs-orientierte
+        # Sammlungs-Linie (alles steht im Freitext, nichts in den strukturierten
+        # Feldern) - beide Profile sind legitim, aber sie sagen Unter-
+        # schiedliches ueber den Pflege-Stil. Whitespace zaehlt wie leer
+        # (spiegelt has_notizen-Filter-Konvention).
+        return self._quote(self.objekte_mit_notizen)
+
+    @property
     def quote_mit_ki_analyse_uebernommen_prozent(self) -> float | None:
         # Coverage-Quote fuer tatsaechlich uebernommene KI-Analysen. Spiegelt
         # quote_mit_ki_analyse auf die feinere Granularitaet "wieviel Anteil
@@ -421,6 +450,7 @@ class Statistik:
             "objekte_mit_magnetismus": self.objekte_mit_magnetismus,
             "objekte_mit_glanz": self.objekte_mit_glanz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
+            "objekte_mit_notizen": self.objekte_mit_notizen,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
             "objekte_mit_alias": self.objekte_mit_alias,
@@ -648,6 +678,7 @@ class Statistik:
                 self.quote_mit_magnetismus_prozent),
             "quote_mit_glanz_prozent": _round_or_none(self.quote_mit_glanz_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
+            "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
             ),
@@ -1580,6 +1611,24 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_fundort = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
+    ).fetchone()[0]
+    # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
+    # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).
+    # Spiegelt die Feld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort/Glanz/
+    # ...) auf die unstrukturierte Freitext-Achse - notizen ist die einzige
+    # echte Freitext-Spalte mit beliebigem Inhalt (anders als die multi-line
+    # text-Felder Reaktionshinweis/Pruefempfehlungen, die zwar mehrzeilig sind,
+    # aber thematisch fest stehen). Whitespace zaehlt wie leer, spiegelt
+    # has_notizen-Filter-Konvention. Niedriger Wert ist typisch - der Sammler
+    # pflegt notizen nur bei Beobachtungs-Anlass (auffaelliger Habitus,
+    # Pflege-Anforderung, Fund-Erinnerung), nicht routinemaessig fuer jedes
+    # Stueck. Komplementaer zu den strukturierten Feld-Coverage-Quoten:
+    # eine hohe Strukturfeld-Coverage mit niedriger notizen-Quote zeigt eine
+    # rein katalogisierende Sammlungs-Linie, eine niedrige Strukturfeld-
+    # Coverage mit hoher notizen-Quote eine beobachtungs-orientierte Linie.
+    st.objekte_mit_notizen = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE notizen IS NOT NULL AND TRIM(notizen) != ''"
     ).fetchone()[0]
 
     sums = conn.execute(

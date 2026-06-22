@@ -167,6 +167,19 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  Glanz:               {st.quote_mit_glanz_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
+        # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
+        # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
+        # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur
+        # bei Beobachtungs-Anlass; eine niedrige Quote ist normal, weil
+        # routinemaessige Pflege auf die strukturierten Felder zielt. Die
+        # Differenz zwischen einer hohen Strukturfeld-Coverage und einer
+        # niedrigen Notizen-Quote charakterisiert eine rein katalogisierende
+        # Sammlungs-Linie; das umgekehrte Profil eine beobachtungs-orientierte
+        # Linie. Steht vor der Merge-Quote, weil Notizen pro Objekt eine
+        # inhaltliche Eigenschaft ist, waehrend die Merge-Quote eine
+        # Provenienz-/Konsolidierungs-Eigenschaft ueber Objekt-Gruppen hinweg
+        # beziffert.
+        lines.append(f"  Notizen:             {st.quote_mit_notizen_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
         # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt
         # das Roh-Volumen, hier die Quote als Sammler-typische "wie konsolidiert
