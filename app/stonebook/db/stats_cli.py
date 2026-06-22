@@ -155,6 +155,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # (Fundort) drankommt.
         lines.append(
             f"  Magnetismus:         {st.quote_mit_magnetismus_prozent:.1f} %")
+        # Glanz (optische Oberflaechen-Reflexion) direkt unter Magnetismus, weil
+        # er die optische Diagnose-Achse spiegelt - parallel zur magnetischen
+        # Reaktions-Achse, beide sind kurze Enum-Skalen aus dem Feldwoerterbuch
+        # (glasig/wachsig/matt/metallisch/fettig/seidig/perlmutt vs. nein/schwach/
+        # ja). Die Coverage-Quote misst die Pflege-Tiefe auf der optischen Achse;
+        # niedriger Wert ist normal, weil gerade offensichtliche Glanz-Auspraegungen
+        # ("natuerlich ist Quarz glasig") haeufig undokumentiert bleiben. Reihen-
+        # folge spiegelt die semantische Sortierung Symmetrie -> Magnetismus ->
+        # Glanz, bevor die geografische Provenienz-Achse (Fundort) drankommt.
+        lines.append(
+            f"  Glanz:               {st.quote_mit_glanz_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
         # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt

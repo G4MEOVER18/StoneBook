@@ -28,6 +28,7 @@ class Statistik:
     objekte_mit_gesteinsart: int = 0
     objekte_mit_kristallsystem: int = 0
     objekte_mit_magnetismus: int = 0
+    objekte_mit_glanz: int = 0
     objekte_mit_fundort: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -324,6 +325,36 @@ class Statistik:
         return self._quote(self.objekte_mit_magnetismus)
 
     @property
+    def quote_mit_glanz_prozent(self) -> float | None:
+        # Coverage-Quote fuer Glanz (optische Oberflaechen-Reflexion: glasig/
+        # wachsig/matt/metallisch/fettig/seidig/perlmutt - die sieben Enum-Werte
+        # aus dem Feldwoerterbuch) symmetrisch zu quote_mit_kristallsystem_prozent
+        # / quote_mit_magnetismus_prozent auf die optisch-physikalische Diagnose-
+        # Achse. Spiegelt die magnetische Reaktions-Achse auf die optische
+        # Reflexions-Achse: Magnetismus klassifiziert die qualitative Eisengehalts-
+        # Reaktion (mit Hand-/Neodym-Magnet pruefbar), Glanz die qualitative
+        # Oberflaechen-Reflexion (visuell pruefbar unter Standard-Beleuchtung) -
+        # beide sind kurze Enum-Skalen aus dem Feldwoerterbuch und beide spiegeln
+        # qualitative Pruef-Schritte ohne instrumentelle Mess-Mittel. Bisher gab
+        # es nur by_glanz (Streuung-Sicht), has_glanz (Listen-Filter) und wert_/
+        # gewicht_pro_glanz (Wert-/Gewicht-Aufteilung), aber keine Coverage-
+        # Kennzahl (Anteil-Sicht auf den Gesamtbestand) - waehrend die verwandte
+        # qualitative Pruef-Achse mit quote_mit_magnetismus_prozent bereits
+        # abgedeckt war. Aussenkontext-bedingt orthogonal zur mineralogischen
+        # Identifikations-Achse (Mineral_Primaer): Glanz ist ein billig zu
+        # beobachtender Pruefparameter (das blosse Auge unter normaler Beleuchtung
+        # reicht), aber gerade weil er so offensichtlich ist, vergessen Sammler
+        # haeufig, ihn explizit zu dokumentieren - "natuerlich ist Quarz glasig,
+        # wozu soll ich das aufschreiben?" entspricht der typischen Pflege-
+        # Luecke bei objekte_mit_glanz. Komplementaer zu by_glanz (distinkte
+        # Werte, Streuung-Sicht) und wert_/gewicht_pro_glanz (Wert-/Gewicht-
+        # Aufteilung pro Reflexions-Typ): hier die Coverage-Sicht ueber den
+        # Gesamtbestand ("welcher Anteil der Sammlung ist auf der optischen
+        # Achse charakterisiert?"). Whitespace zaehlt wie leer (spiegelt
+        # has_glanz-Filter-Konvention).
+        return self._quote(self.objekte_mit_glanz)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -388,6 +419,7 @@ class Statistik:
             "objekte_mit_gesteinsart": self.objekte_mit_gesteinsart,
             "objekte_mit_kristallsystem": self.objekte_mit_kristallsystem,
             "objekte_mit_magnetismus": self.objekte_mit_magnetismus,
+            "objekte_mit_glanz": self.objekte_mit_glanz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -614,6 +646,7 @@ class Statistik:
                 self.quote_mit_kristallsystem_prozent),
             "quote_mit_magnetismus_prozent": _round_or_none(
                 self.quote_mit_magnetismus_prozent),
+            "quote_mit_glanz_prozent": _round_or_none(self.quote_mit_glanz_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -1511,6 +1544,26 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_magnetismus = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Magnetismus IS NOT NULL AND TRIM(Magnetismus) != ''"
+    ).fetchone()[0]
+    # objekte_mit_glanz: Anzahl Objekte mit dokumentiertem Glanz (optische
+    # Oberflaechen-Reflexion: glasig/wachsig/matt/metallisch/fettig/seidig/
+    # perlmutt, die sieben Enum-Werte aus dem Feldwoerterbuch). Spiegelt
+    # objekte_mit_magnetismus / objekte_mit_kristallsystem auf die optische
+    # Diagnose-Achse: Kristallsystem klassifiziert die innere Symmetrie,
+    # Magnetismus die qualitative Eisengehalts-Reaktion, Glanz die qualitative
+    # Oberflaechen-Reflexion - beide qualitative Pruefparameter ohne
+    # instrumentelle Mess-Mittel (Magnet vs. blosses Auge unter normaler
+    # Beleuchtung), beide kurze Enum-Skalen aus dem Feldwoerterbuch, beide
+    # bisher ohne Coverage-Quote. Niedriger Wert ist normal - gerade weil
+    # Glanz so offensichtlich beobachtbar ist, vergessen Sammler haeufig, ihn
+    # explizit zu dokumentieren ("natuerlich ist Quarz glasig"). Whitespace
+    # zaehlt wie leer, spiegelt has_glanz. by_glanz zaehlt distinkte
+    # Reflexions-Werte (Streuung); diese Kennzahl zaehlt Objekte mit irgendeinem
+    # dokumentierten Glanz-Wert (Coverage) - komplementaer, beide gemeinsam
+    # geben Auskunft ueber Vollstaendigkeit vs. Streuung der optischen Pruefung.
+    st.objekte_mit_glanz = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Glanz IS NOT NULL AND TRIM(Glanz) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

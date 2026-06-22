@@ -2030,6 +2030,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_gesteinsart_prozent is None
     assert st.quote_mit_kristallsystem_prozent is None
     assert st.quote_mit_magnetismus_prozent is None
+    assert st.quote_mit_glanz_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
@@ -2044,6 +2045,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_gesteinsart_prozent"] is None
     assert d["quote_mit_kristallsystem_prozent"] is None
     assert d["quote_mit_magnetismus_prozent"] is None
+    assert d["quote_mit_glanz_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
     c.close()
@@ -2346,6 +2348,43 @@ def test_quote_mit_magnetismus_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_magnetismus"] == 2
     assert d["quote_mit_magnetismus_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_glanz_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Glanz (optische Oberflaechen-Reflexion) spiegelt die
+    Magnetismus-/Kristallsystem-Quote auf die optische Diagnose-Achse: Anteil
+    der Objekte mit dokumentiertem Glanz, gerechnet ueber objekte_total. Glanz
+    klassifiziert die qualitative Oberflaechen-Reflexion (glasig/wachsig/matt/
+    metallisch/fettig/seidig/perlmutt - die sieben Enum-Werte aus dem
+    Feldwoerterbuch), spiegelt das has_glanz-Filter-Verhalten exakt. Whitespace/
+    NULL zaehlt wie leer (spiegelt has_glanz-Filter-Konvention). Komplementaer
+    zu by_glanz, das distinkte Werte zaehlt (Streuung): quote_mit_glanz
+    beziffert Coverage."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qg.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Glanz (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei mit demselben
+    # "glasig"-Wert sind in der Coverage gleichwertig zu zwei unterschiedlichen
+    # Reflexions-Typen - die Coverage-Sicht ist orthogonal zur Streuung-Sicht
+    # (by_glanz).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?,?)",
+        [
+            ("OBJ_0001", "glasig"),
+            ("OBJ_0002", "metallisch"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_glanz == 2
+    assert st.quote_mit_glanz_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_glanz"] == 2
+    assert d["quote_mit_glanz_prozent"] == 40.0
     c.close()
 
 

@@ -467,6 +467,32 @@ def test_text_ausgabe_zeigt_magnetismus_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_glanz_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Glanz-Quote direkt unter Magnetismus auf. Optisch-
+    physikalische Diagnose-Achse (glasig/wachsig/matt/metallisch/fettig/seidig/
+    perlmutt) symmetrisch zur magnetisch-physikalischen Pruef-Achse (nein/
+    schwach/ja) - beide sind kurze Enum-Skalen aus dem Feldwoerterbuch und
+    beide spiegeln qualitative Pruefparameter ohne instrumentelle Mess-Mittel.
+    Symmetrische CLI-Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse
+    "wieviele Stuecke wurden auf die Glanz-Auspraegung hin charakterisiert?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gl.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Glanz) VALUES (?,?)",
+        [("OBJ_0001", "glasig"), ("OBJ_0002", "metallisch"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Glanz:" in out
+    # 2 von 4 Objekten haben dokumentierten Glanz → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die
