@@ -175,6 +175,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Glanz, bevor die geografische Provenienz-Achse (Fundort) drankommt.
         lines.append(
             f"  Glanz:               {st.quote_mit_glanz_prozent:.1f} %")
+        # Transparenz (qualitative Lichtdurchlaessigkeit) direkt unter Glanz,
+        # weil sie die zweite optische Diagnose-Achse spiegelt - parallel zur
+        # Oberflaechen-Reflexions-Achse, beide sind kurze Enum-Skalen aus dem
+        # Feldwoerterbuch (durchsichtig/durchscheinend/opak vs. glasig/wachsig/
+        # matt/...). Beide gemeinsam ergeben die zwei optischen Pruef-Achsen
+        # (Auflicht-Reflexion / Durchlicht-Durchlaessigkeit), bevor die
+        # geografische Provenienz-Achse (Fundort) drankommt. Reihenfolge
+        # spiegelt die semantische Sortierung Symmetrie -> Magnetismus -> Glanz
+        # -> Transparenz, schliesst die optische Diagnose-Reihe ab.
+        lines.append(
+            f"  Transparenz:         {st.quote_mit_transparenz_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits

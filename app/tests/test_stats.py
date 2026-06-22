@@ -2032,6 +2032,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_kristallsystem_prozent is None
     assert st.quote_mit_magnetismus_prozent is None
     assert st.quote_mit_glanz_prozent is None
+    assert st.quote_mit_transparenz_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_notizen_prozent is None
     assert st.quote_mit_alias_prozent is None
@@ -2049,6 +2050,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_kristallsystem_prozent"] is None
     assert d["quote_mit_magnetismus_prozent"] is None
     assert d["quote_mit_glanz_prozent"] is None
+    assert d["quote_mit_transparenz_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_notizen_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
@@ -2422,6 +2424,42 @@ def test_quote_mit_glanz_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_glanz"] == 2
     assert d["quote_mit_glanz_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_transparenz_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Transparenz (Lichtdurchlaessigkeit) spiegelt die
+    Glanz-Quote auf die zweite optische Diagnose-Achse: Anteil der Objekte mit
+    dokumentierter Transparenz, gerechnet ueber objekte_total. Transparenz
+    klassifiziert die qualitative Lichtdurchlaessigkeit (durchsichtig/
+    durchscheinend/opak - die drei Enum-Werte aus dem Feldwoerterbuch),
+    spiegelt das has_transparenz-Filter-Verhalten exakt. Whitespace/NULL zaehlt
+    wie leer (spiegelt has_transparenz-Filter-Konvention). Komplementaer zu
+    by_transparenz, das distinkte Werte zaehlt (Streuung): quote_mit_transparenz
+    beziffert Coverage."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qt.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Transparenz (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei mit unterschied-
+    # lichen Transparenz-Werten zaehlen in der Coverage gleich; die Streuung
+    # (by_transparenz) bleibt orthogonal.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz) VALUES (?,?)",
+        [
+            ("OBJ_0001", "durchsichtig"),
+            ("OBJ_0002", "opak"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_transparenz == 2
+    assert st.quote_mit_transparenz_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_transparenz"] == 2
+    assert d["quote_mit_transparenz_prozent"] == 40.0
     c.close()
 
 

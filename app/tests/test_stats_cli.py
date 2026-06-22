@@ -520,6 +520,32 @@ def test_text_ausgabe_zeigt_glanz_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_transparenz_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Transparenz-Quote direkt unter Glanz auf. Optisch-
+    physikalische Diagnose-Achse (durchsichtig/durchscheinend/opak) symmetrisch
+    zur Oberflaechen-Reflexions-Achse (glasig/wachsig/matt/...) - beide sind
+    kurze Enum-Skalen aus dem Feldwoerterbuch und beide spiegeln qualitative
+    Pruefparameter ohne instrumentelle Mess-Mittel (Auflicht vs. Durchlicht).
+    Symmetrische CLI-Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse
+    "wieviele Stuecke wurden auf die Transparenz hin charakterisiert?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "tp.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Transparenz) VALUES (?,?)",
+        [("OBJ_0001", "durchsichtig"), ("OBJ_0002", "opak"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Transparenz:" in out
+    # 2 von 4 Objekten haben dokumentierte Transparenz → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

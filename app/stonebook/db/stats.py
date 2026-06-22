@@ -29,6 +29,7 @@ class Statistik:
     objekte_mit_kristallsystem: int = 0
     objekte_mit_magnetismus: int = 0
     objekte_mit_glanz: int = 0
+    objekte_mit_transparenz: int = 0
     objekte_mit_fundort: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
@@ -381,6 +382,43 @@ class Statistik:
         return self._quote(self.objekte_mit_glanz)
 
     @property
+    def quote_mit_transparenz_prozent(self) -> float | None:
+        # Coverage-Quote fuer Transparenz (Lichtdurchlaessigkeit: durchsichtig/
+        # durchscheinend/opak - die drei Enum-Werte aus dem Feldwoerterbuch)
+        # symmetrisch zu quote_mit_glanz_prozent / quote_mit_magnetismus_prozent
+        # auf die optisch-physikalische Diagnose-Achse. Spiegelt die
+        # Oberflaechen-Reflexions-Achse auf die Lichtdurchlaessigkeits-Achse:
+        # Glanz klassifiziert die qualitative Oberflaechen-Reflexion (visuell
+        # pruefbar in Auflicht/Front-Beleuchtung), Transparenz die qualitative
+        # Lichtdurchlaessigkeit (visuell pruefbar in Durchlicht/Gegenlicht) -
+        # beide sind kurze Enum-Skalen aus dem Feldwoerterbuch, beide spiegeln
+        # qualitative Pruef-Schritte ohne instrumentelle Mess-Mittel, beide
+        # zielen auf den optischen Eindruck unter Standard-Beleuchtung.
+        # Bisher gab es nur by_transparenz (Streuung-Sicht) und has_transparenz
+        # (Listen-Filter) plus wert_/gewicht_pro_transparenz (Wert-/Gewicht-
+        # Aufteilung), aber keine Coverage-Kennzahl (Anteil-Sicht auf den
+        # Gesamtbestand) - waehrend die verwandte optische Achse mit
+        # quote_mit_glanz_prozent bereits abgedeckt war. Schliesst die Coverage-
+        # Reihe der optischen Diagnose-Achsen: Glanz (Auflicht/Reflexion) ->
+        # Transparenz (Durchlicht/Durchlaessigkeit). Aussenkontext-bedingt
+        # orthogonal zur mineralogischen Identifikations-Achse (Mineral_Primaer):
+        # Transparenz ist ein billig zu beobachtender Pruefparameter (eine
+        # Lichtquelle reicht), aber gerade weil er so offensichtlich ist,
+        # vergessen Sammler haeufig, ihn explizit zu dokumentieren ("natuerlich
+        # ist Quarz durchsichtig, wozu soll ich das aufschreiben?") - das
+        # entspricht der typischen Pflege-Luecke bei objekte_mit_transparenz,
+        # spiegelt die Glanz-Luecke. Aus Datenpflege-Sicht ein direkter
+        # Indikator fuer die Vollstaendigkeit der qualitativen optischen
+        # Diagnose-Achse (Transparenz ist neben Glanz die zweite optische
+        # Charakteristik im Feldwoerterbuch und der einzige der beiden mit
+        # einer 3-Stufen-Skala - Glanz hat sieben Stufen). Komplementaer zu
+        # by_transparenz (distinkte Werte, Streuung-Sicht) und has_transparenz
+        # (Listen-Filter); beide gemeinsam geben Auskunft ueber Vollstaendigkeit
+        # vs. Streuung der optischen Pruefung. Whitespace zaehlt wie leer
+        # (spiegelt has_transparenz-Filter-Konvention).
+        return self._quote(self.objekte_mit_transparenz)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -474,6 +512,7 @@ class Statistik:
             "objekte_mit_kristallsystem": self.objekte_mit_kristallsystem,
             "objekte_mit_magnetismus": self.objekte_mit_magnetismus,
             "objekte_mit_glanz": self.objekte_mit_glanz,
+            "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "bilder_total": self.bilder_total,
@@ -704,6 +743,7 @@ class Statistik:
             "quote_mit_magnetismus_prozent": _round_or_none(
                 self.quote_mit_magnetismus_prozent),
             "quote_mit_glanz_prozent": _round_or_none(self.quote_mit_glanz_prozent),
+            "quote_mit_transparenz_prozent": _round_or_none(self.quote_mit_transparenz_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
@@ -1622,6 +1662,26 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_glanz = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Glanz IS NOT NULL AND TRIM(Glanz) != ''"
+    ).fetchone()[0]
+    # objekte_mit_transparenz: Anzahl Objekte mit dokumentierter Transparenz
+    # (qualitative Lichtdurchlaessigkeit: durchsichtig/durchscheinend/opak, die
+    # drei Enum-Werte aus dem Feldwoerterbuch). Spiegelt objekte_mit_glanz auf
+    # die optisch-physikalische Diagnose-Achse: Glanz klassifiziert die
+    # qualitative Oberflaechen-Reflexion (Auflicht/Front-Beleuchtung pruefbar),
+    # Transparenz die qualitative Lichtdurchlaessigkeit (Durchlicht/Gegenlicht
+    # pruefbar) - beide qualitative Pruefparameter ohne instrumentelle Mess-
+    # Mittel (blosses Auge unter Standard-Beleuchtung), beide kurze Enum-Skalen
+    # aus dem Feldwoerterbuch, beide bisher ohne Coverage-Quote. Niedriger Wert
+    # ist normal - gerade weil Transparenz so offensichtlich beobachtbar ist,
+    # vergessen Sammler haeufig, sie explizit zu dokumentieren ("natuerlich ist
+    # Quarz durchsichtig"). Whitespace zaehlt wie leer, spiegelt has_transparenz.
+    # by_transparenz zaehlt distinkte Durchlaessigkeits-Werte (Streuung); diese
+    # Kennzahl zaehlt Objekte mit irgendeinem dokumentierten Transparenz-Wert
+    # (Coverage) - komplementaer, beide gemeinsam geben Auskunft ueber
+    # Vollstaendigkeit vs. Streuung der optischen Pruefung.
+    st.objekte_mit_transparenz = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Transparenz IS NOT NULL AND TRIM(Transparenz) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die
