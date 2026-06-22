@@ -131,6 +131,7 @@ class Statistik:
     gewicht_max_g: float = 0.0
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
+    objekte_mit_mohs: int = 0
     objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
@@ -178,6 +179,30 @@ class Statistik:
         # Die Differenz quote_mit_gewicht_prozent - quote_mit_dimensionen_prozent
         # beziffert die Vermessungs-Luecke (gewogen, aber nicht vermessen).
         return self._quote(self.objekte_mit_dimensionen)
+
+    @property
+    def quote_mit_mohs_prozent(self) -> float | None:
+        # Coverage-Quote fuer Mohs-Haerte (Mohs_Haerte_min / Mohs_Haerte_max)
+        # symmetrisch zu quote_mit_dimensionen_prozent / quote_mit_gewicht_prozent
+        # auf die physikalische Diagnose-Achse. Mohs ist die zentrale quantitative
+        # Haertegrad-Skala fuer Mineralien (1=Talk ... 10=Diamant) und neben
+        # Dichte einer der wichtigsten Pruef-Parameter, mit dem Quarz (7) von
+        # Calcit (3) oder Fluorit (4) unterscheidbar wird. Spiegelt die
+        # has_mohs-Filter-Konvention exakt: ein Objekt zaehlt als geprueft,
+        # sobald eines der beiden Bereichsfelder (min ODER max) gesetzt ist -
+        # die obere und untere Grenze werden nicht immer zusammen gepflegt,
+        # oft steht nur "5-6" als Roh-Skala mit min=5, max=NULL oder umgekehrt.
+        # Niedriger Wert ist normal - Mohs wird typisch erst nach Mineral-
+        # Bestimmung gepflegt (deterministisch aus der Mineralart ableitbar),
+        # viele mineralogisch klare Stuecke bleiben ohne explizite Haerte-
+        # Pruefung. Aus Datenpflege-Sicht ein direkter naechster Pflege-
+        # Indikator: Stuecke ohne dokumentierte Mohs-Haerte sind die ueblichen
+        # Pruefkandidaten fuer den Kratztest (Glas/Stahl/Kupfer-/Fingernagel-
+        # Skala). Komplementaer zu has_mohs (Listen-Filter) und zum
+        # mohs_min/max-Bereichsfilter (konkrete Schwellen): hier die Anteil-
+        # Sicht auf den Gesamtbestand. Whitespace nicht relevant (REAL-Feld,
+        # NULL = nicht erfasst).
+        return self._quote(self.objekte_mit_mohs)
 
     @property
     def quote_mit_ki_analyse_prozent(self) -> float | None:
@@ -651,6 +676,7 @@ class Statistik:
             "gewicht_max_g": round(self.gewicht_max_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
+            "objekte_mit_mohs": self.objekte_mit_mohs,
             "objekte_mit_confidence": self.objekte_mit_confidence,
             "durchschnitt_confidence_prozent": (
                 round(self.durchschnitt_confidence_prozent, 1)
@@ -666,6 +692,7 @@ class Statistik:
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_dimensionen_prozent": _round_or_none(self.quote_mit_dimensionen_prozent),
+            "quote_mit_mohs_prozent": _round_or_none(self.quote_mit_mohs_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_confidence_prozent": _round_or_none(self.quote_mit_confidence_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
@@ -1686,6 +1713,22 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "SELECT COUNT(*) FROM objects "
         "WHERE Laenge_mm IS NOT NULL OR Breite_mm IS NOT NULL "
         "OR Hoehe_mm IS NOT NULL"
+    ).fetchone()[0]
+    # objekte_mit_mohs: Anzahl Objekte mit mindestens einem dokumentierten
+    # Mohs-Haerte-Bereichsfeld (min ODER max). Spiegelt die has_mohs-Filter-
+    # Konvention exakt: ein Objekt zaehlt als geprueft, sobald eines der
+    # beiden Bereichsfelder gesetzt ist - die obere und untere Grenze werden
+    # nicht immer zusammen gepflegt (oft nur "5-6" als Roh-Skala mit
+    # min=5/max=NULL oder umgekehrt). Komplementaer zu objekte_mit_dimensionen
+    # (geometrische Mess-Achse) und objekte_mit_gewicht (Masse): hier die
+    # physikalische Haerte-Achse, die mit dem Kratztest (Glas/Stahl/Kupfer-/
+    # Fingernagel-Skala) als billigste Bestimmungs-Methode verfuegbar ist.
+    # Niedriger Wert ist normal - Mohs wird typisch erst nach Mineral-
+    # Bestimmung gepflegt (deterministisch aus der Mineralart ableitbar),
+    # viele mineralogisch klare Stuecke bleiben ohne explizite Haerte-Pruefung.
+    st.objekte_mit_mohs = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
     ).fetchone()[0]
     if gewichte:
         st.gewicht_max_g = gewichte[-1]

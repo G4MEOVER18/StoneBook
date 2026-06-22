@@ -103,6 +103,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # beziffert die Vermessungs-Luecke (gewogen aber nicht vermessen).
         lines.append(
             f"  Dimensionen:         {st.quote_mit_dimensionen_prozent:.1f} %")
+        # Mohs-Haerte (physikalische Haerte-Achse) direkt unter Dimensionen,
+        # weil sie die naechste physikalische Mess-Achse abdeckt: Masse ->
+        # Geometrie -> Haerte. Mohs (1=Talk ... 10=Diamant) ist die zentrale
+        # quantitative Haertegrad-Skala fuer Mineralien und neben Dichte einer
+        # der wichtigsten Pruef-Parameter. Eine Achse genuegt (min ODER max
+        # gesetzt) - spiegelt die has_mohs-Konvention. Niedriger Wert ist
+        # normal, weil Mohs typisch erst nach Mineral-Bestimmung gepflegt wird.
+        lines.append(
+            f"  Mohs-Haerte:         {st.quote_mit_mohs_prozent:.1f} %")
         lines.append(f"  KI-Analyse:          {st.quote_mit_ki_analyse_prozent:.1f} %")
         lines.append(
             f"  KI-Analyse (ueb.):   "

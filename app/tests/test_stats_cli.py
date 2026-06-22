@@ -291,6 +291,33 @@ def test_text_ausgabe_zeigt_dimensionen_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_mohs_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Mohs-Haerte-Quote direkt unter Dimensionen auf.
+    Physikalische Haerte-Achse symmetrisch zur Masse- und Geometrie-Achse:
+    Masse -> Geometrie -> Haerte ist die Reihenfolge der quantitativen
+    physikalischen Mess-Achsen. Spiegelt has_mohs-Filter-Konvention: eine
+    Grenze (min ODER max) genuegt fuer Coverage."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mohs.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?,?,?)",
+        [("OBJ_0001", 7.0, 7.0),
+         ("OBJ_0002", 5.0, None),    # nur min → zaehlt
+         ("OBJ_0003", None, None),
+         ("OBJ_0004", None, None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Mohs-Haerte:" in out
+    # 2 von 4 Objekten haben dokumentierte Mohs-Haerte → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_kategorie_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Kategorie-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI auf.
 

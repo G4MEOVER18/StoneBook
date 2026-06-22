@@ -2022,6 +2022,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_wert_prozent is None
     assert st.quote_mit_gewicht_prozent is None
     assert st.quote_mit_dimensionen_prozent is None
+    assert st.quote_mit_mohs_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
     assert st.quote_mit_confidence_prozent is None
     assert st.quote_mit_kategorie_prozent is None
@@ -2038,6 +2039,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_bildern_prozent"] is None
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_dimensionen_prozent"] is None
+    assert d["quote_mit_mohs_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
     assert d["quote_mit_confidence_prozent"] is None
     assert d["quote_mit_kategorie_prozent"] is None
@@ -2118,6 +2120,39 @@ def test_quote_mit_dimensionen_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_dimensionen"] == 3
     assert d["quote_mit_dimensionen_prozent"] == 60.0
+    c.close()
+
+
+def test_quote_mit_mohs_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Mohs-Haerte (Mohs_Haerte_min / Mohs_Haerte_max)
+    spiegelt die has_mohs-Filter-Konvention exakt: ein Objekt zaehlt als
+    geprueft, sobald eines der beiden Bereichsfelder gesetzt ist - obere und
+    untere Grenze werden nicht immer zusammen gepflegt, oft steht nur eine
+    Roh-Skala ('5-6') mit min=5, max=NULL oder umgekehrt. Disjunktive Logik
+    (eine Achse genuegt) symmetrisch zu quote_mit_dimensionen_prozent
+    (Laenge/Breite/Hoehe). Niedriger Wert ist normal, weil Mohs typisch erst
+    nach Mineral-Bestimmung gepflegt wird."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qm.sqlite3")
+    # 5 Objekte: drei mit mindestens einer Haerte-Grenze (60%), zwei ohne.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 7.0, 7.0),     # beide gesetzt → zaehlt
+            ("OBJ_0002", 5.0, None),    # nur min → zaehlt
+            ("OBJ_0003", None, 4.0),    # nur max → zaehlt
+            ("OBJ_0004", None, None),   # nichts → zaehlt nicht
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_mohs == 3
+    assert st.quote_mit_mohs_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_mohs"] == 3
+    assert d["quote_mit_mohs_prozent"] == 60.0
     c.close()
 
 
