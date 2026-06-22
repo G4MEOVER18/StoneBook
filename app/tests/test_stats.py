@@ -1304,6 +1304,57 @@ def test_erstellt_am_spanne_leer(tmp_path):
     c.close()
 
 
+def test_geaendert_am_spanne_aus_seed_db(tmp_path):
+    """frueheste/spaeteste = MIN/MAX gueltiger geaendert_am-Werte.
+
+    Vervollstaendigt das Zeit-Spannen-Trio (Fund / Erfassung / Aenderung) auf
+    der letzten-Aenderung-Achse. Minimum verraet das aelteste Bestand-Datum
+    (nie-aktualisierte Alt-Eintraege bleiben mit ihrem urspruenglichen geaendert_am
+    sichtbar), Maximum die letzte Datenpflege-Aktivitaet im Gesamtbestand.
+    Voller Zeitstempel inkl. HH:MM:SS wird durchgereicht; kaputte/leere Stempel
+    werden uebergangen (spiegelt das _funddatum_spanne/_erstellt_am_spanne-
+    Verhalten).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "spanne_geaendert.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-08-20 11:15:00"),
+            ("OBJ_0002", "2023-12-01 09:00:00"),  # frueheste
+            ("OBJ_0003", "2026-06-22 14:00:55"),  # spaeteste
+            ("OBJ_0004", ""),                      # ignoriert
+            ("OBJ_0005", None),                    # ignoriert
+            ("OBJ_0006", "kaputt"),                # ignoriert (kein Jahres-Praefix)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.geaendert_am_frueheste == "2023-12-01 09:00:00"
+    assert st.geaendert_am_spaeteste == "2026-06-22 14:00:55"
+    d = st.as_dict()
+    assert d["geaendert_am_frueheste"] == "2023-12-01 09:00:00"
+    assert d["geaendert_am_spaeteste"] == "2026-06-22 14:00:55"
+    c.close()
+
+
+def test_geaendert_am_spanne_leer(tmp_path):
+    """Ohne gueltige geaendert_am-Werte sind beide Grenzen None."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer_geaendert.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", ""), ("OBJ_0002", None), ("OBJ_0003", "unbekannt")],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.geaendert_am_frueheste is None
+    assert st.geaendert_am_spaeteste is None
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")

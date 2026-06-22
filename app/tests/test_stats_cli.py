@@ -2885,6 +2885,47 @@ def test_text_ausgabe_ohne_erstellt_am_keine_spanne_zeile(tmp_path, capsys):
     assert "Erfassungs-Spanne:" not in out
 
 
+def test_text_ausgabe_zeigt_geaendert_am_spanne(tmp_path, capsys):
+    """Aenderungs-Spanne erscheint, sobald gueltige geaendert_am-Stempel vorliegen.
+
+    Vervollstaendigt das Trio der Spanne-Zeilen (Funddatum / Erfassung /
+    Aenderung) in der Text-Ausgabe.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "geaendert_spanne.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2023-12-01 09:00:00"),
+            ("OBJ_0002", "2026-06-22 14:00:55"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Aenderungs-Spanne:" in out
+    assert "2023-12-01 09:00:00" in out
+    assert "2026-06-22 14:00:55" in out
+
+
+def test_text_ausgabe_ohne_geaendert_am_keine_spanne_zeile(tmp_path, capsys):
+    """Bei DB ohne gueltige geaendert_am-Stempel erscheint die Aenderungs-Spanne-Zeile gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "geaendert_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", ""), ("OBJ_0003", "kaputt")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Aenderungs-Spanne:" not in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0

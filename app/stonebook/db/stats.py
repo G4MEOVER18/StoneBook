@@ -61,6 +61,8 @@ class Statistik:
     funddatum_spaeteste: str | None = None
     erstellt_am_frueheste: str | None = None
     erstellt_am_spaeteste: str | None = None
+    geaendert_am_frueheste: str | None = None
+    geaendert_am_spaeteste: str | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -269,6 +271,8 @@ class Statistik:
             "funddatum_spaeteste": self.funddatum_spaeteste,
             "erstellt_am_frueheste": self.erstellt_am_frueheste,
             "erstellt_am_spaeteste": self.erstellt_am_spaeteste,
+            "geaendert_am_frueheste": self.geaendert_am_frueheste,
+            "geaendert_am_spaeteste": self.geaendert_am_spaeteste,
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -669,6 +673,39 @@ def _erstellt_am_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | Non
         "SELECT MIN(erstellt_am) AS lo, MAX(erstellt_am) AS hi FROM objects "
         "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
         "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
+    ).fetchone()
+    return (row["lo"], row["hi"])
+
+
+def _geaendert_am_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
+    """Liefert (fruehestes, spaetestes) ``geaendert_am`` als Zeitstempel-String.
+
+    Vervollstaendigt das Trio der Sammler-Zeit-Spannen: Fund (was wurde wann
+    gefunden), Erfassung (wann digitalisiert), Aenderung (wann zuletzt
+    angefasst). Beantwortet zwei Pflege-typische Fragen, die weder Funddatum-
+    noch Erfassungs-Spanne klar zeigt: das Minimum verraet, ob es noch nie-
+    aktualisierte Alt-Eintraege gibt (deren geaendert_am identisch zum
+    erstellt_am bleibt - oder, in der Bestaends-Sicht, das aelteste Eintrag-
+    Datum ueberhaupt). Das Maximum nennt die letzte Pflege-Aktivitaet ueber
+    den gesamten Bestand - "Wann war meine letzte Datenpflege-Sitzung?",
+    nuetzlich vor Backup-/Export-Sitzungen oder zur Diagnose einer
+    eingeschlafenen Sammlungspflege ("nichts mehr seit 6 Monaten geaendert -
+    ist die Sammlung still oder die App nicht mehr im Einsatz?").
+
+    Spiegelt _erstellt_am_spanne strukturell: MIN/MAX ueber objects.geaendert_am
+    mit dem identischen Praefix-Filter (substr 1..4 GLOB Ziffern), weil
+    geaendert_am wie erstellt_am im Insert-/Update-Pfad von repository._now()
+    im sortierbaren Format YYYY-MM-DD HH:MM:SS gesetzt wird. Voller Zeitstempel
+    inkl. HH:MM:SS bleibt erhalten. Komplementaer zu geaendert_vor_erstellt
+    und future_geaendert_am in integrity.py (Konsistenz-Checks): hier die
+    aeusseren Grenzen, dort die semantische Validitaet pro Eintrag. Leere
+    DB → (None, None), spiegelt das _funddatum_spanne-/_erstellt_am_spanne-
+    Verhalten.
+    """
+    row = conn.execute(
+        "SELECT MIN(geaendert_am) AS lo, MAX(geaendert_am) AS hi FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
     ).fetchone()
     return (row["lo"], row["hi"])
 
@@ -1184,6 +1221,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # HH:MM:SS bleibt erhalten, weil erstellt_am im Insert-Pfad mit Sekunden-
     # Aufloesung gesetzt wird (anders als Funddatum mit reiner Tag-Aufloesung).
     st.erstellt_am_frueheste, st.erstellt_am_spaeteste = _erstellt_am_spanne(conn)
+    # Aenderungs-Spanne: vervollstaendigt das Trio der Zeit-Spannen (Fund /
+    # Erfassung / Aenderung). Minimum verraet nie-aktualisierte Alt-Eintraege
+    # bzw. das aelteste Bestand-Datum, Maximum nennt die letzte Datenpflege-
+    # Aktivitaet ueber den gesamten Bestand. Voller Zeitstempel inkl. HH:MM:SS
+    # bleibt erhalten, weil geaendert_am wie erstellt_am im repository._now()-
+    # Pfad mit Sekunden-Aufloesung gesetzt wird.
+    st.geaendert_am_frueheste, st.geaendert_am_spaeteste = _geaendert_am_spanne(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

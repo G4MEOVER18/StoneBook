@@ -72,6 +72,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Erfassungs-Spanne:     {st.erstellt_am_frueheste or '?'} "
             f".. {st.erstellt_am_spaeteste or '?'}")
+    if st.geaendert_am_frueheste or st.geaendert_am_spaeteste:
+        # Aenderungs-Spanne: vervollstaendigt das Zeit-Spannen-Trio (Fund /
+        # Erfassung / Aenderung). Minimum verraet nie-aktualisierte Alt-Eintraege,
+        # Maximum nennt die letzte Datenpflege-Aktivitaet im gesamten Bestand
+        # ("Wann war meine letzte Pflege-Sitzung?"). Voller Zeitstempel wie
+        # bei der Erfassungs-Spanne (Sekunden-Aufloesung im _now()-Format).
+        lines.append(
+            f"Aenderungs-Spanne:     {st.geaendert_am_frueheste or '?'} "
+            f".. {st.geaendert_am_spaeteste or '?'}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
