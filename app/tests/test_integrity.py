@@ -491,6 +491,75 @@ def test_unknown_kategorie_in_as_dict_serialisierbar(tmp_path):
     c.close()
 
 
+def test_unknown_kristallsystem_wird_erkannt(tmp_path):
+    """Kristallsystem ausserhalb des Feldwoerterbuch-Enums wird gemeldet
+    (obj_id, kristallsystem). Spiegelt unknown_kategorie auf die
+    kristallographische Symmetrie-Achse: Schema hat keine CHECK-Klausel auf
+    Kristallsystem, daher koennen Tippfehler ("Trigonal" mit Grossbuchstabe),
+    Synonyme ("rhomboedrisch" als alternative Schreibweise zu "trigonal"),
+    veraltete Schreibweisen ("rhombisch" statt "orthorhombisch") oder frei
+    erfundene Werte ("hexagonal-isomorph") durch direkten DB-Zugriff oder
+    fehlerhaften CSV-/JSON-Import einfliessen, ohne dass die Anwendung sie
+    bemerkt. Leerstring/NULL bleiben legitim als "noch nicht eingeordnet"
+    (der Normalfall vor mineralogischer Bestimmung)."""
+    c = open_db(tmp_path / "uks.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "trigonal"),                # ok (Feldwoerterbuch-Form)
+            ("OBJ_0002", "Trigonal"),                # Case-Tippfehler
+            ("OBJ_0003", "kubisch"),                 # ok
+            ("OBJ_0004", "rhomboedrisch"),           # Synonym, nicht im Enum
+            ("OBJ_0005", "rhombisch"),               # veraltet (statt orthorhombisch)
+            ("OBJ_0006", "amorph"),                  # ok (Sonder-Klasse)
+            ("OBJ_0007", "hexagonal-isomorph"),      # frei erfunden
+            # Trailing-Klammer-Annotation: Basis-Symmetrie bleibt im Enum-Wert,
+            # die Sub-Klassifizierung in Klammern wird vor dem Vergleich
+            # gestrippt - eine mineralogisch ueblicher Notations-Stil.
+            ("OBJ_0008", "trigonal (mikrokristallin)"),  # ok (Trailing-Annotation)
+            ("OBJ_0009", "kubisch [grobkristallin]"),    # ok (eckige Klammern)
+            ("OBJ_0010", "hexagonal {saeulenfoermig}"),  # ok (geschwungene Klammern)
+            ("OBJ_0011", "Trigonal (mikrokristallin)"),  # Case-Tippfehler trotz Annotation
+            ("OBJ_0012", None),                      # legitim (noch nicht eingeordnet)
+            ("OBJ_0013", ""),                        # legitim (Default-Leerstring)
+            ("OBJ_0014", "   "),                     # legitim (Whitespace = leer)
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    # Sortiert nach obj_id; NULL/Leerstring/Whitespace und Werte mit gueltigem
+    # Enum-Kern (mit oder ohne Klammer-Annotation) tauchen nicht auf.
+    assert rep.unknown_kristallsystem == [
+        ("OBJ_0002", "Trigonal"),
+        ("OBJ_0004", "rhomboedrisch"),
+        ("OBJ_0005", "rhombisch"),
+        ("OBJ_0007", "hexagonal-isomorph"),
+        ("OBJ_0011", "Trigonal (mikrokristallin)"),
+    ]
+    assert not rep.is_clean
+    c.close()
+
+
+def test_unknown_kristallsystem_migrierte_db_clean(migrated_conn):
+    """Migrierte Beispiel-DB nutzt ausschliesslich gueltige Kristallsystem-Werte
+    (oder NULL/leer als "noch nicht eingeordnet")."""
+    rep = check_integrity(migrated_conn)
+    assert rep.unknown_kristallsystem == []
+
+
+def test_unknown_kristallsystem_in_as_dict_serialisierbar(tmp_path):
+    """as_dict liefert Tuples als Listen, damit das JSON-Format roundtrip-fest ist."""
+    import json
+    c = open_db(tmp_path / "aks.sqlite3")
+    c.execute("INSERT INTO objects (obj_id, Kristallsystem) VALUES (?, ?)",
+              ("OBJ_0001", "Trigonal"))
+    c.commit()
+    d = check_integrity(c).as_dict()
+    assert d["unknown_kristallsystem"] == [["OBJ_0001", "Trigonal"]]
+    json.dumps(d, ensure_ascii=False)  # darf nicht crashen
+    c.close()
+
+
 def test_geaendert_vor_erstellt_wird_erkannt(tmp_path):
     """geaendert_am < erstellt_am ist logisch unmoeglich und sollte gemeldet werden.
 

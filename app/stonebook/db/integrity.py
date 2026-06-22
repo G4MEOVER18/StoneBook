@@ -2,12 +2,28 @@
 from __future__ import annotations
 
 import datetime
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from stonebook.fields import DATA_FIELDS, FIELD_BY_NAME, IMAGE_CATEGORIES
 from stonebook.migration.validators import parse_iso_date
+
+# Trailing parenthesized Annotation ("(mikrokristallin)", "(rhomboedrisch)",
+# "[saeulenfoermig]"). In mineralogischen Notizen sehr verbreitet als
+# Sub-Klassifizierungs-Suffix nach dem Enum-Wert: Kristallgroesse
+# ("(mikrokristallin)"), Kristallhabitus ("(saeulenfoermig)") oder alternative
+# Schreibweise ("(rhomboedrisch)" zu trigonal). Die Annotation aendert die
+# Basis-Klassifikation nicht und gehoert in den Freitext (notizen), wird aber
+# vom Sammler oft direkt am Enum-Wert mitgefuehrt. Strip + Re-Vergleich gegen
+# den Enum spiegelt das parse_iso_date-Konzept (Klammer-Suffix wird vor dem
+# Re-Parsing entfernt). Single-Level (keine geschachtelten Klammern), drei
+# Klammer-Varianten (rund/eckig/geschwungen) symmetrisch zu _TRAILING_PAREN_
+# REMARK in validators.py.
+_TRAILING_ENUM_ANNOTATION = re.compile(
+    r"\s*[\(\[\{][^\(\)\[\]\{\}]*[\)\]\}]\s*$"
+)
 
 # Status-Werte, die das Schema (status TEXT NOT NULL DEFAULT 'platzhalter')
 # zulaesst, aber die Anwendungslogik kennt nur diese drei. Spiegelt
@@ -23,6 +39,21 @@ _VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert
 # verfaelschen wuerden - die Single-Source-of-Truth bleibt im Feldwoerterbuch.
 _VALID_KATEGORIEN: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Kategorie"].enum_values if v
+)
+# Gueltige Kristallsystem-Werte aus dem Feldwoerterbuch (ohne Default-Leerstring,
+# der "noch nicht eingeordnet" bedeutet und legitim ist). Spiegelt
+# _VALID_KATEGORIEN auf die kristallographische Symmetrie-Achse: das Schema
+# hat keine CHECK-Klausel auf Kristallsystem, daher koennen invalide Werte
+# durch direkte DB-Editierung, fehlerhafte CSV-/JSON-Imports (load_standard
+# kopiert Kristallsystem ueber _convert_standard ohne Enum-Validierung) oder
+# Migration aus inkonsistenten Quell-CSVs entstehen. Aus FIELD_BY_NAME
+# abgeleitet statt als Literal, weil die Liste sieben Standard-Symmetrie-
+# Klassen plus die amorphe "Sonder"-Klasse umfasst (kubisch/tetragonal/
+# hexagonal/trigonal/orthorhombisch/monoklin/triklin/amorph) und re-typische
+# Tippfehler hier still Daten verfaelschen wuerden - die Single-Source-of-
+# Truth bleibt im Feldwoerterbuch.
+_VALID_KRISTALLSYSTEME: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Kristallsystem"].enum_values if v
 )
 
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
@@ -95,6 +126,7 @@ class IntegrityReport:
     platzhalter_mit_inhalt: list[str] = field(default_factory=list)  # obj_id mit status='platzhalter', aber Daten oder Bilder vorhanden
     unknown_status: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, status) - status nicht in {aktiv,platzhalter,archiviert}
     unknown_kategorie: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kategorie) - Kategorie nicht im Feldwoerterbuch-Enum
+    unknown_kristallsystem: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kristallsystem) - Kristallsystem nicht im Feldwoerterbuch-Enum
     geaendert_vor_erstellt: list[tuple[str, str, str]] = field(default_factory=list)  # (obj_id, erstellt_am, geaendert_am) - logisch unmoeglich
 
     @property
@@ -113,6 +145,7 @@ class IntegrityReport:
                     or self.platzhalter_mit_inhalt
                     or self.unknown_status
                     or self.unknown_kategorie
+                    or self.unknown_kristallsystem
                     or self.geaendert_vor_erstellt)
 
     def as_dict(self) -> dict:
@@ -135,6 +168,7 @@ class IntegrityReport:
             "platzhalter_mit_inhalt": list(self.platzhalter_mit_inhalt),
             "unknown_status": [list(t) for t in self.unknown_status],
             "unknown_kategorie": [list(t) for t in self.unknown_kategorie],
+            "unknown_kristallsystem": [list(t) for t in self.unknown_kristallsystem],
             "geaendert_vor_erstellt": [list(t) for t in self.geaendert_vor_erstellt],
             "is_clean": self.is_clean,
         }
@@ -248,6 +282,42 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
             "ORDER BY obj_id"
         ).fetchall()
         if r["Kategorie"] not in _VALID_KATEGORIEN
+    ]
+
+    # Kristallsystem-Validierung: spiegelt unknown_kategorie auf die
+    # kristallographische Symmetrie-Achse. Das Schema hat keine CHECK-Klausel
+    # auf Kristallsystem; load_standard / _convert_standard kopiert das Feld
+    # ohne Enum-Validierung, sodass Tippfehler ("Trigonal" mit Grossbuchstabe
+    # vs. "trigonal" im Feldwoerterbuch), Synonyme ("rhomboedrisch" als
+    # alternative Schreibweise zu "trigonal"), Falschwerte ("Tetragonal-Spinell"
+    # mit redundanter Sub-Klassifizierung) oder veraltete Schreibweisen
+    # ("rhombisch" statt "orthorhombisch") still durch CSV-/JSON-Imports
+    # oder direkte DB-Editierung einfliessen koennen. Komplementaer zu
+    # unknown_kategorie (Objekt-Kategorie) und unknown_status (Lifecycle):
+    # hier die mineralogisch-strukturelle Achse. Leerstring/NULL bleibt
+    # legitim als "noch nicht eingeordnet" und wird uebergangen, damit der
+    # Pflege-Restbestand (Stuecke ohne Symmetrietyp-Einordnung, der Normalfall
+    # vor mineralogischer Bestimmung) keine falsch-positiven erzeugt;
+    # tatsaechliche Tippfehler werden so isoliert sichtbar. Format spiegelt
+    # unknown_kategorie / unknown_status: (obj_id, kristallsystem)-Tuples,
+    # damit sowohl die betroffene ID als auch der konkrete Falschwert direkt
+    # im Report stehen - ohne zusaetzliche SQL-Abfrage zur Diagnose.
+    # Trailing-Klammer-Annotationen (Kristallgroesse "(mikrokristallin)",
+    # alternative Schreibweise "(rhomboedrisch)", Habitus "(saeulenfoermig)")
+    # werden vor dem Enum-Vergleich gestrippt - die Annotation aendert die
+    # Basis-Symmetrie nicht und ist in mineralogischen Notizen ueblich;
+    # spiegelt das parse_iso_date-Konzept (Klammer-Suffix wird vor Re-Parsing
+    # entfernt). "trigonal (mikrokristallin)" passt dadurch gegen den
+    # Enum-Wert "trigonal" und gilt als gueltig.
+    rep.unknown_kristallsystem = [
+        (r["obj_id"], r["Kristallsystem"])
+        for r in conn.execute(
+            "SELECT obj_id, Kristallsystem FROM objects "
+            "WHERE Kristallsystem IS NOT NULL AND TRIM(Kristallsystem) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        if _TRAILING_ENUM_ANNOTATION.sub("", r["Kristallsystem"]).strip()
+        not in _VALID_KRISTALLSYSTEME
     ]
 
     for row in conn.execute(
