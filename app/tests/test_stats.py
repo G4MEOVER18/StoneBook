@@ -2024,6 +2024,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_ki_analyse_prozent is None
     assert st.quote_mit_kategorie_prozent is None
     assert st.quote_mit_mineral_prozent is None
+    assert st.quote_mit_varietaet_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
@@ -2032,6 +2033,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_ki_analyse_prozent"] is None
     assert d["quote_mit_kategorie_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
+    assert d["quote_mit_varietaet_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
     c.close()
@@ -2127,6 +2129,40 @@ def test_quote_mit_mineral_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_mineral"] == 2
     assert d["quote_mit_mineral_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_varietaet_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Varietaet (mineralogische Sub-Klassifizierung) spiegelt
+    die Mineral_Primaer-Quote auf die feinere Sub-Achse: Anteil der Objekte mit
+    dokumentierter Varietaet, gerechnet ueber objekte_total. Whitespace/NULL
+    zaehlt wie leer (spiegelt die has_varietaet-Filter-Konvention). Komplementaer
+    zu by_varietaet, das distinkte Varietaets-Werte zaehlt (Streuung):
+    quote_mit_varietaet beziffert Coverage (Anteil-Sicht), by_varietaet die
+    Streuung ueber die Sub-Klassen. Die Differenz zu quote_mit_mineral
+    beziffert die Sub-Klassifizierungs-Luecke (Stuecke mit Familie, aber ohne
+    Auspraegung)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qv.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Varietaet (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Bergkristall"),
+            ("OBJ_0002", "Rauchquarz"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_varietaet == 2
+    assert st.quote_mit_varietaet_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_varietaet"] == 2
+    assert d["quote_mit_varietaet_prozent"] == 40.0
     c.close()
 
 

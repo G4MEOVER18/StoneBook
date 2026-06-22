@@ -24,6 +24,7 @@ class Statistik:
     objekte_mit_funddatum: int = 0
     objekte_mit_kategorie: int = 0
     objekte_mit_mineral: int = 0
+    objekte_mit_varietaet: int = 0
     objekte_mit_fundort: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -174,6 +175,25 @@ class Statistik:
         return self._quote(self.objekte_mit_mineral)
 
     @property
+    def quote_mit_varietaet_prozent(self) -> float | None:
+        # Coverage-Quote fuer Varietaet (mineralogische Sub-Klassifizierung)
+        # symmetrisch zu quote_mit_mineral_prozent. Varietaet ist die feinere
+        # Sub-Achse unter Mineral_Primaer (Bergkristall/Milchquarz/Rauchquarz
+        # innerhalb der Quarz-Familie); Mineral_Primaer beantwortet "welche
+        # Mineral-Familie", Varietaet "welche Auspraegung in der Familie".
+        # Komplementaer zu by_varietaet (Streuung-Sicht ueber die Varietaeten)
+        # und has_varietaet (Listen-Filter): hier die Coverage-Sicht
+        # ("welcher Anteil der Sammlung ist auf der feineren Sub-Achse
+        # bestimmt?"). Niedriger Wert ist normal - Varietaet wird typisch erst
+        # nach Mineral_Primaer-Bestimmung gepflegt, viele Stuecke bleiben auf
+        # der Mineral-Familie stehen ohne weitere Sub-Klassifizierung. Die
+        # Differenz quote_mit_mineral_prozent - quote_mit_varietaet_prozent
+        # beziffert die Sub-Klassifizierungs-Luecke (Stuecke mit Familie, aber
+        # ohne Auspraegung). Whitespace zaehlt wie leer (spiegelt
+        # has_varietaet-Filter-Konvention).
+        return self._quote(self.objekte_mit_varietaet)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -234,6 +254,7 @@ class Statistik:
             "objekte_mit_funddatum": self.objekte_mit_funddatum,
             "objekte_mit_kategorie": self.objekte_mit_kategorie,
             "objekte_mit_mineral": self.objekte_mit_mineral,
+            "objekte_mit_varietaet": self.objekte_mit_varietaet,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -450,6 +471,7 @@ class Statistik:
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
+            "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -1274,6 +1296,21 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_mineral = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Mineral_Primaer IS NOT NULL AND TRIM(Mineral_Primaer) != ''"
+    ).fetchone()[0]
+    # objekte_mit_varietaet: Anzahl Objekte mit dokumentierter Varietaet (Sub-
+    # Klassifizierung unter dem Hauptmineral). Spiegelt objekte_mit_mineral auf
+    # die feinere Sub-Achse - Mineral_Primaer beantwortet "welche Mineral-Familie?"
+    # (Quarz/Calcit/Pyrit), Varietaet "welche Auspraegung in der Familie?"
+    # (Bergkristall/Milchquarz/Rauchquarz). Niedriger Wert ist normal - Varietaet
+    # wird typisch erst nach der Familien-Bestimmung gepflegt, viele Stuecke
+    # bleiben auf Mineral_Primaer stehen ohne weitere Sub-Klassifizierung.
+    # Whitespace zaehlt wie leer, spiegelt has_varietaet. by_varietaet zaehlt
+    # distinkte Varietaets-Werte (Streuung); diese Kennzahl zaehlt Objekte mit
+    # irgendeiner Varietaet (Coverage) - komplementaer, beide gemeinsam geben
+    # Auskunft ueber Vollstaendigkeit vs. Streuung der Sub-Klassifizierung.
+    st.objekte_mit_varietaet = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Varietaet IS NOT NULL AND TRIM(Varietaet) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

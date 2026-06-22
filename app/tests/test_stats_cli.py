@@ -309,6 +309,31 @@ def test_text_ausgabe_zeigt_mineral_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_varietaet_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Varietaet-Quote direkt unter Mineral_Primaer auf.
+    Spiegelt die mineralogische Identifikations-Achse auf die feinere Sub-
+    Klassifizierung (Bergkristall/Milchquarz/Rauchquarz innerhalb der Quarz-
+    Familie) - symmetrische CLI-Sichtbarkeit fuer das Datenpflege-Dashboard,
+    weil die Differenz zur Mineral_Primaer-Quote die Sub-Klassifizierungs-
+    Luecke beziffert (Stuecke mit Familie, aber ohne Auspraegung)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "var.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Varietaet) VALUES (?,?)",
+        [("OBJ_0001", "Bergkristall"), ("OBJ_0002", "Rauchquarz"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Varietaet:" in out
+    # 2 von 4 Objekten haben dokumentierte Varietaet → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

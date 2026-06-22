@@ -107,6 +107,11 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # geografische Spezifizierung wenig Sinn fuer Inventar-Sortierung.
         lines.append(f"  Kategorie:           {st.quote_mit_kategorie_prozent:.1f} %")
         lines.append(f"  Mineral_Primaer:     {st.quote_mit_mineral_prozent:.1f} %")
+        # Varietaet (mineralogische Sub-Klassifizierung) direkt unter
+        # Mineral_Primaer, weil sie die feinere Sub-Achse abdeckt - die Differenz
+        # beider Quoten beziffert die Sub-Klassifizierungs-Luecke (Stuecke mit
+        # Familie, aber ohne Auspraegung).
+        lines.append(f"  Varietaet:           {st.quote_mit_varietaet_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
         # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt
