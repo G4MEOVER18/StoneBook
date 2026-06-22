@@ -25,6 +25,7 @@ class Statistik:
     objekte_mit_kategorie: int = 0
     objekte_mit_mineral: int = 0
     objekte_mit_varietaet: int = 0
+    objekte_mit_gesteinsart: int = 0
     objekte_mit_fundort: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -194,6 +195,30 @@ class Statistik:
         return self._quote(self.objekte_mit_varietaet)
 
     @property
+    def quote_mit_gesteinsart_prozent(self) -> float | None:
+        # Coverage-Quote fuer Gesteinsart (petrologische Gesteins-Einordnung)
+        # symmetrisch zu quote_mit_mineral_prozent / quote_mit_varietaet_prozent.
+        # Mineral_Primaer beantwortet "welche Mineral-Familie?" (mineralogische
+        # Achse), Varietaet "welche Auspraegung in der Familie?" (mineralogische
+        # Sub-Achse) - Gesteinsart "in welcher Gesteins-Einbettung?" (petrologische
+        # Achse). Granit/Gneis/Basalt/Sandstein gruppieren Stuecke nach
+        # geologischem Zusammenhang, der weder durch Mineral_Primaer (mineralogisch)
+        # noch durch Kategorie (Form/Aufbewahrung) abgedeckt ist - ein Quarz-Stueck
+        # kann aus Pegmatit oder Hydrothermal-Ader stammen, der mineralogische
+        # Befund bleibt gleich aber die Gesteinsart sagt etwas anderes ueber den
+        # geologischen Bildungs-Kontext aus. Komplementaer zu by_gesteinsart
+        # (Streuung-Sicht ueber die Gesteinsarten) und has_gesteinsart/
+        # gesteinsart_in (Listen-Filter): hier die Coverage-Sicht
+        # ("welcher Anteil der Sammlung ist petrologisch eingeordnet?").
+        # Niedriger Wert ist normal - Gesteinsart wird typisch erst nach
+        # Mineral_Primaer-Bestimmung gepflegt (wenn ueberhaupt), viele
+        # mineralogisch klare Stuecke bleiben ohne petrologische Einordnung
+        # stehen (besonders bei Einzel-Kristallen, fuer die die Gesteins-
+        # Einbettung beim Sammeln nicht dokumentiert wurde). Whitespace zaehlt
+        # wie leer (spiegelt has_gesteinsart-Filter-Konvention).
+        return self._quote(self.objekte_mit_gesteinsart)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -255,6 +280,7 @@ class Statistik:
             "objekte_mit_kategorie": self.objekte_mit_kategorie,
             "objekte_mit_mineral": self.objekte_mit_mineral,
             "objekte_mit_varietaet": self.objekte_mit_varietaet,
+            "objekte_mit_gesteinsart": self.objekte_mit_gesteinsart,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -472,6 +498,7 @@ class Statistik:
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
+            "quote_mit_gesteinsart_prozent": _round_or_none(self.quote_mit_gesteinsart_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -1311,6 +1338,25 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_varietaet = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Varietaet IS NOT NULL AND TRIM(Varietaet) != ''"
+    ).fetchone()[0]
+    # objekte_mit_gesteinsart: Anzahl Objekte mit dokumentierter Gesteinsart
+    # (petrologische Einordnung). Spiegelt objekte_mit_mineral / objekte_mit_
+    # varietaet auf die petrologische Achse - Mineral_Primaer beantwortet
+    # "welche Mineral-Familie?" (Quarz/Calcit/Pyrit), Varietaet "welche
+    # Auspraegung in der Familie?" (Bergkristall/Milchquarz), Gesteinsart
+    # "in welcher Gesteins-Einbettung?" (Granit/Gneis/Basalt/Sandstein).
+    # Niedriger Wert ist normal - Gesteinsart wird typisch erst nach Mineral-
+    # Bestimmung gepflegt (wenn ueberhaupt), viele mineralogisch klare Stuecke
+    # bleiben ohne petrologische Einordnung stehen (besonders bei Einzel-
+    # Kristallen, fuer die die Gesteins-Einbettung beim Sammeln nicht
+    # dokumentiert wurde). Whitespace zaehlt wie leer, spiegelt has_gesteinsart.
+    # by_gesteinsart zaehlt distinkte Gesteinsarten-Werte (Streuung); diese
+    # Kennzahl zaehlt Objekte mit irgendeiner Gesteinsart (Coverage) - komple-
+    # mentaer, beide gemeinsam geben Auskunft ueber Vollstaendigkeit vs.
+    # Streuung der petrologischen Einordnung.
+    st.objekte_mit_gesteinsart = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Gesteinsart IS NOT NULL AND TRIM(Gesteinsart) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

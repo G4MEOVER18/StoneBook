@@ -112,6 +112,11 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # beider Quoten beziffert die Sub-Klassifizierungs-Luecke (Stuecke mit
         # Familie, aber ohne Auspraegung).
         lines.append(f"  Varietaet:           {st.quote_mit_varietaet_prozent:.1f} %")
+        # Gesteinsart (petrologische Einordnung) direkt unter Varietaet, weil sie
+        # die petrologische Achse spiegelt - parallel zur mineralogischen Sub-
+        # Achse, bevor die geografische Provenienz-Achse (Fundort) drankommt.
+        lines.append(
+            f"  Gesteinsart:         {st.quote_mit_gesteinsart_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Merge-Quote: Anteil der Kanon-Objekte, die aus Duplikat-Merges
         # hervorgegangen sind (Provenienz-Coverage). aliase_total oben zeigt

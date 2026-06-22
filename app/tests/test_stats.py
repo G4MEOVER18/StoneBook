@@ -2025,6 +2025,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_kategorie_prozent is None
     assert st.quote_mit_mineral_prozent is None
     assert st.quote_mit_varietaet_prozent is None
+    assert st.quote_mit_gesteinsart_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_alias_prozent is None
     d = st.as_dict()
@@ -2034,6 +2035,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_kategorie_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
     assert d["quote_mit_varietaet_prozent"] is None
+    assert d["quote_mit_gesteinsart_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
     c.close()
@@ -2163,6 +2165,40 @@ def test_quote_mit_varietaet_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_varietaet"] == 2
     assert d["quote_mit_varietaet_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_gesteinsart_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Gesteinsart (petrologische Einordnung) spiegelt die
+    Mineral_Primaer-/Varietaet-Quoten auf die petrologische Achse: Anteil der
+    Objekte mit dokumentierter Gesteinsart, gerechnet ueber objekte_total.
+    Mineral_Primaer beantwortet "welche Mineral-Familie?" (mineralogisch),
+    Varietaet "welche Auspraegung?" (mineralogische Sub-Achse), Gesteinsart
+    "in welcher Gesteins-Einbettung?" (Granit/Gneis/Basalt/Sandstein -
+    geologischer Bildungs-Kontext). Whitespace/NULL zaehlt wie leer (spiegelt
+    has_gesteinsart-Filter-Konvention). Komplementaer zu by_gesteinsart, das
+    distinkte Werte zaehlt (Streuung): quote_mit_gesteinsart beziffert Coverage."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qg.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Gesteinsart (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Granit"),
+            ("OBJ_0002", "Gneis"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_gesteinsart == 2
+    assert st.quote_mit_gesteinsart_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_gesteinsart"] == 2
+    assert d["quote_mit_gesteinsart_prozent"] == 40.0
     c.close()
 
 

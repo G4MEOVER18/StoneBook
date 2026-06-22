@@ -334,6 +334,33 @@ def test_text_ausgabe_zeigt_varietaet_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_gesteinsart_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Gesteinsart-Quote direkt unter Varietaet auf.
+    Petrologische Achse (Granit/Gneis/Basalt/Sandstein) symmetrisch zur
+    mineralogischen Achse (Mineral_Primaer/Varietaet) - die petrologische
+    Einordnung sagt etwas anderes ueber das Stueck aus als die mineralogische
+    Familie (ein Quarz-Stueck kann aus Pegmatit oder Hydrothermal-Ader stammen,
+    der mineralogische Befund bleibt gleich aber die Gesteinsart sagt etwas
+    anderes ueber den geologischen Bildungs-Kontext aus). Symmetrische CLI-
+    Sichtbarkeit fuer das Datenpflege-Dashboard."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "ges.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gesteinsart) VALUES (?,?)",
+        [("OBJ_0001", "Granit"), ("OBJ_0002", "Gneis"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Gesteinsart:" in out
+    # 2 von 4 Objekten haben dokumentierte Gesteinsart → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die
