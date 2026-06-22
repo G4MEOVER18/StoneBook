@@ -2021,6 +2021,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_funddatum_prozent is None
     assert st.quote_mit_wert_prozent is None
     assert st.quote_mit_gewicht_prozent is None
+    assert st.quote_mit_dimensionen_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
     assert st.quote_mit_kategorie_prozent is None
     assert st.quote_mit_mineral_prozent is None
@@ -2031,6 +2032,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     d = st.as_dict()
     assert d["quote_mit_bildern_prozent"] is None
     assert d["quote_mit_gewicht_prozent"] is None
+    assert d["quote_mit_dimensionen_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
     assert d["quote_mit_kategorie_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
@@ -2072,6 +2074,40 @@ def test_quote_mit_gewicht_und_ki_analyse_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["quote_mit_gewicht_prozent"] == 50.0
     assert d["quote_mit_ki_analyse_prozent"] == 25.0
+    c.close()
+
+
+def test_quote_mit_dimensionen_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer geometrische Dimensionen (Laenge/Breite/Hoehe in mm)
+    spiegelt die Gewicht-Quote auf die geometrische Mess-Achse: Anteil der
+    Objekte mit mindestens einer dokumentierten Achse, gerechnet ueber
+    objekte_total. Spiegelt has_dimensionen-Filter-Konvention exakt: in der
+    Praxis wird oft nur die laengste Achse erfasst (Vitrinen-Index), Breite/
+    Hoehe erst beim Praeparieren nachgereicht - daher disjunktiv (mindestens
+    eine Achse genuegt). Die Differenz quote_mit_gewicht - quote_mit_dimensionen
+    beziffert die Vermessungs-Luecke (gewogen, aber nicht vermessen)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qd.sqlite3")
+    # 5 Objekte: drei mit mindestens einer Dimension (60%), zwei ohne (alle
+    # drei NULL). Spiegelt die has_dimensionen-Konvention: eine Achse genuegt.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 50.0, 30.0, 20.0),  # alle drei → zaehlt
+            ("OBJ_0002", 80.0, None, None),  # nur Laenge → zaehlt
+            ("OBJ_0003", None, None, 5.0),   # nur Hoehe → zaehlt
+            ("OBJ_0004", None, None, None),  # nichts → zaehlt nicht
+            ("OBJ_0005", None, None, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_dimensionen == 3
+    assert st.quote_mit_dimensionen_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_dimensionen"] == 3
+    assert d["quote_mit_dimensionen_prozent"] == 60.0
     c.close()
 
 

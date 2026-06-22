@@ -97,6 +97,12 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(f"  Funddatum:           {st.quote_mit_funddatum_prozent:.1f} %")
         lines.append(f"  Wertschaetzung:      {st.quote_mit_wert_prozent:.1f} %")
         lines.append(f"  Gewicht:             {st.quote_mit_gewicht_prozent:.1f} %")
+        # Dimensionen (Laenge/Breite/Hoehe) direkt unter Gewicht, weil sie
+        # die geometrische Mess-Achse spiegelt - parallel zur Masse-Achse
+        # auf der physikalischen Bestands-Kennzahl. Die Differenz beider Quoten
+        # beziffert die Vermessungs-Luecke (gewogen aber nicht vermessen).
+        lines.append(
+            f"  Dimensionen:         {st.quote_mit_dimensionen_prozent:.1f} %")
         lines.append(f"  KI-Analyse:          {st.quote_mit_ki_analyse_prozent:.1f} %")
         lines.append(
             f"  KI-Analyse (ueb.):   "

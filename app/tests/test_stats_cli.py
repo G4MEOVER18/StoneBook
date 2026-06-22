@@ -265,6 +265,32 @@ def test_text_ausgabe_zeigt_gewicht_und_ki_quoten(tmp_path, capsys):
     assert "KI-Analyse:" in out
 
 
+def test_text_ausgabe_zeigt_dimensionen_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Dimensionen-Quote direkt unter Gewicht auf.
+    Geometrische Mess-Achse symmetrisch zur Masse-Achse - die Differenz beider
+    Quoten beziffert die Vermessungs-Luecke (gewogen aber nicht vermessen).
+    Spiegelt has_dimensionen-Filter-Konvention: eine Achse genuegt fuer Coverage."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dim.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?,?,?,?)",
+        [("OBJ_0001", 50.0, 30.0, 20.0),
+         ("OBJ_0002", 80.0, None, None),  # nur Laenge → zaehlt
+         ("OBJ_0003", None, None, None),
+         ("OBJ_0004", None, None, None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Dimensionen:" in out
+    # 2 von 4 Objekten haben dokumentierte Dimensionen → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_kategorie_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Kategorie-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI auf.
 

@@ -126,6 +126,7 @@ class Statistik:
     gewicht_median_g: float = 0.0
     gewicht_max_g: float = 0.0
     objekte_mit_gewicht: int = 0
+    objekte_mit_dimensionen: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
@@ -150,6 +151,28 @@ class Statistik:
     @property
     def quote_mit_gewicht_prozent(self) -> float | None:
         return self._quote(self.objekte_mit_gewicht)
+
+    @property
+    def quote_mit_dimensionen_prozent(self) -> float | None:
+        # Coverage-Quote fuer geometrische Dimensionen (Laenge_mm / Breite_mm /
+        # Hoehe_mm) symmetrisch zu quote_mit_gewicht_prozent auf die geometrische
+        # Mess-Achse. Spiegelt die has_dimensionen-Filter-Konvention: ein Objekt
+        # zaehlt als dimensioniert, sobald mindestens eine der drei Achsen
+        # gemessen ist - in der Praxis wird oft nur die laengste Achse erfasst
+        # und die anderen nachgereicht, oder es liegt nur eine Schiebelehre-
+        # Messung als Pseudo-Volumen-Achse vor. Eine konjunktive Definition
+        # (alle drei gesetzt) waere strenger, wuerde aber den Pflege-Workflow
+        # missrepraesentieren - Sammler messen typisch zuerst die laengste
+        # Achse als Vitrinen-/Schubladen-Index und ergaenzen Breite/Hoehe
+        # spaeter, wenn das Stueck praepariert wird. Komplementaer zu
+        # quote_mit_gewicht_prozent (Masse als physikalische Mess-Achse): hier
+        # die geometrische Achse. Niedriger Wert ist normal - nicht jedes
+        # Stueck wird vermessen (besonders kleine Mineral-Koerner und lose
+        # Geroell-Sammlungen), waehrend Gewicht haeufiger erfasst wird (eine
+        # Waage liegt eher griffbereit als eine kalibrierte Schiebelehre).
+        # Die Differenz quote_mit_gewicht_prozent - quote_mit_dimensionen_prozent
+        # beziffert die Vermessungs-Luecke (gewogen, aber nicht vermessen).
+        return self._quote(self.objekte_mit_dimensionen)
 
     @property
     def quote_mit_ki_analyse_prozent(self) -> float | None:
@@ -481,6 +504,7 @@ class Statistik:
             "gewicht_median_g": round(self.gewicht_median_g, 2),
             "gewicht_max_g": round(self.gewicht_max_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
+            "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
             "durchschnitt_confidence_prozent": (
                 round(self.durchschnitt_confidence_prozent, 1)
                 if self.durchschnitt_confidence_prozent is not None else None
@@ -494,6 +518,7 @@ class Statistik:
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
+            "quote_mit_dimensionen_prozent": _round_or_none(self.quote_mit_dimensionen_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
@@ -1409,6 +1434,20 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "WHERE Gewicht_g IS NOT NULL AND Gewicht_g > 0 ORDER BY g"
     ).fetchall()]
     st.objekte_mit_gewicht = len(gewichte)
+    # objekte_mit_dimensionen: Anzahl Objekte mit mindestens einer der drei
+    # geometrischen Achsen (Laenge_mm / Breite_mm / Hoehe_mm) dokumentiert.
+    # Spiegelt has_dimensionen-Filter-Konvention exakt: in der Praxis wird oft
+    # nur die laengste Achse erfasst (Vitrinen-/Schubladen-Index), Breite/Hoehe
+    # erst beim Praeparieren nachgereicht - eine konjunktive Definition
+    # (alle drei) wuerde den Pflege-Workflow missrepraesentieren. Komplementaer
+    # zu objekte_mit_gewicht (Masse als physikalische Mess-Achse): hier die
+    # geometrische Mess-Achse. Die Differenz beider beziffert die Vermessungs-
+    # Luecke (gewogen aber nicht vermessen, oder vermessen aber nicht gewogen).
+    st.objekte_mit_dimensionen = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Laenge_mm IS NOT NULL OR Breite_mm IS NOT NULL "
+        "OR Hoehe_mm IS NOT NULL"
+    ).fetchone()[0]
     if gewichte:
         st.gewicht_max_g = gewichte[-1]
         st.gewicht_durchschnitt_g = sum(gewichte) / len(gewichte)
