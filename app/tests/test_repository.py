@@ -38,6 +38,58 @@ def test_sort_by_bilder_desc(repo):
     assert counts[0] >= 1
 
 
+def test_sort_by_aliase_desc(repo):
+    """Sortierung nach Alias-Zahl (Merge-Tiefe) findet die am staerksten konsolidierten
+    Kanon-Objekte - die spiegel-Sicht zu bilder (Foto-Pflege) auf die Provenienz-Achse.
+
+    aliase ist ein COUNT-Subquery auf die aliases-Tabelle; Objekte ohne Alias erhalten
+    0 (kein NULL), die Sortier-Reihenfolge ist dadurch komplett vergleichbar. Die
+    migrierte DB hat per Duplikat-Gruppen-Verfahren ~30 Merge-Gruppen, der Top-Eintrag
+    muss also mindestens einen Alias haben.
+    """
+    rows = repo.list_objects(sort_by="aliase", sort_desc=True)
+    counts = [r["aliase"] for r in rows]
+    assert counts == sorted(counts, reverse=True)
+    assert counts[0] >= 1
+
+
+def test_sort_by_aliase_asc_zero_first(tmp_path):
+    """Aufsteigend nach aliase: Objekte ohne Alias (0) zuerst, dann nach Merge-Tiefe.
+
+    Deckt die COUNT-0-Konvention ab (kein NULL): Objekte ohne Alias landen bei der
+    Aufwaerts-Sortierung am Anfang, nicht ans Ende wie bei der NULL-an-Ende-Logik
+    fuer Schema-Spalten. Tie-Break auf obj_id (lexikographisch) sichert determini-
+    stische Reihenfolge fuer Eintraege mit gleicher Merge-Tiefe.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "a.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+        "VALUES (?, ?, 'test')",
+        [
+            # OBJ_0002 hat 2 Aliase (Merge-Tiefe 2)
+            ("ALT_0002A", "OBJ_0002"),
+            ("ALT_0002B", "OBJ_0002"),
+            # OBJ_0004 hat 1 Alias (Merge-Tiefe 1)
+            ("ALT_0004A", "OBJ_0004"),
+            # OBJ_0001, OBJ_0003 haben 0 Aliase
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="aliase")
+    ids = [r["obj_id"] for r in rows]
+    counts = [r["aliase"] for r in rows]
+    assert counts == [0, 0, 1, 2]
+    # Tie-Break auf obj_id: OBJ_0001 vor OBJ_0003 (beide 0 Aliase)
+    assert ids == ["OBJ_0001", "OBJ_0003", "OBJ_0004", "OBJ_0002"]
+    c.close()
+
+
 def test_sort_invalid_column_raises(repo):
     with pytest.raises(ValueError):
         repo.list_objects(sort_by="; DROP TABLE objects --")

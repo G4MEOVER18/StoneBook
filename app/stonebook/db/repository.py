@@ -141,11 +141,25 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # by_bruch/wert_pro_bruch auf die Sortier-Achse.
     "Bruch",
     "erstellt_am", "geaendert_am",
-    "bilder", "gesamtwert_chf",
+    # Berechnete Spalten: bilder (Foto-Pflege-Sortierung), gesamtwert_chf
+    # (Wert-Sortierung ueber alle Wert-Felder zusammen), aliase (Merge-Tiefe
+    # pro Kanon-Objekt). aliase spiegelt bilder auf die Provenienz-Achse:
+    # waehrend bilder die Foto-Pflege misst (wie viele Aufnahmen pro Stueck),
+    # misst aliase die Merge-Historie (wie viele historische Doppel-IDs sind
+    # auf dieses Kanon-Objekt zusammengefuehrt). Sortier-Achse fuer die
+    # Provenienz-Pflege: "welche Objekte haben die tiefste Merge-Geschichte?"
+    # zeigt die am staerksten konsolidierten Sammlungs-Eintraege (haeufig die
+    # bekanntesten Stuecke, die in mehreren parallelen Erfassungs-Systemen
+    # auftauchten und dann zusammengelegt wurden). Spiegelt aliase_total und
+    # objekte_mit_alias / quote_mit_alias_prozent in stats.py auf die Listen-
+    # Sortier-Sicht. Objekte ohne Alias erhalten Zaehler 0 (COUNT-Subquery,
+    # kein NULL); die NULL-an-Ende-Konvention von _order_by_clause greift hier
+    # also nicht, alle Werte sind sortier-vergleichbar.
+    "bilder", "gesamtwert_chf", "aliase",
 })
 
 # Berechnete Aliase im SELECT (kein o.-Prefix beim ORDER BY).
-_COMPUTED_COLUMNS: frozenset[str] = frozenset({"bilder", "gesamtwert_chf"})
+_COMPUTED_COLUMNS: frozenset[str] = frozenset({"bilder", "gesamtwert_chf", "aliase"})
 
 
 def _now() -> str:
@@ -372,6 +386,7 @@ class ObjectRepo:
             SELECT o.obj_id, o.Name, o.Mineral_Primaer, o.Fundort, o.status,
                    o.Confidence_Prozent, o.Funddatum,
                    (SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) AS bilder,
+                   (SELECT COUNT(*) FROM aliases a WHERE a.canonical_id = o.obj_id) AS aliase,
                    {wert_sql} AS gesamtwert_chf
             FROM objects o
         """
