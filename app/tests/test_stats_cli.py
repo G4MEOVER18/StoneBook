@@ -387,6 +387,33 @@ def test_text_ausgabe_zeigt_gesteinsart_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_confidence_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Confidence-Quote direkt unter den KI-Analyse-Quoten
+    auf. Confidence ist konzeptionell verwandt (Bestimmungs-Qualitaet), aber
+    auf einer separaten Achse: KI-Analyse misst die Anwendungs-Durchdringung,
+    Confidence den quantitativen Sicherheits-Score je Stueck (handgepflegt
+    oder von der KI uebertragen). Ohne Confidence ist ein Stueck zwischen
+    'sicher' (>=75) und 'unsicher' (<25) nicht einzuordnen - die naechste
+    typische Pflege-Achse nach KI-Analyse. Symmetrische CLI-Sichtbarkeit
+    fuer das Datenpflege-Dashboard."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "conf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?,?)",
+        [("OBJ_0001", 90), ("OBJ_0002", 50),
+         ("OBJ_0003", None), ("OBJ_0004", None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Confidence:" in out
+    # 2 von 4 Objekten haben dokumentierte Confidence → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_kristallsystem_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Kristallsystem-Quote direkt unter Gesteinsart auf.
     Kristallographische Symmetrie-Achse (kubisch/tetragonal/hexagonal/trigonal/

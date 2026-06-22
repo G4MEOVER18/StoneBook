@@ -128,6 +128,7 @@ class Statistik:
     gewicht_max_g: float = 0.0
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
+    objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
@@ -178,6 +179,34 @@ class Statistik:
     @property
     def quote_mit_ki_analyse_prozent(self) -> float | None:
         return self._quote(self.objekte_mit_ki_analyse)
+
+    @property
+    def quote_mit_confidence_prozent(self) -> float | None:
+        # Coverage-Quote fuer Confidence_Prozent (Bestimmungs-Sicherheitsgrad)
+        # symmetrisch zu quote_mit_ki_analyse_prozent / quote_mit_ki_analyse_
+        # uebernommen_prozent. Spiegelt die KI-Analyse-Quoten auf die separate
+        # Confidence-Achse: KI-Analyse misst, ob ueberhaupt eine Bestimmung
+        # mit KI-Unterstuetzung gelaufen ist (Anwendungs-Durchdringung),
+        # uebernommen misst die Akzeptanz der Vorschlaege (Pflege-Akzeptanz),
+        # und Confidence misst, ob das Stueck einen quantitativen Sicherheits-
+        # Score (0-100) traegt - unabhaengig davon, ob er vom Sammler oder
+        # von der KI gesetzt wurde. Aussenkontext-bedingt orthogonal zur KI-
+        # Analyse-Achse: ein Stueck kann eine handgepflegte Confidence von
+        # 90 % tragen, ohne dass jemals eine KI-Analyse lief; umgekehrt
+        # koennen KI-Analysen ohne Confidence-Uebertragung bleiben.
+        # Komplementaer zu durchschnitt_/median_confidence_prozent (zentrale
+        # Tendenz unter den vorhandenen Werten) und confidence_buckets
+        # (Verteilung unter den vorhandenen Werten): hier die Coverage-Sicht
+        # ueber den Gesamtbestand ("welcher Anteil der Sammlung traegt
+        # ueberhaupt einen Sicherheits-Score?"), waehrend die anderen die
+        # innere Verteilung beziffern. Aus Datenpflege-Sicht ein wichtiger
+        # naechster Pflege-Indikator: Stuecke ohne Confidence sind die
+        # ueblichen Pruefkandidaten, weil sie weder als sicher (>=75) noch
+        # als unsicher (<25) markiert sind. Out-of-Range-Werte (<0 / >100)
+        # zaehlen nicht (sie werden in der Integrity separat gemeldet,
+        # spiegelt das median_confidence-Verhalten); Whitespace nicht
+        # relevant (Integer-Feld, NULL = nicht erfasst).
+        return self._quote(self.objekte_mit_confidence)
 
     @property
     def quote_mit_kategorie_prozent(self) -> float | None:
@@ -529,6 +558,7 @@ class Statistik:
             "gewicht_max_g": round(self.gewicht_max_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
+            "objekte_mit_confidence": self.objekte_mit_confidence,
             "durchschnitt_confidence_prozent": (
                 round(self.durchschnitt_confidence_prozent, 1)
                 if self.durchschnitt_confidence_prozent is not None else None
@@ -544,6 +574,7 @@ class Statistik:
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_dimensionen_prozent": _round_or_none(self.quote_mit_dimensionen_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
+            "quote_mit_confidence_prozent": _round_or_none(self.quote_mit_confidence_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
@@ -1468,6 +1499,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "AND Confidence_Prozent BETWEEN 0 AND 100 "
         "ORDER BY c"
     ).fetchall()]
+    # objekte_mit_confidence: Anzahl Objekte mit gueltigem Sicherheits-Score.
+    # Reuse von conf_werte (bereits BETWEEN 0 AND 100 gefiltert), damit Coverage-
+    # und Median-/Bucket-Sicht garantiert auf demselben Wertegrund stehen:
+    # ein out-of-range-Eintrag (Integrity-Pruefung) wird in keiner der drei
+    # Sichten gezaehlt. Komplementaer zu median_/durchschnitt_confidence_prozent
+    # und confidence_buckets (innere Verteilung) - hier die Coverage-Sicht
+    # ueber den Gesamtbestand.
+    st.objekte_mit_confidence = len(conf_werte)
     if conf_werte:
         n = len(conf_werte)
         st.median_confidence_prozent = float(

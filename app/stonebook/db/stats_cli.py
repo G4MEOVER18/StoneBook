@@ -107,6 +107,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  KI-Analyse (ueb.):   "
             f"{st.quote_mit_ki_analyse_uebernommen_prozent:.1f} %")
+        # Confidence (Bestimmungs-Sicherheitsgrad) direkt unter den KI-Analyse-
+        # Quoten, weil sie konzeptionell verwandt sind (Bestimmungs-Qualitaet),
+        # aber auf einer separaten Achse: KI-Analyse misst die Anwendungs-/
+        # Akzeptanz-Durchdringung, Confidence den quantitativen Score je
+        # Stueck (handgepflegt oder uebernommen). Ohne Confidence-Score ist
+        # ein Stueck zwischen "sicher" (>=75) und "unsicher" (<25) nicht
+        # einzuordnen - die naechste typische Pflege-Achse nach KI-Analyse.
+        lines.append(
+            f"  Confidence:          {st.quote_mit_confidence_prozent:.1f} %")
         # Inventar-Klassifizierung: was ist das Stueck physisch (Handstueck/
         # Kristall/Duennschliff/...)? Vor Mineral/Fundort, weil Kategorie die
         # vorgelagerte ID-Achse ist - ohne sie macht die mineralogische /

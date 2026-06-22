@@ -2023,6 +2023,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_gewicht_prozent is None
     assert st.quote_mit_dimensionen_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
+    assert st.quote_mit_confidence_prozent is None
     assert st.quote_mit_kategorie_prozent is None
     assert st.quote_mit_mineral_prozent is None
     assert st.quote_mit_varietaet_prozent is None
@@ -2035,6 +2036,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_dimensionen_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
+    assert d["quote_mit_confidence_prozent"] is None
     assert d["quote_mit_kategorie_prozent"] is None
     assert d["quote_mit_mineral_prozent"] is None
     assert d["quote_mit_varietaet_prozent"] is None
@@ -2237,6 +2239,37 @@ def test_quote_mit_gesteinsart_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_gesteinsart"] == 2
     assert d["quote_mit_gesteinsart_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_confidence_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Confidence_Prozent (Bestimmungs-Sicherheitsgrad)
+    spiegelt die KI-Analyse-Quoten auf die separate Confidence-Achse: Anteil
+    der Objekte mit gueltigem 0..100-Score, gerechnet ueber objekte_total.
+    Reuse derselben Filter-Konvention wie median_/durchschnitt_confidence
+    (BETWEEN 0 AND 100), damit out-of-range-Werte (Integrity-Pruefung) in
+    keiner der drei Sichten gezaehlt werden. NULL zaehlt wie nicht erfasst."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qc.sqlite3")
+    # 5 Objekte: drei mit gueltigem Score (60%), eins mit out-of-range
+    # (zaehlt nicht; Integrity meldet das separat), eins mit NULL.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?,?)",
+        [
+            ("OBJ_0001", 90),
+            ("OBJ_0002", 50),
+            ("OBJ_0003", 0),     # 0 ist gueltig (Skala-Grenze)
+            ("OBJ_0004", 150),   # out-of-range, Integrity meldet das
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_confidence == 3
+    assert st.quote_mit_confidence_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_confidence"] == 3
+    assert d["quote_mit_confidence_prozent"] == 60.0
     c.close()
 
 
