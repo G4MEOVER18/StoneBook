@@ -59,6 +59,8 @@ class Statistik:
     bilder_by_kategorie: dict[str, int] = field(default_factory=dict)
     funddatum_frueheste: str | None = None
     funddatum_spaeteste: str | None = None
+    erstellt_am_frueheste: str | None = None
+    erstellt_am_spaeteste: str | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -265,6 +267,8 @@ class Statistik:
             "bilder_by_kategorie": dict(self.bilder_by_kategorie),
             "funddatum_frueheste": self.funddatum_frueheste,
             "funddatum_spaeteste": self.funddatum_spaeteste,
+            "erstellt_am_frueheste": self.erstellt_am_frueheste,
+            "erstellt_am_spaeteste": self.erstellt_am_spaeteste,
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -635,6 +639,36 @@ def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]
         "SELECT MIN(Funddatum) AS lo, MAX(Funddatum) AS hi FROM objects "
         "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
         "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
+    ).fetchone()
+    return (row["lo"], row["hi"])
+
+
+def _erstellt_am_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
+    """Liefert (fruehestes, spaetestes) ``erstellt_am`` als Zeitstempel-String.
+
+    Spiegelt :func:`_funddatum_spanne` auf die Erfassungs-Achse: waehrend die
+    Funddatum-Spanne den Sammlungs-Zeitraum auf der Fund-Achse beziffert
+    ("seit wann sammle ich Stuecke aus dem Aaregebiet?"), beziffert die
+    erstellt_am-Spanne den Erfassungs-Zeitraum ("seit wann digitalisiere ich
+    diese Sammlung?"). Beide gemeinsam machen die zwei Zeit-Achsen einer
+    Sammlung sichtbar - Fund-Zeit (oft Jahrzehnte rueckwirkend, geerbt) vs.
+    Erfassungs-Zeit (typisch wenige Jahre, beginnt mit der Anschaffung der
+    Verwaltungs-App). Komplementaer zu by_erstellt_am_jahr/jahrzehnt/monat
+    (Erfassungs-Histogramm: Verteilung ueber die Zeit) - hier die zwei
+    aeusseren Grenzen, dort die innere Verteilung.
+
+    ``erstellt_am`` hat im Insert-Pfad das Format ``YYYY-MM-DD HH:MM:SS``;
+    MIN/MAX arbeitet lexikographisch und liefert die vollstaendigen Zeitstempel
+    (inkl. Sekunden-Aufloesung) zurueck - feiner als bei Funddatum, das nur
+    Tag-Aufloesung hat. Substring-Filter auf vierstelligen Jahres-Praefix
+    spiegelt _funddatum_spanne; Eintraege mit leerem/NULL/kaputtem Stempel
+    (historische Imports) bleiben aus der Spanne, damit ein einzelner
+    fehlerhafter Eintrag die Grenze nicht verzerrt. Leere DB → ``(None, None)``.
+    """
+    row = conn.execute(
+        "SELECT MIN(erstellt_am) AS lo, MAX(erstellt_am) AS hi FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
     ).fetchone()
     return (row["lo"], row["hi"])
 
@@ -1143,6 +1177,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # die sich verkaufen lassen, oder sitze ich auf reinem Tauschmaterial?").
     st.by_nachfrage = _count_scale_1_10(conn, "Nachfrage_1_10")
     st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
+    # Erfassungs-Spanne: spiegelt funddatum_frueheste/spaeteste auf die
+    # erstellt_am-Achse. Macht den Erfassungs-Zeitraum sichtbar (wann der
+    # aelteste / neueste DB-Eintrag entstanden ist) und beantwortet "seit
+    # wann digitalisiere ich diese Sammlung?". Voller Zeitstempel inkl.
+    # HH:MM:SS bleibt erhalten, weil erstellt_am im Insert-Pfad mit Sekunden-
+    # Aufloesung gesetzt wird (anders als Funddatum mit reiner Tag-Aufloesung).
+    st.erstellt_am_frueheste, st.erstellt_am_spaeteste = _erstellt_am_spanne(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

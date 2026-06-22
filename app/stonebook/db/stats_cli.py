@@ -63,6 +63,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Funddatum-Spanne:      {st.funddatum_frueheste or '?'} "
             f".. {st.funddatum_spaeteste or '?'}")
+    if st.erstellt_am_frueheste or st.erstellt_am_spaeteste:
+        # Erfassungs-Spanne: spiegelt Funddatum-Spanne auf die erstellt_am-Achse.
+        # Beantwortet "seit wann digitalisiere ich diese Sammlung?" und macht die
+        # Sammler-typischen zwei Zeit-Achsen sichtbar (Fund-Zeit vs. Erfassungs-Zeit).
+        # Voller Zeitstempel inkl. HH:MM:SS bleibt erhalten (erstellt_am hat
+        # Sekunden-Aufloesung, anders als Funddatum mit reiner Tag-Aufloesung).
+        lines.append(
+            f"Erfassungs-Spanne:     {st.erstellt_am_frueheste or '?'} "
+            f".. {st.erstellt_am_spaeteste or '?'}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

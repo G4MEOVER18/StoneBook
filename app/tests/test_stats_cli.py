@@ -2839,6 +2839,52 @@ def test_text_ausgabe_ohne_funddatum_keine_spanne_zeile(tmp_path, capsys):
     assert "Funddatum-Spanne:" not in out
 
 
+def test_text_ausgabe_zeigt_erstellt_am_spanne(tmp_path, capsys):
+    """Erfassungs-Spanne erscheint in der Text-Ausgabe, sobald gueltige erstellt_am-Stempel vorliegen.
+
+    Spiegelt test_text_ausgabe_zeigt_funddatum_spanne auf die Erfassungs-Achse:
+    voller Zeitstempel inkl. HH:MM:SS bleibt erhalten, weil erstellt_am im
+    Insert-Pfad mit Sekunden-Aufloesung gesetzt wird.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "erstellt_spanne.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2023-06-01 08:00:00"),
+            ("OBJ_0002", "2026-01-10 17:45:33"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Erfassungs-Spanne:" in out
+    assert "2023-06-01 08:00:00" in out
+    assert "2026-01-10 17:45:33" in out
+
+
+def test_text_ausgabe_ohne_erstellt_am_keine_spanne_zeile(tmp_path, capsys):
+    """Bei DB ohne gueltige erstellt_am-Stempel erscheint die Erfassungs-Spanne-Zeile gar nicht.
+
+    Spiegelt test_text_ausgabe_ohne_funddatum_keine_spanne_zeile: leere/NULL/
+    kaputte Stempel fallen aus der Spanne, die Zeile wird nicht ausgegeben.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "erstellt_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", ""), ("OBJ_0003", "kaputt")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Erfassungs-Spanne:" not in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0

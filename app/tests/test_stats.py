@@ -1250,6 +1250,60 @@ def test_funddatum_spanne_leer(tmp_path):
     c.close()
 
 
+def test_erstellt_am_spanne_aus_seed_db(tmp_path):
+    """frueheste/spaeteste = MIN/MAX gueltiger erstellt_am-Werte (lex. sortierbar).
+
+    Spiegelt test_funddatum_spanne_aus_seed_db auf die Erfassungs-Achse: zeigt
+    den Zeitraum, in dem die Sammlung digitalisiert wurde. Voller Zeitstempel
+    inkl. HH:MM:SS wird durchgereicht (anders als Funddatum mit reiner Tag-
+    Aufloesung); kaputte/leere Stempel werden uebergangen, damit ein einzelner
+    fehlerhafter Eintrag die Grenze nicht verzerrt.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "spanne_erstellt.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-03-15 12:30:00"),
+            ("OBJ_0002", "2023-06-01 08:00:00"),  # frueheste
+            ("OBJ_0003", "2026-01-10 17:45:33"),  # spaeteste
+            ("OBJ_0004", ""),                      # ignoriert
+            ("OBJ_0005", None),                    # ignoriert
+            ("OBJ_0006", "kaputt"),                # ignoriert (kein Jahres-Praefix)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.erstellt_am_frueheste == "2023-06-01 08:00:00"
+    assert st.erstellt_am_spaeteste == "2026-01-10 17:45:33"
+    d = st.as_dict()
+    assert d["erstellt_am_frueheste"] == "2023-06-01 08:00:00"
+    assert d["erstellt_am_spaeteste"] == "2026-01-10 17:45:33"
+    c.close()
+
+
+def test_erstellt_am_spanne_leer(tmp_path):
+    """Ohne gueltige erstellt_am-Werte sind beide Grenzen None.
+
+    Spiegelt test_funddatum_spanne_leer: leere/NULL/kaputte Stempel fallen aus
+    der Spanne; bei einer Bestands-DB ohne Erfassungs-Stempel (alle Eintraege
+    historisch importiert ohne Zeit-Information) liefern beide Grenzen None.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer_erstellt.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [("OBJ_0001", ""), ("OBJ_0002", None), ("OBJ_0003", "unbekannt")],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.erstellt_am_frueheste is None
+    assert st.erstellt_am_spaeteste is None
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")
