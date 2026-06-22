@@ -143,23 +143,27 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     "erstellt_am", "geaendert_am",
     # Berechnete Spalten: bilder (Foto-Pflege-Sortierung), gesamtwert_chf
     # (Wert-Sortierung ueber alle Wert-Felder zusammen), aliase (Merge-Tiefe
-    # pro Kanon-Objekt). aliase spiegelt bilder auf die Provenienz-Achse:
-    # waehrend bilder die Foto-Pflege misst (wie viele Aufnahmen pro Stueck),
-    # misst aliase die Merge-Historie (wie viele historische Doppel-IDs sind
-    # auf dieses Kanon-Objekt zusammengefuehrt). Sortier-Achse fuer die
-    # Provenienz-Pflege: "welche Objekte haben die tiefste Merge-Geschichte?"
-    # zeigt die am staerksten konsolidierten Sammlungs-Eintraege (haeufig die
-    # bekanntesten Stuecke, die in mehreren parallelen Erfassungs-Systemen
-    # auftauchten und dann zusammengelegt wurden). Spiegelt aliase_total und
-    # objekte_mit_alias / quote_mit_alias_prozent in stats.py auf die Listen-
-    # Sortier-Sicht. Objekte ohne Alias erhalten Zaehler 0 (COUNT-Subquery,
-    # kein NULL); die NULL-an-Ende-Konvention von _order_by_clause greift hier
-    # also nicht, alle Werte sind sortier-vergleichbar.
-    "bilder", "gesamtwert_chf", "aliase",
+    # pro Kanon-Objekt), analysen (KI-Analyse-Tiefe pro Objekt). aliase spiegelt
+    # bilder auf die Provenienz-Achse: waehrend bilder die Foto-Pflege misst
+    # (wie viele Aufnahmen pro Stueck), misst aliase die Merge-Historie (wie
+    # viele historische Doppel-IDs sind auf dieses Kanon-Objekt zusammengefuehrt).
+    # analysen spiegelt bilder/aliase auf die KI-Analyse-Achse: wie viele
+    # KI-Laeufe wurden fuer dieses Stueck schon archiviert (Erst-Analyse, Re-
+    # Analyse mit besserer Foto-Lage, A/B-Vergleich verschiedener Modelle).
+    # Sortier-Achse fuer die KI-Pflege: "welche Objekte haben die tiefste KI-
+    # Historie?" zeigt die am intensivsten analysierten Stuecke - typisch die
+    # mineralogisch unsicheren Faelle, fuer die der Sammler mehrere Anfragen
+    # gestartet hat (oft mit Tilt-/UV-/Mikroskop-Nachschuessen). Spiegelt
+    # ki_analysen_total und objekte_mit_ki_analyse / quote_mit_ki_analyse_prozent
+    # in stats.py auf die Listen-Sortier-Sicht. Objekte ohne Analyse erhalten
+    # Zaehler 0 (COUNT-Subquery, kein NULL); die NULL-an-Ende-Konvention von
+    # _order_by_clause greift hier also nicht, alle Werte sind sortier-vergleichbar.
+    "bilder", "gesamtwert_chf", "aliase", "analysen",
 })
 
 # Berechnete Aliase im SELECT (kein o.-Prefix beim ORDER BY).
-_COMPUTED_COLUMNS: frozenset[str] = frozenset({"bilder", "gesamtwert_chf", "aliase"})
+_COMPUTED_COLUMNS: frozenset[str] = frozenset(
+    {"bilder", "gesamtwert_chf", "aliase", "analysen"})
 
 
 def _now() -> str:
@@ -387,6 +391,7 @@ class ObjectRepo:
                    o.Confidence_Prozent, o.Funddatum,
                    (SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) AS bilder,
                    (SELECT COUNT(*) FROM aliases a WHERE a.canonical_id = o.obj_id) AS aliase,
+                   (SELECT COUNT(*) FROM ki_analysen k WHERE k.obj_id = o.obj_id) AS analysen,
                    {wert_sql} AS gesamtwert_chf
             FROM objects o
         """

@@ -90,6 +90,58 @@ def test_sort_by_aliase_asc_zero_first(tmp_path):
     c.close()
 
 
+def test_sort_by_analysen_desc(repo):
+    """Sortierung nach KI-Analyse-Zahl (Analyse-Tiefe) findet die am intensivsten
+    analysierten Objekte - die spiegel-Sicht zu bilder (Foto-Pflege) und aliase
+    (Merge-Tiefe) auf die KI-Pflege-Achse.
+
+    analysen ist ein COUNT-Subquery auf die ki_analysen-Tabelle; Objekte ohne
+    Analyse erhalten 0 (kein NULL), die Sortier-Reihenfolge ist dadurch komplett
+    vergleichbar. Die migrierte DB hat keinen garantierten Mindestbestand an
+    KI-Analysen (sie werden erst zur Laufzeit erzeugt) - der Test prueft nur die
+    monotone DESC-Reihenfolge, nicht den Top-Wert.
+    """
+    rows = repo.list_objects(sort_by="analysen", sort_desc=True)
+    counts = [r["analysen"] for r in rows]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_sort_by_analysen_asc_zero_first(tmp_path):
+    """Aufsteigend nach analysen: Objekte ohne KI-Analyse (0) zuerst, dann nach
+    Analyse-Tiefe. Deckt die COUNT-0-Konvention ab (kein NULL): Objekte ohne
+    Analyse landen bei der Aufwaerts-Sortierung am Anfang, nicht ans Ende wie
+    bei der NULL-an-Ende-Logik fuer Schema-Spalten. Tie-Break auf obj_id
+    (lexikographisch) sichert deterministische Reihenfolge fuer Eintraege mit
+    gleicher Analyse-Tiefe.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "a.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) "
+        "VALUES (?, 'claude-test', '{}')",
+        [
+            # OBJ_0002 hat 2 Analysen (Analyse-Tiefe 2)
+            ("OBJ_0002",), ("OBJ_0002",),
+            # OBJ_0004 hat 1 Analyse (Analyse-Tiefe 1)
+            ("OBJ_0004",),
+            # OBJ_0001, OBJ_0003 haben 0 Analysen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="analysen")
+    ids = [r["obj_id"] for r in rows]
+    counts = [r["analysen"] for r in rows]
+    assert counts == [0, 0, 1, 2]
+    # Tie-Break auf obj_id: OBJ_0001 vor OBJ_0003 (beide 0 Analysen)
+    assert ids == ["OBJ_0001", "OBJ_0003", "OBJ_0004", "OBJ_0002"]
+    c.close()
+
+
 def test_sort_invalid_column_raises(repo):
     with pytest.raises(ValueError):
         repo.list_objects(sort_by="; DROP TABLE objects --")
