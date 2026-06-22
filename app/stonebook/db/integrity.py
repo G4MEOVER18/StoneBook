@@ -122,6 +122,7 @@ DIMENSION_ORDER_PAIRS: tuple[tuple[str, str], ...] = (
 @dataclass
 class IntegrityReport:
     orphan_images: list[int] = field(default_factory=list)          # image.id
+    orphan_ki_analysen: list[int] = field(default_factory=list)     # ki_analysen.id
     alias_to_missing: list[str] = field(default_factory=list)       # alias_id
     alias_id_collisions: list[str] = field(default_factory=list)    # alias_id existiert auch als Objekt
     alias_self_referencing: list[str] = field(default_factory=list) # alias_id == canonical_id
@@ -147,7 +148,8 @@ class IntegrityReport:
 
     @property
     def is_clean(self) -> bool:
-        return not (self.orphan_images or self.alias_to_missing
+        return not (self.orphan_images or self.orphan_ki_analysen
+                    or self.alias_to_missing
                     or self.alias_id_collisions or self.alias_self_referencing
                     or self.alias_canonical_is_alias
                     or self.invalid_funddatum or self.future_funddatum
@@ -168,6 +170,7 @@ class IntegrityReport:
     def as_dict(self) -> dict:
         return {
             "orphan_images": list(self.orphan_images),
+            "orphan_ki_analysen": list(self.orphan_ki_analysen),
             "alias_to_missing": list(self.alias_to_missing),
             "alias_id_collisions": list(self.alias_id_collisions),
             "alias_self_referencing": list(self.alias_self_referencing),
@@ -217,6 +220,22 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         "SELECT i.id FROM images i "
         "LEFT JOIN objects o ON o.obj_id = i.obj_id "
         "WHERE o.obj_id IS NULL ORDER BY i.id"
+    ).fetchall()]
+
+    # ki_analysen-Orphans spiegeln orphan_images auf die KI-Analyse-Tabelle:
+    # das Schema hat ein FK mit ON DELETE CASCADE auf objects(obj_id), so dass
+    # die regulaere Anwendung (delete-Pfad ueber ObjectRepo) niemals Orphans
+    # erzeugt. Sie koennen aber durch JSON-Restore aus einem partiellen Backup
+    # (nur ki_analysen-Tabelle wiederhergestellt, ohne die zugehoerigen Objekte),
+    # direkte DB-Editierung mit PRAGMA foreign_keys=OFF oder fehlerhafte
+    # Migrations-Skripte entstehen - genau die Faelle, in denen orphan_images
+    # ebenfalls auftritt. Spiegelt das orphan_images-Format: reine Liste der
+    # ki_analysen.id-Werte (nicht obj_id), damit die betroffene Analyse direkt
+    # ueber den Primaerschluessel adressierbar ist.
+    rep.orphan_ki_analysen = [r[0] for r in conn.execute(
+        "SELECT k.id FROM ki_analysen k "
+        "LEFT JOIN objects o ON o.obj_id = k.obj_id "
+        "WHERE o.obj_id IS NULL ORDER BY k.id"
     ).fetchall()]
 
     rep.alias_to_missing = [r[0] for r in conn.execute(

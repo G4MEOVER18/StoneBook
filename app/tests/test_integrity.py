@@ -822,3 +822,71 @@ def test_find_duplicate_image_sha256_in_migrierter_db(migrated_conn):
         assert isinstance(sha, str) and sha
         assert all(isinstance(i, int) for i in ids)
         assert len(ids) > 1
+
+
+def test_orphan_ki_analysen_wird_erkannt(tmp_path):
+    """ki_analysen-Eintraege ohne zugehoeriges Objekt werden gemeldet.
+
+    Spiegelt orphan_images auf die KI-Analyse-Tabelle: das Schema hat ein
+    FK mit ON DELETE CASCADE auf objects(obj_id), daher kann die regulaere
+    Anwendung keine Orphans erzeugen. Sie koennen aber durch JSON-Restore
+    aus einem partiellen Backup (Analyse-Tabelle wiederhergestellt ohne
+    die zugehoerigen Objekte), direkte DB-Editierung mit PRAGMA
+    foreign_keys=OFF oder fehlerhafte Migrations-Skripte entstehen. Der
+    Test simuliert diese Situation, indem er das FK-PRAGMA temporaer
+    abschaltet und Orphans direkt einfuegt.
+    """
+    c = open_db(tmp_path / "orph.sqlite3")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.execute(
+        "INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json) "
+        "VALUES (?, ?, ?, ?)",
+        ("OBJ_0001", "2024-01-01 00:00:00", "claude-sonnet-4-6", "{}"),
+    )
+    c.commit()
+    # FK kann nur ausserhalb einer Transaktion umgeschaltet werden - daher
+    # vor und nach dem Insert committen. Simuliert partiellen Restore /
+    # korrupte DB-Editierung mit deaktiviertem FK.
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute(
+        "INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json) "
+        "VALUES (?, ?, ?, ?)",
+        ("OBJ_0099_ghost", "2024-01-02 00:00:00", "claude-sonnet-4-6", "{}"),
+    )
+    c.commit()
+    c.execute("PRAGMA foreign_keys = ON")
+    rep = check_integrity(c)
+    # Nur die Geist-Analyse taucht auf; die zu OBJ_0001 gehoerige nicht.
+    assert len(rep.orphan_ki_analysen) == 1
+    # Reine Liste von ki_analysen.id-Werten (nicht obj_id) - spiegelt orphan_images.
+    assert all(isinstance(i, int) for i in rep.orphan_ki_analysen)
+    assert not rep.is_clean
+    c.close()
+
+
+def test_orphan_ki_analysen_migrierte_db_clean(migrated_conn):
+    """Migrierte Beispiel-DB hat keine KI-Analyse-Orphans (Migration erzeugt
+    ki_analysen ueberhaupt nicht, FK + ON DELETE CASCADE haelt es sauber)."""
+    rep = check_integrity(migrated_conn)
+    assert rep.orphan_ki_analysen == []
+
+
+def test_orphan_ki_analysen_in_as_dict_serialisierbar(tmp_path):
+    """as_dict serialisiert die neue Liste roundtrip-fest (spiegelt orphan_images)."""
+    import json
+    c = open_db(tmp_path / "ojs.sqlite3")
+    # FK kann nur ausserhalb einer Transaktion umgeschaltet werden; init_db
+    # hat keine Transaktion offen, daher direkt OFF schalten und Orphan
+    # einfuegen.
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute(
+        "INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json) "
+        "VALUES (?, ?, ?, ?)",
+        ("OBJ_0099_ghost", "2024-01-02 00:00:00", "claude-sonnet-4-6", "{}"),
+    )
+    c.commit()
+    d = check_integrity(c).as_dict()
+    assert "orphan_ki_analysen" in d
+    assert len(d["orphan_ki_analysen"]) == 1
+    json.dumps(d, ensure_ascii=False)  # darf nicht crashen
+    c.close()
