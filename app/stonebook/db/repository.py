@@ -1400,6 +1400,22 @@ class AliasRepo:
             (canonical_id,)).fetchall()
         return [r[0] for r in rows]
 
+    def delete(self, alias_id: str) -> bool:
+        """Entfernt einen Alias-Eintrag; gibt True bei Erfolg zurueck.
+
+        Spiegelt :meth:`ImageRepo.delete` / :meth:`AnalysisRepo.delete` auf die
+        Alias-Tabelle: noetig fuer Korrekturen einer Fehl-Merge-Operation
+        (versehentlich eingetragene historische ID, falsche Duplikat-Gruppe).
+        Die Funktion entfernt nur den Mapping-Eintrag selbst; weder das Kanon-
+        Objekt noch die schon umgehaengten Bilder/KI-Analysen werden zurueck-
+        gerollt - der Restore eines geloeschten Member-Objekts ist nur ueber
+        Backup moeglich (siehe :func:`stonebook.export.json_export.import_json`).
+        Idempotent: zweiter Aufruf mit derselben ID liefert False.
+        """
+        cur = self.conn.execute("DELETE FROM aliases WHERE alias_id = ?", (alias_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
 
