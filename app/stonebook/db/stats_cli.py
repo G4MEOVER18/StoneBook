@@ -225,6 +225,22 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Transparenz -> Spaltbarkeit -> Bruch.
         lines.append(
             f"  Bruch:               {st.quote_mit_bruch_prozent:.1f} %")
+        # Beste_Verwendung (empfohlene Verwendungs-Kategorie) direkt unter Bruch,
+        # weil sie die letzte fehlende Coverage-Quote der strukturierten Enum-
+        # Felder aus dem Feldwoerterbuch abdeckt: nach der Diagnose-Reihe
+        # (Magnetismus/Glanz/Transparenz/Spaltbarkeit/Bruch - objektive
+        # Beobachtungen am Stueck) folgt die Verwendungs-/Empfehlungs-Achse
+        # (Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration - subjektive
+        # Sammler-Entscheidung ueber den weiteren Lebensweg des Stuecks).
+        # Aussenkontext-bedingt orthogonal zu allen anderen Enum-Coverage-Quoten,
+        # weil Beste_Verwendung keine Eigenschaft am Stueck beziffert, sondern
+        # die Pflege-/Planungs-Entscheidung darueber - ein Stueck kann mineralogisch
+        # vollstaendig charakterisiert sein und trotzdem ohne Verwendungs-
+        # Empfehlung bleiben (in Wissenschafts-Sammlungen sogar regelmaessig).
+        # Schliesst die Coverage-Reihe der strukturierten Enum-Felder ab, vor
+        # den freien Achsen (Fundort/Notizen) und der Merge-Quote.
+        lines.append(
+            f"  Beste Verwendung:    {st.quote_mit_beste_verwendung_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits

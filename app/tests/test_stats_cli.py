@@ -628,6 +628,33 @@ def test_text_ausgabe_zeigt_bruch_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_beste_verwendung_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Beste-Verwendung-Quote direkt unter Bruch auf.
+    Schliesst die Coverage-Reihe der strukturierten Enum-Felder aus dem Feldwoerterbuch
+    ab: nach der Diagnose-Reihe (Magnetismus/Glanz/Transparenz/Spaltbarkeit/Bruch
+    - objektive Beobachtungen am Stueck) folgt die Verwendungs-/Empfehlungs-Achse
+    (Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration - subjektive
+    Sammler-Entscheidung ueber den weiteren Lebensweg des Stuecks). Symmetrische
+    CLI-Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse "wieviele
+    Stuecke tragen ueberhaupt eine Verwendungs-Empfehlung?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "bv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?,?)",
+        [("OBJ_0001", "Schmuck"), ("OBJ_0002", "Sammlung"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Beste Verwendung:" in out
+    # 2 von 4 Objekten haben dokumentierte Beste_Verwendung → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

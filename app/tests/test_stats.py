@@ -2036,6 +2036,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_transparenz_prozent is None
     assert st.quote_mit_spaltbarkeit_prozent is None
     assert st.quote_mit_bruch_prozent is None
+    assert st.quote_mit_beste_verwendung_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_notizen_prozent is None
     assert st.quote_mit_alias_prozent is None
@@ -2057,6 +2058,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_transparenz_prozent"] is None
     assert d["quote_mit_spaltbarkeit_prozent"] is None
     assert d["quote_mit_bruch_prozent"] is None
+    assert d["quote_mit_beste_verwendung_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_notizen_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
@@ -2573,6 +2575,47 @@ def test_quote_mit_bruch_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_bruch"] == 2
     assert d["quote_mit_bruch_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_beste_verwendung_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Beste_Verwendung (empfohlene Verwendungs-Kategorie:
+    Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration - die sechs Enum-
+    Werte aus dem Feldwoerterbuch) schliesst die Coverage-Reihe der strukturierten
+    Enum-Achsen ab. Spiegelt die Diagnose-Coverage-Quoten (Magnetismus/Glanz/
+    Transparenz/Spaltbarkeit/Bruch - objektive Beobachtungen am Stueck) auf die
+    Verwendungs-/Empfehlungs-Achse (subjektive Sammler-Entscheidung ueber den
+    weiteren Lebensweg des Stuecks). Anteil der Objekte mit dokumentierter
+    Verwendungs-Empfehlung, gerechnet ueber objekte_total. Whitespace/NULL zaehlt
+    wie leer (spiegelt has_beste_verwendung-Filter-Konvention). Komplementaer zu
+    by_beste_verwendung (Streuung-Sicht ueber Verwendungs-Kategorien) und wert_/
+    gewicht_pro_beste_verwendung (Wert-/Gewicht-Aufteilung): quote_mit_beste_
+    verwendung beziffert Coverage, beide gemeinsam ergeben Vollstaendigkeit vs.
+    Streuung der Verwendungs-Planung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qbv.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Verwendungs-Empfehlung (40%), drei
+    # ohne (NULL/leer/nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei
+    # mit unterschiedlichen Verwendungs-Werten (Schmuck-Empfehlung fuer polier-
+    # bare Stuecke, Sammlung-Empfehlung fuer Vitrinen-Stuecke) zaehlen in der
+    # Coverage gleich; die Streuung (by_beste_verwendung) bleibt orthogonal.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Schmuck"),
+            ("OBJ_0002", "Sammlung"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_beste_verwendung == 2
+    assert st.quote_mit_beste_verwendung_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_beste_verwendung"] == 2
+    assert d["quote_mit_beste_verwendung_prozent"] == 40.0
     c.close()
 
 

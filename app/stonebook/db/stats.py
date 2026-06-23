@@ -32,6 +32,7 @@ class Statistik:
     objekte_mit_transparenz: int = 0
     objekte_mit_spaltbarkeit: int = 0
     objekte_mit_bruch: int = 0
+    objekte_mit_beste_verwendung: int = 0
     objekte_mit_fundort: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
@@ -536,6 +537,44 @@ class Statistik:
         return self._quote(self.objekte_mit_bruch)
 
     @property
+    def quote_mit_beste_verwendung_prozent(self) -> float | None:
+        # Coverage-Quote fuer Beste_Verwendung (empfohlene Verwendungs-Kategorie:
+        # Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration - die sechs
+        # Enum-Werte aus dem Feldwoerterbuch) symmetrisch zu den Coverage-Quoten
+        # der uebrigen Enum-Felder (Kategorie/Kristallsystem/Magnetismus/Glanz/
+        # Transparenz/Spaltbarkeit/Bruch). Spiegelt die Coverage-Reihe der
+        # strukturierten Enum-Achsen aus dem Feldwoerterbuch auf die letzte
+        # bisher fehlende Enum-Achse: waehrend Kategorie die Inventar-Achse
+        # ("was ist das Stueck physisch?"), die mineralogisch-strukturellen
+        # Achsen (Mineral/Varietaet/Gesteinsart/Kristallsystem) die Bestimmungs-
+        # Achse, und die physikalisch-qualitativen Achsen (Magnetismus/Glanz/
+        # Transparenz/Spaltbarkeit/Bruch) die Diagnose-Achse abdecken, zielt
+        # Beste_Verwendung auf die Verwendungs-/Empfehlungs-Achse: was sollte
+        # mit dem Stueck geschehen? Aussenkontext-bedingt orthogonal zu den
+        # uebrigen Coverage-Quoten - die Verwendungs-Empfehlung ist keine
+        # Beobachtung am Stueck (wie Glanz/Magnetismus), sondern eine subjektive
+        # Sammler-Entscheidung ueber den weiteren Lebensweg ("dieser Achat
+        # gehoert poliert in den Schmuck"; "dieses Kristall-Stueck bleibt in
+        # der Vitrine"; "dieser Lapislazuli geht in den Verkauf").
+        # Komplementaer zu by_beste_verwendung (Streuung-Sicht ueber die
+        # Verwendungs-Kategorien), has_beste_verwendung (Listen-Filter) und
+        # wert_pro_beste_verwendung / gewicht_pro_beste_verwendung (Wert-/
+        # Gewicht-Aufteilung pro Verwendungs-Kategorie): hier die Coverage-
+        # Sicht ueber den Gesamtbestand ("welcher Anteil der Sammlung hat
+        # ueberhaupt eine Verwendungs-Empfehlung?"). Bisher gab es alle drei
+        # umliegenden Sichten, aber keine Anteil-Sicht auf den Gesamtbestand -
+        # die letzte fehlende Coverage-Quote der strukturierten Enum-Felder.
+        # Aus Datenpflege-Sicht ein direkter Indikator fuer die Verkaufs-/
+        # Pflege-Planung: Stuecke ohne dokumentierte Verwendung sind die
+        # ueblichen Pruefkandidaten fuer eine Sammler-Entscheidung ("was tue
+        # ich mit diesem Stueck?"). Niedriger Wert ist typisch in unsortierten
+        # Bestaenden (frisch importiert, noch nicht durchgesehen) oder bei
+        # reinen Wissenschafts-Sammlungen, in denen die Verwendung gar nicht
+        # zur Debatte steht (alle Stuecke fuer Forschung). Whitespace zaehlt
+        # wie leer (spiegelt has_beste_verwendung-Filter-Konvention).
+        return self._quote(self.objekte_mit_beste_verwendung)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -631,6 +670,7 @@ class Statistik:
             "objekte_mit_glanz": self.objekte_mit_glanz,
             "objekte_mit_spaltbarkeit": self.objekte_mit_spaltbarkeit,
             "objekte_mit_bruch": self.objekte_mit_bruch,
+            "objekte_mit_beste_verwendung": self.objekte_mit_beste_verwendung,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_notizen": self.objekte_mit_notizen,
@@ -869,6 +909,8 @@ class Statistik:
                 self.quote_mit_spaltbarkeit_prozent),
             "quote_mit_bruch_prozent": _round_or_none(
                 self.quote_mit_bruch_prozent),
+            "quote_mit_beste_verwendung_prozent": _round_or_none(
+                self.quote_mit_beste_verwendung_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
@@ -1860,6 +1902,27 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_bruch = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Bruch IS NOT NULL AND TRIM(Bruch) != ''"
+    ).fetchone()[0]
+    # objekte_mit_beste_verwendung: Anzahl Objekte mit dokumentierter Verwendungs-
+    # Empfehlung (Schmuck/Sammlung/Forschung/Industrie/Talisman/Dekoration - die
+    # sechs Enum-Werte aus dem Feldwoerterbuch). Schliesst die Coverage-Reihe
+    # der strukturierten Enum-Achsen ab (Kategorie/Kristallsystem/Magnetismus/
+    # Glanz/Transparenz/Spaltbarkeit/Bruch waren die uebrigen Enum-Felder).
+    # Beste_Verwendung ist die einzige strukturierte Enum-Achse mit Empfehlungs-
+    # Charakter (subjektive Sammler-Entscheidung ueber den weiteren Lebensweg
+    # eines Stuecks), waehrend die uebrigen Enum-Achsen objektive Eigenschaften
+    # am Stueck beschreiben (mineralogische Klasse, kristallographische Symmetrie,
+    # optische/magnetische/mechanische Beobachtungen). Whitespace zaehlt wie
+    # leer, spiegelt has_beste_verwendung. by_beste_verwendung zaehlt distinkte
+    # Verwendungs-Werte (Streuung); diese Kennzahl zaehlt Objekte mit irgendeiner
+    # Verwendungs-Empfehlung (Coverage) - komplementaer, beide gemeinsam geben
+    # Auskunft ueber Vollstaendigkeit vs. Streuung der Verwendungs-Planung.
+    # Niedriger Wert ist typisch in unsortierten Bestaenden (frisch importiert,
+    # noch nicht durchgesehen) oder reinen Wissenschafts-Sammlungen (alle
+    # Stuecke fuer Forschung, Empfehlung gar nicht zur Debatte).
+    st.objekte_mit_beste_verwendung = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Beste_Verwendung IS NOT NULL AND TRIM(Beste_Verwendung) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die
