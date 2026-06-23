@@ -93,3 +93,57 @@ def test_prune_negativ_wirft_value_error(tmp_path):
     with pytest.raises(ValueError):
         repo.prune("OBJ_0001", keep=-1)
     c.close()
+
+
+def test_count_total(tmp_path):
+    """count() spiegelt count_for ueber alle Objekte."""
+    c, repo = _setup(tmp_path)
+    assert repo.count() == 0
+    _add_analyses(repo, "OBJ_0001", 3)
+    _add_analyses(repo, "OBJ_0002", 2)
+    assert repo.count() == 5
+    assert repo.count_for("OBJ_0001") == 3
+    assert repo.count_for("OBJ_0002") == 2
+    c.close()
+
+
+def test_prune_all_keep_neueste_je_objekt(tmp_path):
+    """prune_all behaelt die N neuesten je Objekt - nicht global die N neuesten."""
+    c, repo = _setup(tmp_path)
+    ids_a = _add_analyses(repo, "OBJ_0001", 4)
+    ids_b = _add_analyses(repo, "OBJ_0002", 3)
+    geloescht = repo.prune_all(keep=2)
+    # 4-2=2 fuer OBJ_0001, 3-2=1 fuer OBJ_0002 ⇒ 3 geloescht
+    assert geloescht == 3
+    rows_a = repo.for_object("OBJ_0001")
+    rows_b = repo.for_object("OBJ_0002")
+    assert [r["id"] for r in rows_a] == [ids_a[-1], ids_a[-2]]
+    assert [r["id"] for r in rows_b] == [ids_b[-1], ids_b[-2]]
+    c.close()
+
+
+def test_prune_all_keep_null_loescht_alle(tmp_path):
+    c, repo = _setup(tmp_path)
+    _add_analyses(repo, "OBJ_0001", 2)
+    _add_analyses(repo, "OBJ_0002", 3)
+    geloescht = repo.prune_all(keep=0)
+    assert geloescht == 5
+    assert repo.count() == 0
+    c.close()
+
+
+def test_prune_all_keep_groesser_als_alle_no_op(tmp_path):
+    c, repo = _setup(tmp_path)
+    _add_analyses(repo, "OBJ_0001", 2)
+    _add_analyses(repo, "OBJ_0002", 1)
+    assert repo.prune_all(keep=10) == 0
+    assert repo.count() == 3
+    c.close()
+
+
+def test_prune_all_negativ_wirft_value_error(tmp_path):
+    import pytest
+    c, repo = _setup(tmp_path)
+    with pytest.raises(ValueError):
+        repo.prune_all(keep=-1)
+    c.close()

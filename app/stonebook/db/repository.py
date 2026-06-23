@@ -1447,3 +1447,37 @@ class AnalysisRepo:
     def count_for(self, obj_id: str) -> int:
         return self.conn.execute(
             "SELECT COUNT(*) FROM ki_analysen WHERE obj_id = ?", (obj_id,)).fetchone()[0]
+
+    def count(self) -> int:
+        """Gesamtzahl aller KI-Analysen ueber alle Objekte.
+
+        Spiegelt :meth:`ImageRepo.count` / :meth:`AliasRepo.count` auf die
+        KI-Analyse-Tabelle - die drei abhaengigen Tabellen haben damit eine
+        einheitliche Gesamtzaehler-API (ki_analysen_total in der Statistik
+        verwendet dieselbe Aggregation). Komplementaer zu :meth:`count_for`
+        (pro Objekt) als batch-Gegenstueck zur per-Objekt-Sicht.
+        """
+        return self.conn.execute("SELECT COUNT(*) FROM ki_analysen").fetchone()[0]
+
+    def prune_all(self, keep: int) -> int:
+        """Behaelt nur die ``keep`` neuesten Analysen je Objekt ueber alle Objekte.
+
+        Spiegelt :meth:`prune` auf den Gesamtbestand: statt fuer ein einzelnes
+        ``obj_id`` aufzuraeumen, laeuft die gleiche Vorhalte-Regel ueber alle
+        Objekte mit KI-Analysen. Gibt die Gesamtzahl tatsaechlich geloeschter
+        Zeilen zurueck. Typische Wartung nach Massen-Re-Analyse oder vor einem
+        Voll-Backup, wenn die Analyse-Historie pro Objekt auf eine handhabbare
+        Tiefe begrenzt werden soll. ``keep < 0`` wirft ``ValueError`` (spiegelt
+        :meth:`prune`); ``keep == 0`` loescht alle Analysen ueber alle Objekte.
+        """
+        if keep < 0:
+            raise ValueError("keep muss >= 0 sein")
+        cur = self.conn.execute(
+            "DELETE FROM ki_analysen WHERE id IN ("
+            " SELECT id FROM ("
+            "  SELECT id, ROW_NUMBER() OVER ("
+            "   PARTITION BY obj_id ORDER BY zeitpunkt DESC, id DESC) AS rn"
+            "  FROM ki_analysen) WHERE rn > ?)",
+            (keep,))
+        self.conn.commit()
+        return cur.rowcount
