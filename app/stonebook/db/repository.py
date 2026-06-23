@@ -1351,6 +1351,30 @@ class ImageRepo:
             (to_obj, from_obj, from_obj))
         self.conn.commit()
 
+    def get(self, image_id: int) -> sqlite3.Row | None:
+        """Liest einen Bild-Eintrag per Primaerschluessel.
+
+        Spiegelt :meth:`AnalysisRepo.get` auf die Bild-Tabelle - Gallery-Editor
+        und :meth:`delete` brauchen die Roh-Zeile (kategorie, rel_path,
+        herkunft_obj_id), bevor sie auf einzelne Bilder zugreifen koennen.
+        """
+        return self.conn.execute(
+            "SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+
+    def delete(self, image_id: int) -> bool:
+        """Loescht einen einzelnen Bild-Eintrag; gibt True bei Erfolg zurueck.
+
+        Spiegelt :meth:`AnalysisRepo.delete` exakt auf die Bild-Tabelle: der
+        Galerie-Editor entfernt damit verstreute Fehl-Uploads (falsche Kategorie,
+        falsches Objekt) auf der Index-Ebene, ohne die Datei auf der Platte
+        anzufassen - das bleibt callerseitig (der Index ist primaer, die
+        Datei sekundaer; Re-Index baut den Eintrag bei Bedarf neu auf).
+        Idempotent: zweiter Aufruf mit derselben ID liefert False.
+        """
+        cur = self.conn.execute("DELETE FROM images WHERE id = ?", (image_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM images").fetchone()[0]
 
