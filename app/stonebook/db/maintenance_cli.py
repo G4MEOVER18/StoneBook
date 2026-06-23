@@ -1,9 +1,10 @@
-"""CLI fuer DB-Wartung (VACUUM, quick_check, Groessenmessung).
+"""CLI fuer DB-Wartung (VACUUM, quick_check, foreign_key_check, Groessenmessung).
 
 Beispiele:
     python -m stonebook.db.maintenance_cli size                     # Default-DB
     python -m stonebook.db.maintenance_cli size --db <pfad>
     python -m stonebook.db.maintenance_cli check                    # quick_check
+    python -m stonebook.db.maintenance_cli fkcheck                  # foreign_key_check
     python -m stonebook.db.maintenance_cli vacuum                   # VACUUM
     python -m stonebook.db.maintenance_cli vacuum --json
 """
@@ -16,7 +17,8 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
 from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      free_page_count, quick_check, vacuum)
+                                      foreign_key_check, free_page_count,
+                                      quick_check, vacuum)
 
 
 def _resolve_db(args: argparse.Namespace) -> Path | None:
@@ -75,6 +77,34 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 0 if not messages else 1
 
 
+def _cmd_fkcheck(args: argparse.Namespace) -> int:
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        violations = foreign_key_check(conn)
+    finally:
+        conn.close()
+    # Tuples (table, rowid, parent_table, fkid) - dict-Form fuer JSON / Print.
+    items = [
+        {"table": t, "rowid": r, "parent_table": p, "fkid": f}
+        for t, r, p, f in violations
+    ]
+    if args.json:
+        json.dump({"ok": not items, "violations": items},
+                  sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    elif items:
+        print(f"FEHLER: PRAGMA foreign_key_check meldet {len(items)} Verletzung(en):")
+        for v in items:
+            print(f"  - {v['table']} rowid={v['rowid']} → {v['parent_table']} (fkid={v['fkid']})")
+    else:
+        print("OK: PRAGMA foreign_key_check ohne Befund.")
+    # Spiegelt _cmd_check: Exit-Code 1 bei FK-Verletzung, 0 wenn sauber.
+    return 0 if not items else 1
+
+
 def _cmd_vacuum(args: argparse.Namespace) -> int:
     db_file = _resolve_db(args)
     if db_file is None:
@@ -116,6 +146,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_check)
+
+    sp = sub.add_parser("fkcheck",
+                        help="SQLite foreign_key_check ausfuehren "
+                             "(erkennt orphans und referentielle Luecken).")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_fkcheck)
 
     sp = sub.add_parser("vacuum", help="Datenbank kompaktieren (VACUUM).")
     sp.add_argument("--db", type=Path, default=None)

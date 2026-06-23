@@ -46,6 +46,53 @@ def test_check_json_ok(tmp_path, capsys):
     assert info == {"ok": True, "messages": []}
 
 
+def test_fkcheck_text_ok(tmp_path, capsys):
+    """fkcheck Subcommand: leere DB → OK + Exit 0 (spiegelt check)."""
+    db_file = tmp_path / "fkc.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["fkcheck", "--db", str(db_file)])
+    assert exit_code == 0
+    assert "OK" in capsys.readouterr().out
+
+
+def test_fkcheck_json_ok(tmp_path, capsys):
+    """fkcheck Subcommand JSON: leere DB → ok=True, violations=[] (spiegelt check)."""
+    db_file = tmp_path / "fkcj.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["fkcheck", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {"ok": True, "violations": []}
+
+
+def test_fkcheck_meldet_orphan(tmp_path, capsys):
+    """fkcheck Subcommand: durch FK-OFF eingefuegter Orphan → Exit 1 + Verletzung im Output.
+
+    Spiegelt das ``foreign_key_check_orphan_image_erkannt``-Pattern aus
+    :mod:`tests.test_maintenance` auf den CLI-Pfad: Orphan im JSON-Output und
+    Exit-Code 1 (geeignet fuer Cron/CI, parallel zum quick_check).
+    """
+    db_file = tmp_path / "fk_orph_cli.sqlite3"
+    c = open_db(db_file)
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        ("OBJ_0099_ghost", "Kamera", "objects/OBJ_0099/foto.jpg"),
+    )
+    c.commit()
+    c.close()
+    exit_code = main(["fkcheck", "--db", str(db_file), "--json"])
+    assert exit_code == 1
+    info = json.loads(capsys.readouterr().out)
+    assert info["ok"] is False
+    assert len(info["violations"]) == 1
+    v = info["violations"][0]
+    assert v["table"] == "images"
+    assert v["parent_table"] == "objects"
+    assert isinstance(v["rowid"], int)
+
+
 def test_vacuum_text(tmp_path, capsys):
     db_file = tmp_path / "v.sqlite3"
     c = open_db(db_file)
