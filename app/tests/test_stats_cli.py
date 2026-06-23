@@ -602,6 +602,32 @@ def test_text_ausgabe_zeigt_spaltbarkeit_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_bruch_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Bruch-Quote direkt unter Spaltbarkeit auf.
+    Schliesst die mechanisch-strukturelle Diagnose-Doppel-Achse: Spaltbarkeit
+    (geordnete Bruchrichtung entlang kristallographisch bevorzugter Ebenen) ->
+    Bruch (ungeordnetes Versagensmuster ausserhalb der Spaltebenen, sechs
+    Enum-Werte muschelig/uneben/splittrig/faserig/erdig/glatt). Symmetrische
+    CLI-Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse "wieviele
+    Stuecke wurden auf das Bruchverhalten hin charakterisiert?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "br.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?,?)",
+        [("OBJ_0001", "muschelig"), ("OBJ_0002", "faserig"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Bruch:" in out
+    # 2 von 4 Objekten haben dokumentierten Bruch → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

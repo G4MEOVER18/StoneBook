@@ -31,6 +31,7 @@ class Statistik:
     objekte_mit_glanz: int = 0
     objekte_mit_transparenz: int = 0
     objekte_mit_spaltbarkeit: int = 0
+    objekte_mit_bruch: int = 0
     objekte_mit_fundort: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
@@ -492,6 +493,49 @@ class Statistik:
         return self._quote(self.objekte_mit_spaltbarkeit)
 
     @property
+    def quote_mit_bruch_prozent(self) -> float | None:
+        # Coverage-Quote fuer Bruch (ungeordnetes mechanisches Versagen ausserhalb
+        # der Spaltebenen: muschelig/uneben/splittrig/faserig/erdig/glatt - die
+        # sechs Enum-Werte aus dem Feldwoerterbuch) symmetrisch zu
+        # quote_mit_spaltbarkeit_prozent auf die mechanisch-strukturelle
+        # Diagnose-Achse. Spiegelt die Spaltbarkeits-Achse (geordnete Bruch-
+        # richtung entlang kristallographisch bevorzugter Ebenen) exakt:
+        # waehrend Spaltbarkeit beschreibt, ob das Mineral entlang bevorzugter
+        # Ebenen spaltet (Glimmer: vollkommen blaettrig, Calcit: gut rhomboedrisch),
+        # beschreibt Bruch das Versagensmuster ausserhalb der Spaltebenen
+        # (Quarz: muschelig wie Glasbruch, Pyrit: uneben-hakig, Asbest: faserig,
+        # Limonit: erdig, Obsidian: glatt-muschelig). Beide sind paarweise
+        # Eintragspunkte einer Hammertest-/Pruefnotiz, gemeinsam ergeben sie das
+        # vollstaendige mechanische Versagensbild eines Stuecks. Bisher gab es
+        # nur by_bruch (Streuung-Sicht), has_bruch (Listen-Filter) und
+        # wert_pro_bruch / gewicht_pro_bruch (Wert-/Gewicht-Aufteilung), aber
+        # keine Coverage-Kennzahl (Anteil-Sicht auf den Gesamtbestand) - waehrend
+        # die paarweise Spaltbarkeits-Achse mit quote_mit_spaltbarkeit_prozent
+        # bereits abgedeckt war. Schliesst die Coverage-Reihe der mechanisch-
+        # strukturellen Diagnose-Doppel-Achse: Spaltbarkeit (geordnete
+        # Bruchrichtung) -> Bruch (ungeordnetes Versagen). Aussenkontext-bedingt
+        # komplementaer zu quote_mit_spaltbarkeit_prozent: Stuecke mit
+        # vollkommener Spaltbarkeit (Glimmer/Calcit/Galenit) brauchen oft keinen
+        # separaten Bruch-Eintrag (das Versagen folgt den Spaltebenen), waehrend
+        # Stuecke ohne Spaltbarkeit (Quarz: keine) ihren Bruch am deutlichsten
+        # zeigen - die Differenz beider Quoten beziffert die mechanische
+        # Pflege-Luecke (Spaltbarkeit geprueft, aber Bruch nicht oder umgekehrt).
+        # Aus Datenpflege-Sicht ist Bruch der wichtigere Diagnose-Parameter bei
+        # spaltbarkeits-armen Mineralen (Quarz, Opal, Obsidian, Chalcedon - alle
+        # mit muscheligem Bruch als Haupt-Kennzeichen), waehrend Spaltbarkeit
+        # bei spaltungs-reichen Mineralen (Glimmer, Calcit, Galenit) dominiert.
+        # Niedriger Wert ist typisch in Sammler-Bestaenden, weil der Hammertest
+        # invasiv ist (man muss ein Stueck schlagen, um die Bruchflaeche zu
+        # sehen - bei Vitrinen-/Tausch-Stuecken vermeidet man das) und daher
+        # seltener routinemaessig durchgefuehrt wird als optische oder
+        # magnetische Pruefungen; spiegelt das Pflege-Verhalten bei
+        # Spaltbarkeit. Komplementaer zu by_bruch (distinkte Werte, Streuung-
+        # Sicht) und has_bruch (Listen-Filter); beide gemeinsam geben Auskunft
+        # ueber Vollstaendigkeit vs. Streuung der mechanischen Pruefung.
+        # Whitespace zaehlt wie leer (spiegelt has_bruch-Filter-Konvention).
+        return self._quote(self.objekte_mit_bruch)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -586,6 +630,7 @@ class Statistik:
             "objekte_mit_magnetismus": self.objekte_mit_magnetismus,
             "objekte_mit_glanz": self.objekte_mit_glanz,
             "objekte_mit_spaltbarkeit": self.objekte_mit_spaltbarkeit,
+            "objekte_mit_bruch": self.objekte_mit_bruch,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_notizen": self.objekte_mit_notizen,
@@ -822,6 +867,8 @@ class Statistik:
             "quote_mit_transparenz_prozent": _round_or_none(self.quote_mit_transparenz_prozent),
             "quote_mit_spaltbarkeit_prozent": _round_or_none(
                 self.quote_mit_spaltbarkeit_prozent),
+            "quote_mit_bruch_prozent": _round_or_none(
+                self.quote_mit_bruch_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
@@ -1785,6 +1832,34 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_spaltbarkeit = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Spaltbarkeit IS NOT NULL AND TRIM(Spaltbarkeit) != ''"
+    ).fetchone()[0]
+    # objekte_mit_bruch: Anzahl Objekte mit dokumentiertem Bruch (ungeordnetes
+    # mechanisches Versagen ausserhalb der Spaltebenen: muschelig/uneben/
+    # splittrig/faserig/erdig/glatt - die sechs Enum-Werte aus dem
+    # Feldwoerterbuch). Spiegelt objekte_mit_spaltbarkeit auf die paarweise
+    # Bruchverhalten-Achse: waehrend Spaltbarkeit die geordnete Bruchrichtung
+    # entlang kristallographisch bevorzugter Ebenen klassifiziert (Glimmer:
+    # vollkommen blaettrig; Calcit/Halit: gut rhomboedrisch), klassifiziert
+    # Bruch das ungeordnete Versagensmuster ausserhalb der Spaltebenen (Quarz:
+    # muschelig wie Glasbruch; Pyrit: uneben; Asbest: faserig; Limonit: erdig;
+    # Obsidian: glatt-muschelig). Schliesst die Coverage-Reihe der mechanisch-
+    # strukturellen Diagnose-Doppel-Achse: Spaltbarkeit (geordnete Bruchrichtung)
+    # -> Bruch (ungeordnetes Versagen). Niedriger Wert ist typisch in Sammler-
+    # Bestaenden, weil der Hammertest invasiv ist (man muss ein Stueck schlagen,
+    # um die Bruchflaeche zu sehen) und daher seltener routinemaessig durch-
+    # gefuehrt wird als optische oder magnetische Pruefungen; spiegelt das
+    # Pflege-Verhalten bei Spaltbarkeit. Aus Datenpflege-Sicht ist Bruch der
+    # wichtigere Diagnose-Parameter bei spaltbarkeits-armen Mineralen (Quarz,
+    # Opal, Obsidian, Chalcedon - alle mit muscheligem Bruch als Haupt-
+    # Kennzeichen), waehrend Spaltbarkeit bei spaltungs-reichen Mineralen
+    # (Glimmer, Calcit, Galenit) dominiert. Whitespace zaehlt wie leer,
+    # spiegelt has_bruch. by_bruch zaehlt distinkte Bruch-Werte (Streuung);
+    # diese Kennzahl zaehlt Objekte mit irgendeinem dokumentierten Bruch-Wert
+    # (Coverage) - komplementaer, beide gemeinsam geben Auskunft ueber
+    # Vollstaendigkeit vs. Streuung der mechanischen Pruefung.
+    st.objekte_mit_bruch = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Bruch IS NOT NULL AND TRIM(Bruch) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

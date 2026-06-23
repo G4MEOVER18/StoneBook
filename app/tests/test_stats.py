@@ -2035,6 +2035,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_glanz_prozent is None
     assert st.quote_mit_transparenz_prozent is None
     assert st.quote_mit_spaltbarkeit_prozent is None
+    assert st.quote_mit_bruch_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_notizen_prozent is None
     assert st.quote_mit_alias_prozent is None
@@ -2055,6 +2056,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_glanz_prozent"] is None
     assert d["quote_mit_transparenz_prozent"] is None
     assert d["quote_mit_spaltbarkeit_prozent"] is None
+    assert d["quote_mit_bruch_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_notizen_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
@@ -2534,6 +2536,43 @@ def test_quote_mit_spaltbarkeit_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_spaltbarkeit"] == 2
     assert d["quote_mit_spaltbarkeit_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_bruch_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Bruch (ungeordnetes mechanisches Versagen ausserhalb
+    der Spaltebenen: muschelig/uneben/splittrig/faserig/erdig/glatt - die
+    sechs Enum-Werte aus dem Feldwoerterbuch) spiegelt die Spaltbarkeits-Quote
+    auf die paarweise Bruchverhalten-Achse. Anteil der Objekte mit
+    dokumentiertem Bruch, gerechnet ueber objekte_total. Whitespace/NULL
+    zaehlt wie leer (spiegelt has_bruch-Filter-Konvention). Komplementaer
+    zu by_bruch, das distinkte Werte zaehlt (Streuung): quote_mit_bruch
+    beziffert Coverage. Schliesst die mechanisch-strukturelle Diagnose-Doppel-
+    Achse Spaltbarkeit -> Bruch."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qb.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Bruch (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei mit unter-
+    # schiedlichen Bruch-Werten (Quarz-typisch muschelig, Asbest-typisch
+    # faserig) zaehlen in der Coverage gleich; die Streuung (by_bruch)
+    # bleibt orthogonal.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Bruch) VALUES (?,?)",
+        [
+            ("OBJ_0001", "muschelig"),   # Quarz/Obsidian-typisch
+            ("OBJ_0002", "faserig"),     # Asbest-typisch
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_bruch == 2
+    assert st.quote_mit_bruch_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_bruch"] == 2
+    assert d["quote_mit_bruch_prozent"] == 40.0
     c.close()
 
 

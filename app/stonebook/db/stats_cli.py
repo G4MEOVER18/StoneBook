@@ -207,6 +207,24 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # geografische Provenienz-Achse (Fundort) drankommt.
         lines.append(
             f"  Spaltbarkeit:        {st.quote_mit_spaltbarkeit_prozent:.1f} %")
+        # Bruch (ungeordnetes mechanisches Versagen ausserhalb der Spaltebenen)
+        # direkt unter Spaltbarkeit, weil Bruch die paarweise mechanische
+        # Diagnose-Achse spiegelt - Spaltbarkeit klassifiziert das geordnete
+        # Bruchverhalten entlang bevorzugter Kristallebenen (vollkommen/gut/
+        # deutlich/undeutlich/keine), Bruch das ungeordnete Versagensmuster
+        # ausserhalb der Spaltebenen (muschelig/uneben/splittrig/faserig/erdig/
+        # glatt - die sechs Enum-Werte). Beide gemeinsam ergeben das vollstaendige
+        # mechanische Versagensbild eines Stuecks: Glimmer/Calcit/Galenit zeigen
+        # die Spaltbarkeit am deutlichsten, Quarz/Opal/Obsidian/Chalcedon den
+        # Bruch (kein Spaltsystem, daher muscheliger Bruch als Haupt-Kennzeichen).
+        # Niedriger Wert ist typisch wie bei Spaltbarkeit, weil der Hammertest
+        # invasiv ist und bei Vitrinen-/Tausch-Stuecken vermieden wird. Schliesst
+        # die mechanisch-strukturelle Diagnose-Doppel-Achse, bevor die
+        # geografische Provenienz-Achse (Fundort) drankommt. Reihenfolge spiegelt
+        # die semantische Sortierung Symmetrie -> Magnetismus -> Glanz ->
+        # Transparenz -> Spaltbarkeit -> Bruch.
+        lines.append(
+            f"  Bruch:               {st.quote_mit_bruch_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
