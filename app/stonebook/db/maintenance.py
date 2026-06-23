@@ -45,6 +45,33 @@ def quick_check(conn: sqlite3.Connection) -> list[str]:
     return [] if msgs == ["ok"] else msgs
 
 
+def foreign_key_check(conn: sqlite3.Connection) -> list[tuple[str, int | None, str, int]]:
+    """SQLite-eigene Foreign-Key-Pruefung (``PRAGMA foreign_key_check``).
+
+    Liefert ``[]`` bei intakter DB; sonst eine Liste von
+    ``(table, rowid, parent_table, fkid)``-Tupels - genau das Format, das
+    SQLite zurueckgibt. Spiegelt :func:`quick_check` (Page-/Index-Korruption)
+    auf die referentielle Achse: ``foreign_key_check`` erkennt verwaiste Zeilen,
+    deren Foreign Key auf eine nicht (mehr) existierende Eltern-Zeile zeigt -
+    unabhaengig davon, ob ``PRAGMA foreign_keys`` zur Schreibzeit aktiv war
+    (genau die Faelle, die orphan_images / alias_to_missing aus
+    :mod:`stonebook.db.integrity` ueber SQL-Joins ebenfalls finden, aber dort
+    je Beziehung einzeln; ``foreign_key_check`` deckt alle drei
+    Cascade-Beziehungen objects-images, objects-aliases, objects-ki_analysen
+    in einem PRAGMA-Aufruf ab).
+
+    ``rowid`` ist ``None`` fuer WITHOUT-ROWID-Tabellen (StoneBook hat keine,
+    aber das Format gehoert zur Spezifikation); ``fkid`` ist der numerische
+    Index des FK in der Constraint-Liste der Kind-Tabelle (vgl.
+    ``PRAGMA foreign_key_list(<table>)``), damit bei Mehrfach-FKs eindeutig
+    bleibt, welche Beziehung verletzt ist.
+    """
+    return [
+        (r[0], r[1], r[2], r[3])
+        for r in conn.execute("PRAGMA foreign_key_check").fetchall()
+    ]
+
+
 def db_file_bytes(db_file: Path) -> int:
     """Tatsaechliche Dateigroesse der SQLite-Datei in Bytes (oder 0, wenn fehlt)."""
     p = Path(db_file)
