@@ -2037,6 +2037,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_spaltbarkeit_prozent is None
     assert st.quote_mit_bruch_prozent is None
     assert st.quote_mit_beste_verwendung_prozent is None
+    assert st.quote_mit_farbe_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_notizen_prozent is None
     assert st.quote_mit_alias_prozent is None
@@ -2059,6 +2060,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_spaltbarkeit_prozent"] is None
     assert d["quote_mit_bruch_prozent"] is None
     assert d["quote_mit_beste_verwendung_prozent"] is None
+    assert d["quote_mit_farbe_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_notizen_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
@@ -2616,6 +2618,45 @@ def test_quote_mit_beste_verwendung_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_beste_verwendung"] == 2
     assert d["quote_mit_beste_verwendung_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_farbe_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Farbe_beobachtet (visuelle Eigenfarben-Notation als
+    Freitext) spiegelt die optischen Enum-Diagnose-Quoten (Glanz/Transparenz)
+    auf die Freitext-Achse: Anteil der Objekte mit irgendeiner Eigenfarben-
+    Notation, gerechnet ueber objekte_total. Whitespace/NULL zaehlt wie leer
+    (spiegelt has_farbe-/has_fundort-/has_notizen-Filter-Konvention der
+    Freitext-Coverage-Quoten). Die Farb-Vielfalt mineralogischer Stuecke
+    laesst sich nicht in eine Enum-Skala mit fester Wertemenge zerlegen
+    (jede Mineral-Familie hat eigenes Farb-Spektrum mit Lichtbedingungs-/
+    Verwitterungs-Variation), deshalb bleibt das Feld bewusst frei und die
+    Coverage-Sicht spiegelt das Pflege-Verhalten der Freitext-Achsen
+    (Fundort/Notizen) statt der Enum-Achsen (Glanz/Transparenz)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qfa.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Eigenfarbe (40%), drei ohne (NULL/
+    # leer/nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei mit
+    # unterschiedlichen Farb-Notationen (Malachit-gruen-typisch, honig-
+    # gelb-typisch) zaehlen in der Coverage gleich; die Streuung der
+    # Mineral-Familien-Farben (by_mineral o.ae.) bleibt orthogonal.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Farbe_beobachtet) VALUES (?,?)",
+        [
+            ("OBJ_0001", "smaragdgruen mit schwarzen Adern"),
+            ("OBJ_0002", "honiggelb-durchscheinend"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_farbe == 2
+    assert st.quote_mit_farbe_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_farbe"] == 2
+    assert d["quote_mit_farbe_prozent"] == 40.0
     c.close()
 
 

@@ -655,6 +655,34 @@ def test_text_ausgabe_zeigt_beste_verwendung_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_farbe_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Farbe-Quote direkt unter Beste Verwendung auf.
+    Spiegelt die optischen Enum-Diagnose-Quoten (Glanz/Transparenz) auf die
+    Eigenfarben-Achse: waehrend Glanz die Oberflaechen-Reflexion und
+    Transparenz die Lichtdurchlaessigkeit als kurze Enum-Skalen abdecken,
+    bleibt Farbe als Freitext-Notation (mineralogische Farb-Vielfalt
+    laesst sich nicht in 5-7 Enum-Werte zerlegen). Symmetrische CLI-
+    Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse "wieviele
+    Stuecke tragen ueberhaupt eine Eigenfarben-Notation?" - der erste
+    Beobachtungs-Schritt bei der Mineral-Bestimmung."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "farbe.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Farbe_beobachtet) VALUES (?,?)",
+        [("OBJ_0001", "milchig-weiss"), ("OBJ_0002", "honiggelb"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Farbe:" in out
+    # 2 von 4 Objekten haben dokumentierte Eigenfarbe → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

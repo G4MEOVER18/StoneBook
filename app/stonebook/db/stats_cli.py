@@ -241,6 +241,18 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # den freien Achsen (Fundort/Notizen) und der Merge-Quote.
         lines.append(
             f"  Beste Verwendung:    {st.quote_mit_beste_verwendung_prozent:.1f} %")
+        # Farbe (Eigenfarben-Freitext-Notation) direkt unter Beste Verwendung,
+        # weil sie die erste Freitext-Coverage-Quote nach dem Enum-Block bildet.
+        # Waehrend die Diagnose-Enums (Magnetismus/Glanz/Transparenz/Spaltbarkeit/
+        # Bruch) das visuelle/mechanische Pruefverhalten in kurze Enum-Skalen
+        # zerlegen, bleibt die Eigenfarbe bewusst frei: die mineralogische
+        # Farb-Vielfalt (Malachit-gruen, Lapis-blau, Schwefelgelb, Hematit-rot)
+        # laesst sich nicht sinnvoll in 5-7 Enum-Werte zerlegen. Steht vor
+        # Fundort, weil Farbe die erste visuelle Beobachtung an einem Stueck
+        # ist (vor der geografischen Provenienz-Achse) und das Trio Farbe/
+        # Fundort/Notizen den Freitext-Coverage-Block bildet, der nach der
+        # Enum-Diagnose- und Verwendungs-Achse folgt.
+        lines.append(f"  Farbe:               {st.quote_mit_farbe_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
