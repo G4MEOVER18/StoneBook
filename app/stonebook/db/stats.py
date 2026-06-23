@@ -133,6 +133,7 @@ class Statistik:
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
     objekte_mit_mohs: int = 0
+    objekte_mit_dichte: int = 0
     objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
@@ -180,6 +181,37 @@ class Statistik:
         # Die Differenz quote_mit_gewicht_prozent - quote_mit_dimensionen_prozent
         # beziffert die Vermessungs-Luecke (gewogen, aber nicht vermessen).
         return self._quote(self.objekte_mit_dimensionen)
+
+    @property
+    def quote_mit_dichte_prozent(self) -> float | None:
+        # Coverage-Quote fuer Dichte (Dichte_min_gcm3 / Dichte_max_gcm3)
+        # symmetrisch zu quote_mit_mohs_prozent / quote_mit_dimensionen_prozent /
+        # quote_mit_gewicht_prozent auf die physikalische Dichte-Achse. Spiegelt
+        # die Mohs-Haerte-Achse exakt: beide sind Bereichsfelder (min/max), beide
+        # zaehlen Mineralien als geprueft, sobald eines der beiden Bereichsfelder
+        # gesetzt ist - die obere und untere Grenze werden nicht immer zusammen
+        # gepflegt, oft steht nur ein Punkt-Wert (Reinmineral) oder eine
+        # Roh-Skala ("2.6-2.7" als min=2.6/max=2.7) als Standard-Tabellenwert
+        # aus der Mineraldatenbank uebernommen. Vervollstaendigt die physikalische
+        # Mess-Reihe: Masse (Gewicht) -> Geometrie (Dimensionen) -> Haerte (Mohs)
+        # -> Dichte. Dichte (g/cm3) ist die zweite zentrale quantitative Pruef-
+        # Methode neben Mohs: Quarz (~2.65) vs. Calcit (~2.71) sind ueber Mohs
+        # (7 vs. 3) sicher trennbar, aber Pyrit (~5.0) vs. Markasit (~4.9) nur
+        # ueber Dichte distinkt - beide Mineralien haben Mohs 6-6.5 und
+        # metallischen Glanz. Die Messung ist allerdings nicht so trivial wie
+        # der Mohs-Kratztest (Wasserverdraengung mit Waage, oder pyknometrische
+        # Bestimmung), daher in Sammler-Bestaenden seltener gepflegt als Mohs.
+        # Komplementaer zu has_dichte (Listen-Filter) und zum dichte_min/max-
+        # Bereichsfilter (konkrete Schwellen): hier die Anteil-Sicht auf den
+        # Gesamtbestand. Bisher gab es nur has_dichte und Filter, aber keine
+        # Coverage-Kennzahl - waehrend die verwandte physikalische Haerte-Achse
+        # mit quote_mit_mohs_prozent bereits abgedeckt war. Aus Datenpflege-Sicht
+        # ein direkter naechster Pflege-Indikator nach Mohs: die Differenz
+        # quote_mit_mohs_prozent - quote_mit_dichte_prozent beziffert die
+        # Dichte-Mess-Luecke (Haerte geprueft, aber Dichte nicht). Whitespace
+        # nicht relevant (REAL-Feld, NULL = nicht erfasst), spiegelt das
+        # has_dichte-/has_mohs-Verhalten.
+        return self._quote(self.objekte_mit_dichte)
 
     @property
     def quote_mit_mohs_prozent(self) -> float | None:
@@ -716,6 +748,7 @@ class Statistik:
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
             "objekte_mit_mohs": self.objekte_mit_mohs,
+            "objekte_mit_dichte": self.objekte_mit_dichte,
             "objekte_mit_confidence": self.objekte_mit_confidence,
             "durchschnitt_confidence_prozent": (
                 round(self.durchschnitt_confidence_prozent, 1)
@@ -732,6 +765,7 @@ class Statistik:
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_dimensionen_prozent": _round_or_none(self.quote_mit_dimensionen_prozent),
             "quote_mit_mohs_prozent": _round_or_none(self.quote_mit_mohs_prozent),
+            "quote_mit_dichte_prozent": _round_or_none(self.quote_mit_dichte_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_confidence_prozent": _round_or_none(self.quote_mit_confidence_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
@@ -1789,6 +1823,25 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_mohs = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
+    ).fetchone()[0]
+    # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
+    # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
+    # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen
+    # ein Objekt als geprueft, sobald eines der beiden Felder gesetzt ist - die
+    # obere und untere Grenze werden nicht immer zusammen gepflegt (oft nur
+    # ein Punkt-Wert fuer ein Reinmineral, oder eine Roh-Skala "2.6-2.7" als
+    # Standard-Tabellenwert aus der Mineraldatenbank uebernommen). Komplementaer
+    # zu objekte_mit_mohs (physikalische Haerte-Achse) und objekte_mit_gewicht
+    # (Masse): hier die physikalische Dichte-Achse als zweite zentrale
+    # quantitative Pruef-Methode neben Mohs. Pyrit (~5.0) vs. Markasit (~4.9)
+    # sind ohne Dichte nicht trennbar - beide haben Mohs 6-6.5 und metallischen
+    # Glanz. Niedriger Wert ist typisch in Sammler-Bestaenden: die Messung
+    # erfordert Wasserverdraengung mit Waage oder pyknometrische Bestimmung,
+    # ist also nicht so trivial wie der Mohs-Kratztest, und wird daher seltener
+    # gepflegt - oft nur als Tabellen-Uebernahme nach Mineral-Bestimmung.
+    st.objekte_mit_dichte = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL"
     ).fetchone()[0]
     if gewichte:
         st.gewicht_max_g = gewichte[-1]

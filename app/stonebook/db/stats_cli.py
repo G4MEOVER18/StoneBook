@@ -112,6 +112,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # normal, weil Mohs typisch erst nach Mineral-Bestimmung gepflegt wird.
         lines.append(
             f"  Mohs-Haerte:         {st.quote_mit_mohs_prozent:.1f} %")
+        # Dichte (physikalische Dichte-Achse) direkt unter Mohs, weil sie die
+        # naechste physikalische Mess-Achse nach Haerte abdeckt: Masse ->
+        # Geometrie -> Haerte -> Dichte. Eine Achse genuegt (min ODER max
+        # gesetzt) - spiegelt die has_dichte/has_mohs-Konvention. Niedriger
+        # Wert ist typisch, weil die Dichte-Messung nicht so trivial ist wie
+        # der Mohs-Kratztest (Wasserverdraengung oder pyknometrische Bestimmung).
+        lines.append(
+            f"  Dichte:              {st.quote_mit_dichte_prozent:.1f} %")
         lines.append(f"  KI-Analyse:          {st.quote_mit_ki_analyse_prozent:.1f} %")
         lines.append(
             f"  KI-Analyse (ueb.):   "

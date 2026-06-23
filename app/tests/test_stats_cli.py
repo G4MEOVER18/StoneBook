@@ -318,6 +318,35 @@ def test_text_ausgabe_zeigt_mohs_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_dichte_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Dichte-Quote direkt unter Mohs-Haerte auf.
+    Physikalische Dichte-Achse symmetrisch zur Haerte-Achse: Mohs (Kratztest)
+    und Dichte (Wasserverdraengung/Pyknometer) sind die zwei zentralen
+    quantitativen Pruef-Methoden zur Mineral-Bestimmung; gemeinsam trennen sie
+    Mineralien wie Pyrit (~5.0) vs. Markasit (~4.9), die ueber Mohs allein
+    nicht unterscheidbar sind. Spiegelt has_dichte-/has_mohs-Filter-Konvention:
+    eine Grenze (min ODER max) genuegt fuer Coverage."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dichte.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?,?,?)",
+        [("OBJ_0001", 2.65, 2.66),   # Quarz-Punkt
+         ("OBJ_0002", 2.60, None),   # nur min → zaehlt
+         ("OBJ_0003", None, None),
+         ("OBJ_0004", None, None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Dichte:" in out
+    # 2 von 4 Objekten haben dokumentierte Dichte → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_kategorie_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Kategorie-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI auf.
 

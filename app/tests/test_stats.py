@@ -2023,6 +2023,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_gewicht_prozent is None
     assert st.quote_mit_dimensionen_prozent is None
     assert st.quote_mit_mohs_prozent is None
+    assert st.quote_mit_dichte_prozent is None
     assert st.quote_mit_ki_analyse_prozent is None
     assert st.quote_mit_confidence_prozent is None
     assert st.quote_mit_kategorie_prozent is None
@@ -2041,6 +2042,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_gewicht_prozent"] is None
     assert d["quote_mit_dimensionen_prozent"] is None
     assert d["quote_mit_mohs_prozent"] is None
+    assert d["quote_mit_dichte_prozent"] is None
     assert d["quote_mit_ki_analyse_prozent"] is None
     assert d["quote_mit_confidence_prozent"] is None
     assert d["quote_mit_kategorie_prozent"] is None
@@ -2155,6 +2157,40 @@ def test_quote_mit_mohs_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_mohs"] == 3
     assert d["quote_mit_mohs_prozent"] == 60.0
+    c.close()
+
+
+def test_quote_mit_dichte_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Dichte (Dichte_min_gcm3 / Dichte_max_gcm3) spiegelt
+    die has_dichte-/has_mohs-Filter-Konvention exakt: ein Objekt zaehlt als
+    geprueft, sobald eines der beiden Bereichsfelder gesetzt ist - obere und
+    untere Grenze werden nicht immer zusammen gepflegt, oft steht nur ein
+    Punkt-Wert (Reinmineral) oder eine Roh-Skala ('2.6-2.7') als Standard-
+    Tabellenwert aus der Mineraldatenbank uebernommen. Disjunktive Logik
+    symmetrisch zu quote_mit_mohs_prozent / quote_mit_dimensionen_prozent.
+    Niedriger Wert ist typisch in Sammler-Bestaenden, weil die Dichte-Messung
+    nicht so trivial ist wie der Mohs-Kratztest."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qd.sqlite3")
+    # 5 Objekte: drei mit mindestens einer Dichte-Grenze (60%), zwei ohne.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?,?,?)",
+        [
+            ("OBJ_0001", 2.65, 2.66),    # beide gesetzt → zaehlt (Quarz-Punkt)
+            ("OBJ_0002", 2.60, None),    # nur min → zaehlt
+            ("OBJ_0003", None, 2.71),    # nur max → zaehlt (Calcit)
+            ("OBJ_0004", None, None),    # nichts → zaehlt nicht
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_dichte == 3
+    assert st.quote_mit_dichte_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_dichte"] == 3
+    assert d["quote_mit_dichte_prozent"] == 60.0
     c.close()
 
 
