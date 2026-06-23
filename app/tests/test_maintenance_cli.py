@@ -46,6 +46,25 @@ def test_check_json_ok(tmp_path, capsys):
     assert info == {"ok": True, "messages": []}
 
 
+def test_deepcheck_text_ok(tmp_path, capsys):
+    """deepcheck Subcommand: leere DB → OK + Exit 0 (spiegelt check)."""
+    db_file = tmp_path / "dc.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["deepcheck", "--db", str(db_file)])
+    assert exit_code == 0
+    assert "OK" in capsys.readouterr().out
+
+
+def test_deepcheck_json_ok(tmp_path, capsys):
+    """deepcheck Subcommand JSON: leere DB → ok=True, messages=[] (spiegelt check)."""
+    db_file = tmp_path / "dcj.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["deepcheck", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {"ok": True, "messages": []}
+
+
 def test_fkcheck_text_ok(tmp_path, capsys):
     """fkcheck Subcommand: leere DB → OK + Exit 0 (spiegelt check)."""
     db_file = tmp_path / "fkc.sqlite3"

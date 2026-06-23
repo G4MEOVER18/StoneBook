@@ -45,6 +45,30 @@ def quick_check(conn: sqlite3.Connection) -> list[str]:
     return [] if msgs == ["ok"] else msgs
 
 
+def deep_check(conn: sqlite3.Connection) -> list[str]:
+    """SQLite-eigene Konsistenzpruefung (Voll-Variante, ``PRAGMA integrity_check``).
+
+    Liefert ``[]`` bei intakter DB; sonst eine Liste mit Befund-Strings, die
+    SQLite zurueckgibt. Spiegelt :func:`quick_check` exakt im Output-Format
+    (Liste von Strings, leer = ok), aber laeuft die vollstaendige Pruefung der
+    DB-Datei statt der schnellen Stichproben - inklusive Index-Konsistenz
+    gegen die Basistabellen, NULL-Spalten mit NOT-NULL-Constraint und
+    UNIQUE-Constraint-Verletzungen, die ``quick_check`` ueberspringt. Aequivalent
+    zu ``quick_check`` fuer Cron/Health-Probe (gleiche Liste-Semantik), aber als
+    deep-scan vor Backup, Release oder vor dem manuellen Wiederherstellungsplan
+    geeignet. Performance: O(DB-Groesse) statt O(DB-Groesse) mit Sampling -
+    fuer die StoneBook-DB im MB-Bereich vernachlaessigbar, fuer multi-GB-DBs
+    aber merklich langsamer. Komplementaer zu :func:`foreign_key_check`
+    (referentielle Achse, separate PRAGMA): zusammen decken die drei Funktionen
+    die drei orthogonalen SQLite-Korruptions-Achsen ab - Page/Index-Schaden
+    (quick_check), Voll-Pruefung inkl. UNIQUE/NOT-NULL (deep_check) und FK-
+    Verletzungen (foreign_key_check).
+    """
+    rows = conn.execute("PRAGMA integrity_check").fetchall()
+    msgs = [r[0] for r in rows]
+    return [] if msgs == ["ok"] else msgs
+
+
 def foreign_key_check(conn: sqlite3.Connection) -> list[tuple[str, int | None, str, int]]:
     """SQLite-eigene Foreign-Key-Pruefung (``PRAGMA foreign_key_check``).
 

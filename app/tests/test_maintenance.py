@@ -1,8 +1,8 @@
 """DB-Wartung: vacuum, Groesse, quick_check, foreign_key_check."""
 from stonebook.db.database import open_db
 from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      foreign_key_check, free_page_count,
-                                      quick_check, vacuum)
+                                      deep_check, foreign_key_check,
+                                      free_page_count, quick_check, vacuum)
 from stonebook.db.repository import ObjectRepo
 
 
@@ -42,6 +42,42 @@ def test_vacuum_verkleinert_db_nach_loesch(tmp_path):
         assert after <= before
         assert after < bytes_voll
         assert free_page_count(c) == 0
+    finally:
+        c.close()
+
+
+def test_deep_check_neu_angelegte_db_ok(tmp_path):
+    """Frisch angelegte DB hat keine Korruption (spiegelt quick_check)."""
+    c = open_db(tmp_path / "deep_ok.sqlite3")
+    try:
+        assert deep_check(c) == []
+    finally:
+        c.close()
+
+
+def test_deep_check_findet_quick_check_subset(tmp_path):
+    """deep_check meldet auf der intakten DB exakt das gleiche wie quick_check
+    (beide leer); dies fixiert die Kontrakt-Symmetrie der zwei Selbst-Pruefungen.
+    """
+    c = open_db(tmp_path / "deep_eq.sqlite3")
+    ObjectRepo(c).create("OBJ_0001", Name="Test")
+    try:
+        assert deep_check(c) == quick_check(c) == []
+    finally:
+        c.close()
+
+
+def test_deep_check_idempotent(tmp_path):
+    """Wiederholter Aufruf darf weder DB-State noch Ergebnis veraendern."""
+    c = open_db(tmp_path / "deep_idem.sqlite3")
+    ObjectRepo(c).create("OBJ_0001", Name="Test")
+    try:
+        first = deep_check(c)
+        second = deep_check(c)
+        assert first == second == []
+        assert c.execute(
+            "SELECT Name FROM objects WHERE obj_id='OBJ_0001'"
+        ).fetchone()["Name"] == "Test"
     finally:
         c.close()
 

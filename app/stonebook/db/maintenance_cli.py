@@ -1,9 +1,10 @@
-"""CLI fuer DB-Wartung (VACUUM, quick_check, foreign_key_check, Groessenmessung).
+"""CLI fuer DB-Wartung (VACUUM, quick_check, deep_check, foreign_key_check, Groessenmessung).
 
 Beispiele:
     python -m stonebook.db.maintenance_cli size                     # Default-DB
     python -m stonebook.db.maintenance_cli size --db <pfad>
     python -m stonebook.db.maintenance_cli check                    # quick_check
+    python -m stonebook.db.maintenance_cli deepcheck                # integrity_check (voll)
     python -m stonebook.db.maintenance_cli fkcheck                  # foreign_key_check
     python -m stonebook.db.maintenance_cli vacuum                   # VACUUM
     python -m stonebook.db.maintenance_cli vacuum --json
@@ -17,8 +18,8 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
 from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      foreign_key_check, free_page_count,
-                                      quick_check, vacuum)
+                                      deep_check, foreign_key_check,
+                                      free_page_count, quick_check, vacuum)
 
 
 def _resolve_db(args: argparse.Namespace) -> Path | None:
@@ -74,6 +75,30 @@ def _cmd_check(args: argparse.Namespace) -> int:
     else:
         print("OK: SQLite quick_check ohne Befund.")
     # Exit-Code 1 bei Korruption, 0 wenn sauber - geeignet fuer Cron/CI.
+    return 0 if not messages else 1
+
+
+def _cmd_deepcheck(args: argparse.Namespace) -> int:
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        messages = deep_check(conn)
+    finally:
+        conn.close()
+    # Spiegelt _cmd_check exakt (gleiche Output-/Exit-Konvention); deep_check
+    # ist die Voll-Variante des SQLite-Selbstchecks.
+    if args.json:
+        json.dump({"ok": not messages, "messages": messages},
+                  sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    elif messages:
+        print("FEHLER: SQLite integrity_check meldet Probleme:")
+        for m in messages:
+            print(f"  - {m}")
+    else:
+        print("OK: SQLite integrity_check ohne Befund.")
     return 0 if not messages else 1
 
 
@@ -146,6 +171,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_check)
+
+    sp = sub.add_parser("deepcheck",
+                        help="SQLite integrity_check (Voll-Variante) ausfuehren "
+                             "- prueft Indexe, UNIQUE/NOT-NULL gegen Basistabellen.")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_deepcheck)
 
     sp = sub.add_parser("fkcheck",
                         help="SQLite foreign_key_check ausfuehren "
