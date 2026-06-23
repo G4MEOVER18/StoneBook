@@ -194,6 +194,19 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # -> Transparenz, schliesst die optische Diagnose-Reihe ab.
         lines.append(
             f"  Transparenz:         {st.quote_mit_transparenz_prozent:.1f} %")
+        # Spaltbarkeit (mechanisches Bruchverhalten) direkt unter Transparenz,
+        # weil sie die mechanisch-strukturelle Achse spiegelt - nach der
+        # optischen Diagnose-Doppel-Achse (Glanz/Transparenz) folgt die
+        # mechanische Achse. Spaltbarkeit (vollkommen/gut/deutlich/undeutlich/
+        # keine - die fuenf Enum-Werte) sagt, ob das Mineral entlang
+        # kristallographisch bevorzugter Ebenen spaltet (Glimmer/Calcit) oder
+        # unregelmaessig bricht (Quarz). Niedriger Wert ist typisch, weil der
+        # Hammertest invasiv ist und nicht routinemaessig durchgefuehrt wird.
+        # Reihenfolge spiegelt die semantische Sortierung Symmetrie ->
+        # Magnetismus -> Glanz -> Transparenz -> Spaltbarkeit, bevor die
+        # geografische Provenienz-Achse (Fundort) drankommt.
+        lines.append(
+            f"  Spaltbarkeit:        {st.quote_mit_spaltbarkeit_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits

@@ -575,6 +575,33 @@ def test_text_ausgabe_zeigt_transparenz_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_spaltbarkeit_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Spaltbarkeit-Quote direkt unter Transparenz auf.
+    Mechanisch-strukturelle Diagnose-Achse (vollkommen/gut/deutlich/undeutlich/
+    keine) symmetrisch zur optisch-physikalischen Diagnose-Doppel-Achse (Glanz/
+    Transparenz) - waehrend Glanz/Transparenz die optische Eigenschaft beschreiben,
+    beschreibt Spaltbarkeit das mechanische Bruchverhalten entlang kristallo-
+    graphisch bevorzugter Ebenen. Symmetrische CLI-Sichtbarkeit fuer das Daten-
+    pflege-Dashboard auf der Achse "wieviele Stuecke wurden auf die Spaltbarkeit
+    hin charakterisiert?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sp.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?,?)",
+        [("OBJ_0001", "vollkommen"), ("OBJ_0002", "keine"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Spaltbarkeit:" in out
+    # 2 von 4 Objekten haben dokumentierte Spaltbarkeit → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Fundort-Quote zusaetzlich zu Bildern/Funddatum/Wert/Gewicht/KI/Mineral auf.
     Spiegelt die mineralogische Identifikations-Achse (Mineral_Primaer) auf die

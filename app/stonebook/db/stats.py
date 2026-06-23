@@ -30,6 +30,7 @@ class Statistik:
     objekte_mit_magnetismus: int = 0
     objekte_mit_glanz: int = 0
     objekte_mit_transparenz: int = 0
+    objekte_mit_spaltbarkeit: int = 0
     objekte_mit_fundort: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
@@ -451,6 +452,46 @@ class Statistik:
         return self._quote(self.objekte_mit_transparenz)
 
     @property
+    def quote_mit_spaltbarkeit_prozent(self) -> float | None:
+        # Coverage-Quote fuer Spaltbarkeit (mechanisch-strukturelles Bruchverhalten
+        # entlang kristallographisch bevorzugter Ebenen: vollkommen/gut/deutlich/
+        # undeutlich/keine - die fuenf Enum-Werte aus dem Feldwoerterbuch)
+        # symmetrisch zu quote_mit_glanz_prozent / quote_mit_transparenz_prozent /
+        # quote_mit_magnetismus_prozent auf die mechanisch-strukturelle Diagnose-
+        # Achse. Spiegelt die optische Diagnose-Doppel-Achse (Glanz/Transparenz)
+        # und die magnetische Reaktions-Achse auf die mechanische Achse: waehrend
+        # Glanz und Transparenz die optische Eigenschaft beschreiben und
+        # Magnetismus die qualitative Eisengehalts-Reaktion, beschreibt
+        # Spaltbarkeit das mechanische Bruchverhalten - ob das Mineral entlang
+        # bevorzugter Kristallebenen spaltet (Glimmer: vollkommen blaettrig;
+        # Calcit/Halit: gut wuerfelig/rhomboedrisch) oder unregelmaessig bricht
+        # (Quarz: keine Spaltbarkeit, nur Bruch). Bisher gab es nur by_spaltbarkeit
+        # (Streuung-Sicht), has_spaltbarkeit (Listen-Filter) und wert_pro_
+        # spaltbarkeit (Wert-Aufteilung), aber keine Coverage-Kennzahl (Anteil-
+        # Sicht auf den Gesamtbestand) - waehrend die verwandten qualitativen
+        # Pruef-Achsen (optisch, magnetisch) bereits Coverage-Quoten haben.
+        # Aussenkontext-bedingt komplementaer zu quote_mit_bruch_prozent (wenn
+        # vorhanden): Spaltbarkeit beschreibt die geordnete Bruchrichtung
+        # (kristallographisch determiniert), Bruch das ungeordnete Versagen
+        # ausserhalb der Spaltebenen (muschelig/uneben/...) - beide sind
+        # paarweise Eintragspunkte einer Hammertest-/Pruefnotiz. Aus Datenpflege-
+        # Sicht ist Spaltbarkeit ein zentraler Diagnose-Parameter, weil die
+        # Kombination Spaltbarkeit-vollkommen + Mohs-niedrig (Glimmer, Calcit,
+        # Galenit) eine eindeutige Mineral-Klasse markiert; die Quote zeigt, wie
+        # gross der Pflege-Restbestand auf dieser Bestimmungs-Achse ist. Niedriger
+        # Wert ist typisch in Sammler-Bestaenden, weil der Hammertest invasiv ist
+        # (man muss ein Stueck schlagen, um die Spaltflaechen zu sehen) und
+        # daher seltener routinemaessig durchgefuehrt wird als optische oder
+        # magnetische Pruefungen - viele Stuecke bleiben ohne dokumentierte
+        # Spaltbarkeit stehen. Aus Datenpflege-Sicht ein direkter Indikator
+        # fuer die Vollstaendigkeit der mechanischen Diagnose-Achse. Komplementaer
+        # zu by_spaltbarkeit (distinkte Werte, Streuung-Sicht) und has_spaltbarkeit
+        # (Listen-Filter); beide gemeinsam geben Auskunft ueber Vollstaendigkeit
+        # vs. Streuung der mechanischen Pruefung. Whitespace zaehlt wie leer
+        # (spiegelt has_spaltbarkeit-Filter-Konvention).
+        return self._quote(self.objekte_mit_spaltbarkeit)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -544,6 +585,7 @@ class Statistik:
             "objekte_mit_kristallsystem": self.objekte_mit_kristallsystem,
             "objekte_mit_magnetismus": self.objekte_mit_magnetismus,
             "objekte_mit_glanz": self.objekte_mit_glanz,
+            "objekte_mit_spaltbarkeit": self.objekte_mit_spaltbarkeit,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_notizen": self.objekte_mit_notizen,
@@ -778,6 +820,8 @@ class Statistik:
                 self.quote_mit_magnetismus_prozent),
             "quote_mit_glanz_prozent": _round_or_none(self.quote_mit_glanz_prozent),
             "quote_mit_transparenz_prozent": _round_or_none(self.quote_mit_transparenz_prozent),
+            "quote_mit_spaltbarkeit_prozent": _round_or_none(
+                self.quote_mit_spaltbarkeit_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
@@ -1716,6 +1760,31 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_transparenz = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Transparenz IS NOT NULL AND TRIM(Transparenz) != ''"
+    ).fetchone()[0]
+    # objekte_mit_spaltbarkeit: Anzahl Objekte mit dokumentierter Spaltbarkeit
+    # (mechanisches Bruchverhalten entlang kristallographisch bevorzugter Ebenen:
+    # vollkommen/gut/deutlich/undeutlich/keine - die fuenf Enum-Werte aus dem
+    # Feldwoerterbuch). Spiegelt objekte_mit_glanz / objekte_mit_transparenz auf
+    # die mechanisch-strukturelle Diagnose-Achse: waehrend Glanz und Transparenz
+    # die optische Eigenschaft beschreiben, beschreibt Spaltbarkeit das
+    # mechanische Bruchverhalten - ob das Mineral entlang bevorzugter Kristall-
+    # ebenen spaltet (Glimmer: vollkommen blaettrig; Calcit/Halit: gut wuerfelig/
+    # rhomboedrisch) oder unregelmaessig bricht (Quarz: keine Spaltbarkeit, nur
+    # Bruch). Niedriger Wert ist typisch in Sammler-Bestaenden, weil der
+    # Hammertest invasiv ist (man muss ein Stueck schlagen, um die Spaltflaechen
+    # zu sehen) und daher seltener routinemaessig durchgefuehrt wird als
+    # optische oder magnetische Pruefungen. Aus Datenpflege-Sicht ist die
+    # Kombination Spaltbarkeit-vollkommen + Mohs-niedrig ein eindeutiger Marker
+    # fuer Mineral-Klassen wie Glimmer/Calcit/Galenit - ohne Spaltbarkeits-
+    # Eintrag fehlt diese Bestimmungs-Achse. Whitespace zaehlt wie leer,
+    # spiegelt has_spaltbarkeit. by_spaltbarkeit zaehlt distinkte Spaltbarkeits-
+    # Werte (Streuung); diese Kennzahl zaehlt Objekte mit irgendeinem
+    # dokumentierten Spaltbarkeits-Wert (Coverage) - komplementaer, beide
+    # gemeinsam geben Auskunft ueber Vollstaendigkeit vs. Streuung der
+    # mechanischen Pruefung.
+    st.objekte_mit_spaltbarkeit = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Spaltbarkeit IS NOT NULL AND TRIM(Spaltbarkeit) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die

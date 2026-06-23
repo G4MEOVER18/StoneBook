@@ -2034,6 +2034,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert st.quote_mit_magnetismus_prozent is None
     assert st.quote_mit_glanz_prozent is None
     assert st.quote_mit_transparenz_prozent is None
+    assert st.quote_mit_spaltbarkeit_prozent is None
     assert st.quote_mit_fundort_prozent is None
     assert st.quote_mit_notizen_prozent is None
     assert st.quote_mit_alias_prozent is None
@@ -2053,6 +2054,7 @@ def test_quoten_bei_leerer_db_sind_none(tmp_path):
     assert d["quote_mit_magnetismus_prozent"] is None
     assert d["quote_mit_glanz_prozent"] is None
     assert d["quote_mit_transparenz_prozent"] is None
+    assert d["quote_mit_spaltbarkeit_prozent"] is None
     assert d["quote_mit_fundort_prozent"] is None
     assert d["quote_mit_notizen_prozent"] is None
     assert d["quote_mit_alias_prozent"] is None
@@ -2496,6 +2498,42 @@ def test_quote_mit_transparenz_aus_seed_db(tmp_path):
     d = st.as_dict()
     assert d["objekte_mit_transparenz"] == 2
     assert d["quote_mit_transparenz_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_spaltbarkeit_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Spaltbarkeit (mechanisches Bruchverhalten) spiegelt
+    die Glanz-/Transparenz-/Magnetismus-Quoten auf die mechanisch-strukturelle
+    Diagnose-Achse: Anteil der Objekte mit dokumentierter Spaltbarkeit, gerechnet
+    ueber objekte_total. Spaltbarkeit klassifiziert das mechanische Bruchverhalten
+    entlang kristallographisch bevorzugter Ebenen (vollkommen/gut/deutlich/
+    undeutlich/keine - die fuenf Enum-Werte aus dem Feldwoerterbuch), spiegelt das
+    has_spaltbarkeit-Filter-Verhalten exakt. Whitespace/NULL zaehlt wie leer
+    (spiegelt has_spaltbarkeit-Filter-Konvention). Komplementaer zu by_spaltbarkeit,
+    das distinkte Werte zaehlt (Streuung): quote_mit_spaltbarkeit beziffert Coverage."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qs.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Spaltbarkeit (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei mit unterschied-
+    # lichen Spaltbarkeits-Werten zaehlen in der Coverage gleich; die Streuung
+    # (by_spaltbarkeit) bleibt orthogonal.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Spaltbarkeit) VALUES (?,?)",
+        [
+            ("OBJ_0001", "vollkommen"),   # Glimmer-typisch
+            ("OBJ_0002", "keine"),        # Quarz-typisch
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_spaltbarkeit == 2
+    assert st.quote_mit_spaltbarkeit_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_spaltbarkeit"] == 2
+    assert d["quote_mit_spaltbarkeit_prozent"] == 40.0
     c.close()
 
 
