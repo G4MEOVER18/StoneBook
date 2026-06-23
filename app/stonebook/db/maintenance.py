@@ -100,3 +100,50 @@ def db_file_bytes(db_file: Path) -> int:
     """Tatsaechliche Dateigroesse der SQLite-Datei in Bytes (oder 0, wenn fehlt)."""
     p = Path(db_file)
     return p.stat().st_size if p.is_file() else 0
+
+
+def delete_orphan_images(conn: sqlite3.Connection) -> int:
+    """Entfernt Bild-Eintraege, deren ``obj_id`` auf kein Objekt mehr verweist.
+
+    Pendant zu ``IntegrityReport.orphan_images`` aus
+    :mod:`stonebook.db.integrity`: dort wird das Problem erkannt, hier behoben.
+    Im Normalbetrieb erzeugt das ``ON DELETE CASCADE`` der FK-Beziehung nie
+    Orphans; sie entstehen durch ``PRAGMA foreign_keys=OFF`` (manuelle DB-
+    Editierung, JSON-Restore aus partiellen Backups, fehlerhafte Migrations-
+    skripte). Gibt die Anzahl tatsaechlich geloeschter Zeilen zurueck.
+    """
+    cur = conn.execute(
+        "DELETE FROM images WHERE obj_id NOT IN (SELECT obj_id FROM objects)")
+    conn.commit()
+    return cur.rowcount
+
+
+def delete_orphan_ki_analysen(conn: sqlite3.Connection) -> int:
+    """Entfernt KI-Analyse-Eintraege ohne zugehoeriges Objekt.
+
+    Spiegelt :func:`delete_orphan_images` auf die ``ki_analysen``-Tabelle:
+    auch hier sorgt ``ON DELETE CASCADE`` im Schema fuer Sauberkeit im
+    regulaeren Betrieb; Orphans treten nur ueber die gleichen
+    PRAGMA-OFF-Pfade auf. Pendant zu ``IntegrityReport.orphan_ki_analysen``.
+    """
+    cur = conn.execute(
+        "DELETE FROM ki_analysen WHERE obj_id NOT IN (SELECT obj_id FROM objects)")
+    conn.commit()
+    return cur.rowcount
+
+
+def delete_dangling_aliases(conn: sqlite3.Connection) -> int:
+    """Entfernt Alias-Eintraege, deren Kanon-Objekt fehlt.
+
+    Pendant zu ``IntegrityReport.alias_to_missing``: in der regulaeren Anwendung
+    (delete-Pfad ueber ObjectRepo) niemals erzeugt - das FK auf objects(obj_id)
+    mit ON DELETE CASCADE haelt das sauber. Sie koennen aber durch JSON-Restore
+    aus einem partiellen Backup (nur aliases-Tabelle ohne die zugehoerigen
+    canonical-Objekte), direkte DB-Editierung mit PRAGMA foreign_keys=OFF oder
+    fehlerhafte Migrations-Skripte entstehen. Gibt die Anzahl tatsaechlich
+    geloeschter Zeilen zurueck.
+    """
+    cur = conn.execute(
+        "DELETE FROM aliases WHERE canonical_id NOT IN (SELECT obj_id FROM objects)")
+    conn.commit()
+    return cur.rowcount

@@ -1,7 +1,10 @@
-"""DB-Wartung: vacuum, Groesse, quick_check, foreign_key_check."""
+"""DB-Wartung: vacuum, Groesse, quick_check, foreign_key_check, Orphan-Cleanup."""
 from stonebook.db.database import open_db
 from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      deep_check, foreign_key_check,
+                                      deep_check, delete_dangling_aliases,
+                                      delete_orphan_images,
+                                      delete_orphan_ki_analysen,
+                                      foreign_key_check,
                                       free_page_count, quick_check, vacuum)
 from stonebook.db.repository import ObjectRepo
 
@@ -135,6 +138,107 @@ def test_foreign_key_check_idempotent(tmp_path):
         assert c.execute(
             "SELECT Name FROM objects WHERE obj_id='OBJ_0001'"
         ).fetchone()["Name"] == "Test"
+    finally:
+        c.close()
+
+
+def _insert_orphan_image(c, obj_id="OBJ_0099_ghost", rel_path="objects/OBJ_0099/foto.jpg"):
+    """Erzeugt ein verwaistes Bild ueber den FK-OFF-Pfad (Simulation von Korrekt-DB-Editierung)."""
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute("INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+              (obj_id, "Kamera", rel_path))
+    c.commit()
+    c.execute("PRAGMA foreign_keys = ON")
+
+
+def _insert_orphan_ki_analyse(c, obj_id="OBJ_0099_ghost"):
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute("INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json) "
+              "VALUES (?, ?, ?, ?)",
+              (obj_id, "2025-01-01 00:00:00", "claude-sonnet-4-6", "{}"))
+    c.commit()
+    c.execute("PRAGMA foreign_keys = ON")
+
+
+def _insert_dangling_alias(c, alias_id="OBJ_9999", canonical_id="OBJ_0099_ghost"):
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute("INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+              "VALUES (?, ?, ?)",
+              (alias_id, canonical_id, "test"))
+    c.commit()
+    c.execute("PRAGMA foreign_keys = ON")
+
+
+def test_delete_orphan_images_entfernt_nur_orphans(tmp_path):
+    c = open_db(tmp_path / "orph.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        repo.create("OBJ_0001")
+        c.execute("INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+                  ("OBJ_0001", "Kamera", "objects/OBJ_0001/x.jpg"))
+        c.commit()
+        _insert_orphan_image(c)
+        deleted = delete_orphan_images(c)
+        assert deleted == 1
+        # Echtes Bild bleibt
+        assert c.execute("SELECT COUNT(*) FROM images").fetchone()[0] == 1
+    finally:
+        c.close()
+
+
+def test_delete_orphan_images_leer_no_op(tmp_path):
+    c = open_db(tmp_path / "clean.sqlite3")
+    try:
+        assert delete_orphan_images(c) == 0
+    finally:
+        c.close()
+
+
+def test_delete_orphan_ki_analysen_entfernt_nur_orphans(tmp_path):
+    c = open_db(tmp_path / "orph_ki.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        repo.create("OBJ_0001")
+        c.execute("INSERT INTO ki_analysen (obj_id, zeitpunkt, modell, antwort_json) "
+                  "VALUES (?, ?, ?, ?)",
+                  ("OBJ_0001", "2025-01-01 00:00:00", "claude-sonnet-4-6", "{}"))
+        c.commit()
+        _insert_orphan_ki_analyse(c)
+        deleted = delete_orphan_ki_analysen(c)
+        assert deleted == 1
+        assert c.execute("SELECT COUNT(*) FROM ki_analysen").fetchone()[0] == 1
+    finally:
+        c.close()
+
+
+def test_delete_dangling_aliases_entfernt_nur_dangling(tmp_path):
+    c = open_db(tmp_path / "dang.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        repo.create("OBJ_0001")
+        # Gueltiger Alias auf existierendes Objekt
+        c.execute("INSERT INTO aliases (alias_id, canonical_id, merge_quelle) "
+                  "VALUES (?, ?, ?)", ("OBJ_0002", "OBJ_0001", "merge"))
+        c.commit()
+        _insert_dangling_alias(c)
+        deleted = delete_dangling_aliases(c)
+        assert deleted == 1
+        assert c.execute("SELECT COUNT(*) FROM aliases").fetchone()[0] == 1
+    finally:
+        c.close()
+
+
+def test_orphan_cleanup_macht_foreign_key_check_sauber(tmp_path):
+    """Nach delete_orphan_images darf foreign_key_check keine Verletzung mehr melden."""
+    c = open_db(tmp_path / "fixed.sqlite3")
+    try:
+        _insert_orphan_image(c)
+        assert len(foreign_key_check(c)) == 1
+        delete_orphan_images(c)
+        assert foreign_key_check(c) == []
     finally:
         c.close()
 
