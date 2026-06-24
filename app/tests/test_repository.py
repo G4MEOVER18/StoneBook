@@ -3436,6 +3436,62 @@ def test_geaendert_am_monat_filter(tmp_path):
     c.close()
 
 
+def test_geaendert_am_monat_in_filter(tmp_path):
+    """geaendert_am_monat_in akzeptiert diskrete Aenderungs-Monate (Pflege-Spitzen).
+
+    Spiegelt erstellt_am_monat_in / funddatum_monat_in auf die Aenderungs-Achse:
+    mehrere Pflege-Spitzen kombinieren (Indoor-Block November/Dezember/Januar
+    oder Boersen-Nachbearbeitung Februar Tucson + Oktober Sainte-Marie-aux-Mines).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gmi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) "
+        "VALUES (?, ?, ?)",
+        [
+            # November-Pflege
+            ("OBJ_0001", "2018-05-13 10:00:00", "2020-11-10 10:00:00"),
+            # Dezember-Pflege
+            ("OBJ_0002", "2018-05-13 10:00:00", "2020-12-15 11:30:00"),
+            # Januar-Pflege
+            ("OBJ_0003", "2020-01-01 09:00:00", "2022-01-20 12:00:00"),
+            # Juli-Pflege (faellt aus Indoor-Block raus)
+            ("OBJ_0004", "2022-03-15 08:00:00", "2024-07-05 14:15:00"),
+            # Geaendert_am ohne Monatsteil -> faellt raus
+            ("OBJ_0005", "2024-05-13 10:00:00", "2024"),
+            ("OBJ_0006", "", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Indoor-Block November/Dezember/Januar
+    rows = repo.list_objects(geaendert_am_monat_in=[11, 12, 1])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Einzelner Monat verhaelt sich wie geaendert_am_monat
+    rows = repo.list_objects(geaendert_am_monat_in=[7])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(geaendert_am_monat_in=(11, 12))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(geaendert_am_monat_in=[])
+    assert len(rows) == 6
+    # Monate ohne Treffer
+    rows = repo.list_objects(geaendert_am_monat_in=[3, 4, 5])
+    assert rows == []
+    # Kombiniert mit Bereichsfilter (Schnittmenge): Indoor-Block ∩ 2022+
+    rows = repo.list_objects(geaendert_am_monat_in=[11, 12, 1],
+                              geaendert_am_jahr_min=2022)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Ungueltige Monate -> ValueError
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Monate"):
+        repo.list_objects(geaendert_am_monat_in=[1, 13])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Monate"):
+        repo.list_objects(geaendert_am_monat_in=[0])
+    c.close()
+
+
 def test_erstellt_am_jahr_in_filter(tmp_path):
     """erstellt_am_jahr_in akzeptiert diskrete Erfassungs-Jahre (Migrations-Wellen)."""
     from stonebook.db.database import open_db

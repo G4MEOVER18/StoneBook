@@ -344,6 +344,7 @@ class ObjectRepo:
                      geaendert_am_jahr_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_monat: int | None = None,
+                     geaendert_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -1038,6 +1039,31 @@ class ObjectRepo:
                 "AND substr(o.geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
                 "AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) = ?")
             params.append(m)
+        # geaendert_am_monat_in: Mengen-Saison-Filter auf der Aenderungs-Achse
+        # ("Indoor-Pflege-Phase November ODER Dezember ODER Januar"). Komplementaer
+        # zum einzelnen geaendert_am_monat-Filter; spiegelt erstellt_am_monat_in /
+        # funddatum_monat_in in der diskreten Mengen-Notation. Beantwortet die
+        # typische "Mehrere Pflege-Spitzen kombinieren"-Frage: Indoor-Phase
+        # November/Dezember/Januar als zusammenhaengender Pflege-Block, oder
+        # Boersen-Nachbearbeitung Februar (Tucson) + Oktober (Muenchen, Sainte-
+        # Marie-aux-Mines). Erwartet jeden Eintrag in 1..12 (Tippfehler 0/13
+        # erzeugen einen klaren Fehler statt eines stillen Leerergebnisses).
+        if geaendert_am_monat_in:
+            monate = [int(m) for m in geaendert_am_monat_in]
+            invalid = [m for m in monate if not 1 <= m <= 12]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Geaendert-am-Monate: {invalid} "
+                    f"(erwartet 1..12)")
+            if monate:
+                placeholders = ", ".join("?" * len(monate))
+                where.append(
+                    "o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                    "AND substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+                    f"AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) IN "
+                    f"({placeholders})")
+                params.extend(monate)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
