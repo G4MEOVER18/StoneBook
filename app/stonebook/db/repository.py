@@ -343,6 +343,7 @@ class ObjectRepo:
                      geaendert_am_jahr_max: int | None = None,
                      geaendert_am_jahr_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
+                     geaendert_am_monat: int | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -1014,6 +1015,29 @@ class ObjectRepo:
                     f"AND (CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) / 10) * 10 "
                     f"IN ({placeholders})")
                 params.extend(dekaden)
+        # geaendert_am_monat: Saison-Filter ueber alle Jahre auf der Aenderungs-
+        # Achse ("alle im Januar nachbearbeiteten Stuecke") - spiegelt
+        # erstellt_am_monat / funddatum_monat auf die zweite Zeitstempel-Spalte
+        # und beantwortet die typische Pflege-Frage "in welchen Monaten habe ich
+        # zuletzt am Bestand redaktionell gearbeitet?". Aussenkontext-bedingt
+        # treten typische Pflege-Spitzen analog zur Erfassungs-Achse im Winter
+        # auf (Indoor-Phase November-Januar, Boersen-Nachbearbeitung Februar/
+        # Maerz nach Tucson), aber als zweite Achse: ein Stueck kann im Juli
+        # erfasst (Sommer-Tour) und im Januar redaktionell ueberarbeitet worden
+        # sein (Winter-Pflege). Substring 6..7 ist analog zu erstellt_am_monat;
+        # nur vierstellige Jahres-Praefixe und gueltige Monatsteile 01..12 matchen,
+        # damit reine Jahresangaben ohne Monat automatisch herausfallen.
+        if geaendert_am_monat is not None:
+            m = int(geaendert_am_monat)
+            if not 1 <= m <= 12:
+                raise ValueError(
+                    f"geaendert_am_monat muss zwischen 1 und 12 liegen (war: {m})")
+            where.append(
+                "o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                "AND substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                "AND substr(o.geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+                "AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) = ?")
+            params.append(m)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)

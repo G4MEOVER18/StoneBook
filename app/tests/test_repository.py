@@ -3386,6 +3386,56 @@ def test_geaendert_am_jahrzehnt_in_filter(tmp_path):
     c.close()
 
 
+def test_geaendert_am_monat_filter(tmp_path):
+    """geaendert_am_monat filtert nach Aenderungs-Monat ueber alle Jahre.
+
+    Spiegelt erstellt_am_monat / funddatum_monat auf die zweite Zeitstempel-
+    Spalte: in welchen Monaten habe ich zuletzt redaktionell am Bestand
+    gearbeitet? Typisch Winter-Pflege (Indoor-Phase November-Januar,
+    Boersen-Nachbearbeitung Februar/Maerz nach Tucson).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) "
+        "VALUES (?, ?, ?)",
+        [
+            # Januar-Pflege (Indoor-Phase)
+            ("OBJ_0001", "2018-07-13 10:00:00", "2020-01-15 10:00:00"),
+            # Februar-Pflege (Tucson-Nachbearbeitung)
+            ("OBJ_0002", "2018-05-13 10:00:00", "2021-02-20 11:30:00"),
+            # Juli-Pflege (selten)
+            ("OBJ_0003", "2020-01-01 09:00:00", "2022-07-10 12:00:00"),
+            # Dezember-Pflege (Muenchen-Nachbearbeitung)
+            ("OBJ_0004", "2022-03-15 08:00:00", "2024-12-01 14:15:00"),
+            # Geaendert_am ohne Monatsteil -> faellt raus
+            ("OBJ_0005", "2024-05-13 10:00:00", "2024"),
+            ("OBJ_0006", "", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(geaendert_am_monat=1)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    rows = repo.list_objects(geaendert_am_monat=12)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    rows = repo.list_objects(geaendert_am_monat=7)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Monat ohne Treffer
+    rows = repo.list_objects(geaendert_am_monat=8)
+    assert rows == []
+    # Orthogonal zur Erfassungs-Achse: OBJ_0003 ist im Januar erfasst, aber
+    # im Juli gepflegt - der Schnitt der beiden Achsen ist nicht leer.
+    rows = repo.list_objects(erstellt_am_monat=1, geaendert_am_monat=7)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Validierung
+    with pytest.raises(ValueError, match="geaendert_am_monat"):
+        repo.list_objects(geaendert_am_monat=0)
+    with pytest.raises(ValueError, match="geaendert_am_monat"):
+        repo.list_objects(geaendert_am_monat=13)
+    c.close()
+
+
 def test_erstellt_am_jahr_in_filter(tmp_path):
     """erstellt_am_jahr_in akzeptiert diskrete Erfassungs-Jahre (Migrations-Wellen)."""
     from stonebook.db.database import open_db
