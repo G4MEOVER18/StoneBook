@@ -732,6 +732,31 @@ def test_text_ausgabe_zeigt_hcl_reaktion_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_uv_365nm_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt UV-365nm-Quote (Fluoreszenz bei Langwellen-UV)
+    direkt nach HCl-Reaktion und vor Notizen auf. UV-365nm spiegelt die
+    qualitativen Pruefparameter-Trias (Magnetismus/Strichfarbe/HCl-Reaktion)
+    auf die optisch-UV-Diagnose-Achse - vierte zentrale Pruef-Achse aus dem
+    Feldwoerterbuch, bevor mit Notizen die freie Sonstiges-Achse beginnt.
+    Eine niedrige Quote ist typisch in Sammlungen ohne dedizierte UV-Box."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "uv.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_365nm) VALUES (?,?)",
+        [("OBJ_0001", "stark gruen"), ("OBJ_0002", "keine"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "UV 365 nm:" in out
+    # 2 von 4 Objekten haben UV_365nm → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
     der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-

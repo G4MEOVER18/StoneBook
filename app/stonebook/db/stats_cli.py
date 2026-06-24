@@ -268,6 +268,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # ist als an der freien Sonstiges-Achse notizen.
         lines.append(
             f"  HCl-Reaktion:        {st.quote_mit_hcl_reaktion_prozent:.1f} %")
+        # UV-365nm (Fluoreszenz-Reaktion bei Langwellen-UV) spiegelt die
+        # qualitativen Pruefparameter-Trias (Magnetismus/Strichfarbe/HCl-
+        # Reaktion) auf die optisch-UV-Diagnose-Achse. Steht direkt nach
+        # HCl-Reaktion und vor Notizen, weil UV-365nm konzeptionell eine
+        # vierte qualitative Pruef-Achse ist - die Reihenfolge bildet damit
+        # die Coverage-Sequenz Magnetismus -> Strichfarbe -> HCl-Reaktion ->
+        # UV-365nm der vier zentralen Pruefparameter aus dem Feldwoerterbuch
+        # ab, bevor mit Notizen die freie Sonstiges-Achse beginnt.
+        lines.append(
+            f"  UV 365 nm:           {st.quote_mit_uv_365nm_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
         # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur

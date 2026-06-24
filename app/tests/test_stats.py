@@ -2746,6 +2746,48 @@ def test_quote_mit_hcl_reaktion_leere_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_uv_365nm_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer UV-Reaktion bei 365 nm (Langwellen-UV, Standard-
+    Wellenlaenge fuer Fluoreszenz-Sammler) spiegelt die qualitativen
+    Pruefparameter-Trias (Magnetismus/Strichfarbe/HCl-Reaktion) auf die
+    optisch-UV-Diagnose-Achse: Anteil der Objekte mit dokumentierter UV-
+    Reaktion, gerechnet ueber objekte_total. Whitespace/NULL zaehlt wie
+    leer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "quv.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter UV-Reaktion (40%), drei ohne
+    # (NULL/leer/Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_365nm) VALUES (?,?)",
+        [
+            ("OBJ_0001", "stark gruen"),     # Willemit-typisch
+            ("OBJ_0002", "keine"),           # Quarz-typisch
+            ("OBJ_0003", ""),                # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),             # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_uv_365nm == 2
+    assert st.quote_mit_uv_365nm_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_uv_365nm"] == 2
+    assert d["quote_mit_uv_365nm_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_uv_365nm_leere_db(tmp_path):
+    """Leere DB: quote_mit_uv_365nm_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_uv_365nm_prozent is None
+    assert st.as_dict()["quote_mit_uv_365nm_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_notizen_aus_seed_db(tmp_path):
     """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
     Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die

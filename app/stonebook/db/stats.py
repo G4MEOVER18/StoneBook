@@ -36,6 +36,7 @@ class Statistik:
     objekte_mit_fundort: int = 0
     objekte_mit_strichfarbe: int = 0
     objekte_mit_hcl_reaktion: int = 0
+    objekte_mit_uv_365nm: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -637,6 +638,39 @@ class Statistik:
         return self._quote(self.objekte_mit_hcl_reaktion)
 
     @property
+    def quote_mit_uv_365nm_prozent(self) -> float | None:
+        # Coverage-Quote fuer UV-Reaktion bei 365 nm (langwelliges UV - die
+        # Standard-Wellenlaenge fuer Fluoreszenz-Sammler, deutlich verbreiteter
+        # als UV-254nm/kurzwellig). Spiegelt die Coverage-Quoten der qualitativen
+        # Pruefparameter-Trias (Magnetismus/Strichfarbe/HCl-Reaktion) auf die
+        # optische UV-Diagnose-Achse: waehrend Magnetismus die magnetische
+        # Reaktion (Magnetit/Pyrrhotin), Strichfarbe die Pulverfarbe und
+        # HCl-Reaktion die Carbonat-Brausreaktion misst, beziffert UV_365nm die
+        # Fluoreszenz unter langwelligem UV-Licht (Fluorit, Calcit-Manganhaltig,
+        # Willemit, Hyalit). Freie str-Spalte mit Konvention "keine/schwach/
+        # stark + Farbe" (z.B. "stark gruen", "schwach orange", "keine"),
+        # Whitespace zaehlt wie leer (spiegelt die has_X-Filter-Konvention der
+        # umliegenden Pruef-Spalten). Bisher gab es zwar Foto_UV365/Foto_UV395
+        # als separate Pfad-Felder und UV365 als Bild-Kategorie, aber keine
+        # Coverage-Quote fuer die UV-Reaktions-Spalte selbst - die Foto-Felder
+        # zaehlen Stuecke mit dokumentiertem UV-Bild, die Reaktions-Spalte
+        # dagegen Stuecke mit dokumentierter Beobachtung der Fluoreszenz-
+        # Antwort (textuell beschrieben, ohne Foto-Verweis). Aussenkontext-
+        # bedingt orthogonal zur Mineral-Identifikation: UV-Fluoreszenz ist
+        # bei vielen typischen Sammler-Mineralen das offensichtlich-negative
+        # Ergebnis (Quarz/Pyrit/Magnetit reagieren typisch nicht), und auch
+        # diese negativen Befunde wuerden in einem konsequent gepflegten
+        # Bestand als "keine" eingetragen werden - die Quote ist daher ein
+        # direkter Indikator fuer die Tiefe der UV-Pflege jenseits der
+        # auffaelligen positiven Treffer. Niedriger Wert ist typisch in
+        # Sammler-Bestaenden ohne dedizierte UV-Box (UV-Lampe + Dunkelkammer
+        # erfordert separate Ausruestung), spiegelt die Pflege-Luecke bei
+        # Magnetismus/Strichfarbe (alle drei sind invasive bzw. ausruestungs-
+        # abhaengige Pruef-Achsen, anders als die visuellen Glanz/Transparenz/
+        # Farbe, die ohne Werkzeug am Tageslicht beobachtbar sind).
+        return self._quote(self.objekte_mit_uv_365nm)
+
+    @property
     def quote_mit_notizen_prozent(self) -> float | None:
         # Coverage-Quote fuer freie Notizen (notizen-Spalte). Spiegelt die
         # Feld-Coverage-Quoten (Bildern/Funddatum/Wert/Gewicht/Mineral/Fundort)
@@ -724,6 +758,7 @@ class Statistik:
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_strichfarbe": self.objekte_mit_strichfarbe,
             "objekte_mit_hcl_reaktion": self.objekte_mit_hcl_reaktion,
+            "objekte_mit_uv_365nm": self.objekte_mit_uv_365nm,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -967,6 +1002,8 @@ class Statistik:
                 self.quote_mit_strichfarbe_prozent),
             "quote_mit_hcl_reaktion_prozent": _round_or_none(
                 self.quote_mit_hcl_reaktion_prozent),
+            "quote_mit_uv_365nm_prozent": _round_or_none(
+                self.quote_mit_uv_365nm_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -2019,6 +2056,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_hcl_reaktion = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE HCl_Reaktion IS NOT NULL AND TRIM(HCl_Reaktion) != ''"
+    ).fetchone()[0]
+    # objekte_mit_uv_365nm: UV-Reaktion bei 365 nm (Langwellen-UV, Standard-
+    # Wellenlaenge fuer Fluoreszenz-Sammler). Spiegelt objekte_mit_magnetismus /
+    # objekte_mit_strichfarbe / objekte_mit_hcl_reaktion auf die optisch-UV-
+    # Diagnose-Achse; freie str-Spalte mit Konvention "keine/schwach/stark +
+    # Farbe", Whitespace zaehlt wie leer (spiegelt die has_X-Filter-Konvention
+    # der umliegenden Pruef-Spalten).
+    st.objekte_mit_uv_365nm = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE UV_365nm IS NOT NULL AND TRIM(UV_365nm) != ''"
     ).fetchone()[0]
     # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
     # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).
