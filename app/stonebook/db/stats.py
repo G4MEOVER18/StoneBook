@@ -144,6 +144,7 @@ class Statistik:
     objekte_mit_dichte: int = 0
     objekte_mit_seltenheit_global: int = 0
     objekte_mit_seltenheit_fundort: int = 0
+    objekte_mit_nachfrage: int = 0
     objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
@@ -309,6 +310,39 @@ class Statistik:
         # >10) zaehlen nicht (Integrity meldet separat), NULL = nicht erfasst,
         # Whitespace nicht relevant (Integer-Feld).
         return self._quote(self.objekte_mit_seltenheit_fundort)
+
+    @property
+    def quote_mit_nachfrage_prozent(self) -> float | None:
+        # Coverage-Quote fuer Nachfrage_1_10 (Marktnachfrage-Skala 1..10,
+        # 1=keine Nachfrage .. 10=hoechste Marktnachfrage) symmetrisch zu
+        # quote_mit_seltenheit_global_prozent / quote_mit_seltenheit_fundort_
+        # prozent auf die dritte ordinale 1..10-Skala aus dem Feldwoerterbuch.
+        # Schliesst die Coverage-Reihe der drei Markt-/Bewertungs-Skalen aus
+        # dem Feldwoerterbuch ab: Seltenheit_global (Knappheit weltweit),
+        # Seltenheit_Fundort (Knappheit am Standort), Nachfrage (Marktdruck der
+        # Kaeufer). Reuse-Pfad ueber sum(by_nachfrage.values()) spiegelt das
+        # objekte_mit_seltenheit_global-/objekte_mit_seltenheit_fundort-Muster
+        # exakt - Out-of-Range-Werte (<1 / >10) sind in beiden ausgeschlossen
+        # (Integrity meldet separat), NULL bleibt in keinem Bucket. Aussenkontext-
+        # bedingt orthogonal zu den beiden Seltenheits-Achsen: ein Stueck kann
+        # global haeufig (Quarz: Rarity-Score 1), am Fundort selten (Bergkristall
+        # aus einer ausgeschoepften Kluft: Fundort-Rarity 8) und hoch nachgefragt
+        # (Schmuckqualitaet/Polierfaehigkeit: Nachfrage 9) sein - drei verschiedene
+        # Kennzahlen, die unabhaengig zur Versicherungs-/Verkaufs-Einschaetzung
+        # beitragen. Aus Datenpflege-Sicht ein direkter Indikator fuer die
+        # Verkaufsbereitschaft der Sammlung: Stuecke ohne Nachfrage-Score sind
+        # die ueblichen Pruefkandidaten vor Boersenbesuch ("welche Stuecke
+        # lassen sich tatsaechlich absetzen, welche bleiben Tauschmaterial?").
+        # Typisch niedrig in privaten Sammler-Bestaenden, weil die Marktnachfrage
+        # ein aktives Marktbeobachtungs-Signal erfordert (Auktions-Ergebnisse,
+        # Boersenpreise, Schmuck-Trends) - viele Sammler pflegen ueberhaupt
+        # keine Verkaufs-Achse, weil ihre Sammlung nicht zum Verkauf gedacht
+        # ist. Komplementaer zu by_nachfrage (Verteilungs-Sicht ueber die 10
+        # Skalen-Buckets), wert_pro_nachfrage und gewicht_pro_nachfrage (Wert-/
+        # Gewicht-Aufteilung je Bucket): hier die Anteil-Sicht auf den
+        # Gesamtbestand. Out-of-Range-Werte (<1 / >10) zaehlen nicht, NULL =
+        # nicht erfasst, Whitespace nicht relevant (Integer-Feld).
+        return self._quote(self.objekte_mit_nachfrage)
 
     @property
     def quote_mit_ki_analyse_prozent(self) -> float | None:
@@ -895,6 +929,7 @@ class Statistik:
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "objekte_mit_seltenheit_global": self.objekte_mit_seltenheit_global,
             "objekte_mit_seltenheit_fundort": self.objekte_mit_seltenheit_fundort,
+            "objekte_mit_nachfrage": self.objekte_mit_nachfrage,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
             "objekte_mit_alias": self.objekte_mit_alias,
@@ -1120,6 +1155,8 @@ class Statistik:
                 self.quote_mit_seltenheit_global_prozent),
             "quote_mit_seltenheit_fundort_prozent": _round_or_none(
                 self.quote_mit_seltenheit_fundort_prozent),
+            "quote_mit_nachfrage_prozent": _round_or_none(
+                self.quote_mit_nachfrage_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
@@ -1928,6 +1965,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # typische Frage vor Boersenbesuch ("habe ich genug Stuecke mit Nachfrage>=7,
     # die sich verkaufen lassen, oder sitze ich auf reinem Tauschmaterial?").
     st.by_nachfrage = _count_scale_1_10(conn, "Nachfrage_1_10")
+    # objekte_mit_nachfrage: Anzahl Objekte mit gueltigem Marktnachfrage-Score
+    # (1..10). Reuse der by_nachfrage-Buckets als Quelle, damit Coverage- und
+    # Verteilungs-Sicht garantiert auf demselben Wertegrund stehen - spiegelt
+    # das objekte_mit_seltenheit_global-/objekte_mit_seltenheit_fundort-Muster
+    # (sum(by_X.values())). Out-of-range-Werte (<1 / >10) sind in beiden
+    # ausgeschlossen (Integrity meldet separat), NULL wird in keinem Bucket
+    # gezaehlt. Schliesst die Coverage-Trias der drei 1..10-Markt-/Bewertungs-
+    # Skalen aus dem Feldwoerterbuch ab (Seltenheit global / Seltenheit Fundort
+    # / Nachfrage).
+    st.objekte_mit_nachfrage = sum(st.by_nachfrage.values())
     st.funddatum_frueheste, st.funddatum_spaeteste = _funddatum_spanne(conn)
     # Erfassungs-Spanne: spiegelt funddatum_frueheste/spaeteste auf die
     # erstellt_am-Achse. Macht den Erfassungs-Zeitraum sichtbar (wann der

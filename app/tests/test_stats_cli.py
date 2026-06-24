@@ -3925,6 +3925,34 @@ def test_fehlende_db_exit_2(tmp_path, capsys):
     assert "DB-Datei fehlt" in err
 
 
+def test_text_ausgabe_zeigt_nachfrage_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Nachfrage-Quote direkt unter Seltenheit Fundort
+    auf und schliesst die Coverage-Trias der drei 1..10-Markt-/Bewertungs-
+    Skalen aus dem Feldwoerterbuch ab. Symmetrisch zum CLI-Layout der beiden
+    Seltenheits-Quoten - alle drei sind ordinale 1..10-Skalen mit definiertem
+    Wertebereich und teilen denselben out-of-range-Ausschluss (Integrity
+    meldet separat). Typisch niedrigste Quote der drei Skalen in privaten
+    Sammler-Bestaenden, weil die Marktnachfrage aktives Marktbeobachtungs-
+    Wissen erfordert (Auktions-Ergebnisse, Boersenpreise)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "nach_q.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?,?)",
+        [("OBJ_0001", 1), ("OBJ_0002", 10),
+         ("OBJ_0003", None), ("OBJ_0004", 11)],  # 11 = out-of-range, ignoriert
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Nachfrage:" in out
+    # 2 von 4 Objekten haben gueltige Marktnachfrage-Werte (1 und 10); 11 ist
+    # out-of-range, None nicht erfasst -> 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_seltenheit_fundort_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Seltenheit-Fundort-Quote direkt unter Seltenheit
     global auf - beide gehoeren zur ordinalen 1..10-Rarity-Achse mit

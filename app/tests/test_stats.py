@@ -5210,3 +5210,50 @@ def test_quote_mit_seltenheit_fundort_leere_db(tmp_path):
     assert st.quote_mit_seltenheit_fundort_prozent is None
     assert st.as_dict()["quote_mit_seltenheit_fundort_prozent"] is None
     c.close()
+
+
+def test_quote_mit_nachfrage_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Nachfrage_1_10 (Marktnachfrage-Skala 1..10, 1=keine
+    Nachfrage .. 10=hoechste Marktnachfrage). Spiegelt quote_mit_seltenheit_
+    global_prozent / quote_mit_seltenheit_fundort_prozent auf die dritte
+    ordinale 1..10-Skala aus dem Feldwoerterbuch und schliesst die Coverage-
+    Trias der drei Markt-/Bewertungs-Skalen (Seltenheit global / Seltenheit
+    Fundort / Nachfrage) ab. NULL und out-of-range-Werte (<1 / >10) zaehlen
+    wie nicht-erfasst (Integrity meldet die separat)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qn.sqlite3")
+    # 5 Objekte: drei mit gueltigem Marktnachfrage-Score (60 % - Werte 1, 5, 10
+    # als typische Keine-/Standard-/Hoechst-Auspraegungen der Skala), zwei ohne
+    # (NULL und out-of-range 11 zaehlen nicht). Werte 1 und 10 testen die
+    # Skalen-Raender explizit (in-range), 11 testet die out-of-range-Ignorierung.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Nachfrage_1_10) VALUES (?,?)",
+        [
+            ("OBJ_0001", 1),     # keine Nachfrage
+            ("OBJ_0002", 5),     # Standard-Auspraegung
+            ("OBJ_0003", 10),    # hoechste Nachfrage
+            ("OBJ_0004", None),  # nicht erfasst -> ignoriert
+            ("OBJ_0005", 11),    # out-of-range -> ignoriert (Integrity)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_nachfrage == 3
+    assert st.quote_mit_nachfrage_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_nachfrage"] == 3
+    assert d["quote_mit_nachfrage_prozent"] == 60.0
+    c.close()
+
+
+def test_quote_mit_nachfrage_leere_db(tmp_path):
+    """Leere DB: quote_mit_nachfrage_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention
+    und das Verhalten der beiden Seltenheits-Coverage-Quoten."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_nachfrage == 0
+    assert st.quote_mit_nachfrage_prozent is None
+    assert st.as_dict()["quote_mit_nachfrage_prozent"] is None
+    c.close()

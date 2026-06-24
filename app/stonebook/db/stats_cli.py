@@ -160,6 +160,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  Seltenheit Fundort:  "
             f"{st.quote_mit_seltenheit_fundort_prozent:.1f} %")
+        # Nachfrage_1_10 (Marktnachfrage-Skala) direkt unter Seltenheit Fundort,
+        # schliesst die Coverage-Trias der drei 1..10-Markt-/Bewertungs-Skalen
+        # aus dem Feldwoerterbuch ab. Waehrend die beiden Rarity-Skalen die
+        # Knappheit messen (global vs. lokal), misst Nachfrage den
+        # Marktdruck der Kaeufer - unabhaengig orthogonal zur Knappheit (ein
+        # global haeufiger Quarz kann in Schmuckqualitaet hoch nachgefragt
+        # sein). Typisch niedrigste Quote der drei Skalen in privaten Sammler-
+        # Bestaenden, weil die Marktnachfrage aktives Marktbeobachtungs-Wissen
+        # erfordert (Auktions-Ergebnisse, Boersenpreise) und viele Sammlungen
+        # nicht zum Verkauf gedacht sind. Steht vor Kategorie, weil sie zur
+        # Bestimmungs-/Bewertungs-Qualitaets-Achse gehoert und nicht zur
+        # Inventar-Klassifizierungs-Achse.
+        lines.append(
+            f"  Nachfrage:           "
+            f"{st.quote_mit_nachfrage_prozent:.1f} %")
         # Inventar-Klassifizierung: was ist das Stueck physisch (Handstueck/
         # Kristall/Duennschliff/...)? Vor Mineral/Fundort, weil Kategorie die
         # vorgelagerte ID-Achse ist - ohne sie macht die mineralogische /
