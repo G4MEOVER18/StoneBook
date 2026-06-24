@@ -1,7 +1,7 @@
 """CLI fuer die Wartung der DB (size/check/vacuum)."""
 import json
 
-from stonebook.db.database import open_db
+from stonebook.db.database import connect as connect_check, open_db
 from stonebook.db.maintenance_cli import main
 from stonebook.db.repository import ObjectRepo
 
@@ -186,6 +186,130 @@ def test_dupimg_text_meldet_gruppen(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "1 Dubletten-Gruppe" in out
     assert "ffff" in out
+
+
+def test_cleanup_text_keine_orphans(tmp_path, capsys):
+    """cleanup Subcommand: leere DB → OK + Exit 0 (parallel zu dupimg/check)."""
+    db_file = tmp_path / "cl_empty.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["cleanup", "--db", str(db_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "OK" in out
+    assert "geloescht: 0" in out
+
+
+def test_cleanup_json_keine_orphans(tmp_path, capsys):
+    """cleanup Subcommand JSON: leere DB → alle counts 0 (Pendant zu fkcheck-OK-Pfad)."""
+    db_file = tmp_path / "cl_empty_j.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["cleanup", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {
+        "dry_run": False,
+        "orphan_images": 0,
+        "orphan_ki_analysen": 0,
+        "dangling_aliases": 0,
+        "total": 0,
+    }
+
+
+def test_cleanup_loescht_orphan_images(tmp_path, capsys):
+    """cleanup Subcommand: durch FK-OFF eingefuegter Orphan wird tatsaechlich geloescht.
+
+    Spiegelt das ``fkcheck_meldet_orphan``-Pattern auf den fix-Pfad: fkcheck
+    erkennt, cleanup behebt; nach cleanup ist die Tabelle sauber.
+    """
+    db_file = tmp_path / "cl_orph.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg"),     # valid
+            ("OBJ_0099_ghost", "Kamera", "g.jpg"),  # orphan
+            ("OBJ_0099_ghost", "Mikroskop", "g2.jpg"),  # orphan
+        ],
+    )
+    c.commit()
+    c.close()
+    exit_code = main(["cleanup", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["orphan_images"] == 2
+    assert info["orphan_ki_analysen"] == 0
+    assert info["dangling_aliases"] == 0
+    assert info["total"] == 2
+    assert info["dry_run"] is False
+
+    # Verifikation: nur das gueltige Bild bleibt uebrig
+    c2 = connect_check(db_file)
+    rows = c2.execute("SELECT obj_id, rel_path FROM images ORDER BY rel_path").fetchall()
+    c2.close()
+    assert [(r[0], r[1]) for r in rows] == [("OBJ_0001", "a.jpg")]
+
+
+def test_cleanup_dry_run_aendert_nichts(tmp_path, capsys):
+    """cleanup --dry-run zaehlt korrekt, mutiert die DB aber nicht.
+
+    Pendant zur fkcheck-Diagnose: spiegelt den ``check`` -> ``fix``-Workflow
+    auf die Vorstufe, in der der Sammler die Befunde inspiziert bevor er die
+    Loeschung tatsaechlich ausloest.
+    """
+    db_file = tmp_path / "cl_dry.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        ("OBJ_0099_ghost", "Kamera", "ghost.jpg"),
+    )
+    c.execute(
+        "INSERT INTO aliases (alias_id, canonical_id) VALUES (?, ?)",
+        ("OBJ_OLD", "OBJ_MISSING"),
+    )
+    c.commit()
+    c.close()
+
+    exit_code = main(["cleanup", "--db", str(db_file), "--dry-run", "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["dry_run"] is True
+    assert info["orphan_images"] == 1
+    assert info["dangling_aliases"] == 1
+    assert info["total"] == 2
+
+    # Verifikation: nichts wurde tatsaechlich geloescht.
+    c2 = connect_check(db_file)
+    n_img = c2.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+    n_al = c2.execute("SELECT COUNT(*) FROM aliases").fetchone()[0]
+    c2.close()
+    assert n_img == 1
+    assert n_al == 1
+
+
+def test_cleanup_text_meldet_loeschungen(tmp_path, capsys):
+    """cleanup Subcommand Text-Output: Gesamtsumme + pro-Tabellen-Zeilen sichtbar."""
+    db_file = tmp_path / "cl_text.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.commit()
+    c.execute("PRAGMA foreign_keys = OFF")
+    c.execute(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) VALUES (?, ?, ?)",
+        ("OBJ_0099_ghost", "claude-sonnet-4-6", "{}"),
+    )
+    c.commit()
+    c.close()
+    exit_code = main(["cleanup", "--db", str(db_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "FK-Orphans geloescht: 1" in out
+    assert "KI-Analysen ohne Objekt:   1" in out
 
 
 def test_vacuum_text(tmp_path, capsys):

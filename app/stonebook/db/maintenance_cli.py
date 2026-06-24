@@ -7,6 +7,8 @@ Beispiele:
     python -m stonebook.db.maintenance_cli deepcheck                # integrity_check (voll)
     python -m stonebook.db.maintenance_cli fkcheck                  # foreign_key_check
     python -m stonebook.db.maintenance_cli dupimg                   # Bild-Dubletten (SHA-256)
+    python -m stonebook.db.maintenance_cli cleanup                  # Orphan-FK-Reste loeschen
+    python -m stonebook.db.maintenance_cli cleanup --dry-run        # nur zaehlen, nicht loeschen
     python -m stonebook.db.maintenance_cli vacuum                   # VACUUM
     python -m stonebook.db.maintenance_cli vacuum --json
 """
@@ -20,8 +22,11 @@ from pathlib import Path
 from stonebook.db.database import connect, default_db_file
 from stonebook.db.integrity import find_duplicate_image_sha256
 from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      deep_check, foreign_key_check,
-                                      free_page_count, quick_check, vacuum)
+                                      deep_check, delete_dangling_aliases,
+                                      delete_orphan_images,
+                                      delete_orphan_ki_analysen,
+                                      foreign_key_check, free_page_count,
+                                      quick_check, vacuum)
 
 
 def _resolve_db(args: argparse.Namespace) -> Path | None:
@@ -170,6 +175,80 @@ def _cmd_dupimg(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_cleanup(args: argparse.Namespace) -> int:
+    """Loescht FK-Orphans (Bilder/Analysen ohne Objekt, Aliase ohne Kanon).
+
+    Pendant zu den drei Integrity-Befunden ``orphan_images``,
+    ``orphan_ki_analysen`` und ``alias_to_missing`` aus
+    :mod:`stonebook.db.integrity`: ``integrity_cli`` erkennt sie als
+    Inkonsistenzen, dieses Subcommand behebt sie auf einen Aufruf hin und
+    spiegelt damit den ``check`` -> ``fix``-Workflow vieler Wartungs-Tools.
+    Die zugrundeliegenden Funktionen (:func:`delete_orphan_images`,
+    :func:`delete_orphan_ki_analysen`, :func:`delete_dangling_aliases`)
+    waren bisher nur ueber das Python-API erreichbar; dieses Subcommand
+    macht sie aus dem Cron/Shell-Pfad bedienbar - parallel zu ``check`` /
+    ``deepcheck`` / ``fkcheck`` als diagnostische Geschwister, und parallel
+    zu ``vacuum`` als zweite mutierende Operation. Nach ``cleanup`` meldet
+    ``fkcheck`` keine FK-Verletzung mehr und ``integrity_cli`` ist auf den
+    drei Orphan-Achsen sauber.
+
+    ``--dry-run`` zaehlt die jeweils betroffenen Zeilen ohne sie zu loeschen,
+    spiegelt das ``--json``-Verhalten als reine Diagnose-Stufe vor der
+    eigentlichen Mutation. Ohne ``--dry-run`` mutiert das Subcommand die DB
+    sofort (die drei DELETE-Statements committen je einzeln); im Normalbetrieb
+    erzeugt die App nie Orphans (ON DELETE CASCADE), wer sie hat, hat sie
+    durch PRAGMA-OFF-Pfade oder JSON-Restore aus partiellen Backups erzeugt
+    - dann ist die DELETE-Loesung typischerweise gewuenscht.
+    Exit-Code 0 immer (auch wenn nichts geloescht wurde), weil Sauberkeit
+    der Normalfall ist und nicht als Fehler gewertet werden soll - parallel
+    zu :func:`_cmd_dupimg` (Treffer != Fehler).
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        if args.dry_run:
+            counts = {
+                "orphan_images": conn.execute(
+                    "SELECT COUNT(*) FROM images "
+                    "WHERE obj_id NOT IN (SELECT obj_id FROM objects)"
+                ).fetchone()[0],
+                "orphan_ki_analysen": conn.execute(
+                    "SELECT COUNT(*) FROM ki_analysen "
+                    "WHERE obj_id NOT IN (SELECT obj_id FROM objects)"
+                ).fetchone()[0],
+                "dangling_aliases": conn.execute(
+                    "SELECT COUNT(*) FROM aliases "
+                    "WHERE canonical_id NOT IN (SELECT obj_id FROM objects)"
+                ).fetchone()[0],
+            }
+        else:
+            counts = {
+                "orphan_images": delete_orphan_images(conn),
+                "orphan_ki_analysen": delete_orphan_ki_analysen(conn),
+                "dangling_aliases": delete_dangling_aliases(conn),
+            }
+    finally:
+        conn.close()
+
+    total = sum(counts.values())
+    info = {"dry_run": bool(args.dry_run), **counts, "total": total}
+    if args.json:
+        json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    else:
+        verb = "wuerde loeschen" if args.dry_run else "geloescht"
+        if total == 0:
+            print(f"OK: keine FK-Orphans gefunden ({verb}: 0).")
+        else:
+            print(f"FK-Orphans {verb}: {total} insgesamt")
+            print(f"  Bilder ohne Objekt:        {counts['orphan_images']}")
+            print(f"  KI-Analysen ohne Objekt:   {counts['orphan_ki_analysen']}")
+            print(f"  Aliase ohne Kanon-Objekt:  {counts['dangling_aliases']}")
+    return 0
+
+
 def _cmd_vacuum(args: argparse.Namespace) -> int:
     db_file = _resolve_db(args)
     if db_file is None:
@@ -232,6 +311,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_dupimg)
+
+    sp = sub.add_parser("cleanup",
+                        help="FK-Orphans loeschen (Bilder/KI-Analysen ohne Objekt, "
+                             "Aliase ohne Kanon). --dry-run nur zaehlen.")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="Nur zaehlen, nichts loeschen.")
+    sp.set_defaults(func=_cmd_cleanup)
 
     sp = sub.add_parser("vacuum", help="Datenbank kompaktieren (VACUUM).")
     sp.add_argument("--db", type=Path, default=None)
