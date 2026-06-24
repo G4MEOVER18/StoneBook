@@ -339,6 +339,8 @@ class ObjectRepo:
                      erstellt_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_monat: int | None = None,
                      erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
+                     geaendert_am_jahr_min: int | None = None,
+                     geaendert_am_jahr_max: int | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -933,6 +935,28 @@ class ObjectRepo:
                     f"AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(monate)
+        # Aenderungs-Achse: filtert nach Jahr des ``geaendert_am``-Stempels (wann
+        # zuletzt redaktionell angefasst). Spiegelt erstellt_am_jahr_min/_max auf
+        # die zweite Zeitstempel-Spalte und beantwortet die typische Pflege-Frage
+        # "welche Stuecke habe ich dieses Jahr noch beruehrt - und welche
+        # schlummern seit Jahren unveraendert in der Vitrine?" (Default-Verhalten
+        # beim Erstellen: erstellt_am == geaendert_am; die Achsen divergieren erst,
+        # sobald nach dem Anlegen mindestens ein Datenblatt-Update lief). Substring
+        # 1..4 ist analog zu erstellt_am_jahr und zum geaendert_am-Spanne-Aggregat
+        # in stats.py; nur vierstellige Jahres-Praefixe matchen, damit kaputte
+        # Stempel historischer Imports (leerer / non-ISO-Wert) nicht das Ergebnis
+        # verzerren. Implementations-Konvention identisch zu erstellt_am_jahr_min/
+        # _max: erst die Praefix-Pruefung als Guard, dann die zwei optionalen
+        # Schranken, damit None=ohne-Schranke und Range-Filter ohne untere oder
+        # obere Grenze beide korrekt arbeiten.
+        if geaendert_am_jahr_min is not None or geaendert_am_jahr_max is not None:
+            where.append("substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+            if geaendert_am_jahr_min is not None:
+                where.append("CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) >= ?")
+                params.append(int(geaendert_am_jahr_min))
+            if geaendert_am_jahr_max is not None:
+                where.append("CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) <= ?")
+                params.append(int(geaendert_am_jahr_max))
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
