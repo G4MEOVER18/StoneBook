@@ -142,6 +142,7 @@ class Statistik:
     objekte_mit_dimensionen: int = 0
     objekte_mit_mohs: int = 0
     objekte_mit_dichte: int = 0
+    objekte_mit_seltenheit_global: int = 0
     objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
@@ -244,6 +245,40 @@ class Statistik:
         # Sicht auf den Gesamtbestand. Whitespace nicht relevant (REAL-Feld,
         # NULL = nicht erfasst).
         return self._quote(self.objekte_mit_mohs)
+
+    @property
+    def quote_mit_seltenheit_global_prozent(self) -> float | None:
+        # Coverage-Quote fuer Seltenheit_global_1_10 (globale Rarity-Skala 1..10,
+        # 1=haeufig .. 10=sehr selten global - die zentrale Markt-/Versicherungs-
+        # Achse aus dem Feldwoerterbuch) symmetrisch zu quote_mit_confidence_prozent
+        # auf die scale-Skala-Achse. Spiegelt das Coverage-Vokabular der
+        # quantitativen Bestimmungs-Achse (Confidence_Prozent, 0..100, mit
+        # BETWEEN-Filter und Out-of-Range-Ausschluss) auf die ordinale Rarity-
+        # Skala (1..10) - beide sind integer-/scale-Felder mit definiertem
+        # Wertebereich, beide haben out-of-range-Werte, die in der Integrity
+        # separat gemeldet und in den zentralen Aggregaten ausgeschlossen werden.
+        # Komplementaer zu den existierenden Rarity-Sichten: by_seltenheit_global
+        # (Verteilungs-Sicht ueber die 10 Skalen-Buckets), wert_pro_seltenheit_global
+        # (Wert-Aufteilung je Bucket), gewicht_pro_seltenheit_global (Massen-
+        # Aufteilung je Bucket) - hier die Anteil-Sicht auf den Gesamtbestand
+        # ("welcher Anteil der Sammlung traegt ueberhaupt einen globalen Rarity-
+        # Score?"), waehrend die anderen die innere Verteilung der gepflegten
+        # Stuecke beziffern. Aussenkontext-bedingt typisch niedrig in Sammler-
+        # Bestaenden, weil die globale Seltenheit-Einschaetzung Marktwissen oder
+        # mineralogische Recherche erfordert (Mineraldatenbanken, Tucson-/
+        # Mineralientage-Erfahrung, Auktions-Vergleichswerte) - anders als die
+        # objektiv am Stueck beobachtbaren Pruefparameter (Glanz/Transparenz/
+        # Strichfarbe), die der Sammler ohne Aussenwissen pflegen kann. Aus
+        # Datenpflege-Sicht ein direkter Indikator fuer die Bewertungs-Tiefe der
+        # Sammlung: Stuecke ohne Rarity-Score sind die ueblichen Pruefkandidaten
+        # fuer eine Marktwert-/Versicherungs-Einschaetzung. Out-of-Range-Werte
+        # (<1 / >10) zaehlen nicht (sie werden in der Integrity separat gemeldet,
+        # spiegelt das objekte_mit_confidence-Verhalten); NULL = nicht erfasst.
+        # Whitespace nicht relevant (Integer-Feld). Komplementaer zu
+        # by_seltenheit_global/wert_pro_seltenheit_global/gewicht_pro_seltenheit_
+        # global (innere Verteilung der gepflegten Stuecke) - hier die Coverage-
+        # Sicht ueber den Gesamtbestand.
+        return self._quote(self.objekte_mit_seltenheit_global)
 
     @property
     def quote_mit_ki_analyse_prozent(self) -> float | None:
@@ -828,6 +863,7 @@ class Statistik:
             "objekte_mit_uv_365nm": self.objekte_mit_uv_365nm,
             "objekte_mit_uv_254nm": self.objekte_mit_uv_254nm,
             "objekte_mit_notizen": self.objekte_mit_notizen,
+            "objekte_mit_seltenheit_global": self.objekte_mit_seltenheit_global,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
             "objekte_mit_alias": self.objekte_mit_alias,
@@ -1049,6 +1085,8 @@ class Statistik:
             "quote_mit_dichte_prozent": _round_or_none(self.quote_mit_dichte_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
             "quote_mit_confidence_prozent": _round_or_none(self.quote_mit_confidence_prozent),
+            "quote_mit_seltenheit_global_prozent": _round_or_none(
+                self.quote_mit_seltenheit_global_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
@@ -1825,6 +1863,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Diagnose vor Versicherungseinschaetzung (viel haeufiges Material vs.
     # konzentriert teure Rarit?ten).
     st.by_seltenheit_global = _count_scale_1_10(conn, "Seltenheit_global_1_10")
+    # objekte_mit_seltenheit_global: Anzahl Objekte mit gueltigem globalen
+    # Rarity-Score (1..10). Reuse der by_seltenheit_global-Buckets als Quelle,
+    # damit Coverage- und Verteilungs-Sicht garantiert auf demselben Wertegrund
+    # stehen: out-of-range-Werte (<1 / >10) sind in beiden ausgeschlossen, NULL
+    # wird in keinem Bucket gezaehlt - spiegelt das objekte_mit_confidence-
+    # Muster (Reuse von conf_werte mit BETWEEN 0 AND 100). Komplementaer zu
+    # by_seltenheit_global (Verteilungs-Sicht ueber die 10 Skalen-Buckets),
+    # wert_pro_seltenheit_global (Wert-Aufteilung je Bucket) und
+    # gewicht_pro_seltenheit_global (Massen-Aufteilung je Bucket) - hier die
+    # Coverage-Sicht ueber den Gesamtbestand.
+    st.objekte_mit_seltenheit_global = sum(st.by_seltenheit_global.values())
     # Fundort-Rarity-Histogramm: am Standort selten vs. global selten - oft
     # verschieden, siehe SORTABLE_COLUMNS-Kommentar zu Seltenheit_Fundort. Ein
     # Stueck kann am Fundort haeufig (Quarz aus Berner Oberland) aber global

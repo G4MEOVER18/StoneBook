@@ -1316,7 +1316,16 @@ def test_text_ausgabe_zeigt_seltenheit_global(tmp_path, capsys):
 
 
 def test_text_ausgabe_ohne_seltenheit_keine_zeile(tmp_path, capsys):
-    """Ohne Seltenheits-Eintraege erscheint der Rarity-Block nicht."""
+    """Ohne Seltenheits-Eintraege erscheint der Histogramm-Block nicht.
+
+    Geprueft wird der voll qualifizierte Block-Header (``Seltenheit global
+    (1..10):``) als eindeutiger Marker des Histogramm-Blocks - der lose
+    Substring ``Seltenheit global`` wuerde sonst auch die Coverage-Zeile
+    treffen (``Seltenheit global:   0.0 %`` im Coverage-Block), die per
+    Konvention immer erscheint, sobald objekte_total > 0 ist (spiegelt das
+    Verhalten der Confidence-Coverage-Zeile, die ebenfalls bei 0 % gezeigt
+    wird, weil der Pflege-Stand-Indikator gerade dann interessant ist).
+    """
     from stonebook.db.database import open_db
     db_file = tmp_path / "selt0.sqlite3"
     c = open_db(db_file)
@@ -1325,8 +1334,8 @@ def test_text_ausgabe_ohne_seltenheit_keine_zeile(tmp_path, capsys):
     c.close()
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
-    assert "Seltenheit global" not in out
-    assert "Seltenheit Fundort" not in out
+    assert "Seltenheit global (1..10):" not in out
+    assert "Seltenheit Fundort (1..10):" not in out
     assert "Nachfrage (1..10):" not in out
 
 
@@ -3914,3 +3923,31 @@ def test_fehlende_db_exit_2(tmp_path, capsys):
     assert exit_code == 2
     err = capsys.readouterr().err
     assert "DB-Datei fehlt" in err
+
+
+def test_text_ausgabe_zeigt_seltenheit_global_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Seltenheit-global-Quote direkt unter Confidence
+    auf - beide gehoeren zur Bestimmungs-/Bewertungs-Qualitaets-Achse mit
+    definiertem Wertebereich (Confidence 0..100, Seltenheit_global 1..10) und
+    schliessen out-of-range-Werte in der Coverage symmetrisch aus (Integrity
+    meldet die separat). Komplementaer zu by_seltenheit_global/wert_pro_/
+    gewicht_pro_seltenheit_global (innere Verteilung der gepflegten Stuecke);
+    hier die Coverage-Sicht ueber den Gesamtbestand. Symmetrische CLI-
+    Sichtbarkeit fuer das Datenpflege-Dashboard."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "selt.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?,?)",
+        [("OBJ_0001", 3), ("OBJ_0002", 8),
+         ("OBJ_0003", None), ("OBJ_0004", 11)],  # 11 = out-of-range, ignoriert
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Seltenheit global:" in out
+    # 2 von 4 Objekten haben gueltige Rarity-Werte (3 und 8); 11 ist
+    # out-of-range, None nicht erfasst → 50.0 %
+    assert "50.0 %" in out

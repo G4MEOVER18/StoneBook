@@ -133,6 +133,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # einzuordnen - die naechste typische Pflege-Achse nach KI-Analyse.
         lines.append(
             f"  Confidence:          {st.quote_mit_confidence_prozent:.1f} %")
+        # Seltenheit_global_1_10 (globale Rarity-Skala, 1=haeufig .. 10=sehr
+        # selten global) direkt unter Confidence, weil beide quantitative
+        # Bestimmungs-Skalen mit definiertem Wertebereich sind (Confidence
+        # 0..100, Seltenheit 1..10) und beide out-of-range-Werte in der
+        # Integrity separat gemeldet bekommen. Komplementaer zu den existierenden
+        # Rarity-Sichten (by_seltenheit_global / wert_pro / gewicht_pro): hier
+        # die Coverage-Sicht ueber den Gesamtbestand. Niedriger Wert ist typisch,
+        # weil die globale Rarity-Einschaetzung Marktwissen oder mineralogische
+        # Recherche erfordert (anders als die objektiv am Stueck beobachtbaren
+        # Pruefparameter). Steht vor Kategorie, weil sie zur Bestimmungs-Qualitaets-
+        # Achse (zusammen mit Confidence) gehoert und nicht zur Inventar-Achse.
+        lines.append(
+            f"  Seltenheit global:   "
+            f"{st.quote_mit_seltenheit_global_prozent:.1f} %")
         # Inventar-Klassifizierung: was ist das Stueck physisch (Handstueck/
         # Kristall/Duennschliff/...)? Vor Mineral/Fundort, weil Kategorie die
         # vorgelagerte ID-Achse ist - ohne sie macht die mineralogische /

@@ -5111,3 +5111,53 @@ def test_gewicht_pro_confidence_bucket_leer(tmp_path):
     st = compute_statistics(c)
     assert st.gewicht_pro_confidence_bucket == []
     c.close()
+
+
+def test_quote_mit_seltenheit_global_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Seltenheit_global_1_10 (globale Rarity-Skala, 1=
+    haeufig .. 10=sehr selten global - die zentrale Markt-/Versicherungs-
+    Achse aus dem Feldwoerterbuch). Spiegelt das Coverage-Vokabular der
+    quantitativen Bestimmungs-Achse (Confidence_Prozent mit BETWEEN-Filter
+    und Out-of-Range-Ausschluss) auf die ordinale Rarity-Skala. Anteil der
+    Objekte mit gueltigem Rarity-Score (1..10), gerechnet ueber objekte_total.
+    NULL und out-of-range-Werte (<1 / >10) zaehlen wie nicht-erfasst (spiegelt
+    objekte_mit_confidence-Verhalten); die out-of-range-Werte werden in der
+    Integrity separat gemeldet."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qsg.sqlite3")
+    # 5 Objekte: drei mit gueltiger Rarity (60% - Werte 3, 7, 9 als typische
+    # Haeufig-/Standard-/Selten-Auspraegungen der Skala), zwei ohne (NULL und
+    # out-of-range 11 zaehlen nicht). Der out-of-range-Wert simuliert einen
+    # korrupten Migrations-/Hand-Eintrag, der durch die Integrity-Pruefung
+    # separat aufgefangen wird und in der Coverage-/Verteilungs-Sicht
+    # ausgeschlossen bleibt.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_global_1_10) VALUES (?,?)",
+        [
+            ("OBJ_0001", 3),    # haeufig
+            ("OBJ_0002", 7),    # standard-selten
+            ("OBJ_0003", 9),    # sehr selten
+            ("OBJ_0004", None),  # nicht erfasst -> ignoriert
+            ("OBJ_0005", 11),    # out-of-range -> ignoriert (Integrity)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_seltenheit_global == 3
+    assert st.quote_mit_seltenheit_global_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_seltenheit_global"] == 3
+    assert d["quote_mit_seltenheit_global_prozent"] == 60.0
+    c.close()
+
+
+def test_quote_mit_seltenheit_global_leere_db(tmp_path):
+    """Leere DB: quote_mit_seltenheit_global_prozent ist None (nicht 0%) -
+    keine Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_seltenheit_global == 0
+    assert st.quote_mit_seltenheit_global_prozent is None
+    assert st.as_dict()["quote_mit_seltenheit_global_prozent"] is None
+    c.close()
