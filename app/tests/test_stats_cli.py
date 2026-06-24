@@ -808,6 +808,33 @@ def test_text_ausgabe_zeigt_uv_254nm_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_reaktionshinweis_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Reaktionshinweis-Quote (erklaerende Begleit-Notiz
+    zu UV/HCl/Magnetismus) direkt nach UV 254 nm und vor Notizen auf -
+    thematisch fokussierter Freitext zu den Reaktions-Spalten, vor der
+    allgemeinen Sonstiges-Achse Notizen. Symmetrische CLI-Sichtbarkeit fuer
+    das Datenpflege-Dashboard auf der Achse "Wie viel Anteil der Sammlung
+    traegt eine mineralogische Reaktions-Erklaerung neben der
+    Roh-Beobachtung?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "rh.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Reaktionshinweis) VALUES (?,?)",
+        [("OBJ_0001", "Dolomit-Mischphase erklaert die schwache HCl-Reaktion"),
+         ("OBJ_0002", "Fluoreszenz nur unter Langwelle"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Reaktionshinweis:" in out
+    # 2 von 4 Objekten haben Reaktionshinweis → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
     der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-

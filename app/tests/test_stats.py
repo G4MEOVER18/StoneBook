@@ -2876,6 +2876,53 @@ def test_quote_mit_uv_254nm_leere_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_reaktionshinweis_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Reaktionshinweis (erklaerende Begleit-Notiz zu
+    UV/HCl/Magnetismus-Reaktionen) spiegelt die Coverage-Quoten der
+    strukturellen Reaktions-Pruef-Achsen (Magnetismus/HCl/UV_365/UV_254) auf
+    die zugehoerige Erklaer-Achse. Anteil der Objekte mit dokumentierter
+    Interpretations-Notiz, gerechnet ueber objekte_total. Whitespace/NULL
+    zaehlt wie leer (spiegelt has_reaktionshinweis-Filter-Konvention)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qrh.sqlite3")
+    # 5 Objekte: zwei mit dokumentiertem Reaktionshinweis (40%), drei ohne
+    # (NULL/leer/Whitespace zaehlen alle wie nicht-dokumentiert). Mehrzeiliger
+    # Eintrag (Newline) ist legitim und zaehlt mit, weil TRIM nur fuehrende/
+    # abschliessende Whitespace strippt - text-Spalte erlaubt mehrzeilige
+    # mineralogische Erklaerungen.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Reaktionshinweis) VALUES (?,?)",
+        [
+            # Calcit/Mischcarbonat-typische Erklaerung
+            ("OBJ_0001", "schwaeche Reaktion wegen Mg-Anteil (Dolomit-Mischphase)"),
+            # Fluorit-typische Begleit-Notiz
+            ("OBJ_0002", "Fluoreszenz nur unter Langwelle\nKurzwelle ohne Antwort"),
+            ("OBJ_0003", ""),       # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),    # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_reaktionshinweis == 2
+    assert st.quote_mit_reaktionshinweis_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_reaktionshinweis"] == 2
+    assert d["quote_mit_reaktionshinweis_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_reaktionshinweis_leere_db(tmp_path):
+    """Leere DB: quote_mit_reaktionshinweis_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_reaktionshinweis_prozent is None
+    assert st.as_dict()["quote_mit_reaktionshinweis_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_notizen_aus_seed_db(tmp_path):
     """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
     Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die

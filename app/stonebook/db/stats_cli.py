@@ -340,6 +340,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Kurzwellen-Mess-Luecke (Langwelle dokumentiert, Kurzwelle nicht).
         lines.append(
             f"  UV 254 nm:           {st.quote_mit_uv_254nm_prozent:.1f} %")
+        # Reaktionshinweis (erklaerende Begleit-Notiz zu UV/HCl/Magnetismus-
+        # Reaktionen) direkt nach UV 254 nm und vor Notizen, weil sie thematisch
+        # fest auf die Reaktions-Interpretation fokussiert ist - die vier
+        # umliegenden Reaktions-Pruef-Achsen (Magnetismus oben unter
+        # Kristallsystem, HCl-Reaktion / UV-365 / UV-254 direkt davor)
+        # dokumentieren die Roh-Beobachtung, Reaktionshinweis die erklaerende
+        # Tiefe (warum reagiert das Stueck so?). Die Differenz
+        # quote_mit_hcl_reaktion_prozent - quote_mit_reaktionshinweis_prozent
+        # beziffert die typische Interpretations-Luecke (Reaktion beobachtet,
+        # aber nicht erklaert). Steht vor Notizen, weil Reaktionshinweis ein
+        # thematisch fokussierter Freitext-Eintrag ist (zu den Reaktions-
+        # Spalten), waehrend Notizen die allgemeine "Sonstiges"-Achse jenseits
+        # der 43 strukturierten Felder beziffert.
+        lines.append(
+            f"  Reaktionshinweis:    {st.quote_mit_reaktionshinweis_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
         # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur

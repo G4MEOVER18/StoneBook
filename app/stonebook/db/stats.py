@@ -39,6 +39,7 @@ class Statistik:
     objekte_mit_hcl_reaktion: int = 0
     objekte_mit_uv_365nm: int = 0
     objekte_mit_uv_254nm: int = 0
+    objekte_mit_reaktionshinweis: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -836,6 +837,48 @@ class Statistik:
         return self._quote(self.objekte_mit_uv_365nm)
 
     @property
+    def quote_mit_reaktionshinweis_prozent(self) -> float | None:
+        # Coverage-Quote fuer Reaktionshinweis (erklaerende Begleit-Notiz zu
+        # UV/HCl/Magnetismus-Reaktionen). Spiegelt die Coverage-Quoten der
+        # qualitativen Reaktions-Pruef-Achsen (Magnetismus/HCl-Reaktion/
+        # UV_365nm/UV_254nm) auf die zugehoerige Begleit-Notiz-Achse - waehrend
+        # die vier strukturierten Reaktions-Spalten die Roh-Beobachtung
+        # festhalten (Magnetismus ja/nein/schwach, HCl keine/schwach/stark,
+        # UV-Reaktion textuell beschrieben), beziffert Reaktionshinweis die
+        # erklaerende Tiefe daneben (warum reagiert das Stueck so? welche
+        # Begleit-Phase ist dafuer verantwortlich? unter welchen Bedingungen
+        # tritt die Reaktion auf?). Mehrzeilige text-Spalte (Feldwoerterbuch-
+        # Typ "text"), Whitespace zaehlt wie leer - spiegelt die
+        # has_reaktionshinweis-Filter-Konvention aus stonebook.db.repository.
+        # Bisher gab es zwar den has_reaktionshinweis-Filter (Listen-Filter,
+        # Anwesenheits-Pruefung) als wahlfreies repository.filter_objects-
+        # Argument, aber keine Coverage-Kennzahl (Anteil-Sicht auf den Gesamt-
+        # bestand) - waehrend alle vier umliegenden Reaktions-Spalten
+        # (Magnetismus/HCl/UV-365/UV-254) bereits Coverage-Quoten tragen.
+        # Aussenkontext-bedingt typisch sehr niedrig in Sammler-Bestaenden,
+        # weil Reaktionshinweis erst bei nicht-trivialer Reaktions-Erklaerung
+        # gepflegt wird (warum braust dieses Stueck schwaecher als erwartet?
+        # weil es ein Mischcarbonat mit Magnesium-Anteil ist - solche Mineral-
+        # /Petrologie-Interpretationen sind die Ausnahme, nicht die Regel).
+        # Aus Datenpflege-Sicht ein Indikator fuer die Interpretations-Tiefe
+        # der Reaktions-Pflege: ein Stueck mit dokumentiertem
+        # Reaktionshinweis ist nicht nur gepruft (Roh-Beobachtung steht in
+        # einer der vier Reaktions-Spalten), sondern auch interpretiert
+        # (warum hat es so reagiert?) - der Unterschied zwischen
+        # Katalogisierung und mineralogischem Verstaendnis. Komplementaer
+        # zu quote_mit_notizen_prozent (allgemeine freie Beobachtungs-
+        # Achse jenseits der 43 strukturierten Felder): waehrend Notizen
+        # die "Sonstiges"-Spalte fuer beliebige Beobachtungen ist,
+        # ist Reaktionshinweis thematisch fest auf die Reaktions-Interpretation
+        # fokussiert - beide sind Freitext, aber mit unterschiedlichem
+        # Geltungsbereich. Die Differenz quote_mit_hcl_reaktion_prozent -
+        # quote_mit_reaktionshinweis_prozent beziffert die typische
+        # Interpretations-Luecke (Reaktion beobachtet, aber nicht erklaert) -
+        # der naechste Pflege-Schritt fuer Sammler mit petrologischem
+        # Hintergrund.
+        return self._quote(self.objekte_mit_reaktionshinweis)
+
+    @property
     def quote_mit_notizen_prozent(self) -> float | None:
         # Coverage-Quote fuer freie Notizen (notizen-Spalte). Spiegelt die
         # Feld-Coverage-Quoten (Bildern/Funddatum/Wert/Gewicht/Mineral/Fundort)
@@ -926,6 +969,7 @@ class Statistik:
             "objekte_mit_hcl_reaktion": self.objekte_mit_hcl_reaktion,
             "objekte_mit_uv_365nm": self.objekte_mit_uv_365nm,
             "objekte_mit_uv_254nm": self.objekte_mit_uv_254nm,
+            "objekte_mit_reaktionshinweis": self.objekte_mit_reaktionshinweis,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "objekte_mit_seltenheit_global": self.objekte_mit_seltenheit_global,
             "objekte_mit_seltenheit_fundort": self.objekte_mit_seltenheit_fundort,
@@ -1183,6 +1227,8 @@ class Statistik:
                 self.quote_mit_uv_365nm_prozent),
             "quote_mit_uv_254nm_prozent": _round_or_none(
                 self.quote_mit_uv_254nm_prozent),
+            "quote_mit_reaktionshinweis_prozent": _round_or_none(
+                self.quote_mit_reaktionshinweis_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -2299,6 +2345,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_uv_254nm = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE UV_254nm IS NOT NULL AND TRIM(UV_254nm) != ''"
+    ).fetchone()[0]
+    # objekte_mit_reaktionshinweis: Anzahl Objekte mit dokumentiertem
+    # erklaerendem Begleit-Kommentar zu den Reaktions-Pruefparametern
+    # (UV/HCl/Magnetismus). Spiegelt die strukturellen Reaktions-Quoten
+    # (Magnetismus/HCl/UV_365/UV_254) auf die zugehoerige Erklaer-Achse.
+    # text-Spalte (mehrzeilig moeglich), Whitespace zaehlt wie leer - spiegelt
+    # die has_reaktionshinweis-Filter-Konvention aus stonebook.db.repository
+    # und das Coverage-Muster der umliegenden Pruef-Spalten.
+    st.objekte_mit_reaktionshinweis = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Reaktionshinweis IS NOT NULL AND TRIM(Reaktionshinweis) != ''"
     ).fetchone()[0]
     # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
     # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).
