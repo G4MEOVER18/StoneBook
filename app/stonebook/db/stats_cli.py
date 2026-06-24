@@ -147,6 +147,19 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  Seltenheit global:   "
             f"{st.quote_mit_seltenheit_global_prozent:.1f} %")
+        # Seltenheit_Fundort_1_10 (Standort-Rarity-Skala) direkt unter
+        # Seltenheit global, weil beide 1..10-Skalen aus dem Feldwoerterbuch
+        # sind und beide den gleichen out-of-range-Ausschluss teilen. Die
+        # Differenz beider Coverage-Quoten beziffert die Pflege-Asymmetrie
+        # zwischen globaler Markt-Sicht und lokalem Fundgebiets-Wissen - die
+        # globale Skala ist haeufiger gepflegt (Mineraldatenbank-/Tucson-
+        # Wissen), die Fundort-Skala setzt eigene Touren oder Vereins-
+        # Berichte voraus. Zusammen mit Confidence/Seltenheit global gehoert
+        # sie zur Bestimmungs-/Bewertungs-Qualitaets-Achse, bevor die
+        # Inventar-Klassifizierung (Kategorie) drankommt.
+        lines.append(
+            f"  Seltenheit Fundort:  "
+            f"{st.quote_mit_seltenheit_fundort_prozent:.1f} %")
         # Inventar-Klassifizierung: was ist das Stueck physisch (Handstueck/
         # Kristall/Duennschliff/...)? Vor Mineral/Fundort, weil Kategorie die
         # vorgelagerte ID-Achse ist - ohne sie macht die mineralogische /

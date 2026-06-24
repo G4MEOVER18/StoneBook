@@ -3925,6 +3925,34 @@ def test_fehlende_db_exit_2(tmp_path, capsys):
     assert "DB-Datei fehlt" in err
 
 
+def test_text_ausgabe_zeigt_seltenheit_fundort_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Seltenheit-Fundort-Quote direkt unter Seltenheit
+    global auf - beide gehoeren zur ordinalen 1..10-Rarity-Achse mit
+    definiertem Wertebereich und teilen denselben out-of-range-Ausschluss
+    (Integrity meldet separat). Spiegelt das CLI-Layout der globalen Rarity-
+    Coverage auf die Standort-Achse; die Differenz beider Quoten beziffert die
+    typische Pflege-Asymmetrie zwischen Markt-Sicht (globale Skala, aus
+    Mineraldatenbanken ableitbar) und lokalem Fundgebiets-Wissen (Fundort-
+    Skala, setzt eigene Touren oder Vereins-Berichte voraus)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "selt_fo_q.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?,?)",
+        [("OBJ_0001", 2), ("OBJ_0002", 7),
+         ("OBJ_0003", None), ("OBJ_0004", 0)],  # 0 = out-of-range, ignoriert
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Seltenheit Fundort:" in out
+    # 2 von 4 Objekten haben gueltige Fundort-Rarity-Werte (2 und 7); 0 ist
+    # out-of-range, None nicht erfasst -> 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_seltenheit_global_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Seltenheit-global-Quote direkt unter Confidence
     auf - beide gehoeren zur Bestimmungs-/Bewertungs-Qualitaets-Achse mit

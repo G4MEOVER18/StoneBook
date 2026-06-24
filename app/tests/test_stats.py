@@ -5161,3 +5161,52 @@ def test_quote_mit_seltenheit_global_leere_db(tmp_path):
     assert st.quote_mit_seltenheit_global_prozent is None
     assert st.as_dict()["quote_mit_seltenheit_global_prozent"] is None
     c.close()
+
+
+def test_quote_mit_seltenheit_fundort_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Seltenheit_Fundort_1_10 (Standort-Rarity-Skala 1..10,
+    1=haeufig am Fundort .. 10=sehr selten am Fundort). Spiegelt
+    quote_mit_seltenheit_global_prozent auf die zweite ordinale Rarity-Achse
+    aus dem Feldwoerterbuch. Anteil der Objekte mit gueltigem Fundort-Rarity-
+    Score (1..10), gerechnet ueber objekte_total. NULL und out-of-range-Werte
+    (<1 / >10) zaehlen wie nicht-erfasst (Integrity meldet die separat,
+    spiegelt das objekte_mit_seltenheit_global-Verhalten)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qsf.sqlite3")
+    # 5 Objekte: drei mit gueltiger Fundort-Rarity (60 % - Werte 2, 5, 8 als
+    # typische Haeufig-/Standard-/Selten-Auspraegungen der Skala), zwei ohne
+    # (NULL und out-of-range 0 zaehlen nicht). Der out-of-range-Wert simuliert
+    # einen korrupten Migrations-/Hand-Eintrag, der durch die Integrity-
+    # Pruefung separat aufgefangen wird und in der Coverage-/Verteilungs-Sicht
+    # ausgeschlossen bleibt.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Seltenheit_Fundort_1_10) VALUES (?,?)",
+        [
+            ("OBJ_0001", 2),    # haeufig am Fundort
+            ("OBJ_0002", 5),    # Standard-Auspraegung
+            ("OBJ_0003", 8),    # selten am Fundort
+            ("OBJ_0004", None),  # nicht erfasst -> ignoriert
+            ("OBJ_0005", 0),     # out-of-range -> ignoriert (Integrity)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_seltenheit_fundort == 3
+    assert st.quote_mit_seltenheit_fundort_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_seltenheit_fundort"] == 3
+    assert d["quote_mit_seltenheit_fundort_prozent"] == 60.0
+    c.close()
+
+
+def test_quote_mit_seltenheit_fundort_leere_db(tmp_path):
+    """Leere DB: quote_mit_seltenheit_fundort_prozent ist None (nicht 0%) -
+    keine Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention
+    und das Verhalten von quote_mit_seltenheit_global_prozent."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_seltenheit_fundort == 0
+    assert st.quote_mit_seltenheit_fundort_prozent is None
+    assert st.as_dict()["quote_mit_seltenheit_fundort_prozent"] is None
+    c.close()

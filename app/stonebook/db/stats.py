@@ -143,6 +143,7 @@ class Statistik:
     objekte_mit_mohs: int = 0
     objekte_mit_dichte: int = 0
     objekte_mit_seltenheit_global: int = 0
+    objekte_mit_seltenheit_fundort: int = 0
     objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
@@ -279,6 +280,35 @@ class Statistik:
         # global (innere Verteilung der gepflegten Stuecke) - hier die Coverage-
         # Sicht ueber den Gesamtbestand.
         return self._quote(self.objekte_mit_seltenheit_global)
+
+    @property
+    def quote_mit_seltenheit_fundort_prozent(self) -> float | None:
+        # Coverage-Quote fuer Seltenheit_Fundort_1_10 (Standort-Rarity-Skala
+        # 1..10, 1=haeufig am Fundort .. 10=sehr selten am Fundort) symmetrisch
+        # zu quote_mit_seltenheit_global_prozent auf die zweite ordinale Rarity-
+        # Achse aus dem Feldwoerterbuch. Beide sind 1..10-Skalen mit definiertem
+        # Wertebereich und teilen denselben out-of-range-Ausschluss (Werte <1
+        # oder >10 werden in der Integrity separat gemeldet und in der Coverage-/
+        # Verteilungs-Sicht ignoriert) - der Reuse-Pfad ueber
+        # sum(by_seltenheit_fundort.values()) garantiert, dass Coverage und
+        # by_seltenheit_fundort-Histogramm auf demselben Wertegrund stehen.
+        # Komplementaer zur globalen Rarity-Achse: ein Stueck kann am Standort
+        # haeufig sein (Quarz aus dem Berner Oberland) und global selten (oder
+        # umgekehrt: lokale Rarit?t aus einem ausgeschoepften Stollen, global
+        # haeufig). Die Differenz quote_mit_seltenheit_global_prozent -
+        # quote_mit_seltenheit_fundort_prozent beziffert die typische Pflege-
+        # Asymmetrie zwischen den beiden Rarity-Achsen: die globale Skala ist
+        # haeufiger gepflegt, weil sie aus Mineraldatenbanken/Tucson-Erfahrung
+        # ableitbar ist, waehrend die Fundort-Skala lokales Fundgebiets-Wissen
+        # voraussetzt (welche Mineralen sind in genau diesem Aufschluss/Tagebau/
+        # Hoehlen-System haeufig?), das nur Sammler mit eigenen Touren oder
+        # Vereins-Berichten haben. Aus Datenpflege-Sicht ein Indikator fuer
+        # die Fundgebiets-Erfahrung der Sammlung: Stuecke ohne Fundort-Rarity
+        # sind typisch jene aus fremden Bezugsquellen (Boerse/Tausch/Erbe), bei
+        # denen das lokale Haeufigkeits-Wissen fehlt. Out-of-Range-Werte (<1 /
+        # >10) zaehlen nicht (Integrity meldet separat), NULL = nicht erfasst,
+        # Whitespace nicht relevant (Integer-Feld).
+        return self._quote(self.objekte_mit_seltenheit_fundort)
 
     @property
     def quote_mit_ki_analyse_prozent(self) -> float | None:
@@ -864,6 +894,7 @@ class Statistik:
             "objekte_mit_uv_254nm": self.objekte_mit_uv_254nm,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "objekte_mit_seltenheit_global": self.objekte_mit_seltenheit_global,
+            "objekte_mit_seltenheit_fundort": self.objekte_mit_seltenheit_fundort,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
             "objekte_mit_alias": self.objekte_mit_alias,
@@ -1087,6 +1118,8 @@ class Statistik:
             "quote_mit_confidence_prozent": _round_or_none(self.quote_mit_confidence_prozent),
             "quote_mit_seltenheit_global_prozent": _round_or_none(
                 self.quote_mit_seltenheit_global_prozent),
+            "quote_mit_seltenheit_fundort_prozent": _round_or_none(
+                self.quote_mit_seltenheit_fundort_prozent),
             "quote_mit_kategorie_prozent": _round_or_none(self.quote_mit_kategorie_prozent),
             "quote_mit_mineral_prozent": _round_or_none(self.quote_mit_mineral_prozent),
             "quote_mit_varietaet_prozent": _round_or_none(self.quote_mit_varietaet_prozent),
@@ -1881,6 +1914,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Stollen). Spiegelt by_seltenheit_global; nutzt denselben Helper und denselben
     # 1..10-Skala-Validator (out-of-range bleibt der Integrity ueberlassen).
     st.by_seltenheit_fundort = _count_scale_1_10(conn, "Seltenheit_Fundort_1_10")
+    # objekte_mit_seltenheit_fundort: Anzahl Objekte mit gueltigem Standort-
+    # Rarity-Score (1..10). Reuse der by_seltenheit_fundort-Buckets als Quelle,
+    # damit Coverage- und Verteilungs-Sicht garantiert auf demselben Wertegrund
+    # stehen - spiegelt das objekte_mit_seltenheit_global-Muster
+    # (sum(by_seltenheit_global.values())). Out-of-range-Werte (<1 / >10) sind
+    # in beiden ausgeschlossen (Integrity meldet separat), NULL wird in keinem
+    # Bucket gezaehlt.
+    st.objekte_mit_seltenheit_fundort = sum(st.by_seltenheit_fundort.values())
     # Marktnachfrage-Histogramm 1..10: wo liegt der Marktdruck-Schwerpunkt der
     # Sammlung? Komplementaer zum nachfrage_min/max-Filter (Drill-down auf
     # Verkaufs-Kandidaten); hier die Gesamtverteilung. Beantwortet Sammler-
