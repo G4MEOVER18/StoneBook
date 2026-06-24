@@ -3267,6 +3267,67 @@ def test_geaendert_am_jahr_range_filter(tmp_path):
     c.close()
 
 
+def test_geaendert_am_jahr_in_filter(tmp_path):
+    """geaendert_am_jahr_in akzeptiert diskrete Aenderungs-Jahre (Pflege-Schuebe).
+
+    Spiegelt erstellt_am_jahr_in / funddatum_jahr_in auf die zweite Zeitstempel-
+    Spalte: ein Stueck zaehlt fuer das Jahr, in dem die letzte redaktionelle
+    Beruehrung stattfand. Typische Anwendung: zwei Pflege-Wellen nach
+    Boersen-Besuchen ("nach Tucson 2022 ODER nach Muenchen 2024 nachbearbeitet").
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gyi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) "
+        "VALUES (?, ?, ?)",
+        [
+            # Erfasst 2018, seit Jahren unangetastet (geaendert == erstellt).
+            ("OBJ_0001", "2018-05-13 10:00:00", "2018-05-13 10:00:00"),
+            # 2018 erfasst, 2020 ueberarbeitet.
+            ("OBJ_0002", "2018-05-13 10:00:00", "2020-08-01 11:30:00"),
+            # 2020 erfasst, 2022 ueberarbeitet (Tucson-Nachbearbeitung).
+            ("OBJ_0003", "2020-01-01 09:00:00", "2022-01-01 12:00:00"),
+            # 2022 erfasst, 2024 ueberarbeitet (Muenchen-Nachbearbeitung).
+            ("OBJ_0004", "2022-03-15 08:00:00", "2024-11-30 14:15:00"),
+            ("OBJ_0005", "", ""),
+            ("OBJ_0006", "kein-datum", "kein-datum"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Diskrete Mengen-Auswahl: zwei Pflege-Wellen (Tucson 2022, Muenchen 2024).
+    rows = repo.list_objects(geaendert_am_jahr_in=[2022, 2024])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Einzelnes Jahr verhaelt sich wie min=max
+    rows = repo.list_objects(geaendert_am_jahr_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(geaendert_am_jahr_in=(2018, 2022))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0003"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(geaendert_am_jahr_in=[])
+    assert len(rows) == 6
+    # Jahr ohne Treffer -> leeres Ergebnis
+    rows = repo.list_objects(geaendert_am_jahr_in=[1999])
+    assert rows == []
+    # Kombiniert mit Bereichsfilter (Schnittmenge)
+    rows = repo.list_objects(geaendert_am_jahr_in=[2018, 2020, 2024],
+                              geaendert_am_jahr_min=2020,
+                              geaendert_am_jahr_max=2023)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Orthogonal zur Erfassungs-Achse: OBJ_0002 ist 2018 erfasst, aber 2020
+    # angefasst worden - der Schnitt der beiden Achsen ist nicht leer.
+    rows = repo.list_objects(erstellt_am_jahr_in=[2018],
+                              geaendert_am_jahr_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Ungueltige Jahresangaben -> ValueError
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Jahre"):
+        repo.list_objects(geaendert_am_jahr_in=[2020, 9999])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Jahre"):
+        repo.list_objects(geaendert_am_jahr_in=[1700])
+    c.close()
+
+
 def test_erstellt_am_jahr_in_filter(tmp_path):
     """erstellt_am_jahr_in akzeptiert diskrete Erfassungs-Jahre (Migrations-Wellen)."""
     from stonebook.db.database import open_db

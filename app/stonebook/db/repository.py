@@ -341,6 +341,7 @@ class ObjectRepo:
                      erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_jahr_min: int | None = None,
                      geaendert_am_jahr_max: int | None = None,
+                     geaendert_am_jahr_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -957,6 +958,32 @@ class ObjectRepo:
             if geaendert_am_jahr_max is not None:
                 where.append("CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) <= ?")
                 params.append(int(geaendert_am_jahr_max))
+        # geaendert_am_jahr_in: diskrete Aenderungs-Jahres-Menge ("zuletzt 2022
+        # ODER 2024 angefasst") - komplementaer zum Bereichsfilter
+        # geaendert_am_jahr_min/_max. Spiegelt erstellt_am_jahr_in / funddatum_jahr_in
+        # auf die zweite Zeitstempel-Spalte: ein Stueck zaehlt fuer das Jahr, in dem
+        # die letzte redaktionelle Beruehrung stattfand, unabhaengig vom Erfassungs-
+        # Jahr und vom Funddatum. Beantwortet die Listen-Drill-Down-Variante der
+        # typischen Pflege-Frage "welche Stuecke habe ich in diesen Pflege-Wellen
+        # zuletzt redaktionell beruehrt?" - z.B. zwei Pflege-Schuebe nach Boersen-
+        # Besuchen (2022 Tucson-Nachbearbeitung ODER 2024 Muenchen-Nachbearbeitung).
+        # Validierung 1800..2999 identisch zu erstellt_am_jahr_in / funddatum_jahr_in,
+        # damit Tippfehler einen klaren Fehler statt eines stillen Leerergebnisses
+        # erzeugen.
+        if geaendert_am_jahr_in:
+            jahre = [int(j) for j in geaendert_am_jahr_in]
+            invalid = [j for j in jahre if not 1800 <= j <= 2999]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Geaendert-am-Jahre: {invalid} "
+                    f"(erwartet 1800..2999)")
+            if jahre:
+                placeholders = ", ".join("?" * len(jahre))
+                where.append(
+                    f"substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    f"AND CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) IN "
+                    f"({placeholders})")
+                params.extend(jahre)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
