@@ -3328,6 +3328,64 @@ def test_geaendert_am_jahr_in_filter(tmp_path):
     c.close()
 
 
+def test_geaendert_am_jahrzehnt_in_filter(tmp_path):
+    """geaendert_am_jahrzehnt_in akzeptiert diskrete Aenderungs-Dekaden.
+
+    Spiegelt erstellt_am_jahrzehnt_in / funddatum_jahrzehnt_in auf die zweite
+    Zeitstempel-Spalte: gruppiert das Jahr per Integer-Div durch 10 und
+    vergleicht mit der angegebenen Dekaden-Startzahl. 2010er trennt typisch
+    die haendische Pflege-Generation vom Migrations-/KI-Schub der 2020er.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gdi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) "
+        "VALUES (?, ?, ?)",
+        [
+            # 2010er-Welle (haendische Pflege).
+            ("OBJ_0001", "2012-05-13 10:00:00", "2012-05-13 10:00:00"),
+            ("OBJ_0002", "2018-05-13 10:00:00", "2019-08-01 11:30:00"),
+            # 2020er-Welle (Migrations-/KI-Phase, Rand-Jahr 2020 zaehlt zur 2020er).
+            ("OBJ_0003", "2020-01-01 09:00:00", "2020-01-01 09:00:00"),
+            ("OBJ_0004", "2022-03-15 08:00:00", "2024-11-30 14:15:00"),
+            ("OBJ_0005", "", ""),
+            ("OBJ_0006", "kein-datum", "kein-datum"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Diskrete Dekaden-Auswahl
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=[2010, 2020])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Einzelne Dekade
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=[2010])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=[2020])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=(2020,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=[])
+    assert len(rows) == 6
+    # Dekade ohne Treffer
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=[1980])
+    assert rows == []
+    # Kombiniert mit Jahres-Bereichsfilter (Schnittmenge): 2010er ∩ [>=2015]
+    rows = repo.list_objects(geaendert_am_jahrzehnt_in=[2010],
+                              geaendert_am_jahr_min=2015)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Ungueltige Dekaden (nicht durch 10 teilbar / ausserhalb 1800..2990)
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Jahrzehnte"):
+        repo.list_objects(geaendert_am_jahrzehnt_in=[2015])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Jahrzehnte"):
+        repo.list_objects(geaendert_am_jahrzehnt_in=[1700])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Jahrzehnte"):
+        repo.list_objects(geaendert_am_jahrzehnt_in=[3000])
+    c.close()
+
+
 def test_erstellt_am_jahr_in_filter(tmp_path):
     """erstellt_am_jahr_in akzeptiert diskrete Erfassungs-Jahre (Migrations-Wellen)."""
     from stonebook.db.database import open_db

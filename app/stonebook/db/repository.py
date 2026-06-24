@@ -342,6 +342,7 @@ class ObjectRepo:
                      geaendert_am_jahr_min: int | None = None,
                      geaendert_am_jahr_max: int | None = None,
                      geaendert_am_jahr_in: list[int] | tuple[int, ...] | None = None,
+                     geaendert_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -984,6 +985,35 @@ class ObjectRepo:
                     f"AND CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(jahre)
+        # geaendert_am_jahrzehnt_in: diskrete Aenderungs-Dekaden-Menge ("Pflege-
+        # Welle in den 2010ern ODER 2020ern") - komplementaer zu
+        # geaendert_am_jahr_in (Einzeljahre) und zum Bereichsfilter
+        # geaendert_am_jahr_min/_max. Spiegelt erstellt_am_jahrzehnt_in /
+        # funddatum_jahrzehnt_in auf die zweite Zeitstempel-Spalte: gruppiert
+        # das Jahr per Integer-Div durch 10 und vergleicht mit der angegebenen
+        # Dekaden-Startzahl (``2010`` selektiert 2010..2019, nicht "2010er"-String).
+        # Aenderungs-Dekaden trennen i.d.R. ganze Pflege-Generationen: 2010er
+        # haendisch gepflegte Stuecke (vor dem Datenblatt-Schema-Wechsel) vs.
+        # 2020er Migrations-/KI-Welle (nach dem Datenblatt-Schema-Wechsel).
+        # Validierung 1800..2990 (durch 10 teilbar) identisch zu
+        # erstellt_am_jahrzehnt_in / funddatum_jahrzehnt_in, damit
+        # Tippfehler (2015 als Mitten-Jahr / 1700 ausserhalb / 3000 ausserhalb)
+        # einen klaren Fehler statt eines stillen Leerergebnisses erzeugen.
+        if geaendert_am_jahrzehnt_in:
+            dekaden = [int(d) for d in geaendert_am_jahrzehnt_in]
+            invalid = [d for d in dekaden
+                       if not (1800 <= d <= 2990 and d % 10 == 0)]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Geaendert-am-Jahrzehnte: {invalid} "
+                    f"(erwartet 1800..2990, durch 10 teilbar)")
+            if dekaden:
+                placeholders = ", ".join("?" * len(dekaden))
+                where.append(
+                    f"substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    f"AND (CAST(substr(o.geaendert_am, 1, 4) AS INTEGER) / 10) * 10 "
+                    f"IN ({placeholders})")
+                params.extend(dekaden)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
