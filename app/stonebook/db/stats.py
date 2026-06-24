@@ -35,6 +35,7 @@ class Statistik:
     objekte_mit_beste_verwendung: int = 0
     objekte_mit_fundort: int = 0
     objekte_mit_strichfarbe: int = 0
+    objekte_mit_hcl_reaktion: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -627,6 +628,15 @@ class Statistik:
         return self._quote(self.objekte_mit_strichfarbe)
 
     @property
+    def quote_mit_hcl_reaktion_prozent(self) -> float | None:
+        # Coverage-Quote fuer HCl-Reaktion (Salzsaeure-Test, einer der drei
+        # klassischen qualitativen Bestimmungs-Pruefparameter aus dem
+        # Feldwoerterbuch neben Magnetismus und Strichfarbe). Schliesst die
+        # Pruefparameter-Coverage-Trias ab. Freie str-Spalte mit Konvention
+        # "keine/schwach/stark; kalt/warm"; Whitespace zaehlt wie leer.
+        return self._quote(self.objekte_mit_hcl_reaktion)
+
+    @property
     def quote_mit_notizen_prozent(self) -> float | None:
         # Coverage-Quote fuer freie Notizen (notizen-Spalte). Spiegelt die
         # Feld-Coverage-Quoten (Bildern/Funddatum/Wert/Gewicht/Mineral/Fundort)
@@ -713,6 +723,7 @@ class Statistik:
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_strichfarbe": self.objekte_mit_strichfarbe,
+            "objekte_mit_hcl_reaktion": self.objekte_mit_hcl_reaktion,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -954,6 +965,8 @@ class Statistik:
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_strichfarbe_prozent": _round_or_none(
                 self.quote_mit_strichfarbe_prozent),
+            "quote_mit_hcl_reaktion_prozent": _round_or_none(
+                self.quote_mit_hcl_reaktion_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -2000,6 +2013,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_strichfarbe = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Strichfarbe IS NOT NULL AND TRIM(Strichfarbe) != ''"
+    ).fetchone()[0]
+    # objekte_mit_hcl_reaktion: dritter Pruefparameter neben Magnetismus und
+    # Strichfarbe; freie str-Spalte, Whitespace zaehlt wie leer.
+    st.objekte_mit_hcl_reaktion = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE HCl_Reaktion IS NOT NULL AND TRIM(HCl_Reaktion) != ''"
     ).fetchone()[0]
     # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
     # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).

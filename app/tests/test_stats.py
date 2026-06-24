@@ -2704,6 +2704,48 @@ def test_quote_mit_strichfarbe_leere_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_hcl_reaktion_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer HCl-Reaktion (Salzsaeure-Test) schliesst die
+    Pruefparameter-Trias der drei klassischen qualitativen Bestimmungs-
+    Pruefparameter aus dem Feldwoerterbuch (Magnetismus, Strichfarbe,
+    HCl-Reaktion) ab. Anteil der Objekte mit dokumentierter HCl-Reaktion,
+    gerechnet ueber objekte_total. Whitespace/NULL zaehlt wie leer (spiegelt
+    has_hcl_reaktion-Filter-Konvention)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qhcl.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter HCl-Reaktion (40%), drei ohne
+    # (NULL/leer/Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, HCl_Reaktion) VALUES (?,?)",
+        [
+            ("OBJ_0001", "stark"),           # Calcit-typisch
+            ("OBJ_0002", "keine"),           # Quarz-typisch
+            ("OBJ_0003", ""),                # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),             # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_hcl_reaktion == 2
+    assert st.quote_mit_hcl_reaktion_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_hcl_reaktion"] == 2
+    assert d["quote_mit_hcl_reaktion_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_hcl_reaktion_leere_db(tmp_path):
+    """Leere DB: quote_mit_hcl_reaktion_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_hcl_reaktion_prozent is None
+    assert st.as_dict()["quote_mit_hcl_reaktion_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_notizen_aus_seed_db(tmp_path):
     """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
     Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die

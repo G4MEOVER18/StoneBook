@@ -707,6 +707,31 @@ def test_text_ausgabe_zeigt_strichfarbe_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_hcl_reaktion_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt HCl-Reaktion-Quote (Salzsaeure-Test) direkt nach
+    Strichfarbe und vor Notizen auf. HCl-Reaktion schliesst die Pruefparameter-
+    Coverage-Trias (Magnetismus, Strichfarbe, HCl-Reaktion) aus dem
+    Feldwoerterbuch ab; eine niedrige Quote ist typisch, weil der Salzsaeure-
+    Test invasiv ist und nur fuer carbonat-verdaechtige Stuecke durchgefuehrt
+    wird."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "hcl.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, HCl_Reaktion) VALUES (?,?)",
+        [("OBJ_0001", "stark"), ("OBJ_0002", "keine"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "HCl-Reaktion:" in out
+    # 2 von 4 Objekten haben HCl-Reaktion → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
     der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-

@@ -260,6 +260,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # "Sonstiges"-Achse jenseits der 43 strukturierten Felder beziffert.
         lines.append(
             f"  Strichfarbe:         {st.quote_mit_strichfarbe_prozent:.1f} %")
+        # HCl-Reaktion (Salzsaeure-Test) schliesst die Coverage-Trias der drei
+        # klassischen qualitativen Bestimmungs-Pruefparameter (Magnetismus,
+        # Strichfarbe, HCl-Reaktion) aus dem Feldwoerterbuch ab. Steht direkt
+        # nach Strichfarbe und vor Notizen, weil sie als strukturierter
+        # Pruef-Eintrag (keine/schwach/stark) konzeptionell naeher an Strichfarbe
+        # ist als an der freien Sonstiges-Achse notizen.
+        lines.append(
+            f"  HCl-Reaktion:        {st.quote_mit_hcl_reaktion_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
         # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur
