@@ -6,6 +6,7 @@ Beispiele:
     python -m stonebook.db.maintenance_cli check                    # quick_check
     python -m stonebook.db.maintenance_cli deepcheck                # integrity_check (voll)
     python -m stonebook.db.maintenance_cli fkcheck                  # foreign_key_check
+    python -m stonebook.db.maintenance_cli dupimg                   # Bild-Dubletten (SHA-256)
     python -m stonebook.db.maintenance_cli vacuum                   # VACUUM
     python -m stonebook.db.maintenance_cli vacuum --json
 """
@@ -17,6 +18,7 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
+from stonebook.db.integrity import find_duplicate_image_sha256
 from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
                                       deep_check, foreign_key_check,
                                       free_page_count, quick_check, vacuum)
@@ -130,6 +132,44 @@ def _cmd_fkcheck(args: argparse.Namespace) -> int:
     return 0 if not items else 1
 
 
+def _cmd_dupimg(args: argparse.Namespace) -> int:
+    """Listet Bild-Dubletten (gleicher SHA-256-Hash mehrfach in der image-Tabelle).
+
+    Spiegelt :func:`_cmd_fkcheck` auf die diagnostische Achse: das Pendant in
+    der Datenmodell-Bibliothek (:func:`stonebook.db.integrity.find_duplicate_image_sha256`)
+    findet Mehrfach-Speicherung desselben Bildinhalts unter verschiedenen
+    Bildeintraegen, ist aber bisher CLI-seitig nicht erreichbar gewesen -
+    nur ueber das Python-API oder den GUI-Pfad. Dubletten sind nicht zwingend
+    ein Fehler (z.B. dasselbe Foto legitim als Uebersicht UND Kamera abgelegt
+    sein - der Sammler will beide Eintraege), daher liefern wir Exit-Code 0
+    auch wenn Treffer gefunden werden; der Caller entscheidet ueber die
+    Bewertung. NULL-/Leerwerte beim SHA-256-Feld werden vom Bibliotheks-
+    Aufruf bereits ignoriert. Output spiegelt _cmd_fkcheck (text- und JSON-
+    Variante) auf die Hash-/Image-Achse: Hash + sortierte ID-Liste pro Gruppe.
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        groups = find_duplicate_image_sha256(conn)
+    finally:
+        conn.close()
+    items = [{"sha256": sha, "image_ids": ids} for sha, ids in groups]
+    if args.json:
+        json.dump({"groups": items}, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    elif items:
+        total = sum(len(g["image_ids"]) for g in items)
+        print(f"{len(items)} Dubletten-Gruppe(n) ({total} betroffene Bilder):")
+        for g in items:
+            ids = ", ".join(str(i) for i in g["image_ids"])
+            print(f"  - {g['sha256']}: {len(g['image_ids'])} Bilder [{ids}]")
+    else:
+        print("OK: keine Bild-Dubletten (SHA-256) gefunden.")
+    return 0
+
+
 def _cmd_vacuum(args: argparse.Namespace) -> int:
     db_file = _resolve_db(args)
     if db_file is None:
@@ -185,6 +225,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_fkcheck)
+
+    sp = sub.add_parser("dupimg",
+                        help="Bild-Dubletten anhand SHA-256 anzeigen "
+                             "(gleicher Bildinhalt mehrfach in image-Tabelle).")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_dupimg)
 
     sp = sub.add_parser("vacuum", help="Datenbank kompaktieren (VACUUM).")
     sp.add_argument("--db", type=Path, default=None)

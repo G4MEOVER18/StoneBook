@@ -112,6 +112,82 @@ def test_fkcheck_meldet_orphan(tmp_path, capsys):
     assert isinstance(v["rowid"], int)
 
 
+def test_dupimg_text_keine_dubletten(tmp_path, capsys):
+    """dupimg Subcommand: leere DB → OK + Exit 0 (spiegelt check)."""
+    db_file = tmp_path / "di_empty.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["dupimg", "--db", str(db_file)])
+    assert exit_code == 0
+    assert "OK" in capsys.readouterr().out
+
+
+def test_dupimg_json_keine_dubletten(tmp_path, capsys):
+    """dupimg Subcommand JSON: leere DB → groups=[] (Pendant zu fkcheck-OK-Pfad)."""
+    db_file = tmp_path / "di_empty_j.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["dupimg", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {"groups": []}
+
+
+def test_dupimg_meldet_gruppen(tmp_path, capsys):
+    """dupimg Subcommand: zwei Bilder mit gleichem SHA-256 → Treffer im JSON-Output.
+
+    Spiegelt das Bibliotheks-Pendant test_find_duplicate_image_sha256 auf den
+    CLI-Pfad: Hash und sortierte ID-Liste pro Gruppe in der JSON-Form, Exit 0
+    (Dubletten sind nicht zwingend ein Fehler - der Caller bewertet).
+    """
+    db_file = tmp_path / "di_dup.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0002')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path, sha256) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg", "aaaa"),
+            ("OBJ_0002", "Kamera", "b.jpg", "aaaa"),
+            ("OBJ_0001", "Mikroskop", "c.jpg", "bbbb"),
+        ],
+    )
+    c.commit()
+    c.close()
+    exit_code = main(["dupimg", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert len(info["groups"]) == 1
+    g = info["groups"][0]
+    assert g["sha256"] == "aaaa"
+    assert len(g["image_ids"]) == 2
+    assert g["image_ids"] == sorted(g["image_ids"])
+
+
+def test_dupimg_text_meldet_gruppen(tmp_path, capsys):
+    """dupimg Subcommand Text-Output: Gruppen-Anzahl + Hash + IDs sichtbar.
+
+    Spiegelt das JSON-Test-Setup auf die textuelle Variante (Cron-/Console-
+    Inspektion ohne JSON-Parser).
+    """
+    db_file = tmp_path / "di_dup_text.sqlite3"
+    c = open_db(db_file)
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    c.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0002')")
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path, sha256) VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", "Kamera", "a.jpg", "ffff"),
+            ("OBJ_0002", "Kamera", "b.jpg", "ffff"),
+        ],
+    )
+    c.commit()
+    c.close()
+    exit_code = main(["dupimg", "--db", str(db_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1 Dubletten-Gruppe" in out
+    assert "ffff" in out
+
+
 def test_vacuum_text(tmp_path, capsys):
     db_file = tmp_path / "v.sqlite3"
     c = open_db(db_file)
