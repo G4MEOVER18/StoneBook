@@ -242,6 +242,24 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  Beste Verwendung:    {st.quote_mit_beste_verwendung_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
+        # Strichfarbe (Farbe des Pulvers auf Porzellan-Strichplaette) direkt
+        # nach Fundort, weil sie die letzte fehlende Coverage-Quote der
+        # qualitativen Bestimmungs-Pruefparameter aus dem Feldwoerterbuch
+        # abdeckt: nach der Enum-validierten Magnetismus-Achse (oben unter
+        # Kristallsystem einsortiert) folgt die freie str-Pruef-Achse als
+        # zweiter zentraler diagnostischer Eintragspunkt. Der Strichtest ist
+        # bei visuell aehnlichen Mineralien (Pyrit-Gold, Haematit-Magnetit,
+        # Calcit-Aragonit) oft der eindeutige Trenner, wenn andere Pruef-
+        # Achsen versagen; die Coverage-Quote misst die Bestaetigungs-Tiefe
+        # der mineralogischen Bestimmung. Niedriger Wert ist typisch, weil
+        # der Strichtest invasiv ist (das Mineral wird abgerieben) und eine
+        # Porzellan-Strichplaette erfordert - er wird erst nach erster
+        # Mineral-Hypothese durchgefuehrt, nicht routinemaessig. Steht vor
+        # Notizen, weil Strichfarbe ein strukturierter Pruef-Eintrag ist
+        # (eine konkrete Farbangabe), waehrend Notizen die freie
+        # "Sonstiges"-Achse jenseits der 43 strukturierten Felder beziffert.
+        lines.append(
+            f"  Strichfarbe:         {st.quote_mit_strichfarbe_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
         # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur

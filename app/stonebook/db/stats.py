@@ -34,6 +34,7 @@ class Statistik:
     objekte_mit_bruch: int = 0
     objekte_mit_beste_verwendung: int = 0
     objekte_mit_fundort: int = 0
+    objekte_mit_strichfarbe: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -588,6 +589,44 @@ class Statistik:
         return self._quote(self.objekte_mit_fundort)
 
     @property
+    def quote_mit_strichfarbe_prozent(self) -> float | None:
+        # Coverage-Quote fuer Strichfarbe (Farbe des Pulvers auf
+        # Porzellan-Strichplaettchen, eines der drei klassischen qualitativen
+        # Bestimmungs-Pruefparameter neben HCl-Reaktion und Magnetismus).
+        # Spiegelt die Enum-Coverage-Quoten der qualitativen Pruef-Achsen
+        # (quote_mit_magnetismus_prozent als Enum-validierte Reaktions-Achse)
+        # auf die zwei verbleibenden freien str-Pruefparameter aus dem
+        # Feldwoerterbuch. Strichfarbe ist eine der zuverlaessigsten
+        # Diagnose-Achsen ueberhaupt - bei vielen visuell aehnlichen
+        # Mineralien (Pyrit gelb-metallisch, Goldspecimen gelb-metallisch)
+        # ist der Strich der eindeutige Trenner (Pyrit: gruenlich-schwarz,
+        # Gold: gelb-metallisch), waehrend andere Pruef-Achsen versagen.
+        # Bisher gab es weder eine Anwesenheits-Pruefung (has_strichfarbe-
+        # Filter fehlt ebenfalls) noch eine Coverage-Kennzahl, waehrend alle
+        # umliegenden Pruef-Achsen (Magnetismus, Glanz, Transparenz,
+        # Spaltbarkeit, Bruch) bereits eine Coverage-Quote tragen.
+        # Aussenkontext-bedingt niedrig - der Strichtest erfordert eine
+        # Porzellan-Strichplaette (10 EUR Material), ist invasiv (das
+        # Mineral wird abgerieben) und wird daher seltener routinemaessig
+        # durchgefuehrt als die non-invasiven optischen Pruefungen (Glanz/
+        # Transparenz, beobachtbar ohne Werkzeug). Aus Datenpflege-Sicht
+        # ein direkter Indikator fuer die Tiefe der mineralogischen
+        # Bestimmungs-Pflege: ein Stueck mit dokumentierter Strichfarbe
+        # ist mit hoher Wahrscheinlichkeit auch korrekt mineralogisch
+        # bestimmt (der Strichtest wird typisch erst nach erster Mineral-
+        # Hypothese als Bestaetigung durchgefuehrt), waehrend ein Stueck
+        # ohne Strichfarbe die Bestaetigungs-Achse noch offen hat. Die
+        # Differenz quote_mit_mineral_prozent - quote_mit_strichfarbe_
+        # prozent beziffert daher die Bestaetigungs-Luecke (mineralogisch
+        # eingeordnet, aber Strich noch ungeprueft) - der naechste typische
+        # Pflege-Schritt nach der Mineral-Familien-Bestimmung fuer
+        # diagnostisch schwierige Mineralen. Whitespace zaehlt wie leer,
+        # spiegelt die has_X-Filter-Konvention der umliegenden Felder
+        # (Fundort/Notizen/Mineral); freie str-Spalte wie notizen, daher
+        # gleichartige Whitespace-Behandlung.
+        return self._quote(self.objekte_mit_strichfarbe)
+
+    @property
     def quote_mit_notizen_prozent(self) -> float | None:
         # Coverage-Quote fuer freie Notizen (notizen-Spalte). Spiegelt die
         # Feld-Coverage-Quoten (Bildern/Funddatum/Wert/Gewicht/Mineral/Fundort)
@@ -673,6 +712,7 @@ class Statistik:
             "objekte_mit_beste_verwendung": self.objekte_mit_beste_verwendung,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
+            "objekte_mit_strichfarbe": self.objekte_mit_strichfarbe,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -912,6 +952,8 @@ class Statistik:
             "quote_mit_beste_verwendung_prozent": _round_or_none(
                 self.quote_mit_beste_verwendung_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
+            "quote_mit_strichfarbe_prozent": _round_or_none(
+                self.quote_mit_strichfarbe_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -1939,6 +1981,25 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_fundort = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
+    ).fetchone()[0]
+    # objekte_mit_strichfarbe: Anzahl Objekte mit dokumentierter Strichfarbe
+    # (Farbe des Mineral-Pulvers auf der Porzellan-Strichplaette - einer der
+    # drei klassischen qualitativen Bestimmungs-Pruefparameter aus dem
+    # Feldwoerterbuch neben Magnetismus und HCl-Reaktion). Spiegelt die
+    # umliegenden Coverage-Zaehler (objekte_mit_magnetismus / objekte_mit_glanz
+    # / objekte_mit_transparenz) auf die einzige freie str-Pruef-Achse mit
+    # konventionsfest unbeschraenktem Wertebereich (Magnetismus ist Enum,
+    # Glanz/Transparenz/Spaltbarkeit/Bruch sind Enum; Strichfarbe akzeptiert
+    # jede Farbbeschreibung - "gelblich-weiss", "schwarz", "ziegelrot",
+    # "gruenlich-schwarz"). Whitespace zaehlt wie leer, spiegelt die has_
+    # notizen / has_fundort-Filter-Konvention (freie str-Spalten werden
+    # symmetrisch behandelt). Niedriger Wert ist typisch, weil der Strichtest
+    # invasiv ist (das Mineral wird abgerieben) und eine Porzellan-Strichplaette
+    # erfordert - Sammler dokumentieren ihn typisch erst nach erster Mineral-
+    # Hypothese als Bestaetigung, nicht routinemaessig fuer jedes Stueck.
+    st.objekte_mit_strichfarbe = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Strichfarbe IS NOT NULL AND TRIM(Strichfarbe) != ''"
     ).fetchone()[0]
     # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
     # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).

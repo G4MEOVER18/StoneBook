@@ -2652,6 +2652,58 @@ def test_quote_mit_fundort_aus_seed_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_strichfarbe_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Strichfarbe (Farbe des Pulvers auf Porzellan-
+    Strichplaette - einer der drei klassischen qualitativen Bestimmungs-
+    Pruefparameter aus dem Feldwoerterbuch neben Magnetismus und HCl-Reaktion).
+    Spiegelt die Enum-Coverage-Quoten der qualitativen Pruef-Achsen
+    (quote_mit_magnetismus_prozent als Enum-validierte Reaktions-Achse) auf
+    die freie str-Pruef-Achse Strichfarbe. Anteil der Objekte mit
+    dokumentierter Strichfarbe, gerechnet ueber objekte_total. Whitespace/
+    NULL zaehlt wie leer (spiegelt die has_notizen-/has_fundort-Filter-
+    Konvention der freien str-Spalten). Niedriger Wert ist typisch, weil der
+    Strichtest invasiv ist (das Mineral wird abgerieben) und eine Porzellan-
+    Strichplaette erfordert - er wird erst nach erster Mineral-Hypothese als
+    Bestaetigung durchgefuehrt, nicht routinemaessig fuer jedes Stueck."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qsf.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Strichfarbe (40%), drei ohne
+    # (NULL/leer/Whitespace zaehlen alle wie nicht-dokumentiert). Zwei
+    # unterschiedliche Strichfarben (gelblich-weiss fuer Calcit-typisch,
+    # gruenlich-schwarz fuer Pyrit-typisch) zaehlen in der Coverage gleich;
+    # die Werte selbst werden nicht weiter klassifiziert (freie str-Spalte
+    # ohne Enum-Validierung).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Strichfarbe) VALUES (?,?)",
+        [
+            ("OBJ_0001", "gelblich-weiss"),    # Calcit-typische Farbe
+            ("OBJ_0002", "gruenlich-schwarz"), # Pyrit-typische Farbe
+            ("OBJ_0003", ""),                  # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),               # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_strichfarbe == 2
+    assert st.quote_mit_strichfarbe_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_strichfarbe"] == 2
+    assert d["quote_mit_strichfarbe_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_strichfarbe_leere_db(tmp_path):
+    """Leere DB: quote_mit_strichfarbe_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_strichfarbe_prozent is None
+    assert st.as_dict()["quote_mit_strichfarbe_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_notizen_aus_seed_db(tmp_path):
     """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
     Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die

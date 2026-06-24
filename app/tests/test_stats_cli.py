@@ -678,6 +678,35 @@ def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_strichfarbe_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Strichfarbe-Quote (Farbe des Pulvers auf
+    Porzellan-Strichplaette) direkt nach Fundort und vor Notizen auf.
+    Strichfarbe ist die freie str-Pruef-Achse neben dem Enum-validierten
+    Magnetismus und einer der drei klassischen qualitativen Bestimmungs-
+    Pruefparameter aus dem Feldwoerterbuch (neben Magnetismus und HCl-
+    Reaktion); eine niedrige Quote ist typisch, weil der Strichtest invasiv
+    ist und nicht routinemaessig durchgefuehrt wird. Symmetrische CLI-
+    Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse "wie tief ist
+    die mineralogische Bestimmung durch Strichtest bestaetigt?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Strichfarbe) VALUES (?,?)",
+        [("OBJ_0001", "gelblich-weiss"),
+         ("OBJ_0002", "gruenlich-schwarz"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Strichfarbe:" in out
+    # 2 von 4 Objekten haben Strichfarbe → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
     der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-
