@@ -278,6 +278,13 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # ab, bevor mit Notizen die freie Sonstiges-Achse beginnt.
         lines.append(
             f"  UV 365 nm:           {st.quote_mit_uv_365nm_prozent:.1f} %")
+        # UV-254nm (Fluoreszenz-Reaktion bei Kurzwellen-UV) als paarweise
+        # Komplement-Achse zu UV-365nm. Steht direkt nach UV-365nm und vor
+        # Notizen, damit die Doppel-Wellenlaengen-Achse als gemeinsamer
+        # Block lesbar ist - die Differenz beider Quoten beziffert die
+        # Kurzwellen-Mess-Luecke (Langwelle dokumentiert, Kurzwelle nicht).
+        lines.append(
+            f"  UV 254 nm:           {st.quote_mit_uv_254nm_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
         # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur

@@ -757,6 +757,31 @@ def test_text_ausgabe_zeigt_uv_365nm_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_uv_254nm_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt UV-254nm-Quote (Fluoreszenz bei Kurzwellen-UV)
+    direkt nach UV-365nm und vor Notizen auf - paarweise Komplement-Achse,
+    damit die Doppel-Wellenlaengen-Achse als gemeinsamer Block lesbar ist.
+    Eine typischerweise deutlich niedrigere Quote als UV_365nm, weil die
+    254-nm-Lampen teurer und gesundheitlich riskanter sind und nur in
+    Sammlungen mit erweiterter UV-Ausruestung gepflegt werden."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "uv254.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_254nm) VALUES (?,?)",
+        [("OBJ_0001", "stark blauweiss"), ("OBJ_0002", "keine"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "UV 254 nm:" in out
+    # 2 von 4 Objekten haben UV_254nm → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
     der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-

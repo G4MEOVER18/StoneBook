@@ -37,6 +37,7 @@ class Statistik:
     objekte_mit_strichfarbe: int = 0
     objekte_mit_hcl_reaktion: int = 0
     objekte_mit_uv_365nm: int = 0
+    objekte_mit_uv_254nm: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -638,6 +639,36 @@ class Statistik:
         return self._quote(self.objekte_mit_hcl_reaktion)
 
     @property
+    def quote_mit_uv_254nm_prozent(self) -> float | None:
+        # Coverage-Quote fuer UV-Reaktion bei 254 nm (kurzwelliges UV) -
+        # paarweise zur Langwellen-Achse quote_mit_uv_365nm_prozent und
+        # vervollstaendigt das UV-Doppel-Wellenlaengen-Coverage (365 nm
+        # Langwelle / 254 nm Kurzwelle, die zwei Standard-Wellenlaengen
+        # mineralogischer UV-Lampen). Spiegelt das Schwester-Property in
+        # Struktur und Konvention: freie str-Spalte, Whitespace zaehlt wie
+        # leer. Kurzwelliges UV ist die zweite UV-Achse, deren Reaktion
+        # mineralogisch unabhaengig von der 365-nm-Antwort ist - viele
+        # Mineralien (Scheelit-stark blauweiss, Hyalit-gruen, Calcit-rot)
+        # fluoreszieren nur unter Kurzwelle, andere (Fluorit-blauviolett)
+        # nur unter Langwelle, wieder andere (Manganhaltige Calcit) unter
+        # beiden. Aussenkontext-bedingt typisch deutlich niedrigere Quote
+        # als UV_365nm: die 254-nm-Lampen sind teurer (kalte Kathode statt
+        # LED), gesundheitlich riskanter (UV-Schutzbrille erforderlich
+        # wegen Augen-/Hautschaeden) und in der Sammler-Praxis seltener
+        # verfuegbar; viele Sammler haben nur eine Langwellen-LED-Taschen-
+        # lampe. Die Differenz quote_mit_uv_365nm_prozent -
+        # quote_mit_uv_254nm_prozent beziffert die Kurzwellen-Mess-Luecke
+        # (Langwelle dokumentiert, aber Kurzwelle nicht geprueft) - der
+        # naechste typische Pflege-Schritt fuer Sammler mit erweiterter
+        # UV-Ausruestung. Komplementaer zu quote_mit_uv_365nm_prozent
+        # (Langwellen-Coverage) und zu den anderen Pruefparameter-Quoten
+        # (Magnetismus/Strichfarbe/HCl-Reaktion); zusammen mit UV_365nm
+        # ergibt sich das Doppel-Wellenlaengen-Coverage der UV-Diagnose-
+        # Achse symmetrisch zur Doppel-Achse Spaltbarkeit/Bruch der
+        # mechanischen Diagnose.
+        return self._quote(self.objekte_mit_uv_254nm)
+
+    @property
     def quote_mit_uv_365nm_prozent(self) -> float | None:
         # Coverage-Quote fuer UV-Reaktion bei 365 nm (langwelliges UV - die
         # Standard-Wellenlaenge fuer Fluoreszenz-Sammler, deutlich verbreiteter
@@ -759,6 +790,7 @@ class Statistik:
             "objekte_mit_strichfarbe": self.objekte_mit_strichfarbe,
             "objekte_mit_hcl_reaktion": self.objekte_mit_hcl_reaktion,
             "objekte_mit_uv_365nm": self.objekte_mit_uv_365nm,
+            "objekte_mit_uv_254nm": self.objekte_mit_uv_254nm,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "bilder_total": self.bilder_total,
             "aliase_total": self.aliase_total,
@@ -1004,6 +1036,8 @@ class Statistik:
                 self.quote_mit_hcl_reaktion_prozent),
             "quote_mit_uv_365nm_prozent": _round_or_none(
                 self.quote_mit_uv_365nm_prozent),
+            "quote_mit_uv_254nm_prozent": _round_or_none(
+                self.quote_mit_uv_254nm_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -2066,6 +2100,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_uv_365nm = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE UV_365nm IS NOT NULL AND TRIM(UV_365nm) != ''"
+    ).fetchone()[0]
+    # objekte_mit_uv_254nm: UV-Reaktion bei 254 nm (Kurzwellen-UV) - paarweise
+    # zur Langwellen-Achse objekte_mit_uv_365nm und vervollstaendigt das
+    # UV-Doppel-Wellenlaengen-Coverage. Spiegelt objekte_mit_uv_365nm exakt in
+    # Struktur und Konvention; freie str-Spalte, Whitespace zaehlt wie leer.
+    st.objekte_mit_uv_254nm = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE UV_254nm IS NOT NULL AND TRIM(UV_254nm) != ''"
     ).fetchone()[0]
     # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
     # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).

@@ -2788,6 +2788,47 @@ def test_quote_mit_uv_365nm_leere_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_uv_254nm_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer UV-Reaktion bei 254 nm (Kurzwellen-UV) - paarweise
+    Komplement-Achse zur Langwellen-Quote quote_mit_uv_365nm_prozent.
+    Vervollstaendigt das UV-Doppel-Wellenlaengen-Coverage. Anteil der Objekte
+    mit dokumentierter Kurzwellen-Reaktion, gerechnet ueber objekte_total.
+    Whitespace/NULL zaehlt wie leer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "quv254.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter UV_254nm (40%), drei ohne
+    # (NULL/leer/Whitespace zaehlen alle wie nicht-dokumentiert).
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_254nm) VALUES (?,?)",
+        [
+            ("OBJ_0001", "stark blauweiss"),  # Scheelit-typisch
+            ("OBJ_0002", "keine"),            # Quarz-typisch
+            ("OBJ_0003", ""),                 # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),              # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_uv_254nm == 2
+    assert st.quote_mit_uv_254nm_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_uv_254nm"] == 2
+    assert d["quote_mit_uv_254nm_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_uv_254nm_leere_db(tmp_path):
+    """Leere DB: quote_mit_uv_254nm_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_uv_254nm_prozent is None
+    assert st.as_dict()["quote_mit_uv_254nm_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_notizen_aus_seed_db(tmp_path):
     """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
     Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die
