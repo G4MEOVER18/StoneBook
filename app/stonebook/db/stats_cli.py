@@ -242,6 +242,19 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  Beste Verwendung:    {st.quote_mit_beste_verwendung_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
+        # Farbe_beobachtet (tatsaechlich gesehene Mineral-Farbe) direkt nach
+        # Fundort und vor Strichfarbe, weil sie die paarweise Farb-Achse zur
+        # diagnostisch invarianten Strichfarbe darstellt - waehrend Strichfarbe
+        # bei einer gegebenen Mineral-Art konstant ist (Pyrit immer gruenlich-
+        # schwarz), variiert die beobachtete Farbe innerhalb der Mineral-Art
+        # stark (Quarz von farblos bis rauchgrau, Calcit von weiss bis schwarz).
+        # Niederschwelligste visuelle Diagnose-Achse - keine Werkzeuge noetig,
+        # am Tageslicht beobachtbar - daher typisch hoechste Coverage-Quote
+        # unter den freien str-Pruefparametern (eine niedrige Quote weist auf
+        # einen unvollstaendig erfassten Bestand hin, in dem selbst der erste
+        # Blick auf das Stueck fehlt).
+        lines.append(
+            f"  Farbe (beobachtet):  {st.quote_mit_farbe_prozent:.1f} %")
         # Strichfarbe (Farbe des Pulvers auf Porzellan-Strichplaette) direkt
         # nach Fundort, weil sie die letzte fehlende Coverage-Quote der
         # qualitativen Bestimmungs-Pruefparameter aus dem Feldwoerterbuch

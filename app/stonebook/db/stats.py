@@ -34,6 +34,7 @@ class Statistik:
     objekte_mit_bruch: int = 0
     objekte_mit_beste_verwendung: int = 0
     objekte_mit_fundort: int = 0
+    objekte_mit_farbe: int = 0
     objekte_mit_strichfarbe: int = 0
     objekte_mit_hcl_reaktion: int = 0
     objekte_mit_uv_365nm: int = 0
@@ -592,6 +593,40 @@ class Statistik:
         return self._quote(self.objekte_mit_fundort)
 
     @property
+    def quote_mit_farbe_prozent(self) -> float | None:
+        # Coverage-Quote fuer Farbe_beobachtet (tatsaechlich gesehene Farbe(n)
+        # eines Stuecks - die niederschwelligste visuelle Diagnose-Achse aus
+        # dem Feldwoerterbuch). Spiegelt die Enum-Coverage-Quoten der optischen
+        # Achsen (quote_mit_glanz_prozent / quote_mit_transparenz_prozent) auf
+        # die freie str-Farb-Achse: waehrend Glanz die Oberflaechen-Reflexion
+        # (glasig/matt/metallisch/...) und Transparenz die Lichtdurchlaessigkeit
+        # (durchsichtig/durchscheinend/opak) auf Enum-Skalen beziffert, beziffert
+        # Farbe_beobachtet die wahrgenommene Mineral-Farbe selbst (rot/gruen/
+        # blau/braun/schwarz/...). Komplementaer zu quote_mit_strichfarbe_prozent
+        # (Farbe des abgeriebenen Pulvers): waehrend Strichfarbe diagnostisch
+        # invariant ist (Pyrit immer gruenlich-schwarz, Hematit immer ziegelrot),
+        # variiert die beobachtete Farbe innerhalb einer Mineral-Art stark
+        # (Quarz von farblos ueber gelb/rosa/rauchgrau/violett bis schwarz; Calcit
+        # von weiss ueber gelb/orange/blaeulich bis schwarz). Beide Farb-Achsen
+        # zusammen ergeben das vollstaendige Farb-Profil eines Stuecks. Bisher
+        # gab es nur den has_farbe-Filter (Listen-Filter, Anwesenheits-Pruefung)
+        # und das wahlfreie repository.filter_objects-Argument, aber keine
+        # Coverage-Kennzahl (Anteil-Sicht auf den Gesamtbestand) - waehrend die
+        # umliegenden visuellen Pruef-Achsen (Glanz/Transparenz) und die
+        # paarweise Strichfarbe bereits Coverage-Quoten haben. Aussenkontext-
+        # bedingt typisch hoch im Vergleich zu den anderen Pruef-Achsen, weil
+        # Farb-Beobachtung die niederschwelligste Diagnose-Achse ueberhaupt ist
+        # (keine Werkzeuge noetig, kein invasiver Eingriff, am Tageslicht
+        # beobachtbar - spiegelt das Pflege-Verhalten der ebenfalls non-
+        # invasiven Glanz-/Transparenz-Pruefungen). Eine niedrige Quote weist
+        # auf einen unvollstaendig erfassten Bestand hin (selbst der erste
+        # Blick auf das Stueck fehlt im Datensatz) - der direkte Indikator
+        # fuer die Basis-Erfassungs-Tiefe. Whitespace zaehlt wie leer, spiegelt
+        # die has_X-Filter-Konvention der umliegenden freien str-Spalten
+        # (Fundort/Notizen/Strichfarbe).
+        return self._quote(self.objekte_mit_farbe)
+
+    @property
     def quote_mit_strichfarbe_prozent(self) -> float | None:
         # Coverage-Quote fuer Strichfarbe (Farbe des Pulvers auf
         # Porzellan-Strichplaettchen, eines der drei klassischen qualitativen
@@ -787,6 +822,7 @@ class Statistik:
             "objekte_mit_beste_verwendung": self.objekte_mit_beste_verwendung,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
+            "objekte_mit_farbe": self.objekte_mit_farbe,
             "objekte_mit_strichfarbe": self.objekte_mit_strichfarbe,
             "objekte_mit_hcl_reaktion": self.objekte_mit_hcl_reaktion,
             "objekte_mit_uv_365nm": self.objekte_mit_uv_365nm,
@@ -1030,6 +1066,7 @@ class Statistik:
             "quote_mit_beste_verwendung_prozent": _round_or_none(
                 self.quote_mit_beste_verwendung_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
+            "quote_mit_farbe_prozent": _round_or_none(self.quote_mit_farbe_prozent),
             "quote_mit_strichfarbe_prozent": _round_or_none(
                 self.quote_mit_strichfarbe_prozent),
             "quote_mit_hcl_reaktion_prozent": _round_or_none(
@@ -2065,6 +2102,23 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_fundort = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
+    ).fetchone()[0]
+    # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
+    # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
+    # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).
+    # Spiegelt die umliegenden Coverage-Zaehler der visuellen Pruef-Achsen
+    # (objekte_mit_glanz / objekte_mit_transparenz - Enum-Skalen fuer Ober-
+    # flaechen-Reflexion und Lichtdurchlaessigkeit) auf die freie str-Farb-
+    # Achse mit unbeschraenktem Wertebereich ("gelblich-weiss", "rotbraun mit
+    # schwarzen Adern", "milchig-blau", ...). Komplementaer zu
+    # objekte_mit_strichfarbe (Pulverfarbe nach Strichplaetten-Test): beide
+    # Farb-Achsen zusammen ergeben das vollstaendige Farb-Profil. Whitespace
+    # zaehlt wie leer, spiegelt die has_farbe-Filter-Konvention der
+    # repository.filter_objects-API und die has_X-Konvention der umliegenden
+    # freien str-Spalten (Fundort/Strichfarbe/Notizen).
+    st.objekte_mit_farbe = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Farbe_beobachtet IS NOT NULL AND TRIM(Farbe_beobachtet) != ''"
     ).fetchone()[0]
     # objekte_mit_strichfarbe: Anzahl Objekte mit dokumentierter Strichfarbe
     # (Farbe des Mineral-Pulvers auf der Porzellan-Strichplaette - einer der

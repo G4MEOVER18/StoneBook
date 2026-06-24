@@ -2652,6 +2652,53 @@ def test_quote_mit_fundort_aus_seed_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_farbe_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Farbe_beobachtet (tatsaechlich gesehene Mineral-
+    Farbe - die niederschwelligste visuelle Diagnose-Achse aus dem
+    Feldwoerterbuch, keine Werkzeuge noetig, am Tageslicht beobachtbar).
+    Spiegelt die optischen Coverage-Quoten (quote_mit_glanz/transparenz auf
+    Enum-Skalen) und die diagnostisch invariante Pulverfarbe (Strichfarbe)
+    auf die freie str-Farb-Achse. Anteil der Objekte mit dokumentierter
+    Farbe, gerechnet ueber objekte_total. Whitespace/NULL zaehlt wie leer
+    (spiegelt has_farbe-Filter-Konvention der repository.filter_objects-API)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qfb.sqlite3")
+    # 5 Objekte: zwei mit dokumentierter Farbe (40%), drei ohne (NULL/leer/
+    # nur Whitespace zaehlen alle wie nicht-dokumentiert). Zwei unterschied-
+    # liche Farb-Beobachtungen (rauchgrau fuer Quarz-typisch, ziegelrot fuer
+    # Haematit-typisch) zaehlen in der Coverage gleich; die Werte selbst
+    # werden nicht weiter klassifiziert (freie str-Spalte ohne Enum-Validierung).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Farbe_beobachtet) VALUES (?,?)",
+        [
+            ("OBJ_0001", "rauchgrau"),    # Quarz-typische Farbe
+            ("OBJ_0002", "ziegelrot"),    # Haematit-typische Farbe
+            ("OBJ_0003", ""),             # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),          # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_farbe == 2
+    assert st.quote_mit_farbe_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_farbe"] == 2
+    assert d["quote_mit_farbe_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_farbe_leere_db(tmp_path):
+    """Leere DB: quote_mit_farbe_prozent ist None (nicht 0%) - keine Objekte
+    zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_farbe_prozent is None
+    assert st.as_dict()["quote_mit_farbe_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_strichfarbe_aus_seed_db(tmp_path):
     """Coverage-Quote fuer Strichfarbe (Farbe des Pulvers auf Porzellan-
     Strichplaette - einer der drei klassischen qualitativen Bestimmungs-

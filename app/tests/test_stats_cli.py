@@ -678,6 +678,32 @@ def test_text_ausgabe_zeigt_fundort_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_farbe_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Farbe-Quote (tatsaechlich gesehene Mineral-Farbe)
+    direkt nach Fundort und vor Strichfarbe auf. Farbe_beobachtet ist die
+    niederschwelligste visuelle Diagnose-Achse - keine Werkzeuge noetig, am
+    Tageslicht beobachtbar - und damit die paarweise Farb-Achse zur
+    diagnostisch invarianten Strichfarbe. Symmetrische CLI-Sichtbarkeit
+    fuer das Datenpflege-Dashboard auf der Achse "wie tief ist der erste
+    Blick auf das Stueck erfasst?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fb.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Farbe_beobachtet) VALUES (?,?)",
+        [("OBJ_0001", "rauchgrau"), ("OBJ_0002", "ziegelrot"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Farbe (beobachtet):" in out
+    # 2 von 4 Objekten haben Farbe → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_strichfarbe_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Strichfarbe-Quote (Farbe des Pulvers auf
     Porzellan-Strichplaette) direkt nach Fundort und vor Notizen auf.
