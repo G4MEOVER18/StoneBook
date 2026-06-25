@@ -3761,3 +3761,78 @@ def test_geaendert_am_iso_range_filter(tmp_path):
     rows = repo.list_objects(geaendert_am_min="2024-06-01", geaendert_am_jahr_in=[2024])
     assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
     c.close()
+
+
+def test_list_objects_in_bbox_filtert_nach_koordinaten(tmp_path):
+    """list_objects_in_bbox parst Fundort-Koordinaten und filtert nach Bounding-Box.
+
+    Verdrahtet die bisher ungenutzte parse_coordinates-Funktion aus
+    stonebook.migration.validators in die Repository-Schicht. Die Bounding-Box
+    deckt die typische Sammler-Frage 'welche Stuecke aus meiner naechsten
+    Tour-Region?' ab, ohne dass Fundort als strukturierte Lat/Lon-Spalte
+    gepflegt werden muss - Koordinaten werden direkt aus dem Freitext gezogen.
+
+    Decken muss: ein Treffer im Box-Inneren, ein Treffer genau auf einer
+    Box-Kante (inklusiv), ein Eintrag knapp ausserhalb (ausgeschlossen),
+    Fundort ohne Koordinaten (reiner Ortsname, uebergangen), leerer/NULL
+    Fundort (uebergangen), DMS- und Hemisphaeren-Notationen (beide vom
+    parse_coordinates-Parser unterstuetzt, hier durchgereicht).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bbox.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),         # Zuerich, in Box
+            ("OBJ_0002", "46.5197, 6.6323"),         # Lausanne, in Box
+            ("OBJ_0003", "48.8566, 2.3522"),         # Paris, ausserhalb Lon
+            ("OBJ_0004", "Berner Oberland"),         # Ortsname ohne Koords
+            ("OBJ_0005", "46.0°N 7.0°E"),            # Hemisphaeren-Suffix, in Box
+            ("OBJ_0006", "47°22'37\"N 8°32'30\"E"),  # DMS-Notation Zuerich, in Box
+            ("OBJ_0007", ""),                        # leer
+            ("OBJ_0008", None),                      # NULL
+            ("OBJ_0009", "60.0, 30.0"),              # St. Petersburg, ausserhalb Lat
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Schweizer Box (45.8..47.9 N, 5.9..10.5 E) deckt das gesamte Land ab
+    hits = repo.list_objects_in_bbox(lat_min=45.8, lat_max=47.9,
+                                     lon_min=5.9, lon_max=10.5)
+    ids = [r[0] for r in hits]
+    assert ids == ["OBJ_0001", "OBJ_0002", "OBJ_0005", "OBJ_0006"]
+    # Treffer enthalten die geparsten Lat/Lon-Werte (nicht den rohen Text)
+    obj1 = next(r for r in hits if r[0] == "OBJ_0001")
+    assert obj1[1] == pytest.approx(47.3769)
+    assert obj1[2] == pytest.approx(8.5417)
+    c.close()
+
+
+def test_list_objects_in_bbox_grenzen_inklusiv(tmp_path):
+    """Bounding-Box-Grenzen sind inklusiv (BETWEEN-Konvention der SQL-Filter)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bbox_edge.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.0, 8.0"),  # exakt auf Min-Lat und Min-Lon
+            ("OBJ_0002", "48.0, 9.0"),  # exakt auf Max-Lat und Max-Lon
+            ("OBJ_0003", "46.9999, 8.0"),  # knapp ausserhalb Min-Lat
+            ("OBJ_0004", "48.0001, 9.0"),  # knapp ausserhalb Max-Lat
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    hits = repo.list_objects_in_bbox(lat_min=47.0, lat_max=48.0,
+                                     lon_min=8.0, lon_max=9.0)
+    assert [r[0] for r in hits] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
+def test_list_objects_in_bbox_leere_db(tmp_path):
+    """Leere DB -> leere Trefferliste; kein Crash."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bbox_empty.sqlite3")
+    repo = ObjectRepo(c)
+    assert repo.list_objects_in_bbox(-90, 90, -180, 180) == []
+    c.close()

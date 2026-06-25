@@ -1340,6 +1340,51 @@ class ObjectRepo:
         sql += _order_by_clause(sort_by, sort_desc)
         return self.conn.execute(sql, params).fetchall()
 
+    def list_objects_in_bbox(self, lat_min: float, lat_max: float,
+                             lon_min: float, lon_max: float
+                             ) -> list[tuple[str, float, float]]:
+        """Listet Objekte mit Fundort-Koordinaten innerhalb einer Bounding-Box.
+
+        Scant alle Objekte mit nicht-leerem Fundort, parst die enthaltenen
+        Koordinaten via :func:`stonebook.migration.validators.parse_coordinates`
+        und liefert nur die Objekte, deren Koordinaten in der Box liegen.
+        Fundort-Eintraege ohne erkennbare Koordinaten (z.B. reine Ortsnamen
+        wie ``"Berner Oberland"``) werden uebergangen.
+
+        Reine Python-Schicht ueber die DB-Sicht: Fundort ist eine freie
+        str-Spalte ohne strukturierte Koordinaten-Achse, daher gibt es kein
+        SQL-Aequivalent. Verglichen mit den SQL-basierten ``list_objects``-
+        Filtern ist der Pfad langsamer (O(n) Python pro Aufruf), bleibt aber
+        bei einer Sammler-DB mit O(10^3) Eintraegen unter Sekundenzeit; fuer
+        groessere Datasets sollte eine extrahierte Koordinaten-Spalte mit
+        SQL-Range-Filter angedacht werden. Reihenfolge: aufsteigend nach
+        ``obj_id``, damit der Filter deterministisch ist.
+
+        Box-Konvention: lat in [lat_min, lat_max] und lon in [lon_min, lon_max],
+        beide Grenzen inklusiv (spiegelt die ``BETWEEN``-Konvention der
+        SQL-Range-Filter). Bei lat_min > lat_max bzw. lon_min > lon_max ist
+        die Schnittmenge leer; die Datums-Grenze (lon ueber +/-180 hinweg)
+        wird nicht behandelt - der Caller muss zwei Boxen abfragen, wenn
+        sein Suchgebiet ueber die +/-180-Linie laeuft (in der Praxis fuer
+        Sammler-Daten irrelevant).
+        """
+        from stonebook.migration.validators import parse_coordinates
+
+        rows = self.conn.execute(
+            "SELECT obj_id, Fundort FROM objects "
+            "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        result: list[tuple[str, float, float]] = []
+        for row in rows:
+            coords = parse_coordinates(row["Fundort"])
+            if coords is None:
+                continue
+            lat, lon = coords
+            if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+                result.append((row["obj_id"], lat, lon))
+        return result
+
     def get(self, obj_id: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM objects WHERE obj_id = ?", (obj_id,)).fetchone()
 
