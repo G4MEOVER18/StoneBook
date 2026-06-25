@@ -3718,3 +3718,46 @@ def test_erstellt_am_iso_range_filter(tmp_path):
     rows = repo.list_objects(erstellt_am_min="2024-06-01", erstellt_am_jahr_in=[2024])
     assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
     c.close()
+
+
+def test_geaendert_am_iso_range_filter(tmp_path):
+    """geaendert_am_min/_max filtert tagesgenau ueber ISO-Strings (lexikographisch).
+
+    Spiegelt erstellt_am_min/_max auf die Aenderungs-Achse und funddatum_min/
+    _max auf die Fund-Achse - schliesst die Tagesgenau-Stichtag-Trias der
+    drei Zeitstempel-Spalten ab. Beantwortet die typische Pflege-Frage
+    'welche Stuecke wurden seit dem letzten Boersen-Besuch redaktionell
+    beruehrt?' tagesgenau, waehrend die existierenden Jahr/Jahrzehnt/Monat-
+    Filter auf der Aenderungs-Achse nur grobe Diskretisierungen boten.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-03-15 10:00:00"),
+            ("OBJ_0002", "2024-06-13 11:30:00"),
+            ("OBJ_0003", "2024-09-30 12:00:00"),
+            ("OBJ_0004", "2025-01-05 14:15:00"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # April..August 2024
+    rows = repo.list_objects(geaendert_am_min="2024-04-01", geaendert_am_max="2024-08-31")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Alles ab 2024-09
+    rows = repo.list_objects(geaendert_am_min="2024-09-01")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Alles bis Ende 2024
+    rows = repo.list_objects(geaendert_am_max="2024-12-31")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Sekundengenauer Stichtag direkt auf dem voll qualifizierten Stempel
+    rows = repo.list_objects(geaendert_am_min="2024-06-13 12:00:00")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Kombination mit geaendert_am_jahr_in (Schnittmenge)
+    rows = repo.list_objects(geaendert_am_min="2024-06-01", geaendert_am_jahr_in=[2024])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    c.close()

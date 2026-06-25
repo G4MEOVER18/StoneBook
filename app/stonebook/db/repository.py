@@ -347,6 +347,8 @@ class ObjectRepo:
                      geaendert_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_monat: int | None = None,
                      geaendert_am_monat_in: list[int] | tuple[int, ...] | None = None,
+                     geaendert_am_min: str | None = None,
+                     geaendert_am_max: str | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -1084,6 +1086,27 @@ class ObjectRepo:
                     f"AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(monate)
+        # geaendert_am-Bereich auf Tagesgenauigkeit/Sekundengenauigkeit:
+        # spiegelt erstellt_am_min/_max auf die Aenderungs-Achse und
+        # funddatum_min/_max auf die Fund-Achse - schliesst die Tagesgenau-
+        # Stichtag-Trias der drei Zeitstempel-Spalten ab. ISO YYYY-MM-DD
+        # [ HH:MM:SS] ist lexikographisch vergleichbar, daher reicht ein
+        # direkter String-Vergleich ohne Datums-Parsing. Beantwortet die
+        # typische Pflege-Stichtag-Frage "welche Stuecke wurden seit dem
+        # letzten Boersen-Besuch redaktionell beruehrt?" tagesgenau (oder
+        # sekundengenau auf dem voll qualifizierten Stempel), waehrend die
+        # existierenden Jahr/Jahrzehnt/Monat-Filter nur grobe Diskreti-
+        # sierungen ueber die Aenderungs-Achse boten. NULL/leere geaendert_am-
+        # Stempel werden konsistent zu erstellt_am_min/_max und funddatum_min/
+        # _max ausgeschlossen.
+        if geaendert_am_min is not None:
+            where.append("o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                         "AND o.geaendert_am >= ?")
+            params.append(str(geaendert_am_min))
+        if geaendert_am_max is not None:
+            where.append("o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                         "AND o.geaendert_am <= ?")
+            params.append(str(geaendert_am_max))
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
