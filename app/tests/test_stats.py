@@ -474,6 +474,65 @@ def test_by_geaendert_am_jahr_im_as_dict(tmp_path):
     c.close()
 
 
+def test_by_geaendert_am_jahrzehnt_aus_seed_db(tmp_path):
+    """Pflege-Dekaden-Histogramm aggregiert die Jahre auf 10er-Schritte."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dekade_p.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # 2010er: 2x (handgepflegte Phase)
+            ("OBJ_0001", "2014-05-12 09:00:00"),
+            ("OBJ_0002", "2018-11-03 16:45:00"),
+            # 2020er: 4x (KI-Welle)
+            ("OBJ_0003", "2020-01-15 09:00:00"),
+            ("OBJ_0004", "2024-06-13 14:30:00"),
+            ("OBJ_0005", "2025-03-01 11:00:00"),
+            ("OBJ_0006", "2029-12-31 23:59:59"),
+            # Ausgeschlossene: leer/NULL/kein Jahres-Praefix
+            ("OBJ_0007", ""),
+            ("OBJ_0008", None),
+            ("OBJ_0009", "kaputt"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend, Label mit 'er'-Suffix
+    assert list(st.by_geaendert_am_jahrzehnt.items()) == [
+        ("2010er", 2), ("2020er", 4),
+    ]
+    c.close()
+
+
+def test_by_geaendert_am_jahrzehnt_leer(tmp_path):
+    """Ohne geaendert_am-Stempel ist die Pflege-Dekaden-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer_dekade_p.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_jahrzehnt == {}
+    c.close()
+
+
+def test_by_geaendert_am_jahrzehnt_im_as_dict(tmp_path):
+    """by_geaendert_am_jahrzehnt erscheint serialisiert in as_dict() (JSON-tauglich)."""
+    import json
+
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "ad_dekade_p.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        ("OBJ_0001", "2026-06-19 08:00:00"),
+    )
+    c.commit()
+    d = compute_statistics(c).as_dict()
+    assert d["by_geaendert_am_jahrzehnt"] == {"2020er": 1}
+    json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
 def test_by_funddatum_monat_aus_seed_db(tmp_path):
     """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
     from stonebook.db.database import open_db

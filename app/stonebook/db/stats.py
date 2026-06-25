@@ -71,6 +71,7 @@ class Statistik:
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahr: dict[str, int] = field(default_factory=dict)
+    by_geaendert_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -1055,6 +1056,7 @@ class Statistik:
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
             "by_geaendert_am_jahr": dict(self.by_geaendert_am_jahr),
+            "by_geaendert_am_jahrzehnt": dict(self.by_geaendert_am_jahrzehnt),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -1495,6 +1497,40 @@ def _count_geaendert_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY jahr ORDER BY jahr ASC"
     )
     return {r["jahr"]: r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_geaendert_am_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``geaendert_am``-Jahrzehnt (Pflege-Dekade), Label ``2010er``, ``2020er`` ...
+
+    Spiegelt :func:`_count_erstellt_am_jahrzehnt` um die Aenderungs-Achse:
+    aggregiert das Pflege-Jahres-Histogramm auf 10er-Schritte und macht so
+    uebergreifende Pflege-Wellen sichtbar, die im reinen Jahres-Histogramm
+    durch Einzeljahr-Rauschen verdeckt werden. Beantwortet "in welcher Dekade
+    bin ich besonders aktiv im redaktionellen Pflegen gewesen?" - z.B. die
+    KI-Welle 2024+ konzentriert auf wenige Jahre, davor handgepflegte 2010er-
+    Phase. Komplementaer zu :func:`_count_geaendert_am_jahr` (Einzel-Jahres-
+    Aufloesung): hier die grobe Dekaden-Sicht. Komplementaer zu
+    :func:`_count_erstellt_am_jahrzehnt` (Erfassungs-Achse, wann erfasst):
+    hier die Aenderungs-Achse (wann zuletzt redaktionell beruehrt). Die
+    Differenz beider Dekaden-Histogramme zeigt die nachtraegliche Pflege-
+    Verschiebung pro Dekade.
+
+    ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; Substring 1..4 reicht als Jahres-Praefix. Ohne
+    gueltigen Jahres-Praefix werden Eintraege ausgeschlossen (kaputte Stempel
+    historischer Imports). Sortierung chronologisch aufsteigend (aelteste
+    Dekade zuerst), damit das Histogramm zeitlich lesbar bleibt. Ohne Limit,
+    weil die Zahl der Dekaden ueberschaubar bleibt (~3-5 ueber eine Sammler-
+    Karriere).
+    """
+    sql = (
+        "SELECT (CAST(substr(geaendert_am, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "GROUP BY dekade ORDER BY dekade ASC"
+    )
+    return {f"{r['dekade']}er": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -2132,6 +2168,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Foto nachgereicht, Bestimmung korrigiert), die im reinen Erfassungs-
     # Wachstums-Bild untergeht.
     st.by_geaendert_am_jahr = _count_geaendert_am_jahr(conn)
+    # Pflege-Dekaden-Histogramm: aggregiert das Pflege-Jahres-Histogramm auf
+    # 10er-Schritte und macht uebergreifende Pflege-Wellen sichtbar (KI-Welle
+    # 2024+ vs. handgepflegte 2010er-Phase), die im Einzel-Jahres-Histogramm
+    # durch Jahres-Rauschen verdeckt werden. Spiegelt by_erstellt_am_jahrzehnt
+    # auf die Aenderungs-Achse.
+    st.by_geaendert_am_jahrzehnt = _count_geaendert_am_jahrzehnt(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

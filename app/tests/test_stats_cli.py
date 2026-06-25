@@ -1362,6 +1362,47 @@ def test_text_ausgabe_ohne_geaendert_am_jahr_keine_zeile(tmp_path, capsys):
     assert "Pflege-Aktivitaet pro Jahr:" not in out
 
 
+def test_text_ausgabe_zeigt_pflege_aktivitaet_pro_jahrzehnt(tmp_path, capsys):
+    """Pflege-Dekaden-Block liegt unter dem Pflege-Jahres-Block und ist chronologisch sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "pad.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # 2010er-Phase (handgepflegt)
+            ("OBJ_0001", "2014-05-12 09:00:00"),
+            ("OBJ_0002", "2018-11-03 16:45:00"),
+            # 2020er-Welle (KI-Welle)
+            ("OBJ_0003", "2024-01-15 09:00:00"),
+            ("OBJ_0004", "2025-06-13 14:30:00"),
+            ("OBJ_0005", "2026-06-19 08:45:00"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Jahrzehnt:" in out
+    block = out.split("Pflege-Aktivitaet pro Jahrzehnt:", 1)[1]
+    # Chronologisch aufsteigend: 2010er vor 2020er
+    assert block.index("2010er") < block.index("2020er")
+    # Liegt unter dem Pflege-Jahres-Block (spiegelt _format_text-Reihenfolge)
+    assert (out.index("Pflege-Aktivitaet pro Jahr:")
+            < out.index("Pflege-Aktivitaet pro Jahrzehnt:"))
+
+
+def test_text_ausgabe_ohne_geaendert_am_jahrzehnt_keine_zeile(tmp_path, capsys):
+    """Leere DB → Pflege-Dekaden-Block bleibt aus (analog zum Pflege-Jahres-Block)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "pad0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Jahrzehnt:" not in out
+
+
 def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
     """Monats-Block liegt unter Jahr/Jahrzehnt und gibt 01..12 chronologisch aus."""
     from stonebook.db.database import open_db

@@ -570,6 +570,15 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Pflege-Aktivitaet pro Jahr:"]
         for jahr, n in st.by_geaendert_am_jahr.items():
             lines.append(f"  {jahr:40s} {n}")
+    if st.by_geaendert_am_jahrzehnt:
+        # Pflege-Aktivitaet pro Dekade: spiegelt "Sammlung erfasst pro
+        # Jahrzehnt" auf die Aenderungs-Achse. Grobe Sicht ohne Einzeljahres-
+        # Rauschen, macht uebergreifende Pflege-Wellen sichtbar (KI-Welle 2024+
+        # vs. handgepflegte 2010er-Phase). Reihenfolge bleibt chronologisch
+        # aus _count_geaendert_am_jahrzehnt (aelteste zuerst).
+        lines += ["", "Pflege-Aktivitaet pro Jahrzehnt:"]
+        for dekade, n in st.by_geaendert_am_jahrzehnt.items():
+            lines.append(f"  {dekade:40s} {n}")
     if st.by_seltenheit_global:
         # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
         # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf
