@@ -1385,6 +1385,38 @@ class ObjectRepo:
                 result.append((row["obj_id"], lat, lon))
         return result
 
+    def list_objects_ohne_koordinaten(self) -> list[tuple[str, str]]:
+        """Listet Objekte mit dokumentiertem Fundort, aber ohne parsebare Lat/Lon.
+
+        Pflege-Sicht zur quote_mit_koordinaten_prozent-Coverage: waehrend die
+        Coverage-Quote den Anteil beziffert ("welcher Anteil meiner Sammlung
+        ist geocoded?"), liefert dieser Helper die konkrete Arbeitsliste der
+        noch nicht geocodeden Stuecke ("welche Stuecke fehlen mir konkret?")
+        - typischer naechster Schritt im Sammlungs-Pflege-Workflow nach dem
+        Statistik-Block. Komplementaer zu ``list_objects_in_bbox`` auf der
+        gleichen Python-Achse: dort die punktuelle Suche im Box-Gebiet, hier
+        die Pflege-Restmenge ausserhalb jeder geografischen Erreichbarkeit.
+
+        Reuse-Pfad: SELECT Fundort fuer alle Objekte mit nicht-leerem Fundort,
+        ``parse_coordinates`` auf jeden Wert, Treffer mit ``None``-Ergebnis
+        zurueck. Rueckgabe als (obj_id, Fundort)-Tuple, damit der Caller den
+        rohen Freitext-Eintrag ohne erneutes Lookup hat (typisch: anzeigen in
+        einer Pflege-Liste mit Klick-zu-bearbeiten oder Geocoder-Vorschlag).
+        Objekte ohne Fundort werden uebergangen (sie tauchen in
+        ``has_fundort=False`` auf, das ist eine eigene Pflege-Achse:
+        Fundort-Akquise vs. Geocoding-Ergaenzung). Reihenfolge aufsteigend
+        nach ``obj_id``, damit die Pflege-Liste deterministisch ist.
+        """
+        from stonebook.migration.validators import parse_coordinates
+
+        rows = self.conn.execute(
+            "SELECT obj_id, Fundort FROM objects "
+            "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        return [(row["obj_id"], row["Fundort"]) for row in rows
+                if parse_coordinates(row["Fundort"]) is None]
+
     def get(self, obj_id: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM objects WHERE obj_id = ?", (obj_id,)).fetchone()
 

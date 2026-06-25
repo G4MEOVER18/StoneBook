@@ -3836,3 +3836,74 @@ def test_list_objects_in_bbox_leere_db(tmp_path):
     repo = ObjectRepo(c)
     assert repo.list_objects_in_bbox(-90, 90, -180, 180) == []
     c.close()
+
+
+def test_list_objects_ohne_koordinaten_pflege_liste(tmp_path):
+    """list_objects_ohne_koordinaten liefert die Arbeitsliste der nicht
+    geocodeden Stuecke - Pflege-Komplement zur quote_mit_koordinaten_prozent-
+    Coverage. Filtert Objekte mit nicht-leerem Fundort, deren Freitext kein
+    per parse_coordinates erkennbares Lat/Lon-Paar enthaelt; Objekte ohne
+    Fundort werden uebergangen (sie laufen ueber has_fundort=False auf der
+    eigenen Pflege-Achse Fundort-Akquise vs. Geocoding-Ergaenzung).
+
+    Decken muss: Fundort mit Koordinaten (geocoded -> uebergangen), Fundort
+    nur als Ortsname (Pflege-Treffer), Fundort mit fehlgeformter Koordinaten-
+    Notation (Pflege-Treffer), Fundort leer/NULL/Whitespace (uebergangen, da
+    has_fundort negativ), DMS- und Hemisphaeren-Notation als alternative
+    geocoded Auspraegungen (uebergangen). Reihenfolge aufsteigend nach
+    obj_id, damit die Pflege-Liste deterministisch ist.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "pflege.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),         # geocoded, uebergangen
+            ("OBJ_0002", "Berner Oberland"),         # Pflege-Treffer
+            ("OBJ_0003", "47°22'37\"N 8°32'30\"E"),  # geocoded (DMS), uebergangen
+            ("OBJ_0004", "alte Halde bei Davos"),    # Pflege-Treffer
+            ("OBJ_0005", "46.0°N 7.0°E"),            # geocoded (Hemisphaere), uebergangen
+            ("OBJ_0006", ""),                        # kein Fundort, uebergangen
+            ("OBJ_0007", "   "),                     # Whitespace, uebergangen
+            ("OBJ_0008", None),                      # NULL, uebergangen
+            ("OBJ_0009", "kaputt 47.X"),             # nicht parsebar, Pflege-Treffer
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    pflege = repo.list_objects_ohne_koordinaten()
+    # Pflege-Liste: nur die nicht-geocodeden Eintraege mit Fundort, aufsteigend
+    assert [p[0] for p in pflege] == ["OBJ_0002", "OBJ_0004", "OBJ_0009"]
+    # Roh-Fundort wird durchgereicht (kein Lookup-Round-Trip noetig)
+    assert pflege[0] == ("OBJ_0002", "Berner Oberland")
+    assert pflege[1] == ("OBJ_0004", "alte Halde bei Davos")
+    assert pflege[2] == ("OBJ_0009", "kaputt 47.X")
+    c.close()
+
+
+def test_list_objects_ohne_koordinaten_alles_geocoded(tmp_path):
+    """Vollstaendig geocoded -> leere Pflege-Liste. Spiegelt den 100 %
+    Coverage-Fall der quote_mit_koordinaten_prozent: wenn die Quote die
+    obere Grenze erreicht hat, gibt es nichts mehr zu pflegen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+            ("OBJ_0002", "46.0°N 7.0°E"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert repo.list_objects_ohne_koordinaten() == []
+    c.close()
+
+
+def test_list_objects_ohne_koordinaten_leere_db(tmp_path):
+    """Leere DB -> leere Pflege-Liste; kein Crash."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    repo = ObjectRepo(c)
+    assert repo.list_objects_ohne_koordinaten() == []
+    c.close()
