@@ -3907,3 +3907,117 @@ def test_list_objects_ohne_koordinaten_leere_db(tmp_path):
     repo = ObjectRepo(c)
     assert repo.list_objects_ohne_koordinaten() == []
     c.close()
+
+
+def test_list_objects_in_radius_filtert_nach_distanz(tmp_path):
+    """list_objects_in_radius liefert Stuecke im Umkreis um einen Mittelpunkt.
+
+    Disk-Pendant zu list_objects_in_bbox: waehrend die Box ein rechteckiges
+    Lat/Lon-Gebiet beschreibt (grobe Annaeherung an "in der Naehe"), ist der
+    Umkreis die natuerliche Form der Sammler-Frage 'welche Stuecke liegen
+    in X km um meinen Standort?'. Beide Filter teilen die Reuse-Logik
+    (parse_coordinates auf Fundort, Eintraege ohne Koords uebergangen),
+    unterscheiden sich nur in der Such-Geometrie. Decken muss: Treffer im
+    Inneren, Treffer am Rand (Distanz exakt = Radius), knapp ausserhalb des
+    Radius (ausgeschlossen), Fundort ohne Koordinaten (uebergangen), leerer/
+    NULL Fundort (uebergangen), DMS-/Hemisphaeren-Notationen (durchgereicht
+    an parse_coordinates), Sortierung nach Distanz aufsteigend.
+    """
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius.sqlite3")
+    # Mittelpunkt: Zuerich Hauptbahnhof (47.3779, 8.5403)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),         # Zuerich nahe, ~0.2 km
+            ("OBJ_0002", "47.5596, 7.5886"),         # Basel, ~73 km
+            ("OBJ_0003", "46.5197, 6.6323"),         # Lausanne, ~210 km
+            ("OBJ_0004", "Berner Oberland"),         # Ortsname, uebergangen
+            ("OBJ_0005", "47°22'37\"N 8°32'30\"E"),  # DMS Zuerich, ~0 km
+            ("OBJ_0006", ""),                        # leer
+            ("OBJ_0007", None),                      # NULL
+            ("OBJ_0008", "48.8566, 2.3522"),         # Paris, ~490 km
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # 100 km Umkreis um Zuerich -> Zuerich + Basel
+    hits = repo.list_objects_in_radius(47.3779, 8.5403, 100.0)
+    ids = [r[0] for r in hits]
+    assert ids == ["OBJ_0005", "OBJ_0001", "OBJ_0002"]
+    # Distanzen aufsteigend
+    distances = [r[3] for r in hits]
+    assert distances == sorted(distances)
+    # Lat/Lon werden durchgereicht
+    obj1 = next(r for r in hits if r[0] == "OBJ_0001")
+    assert obj1[1] == pytest.approx(47.3769)
+    assert obj1[2] == pytest.approx(8.5417)
+    # Distanz zu Zuerich nahe == ~0.2 km
+    assert obj1[3] < 1.0
+    # Distanz Basel ~73 km
+    obj2 = next(r for r in hits if r[0] == "OBJ_0002")
+    assert obj2[3] == pytest.approx(73.0, abs=2.0)
+    # 500 km Umkreis schliesst auch Lausanne und Paris ein
+    weite = repo.list_objects_in_radius(47.3779, 8.5403, 500.0)
+    assert set(r[0] for r in weite) == {
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0005", "OBJ_0008",
+    }
+    c.close()
+
+
+def test_list_objects_in_radius_grenze_inklusiv(tmp_path):
+    """Disk-Grenze ist inklusiv (distance == radius zaehlt mit), spiegelt
+    die BETWEEN-Konvention der SQL-Range-Filter und list_objects_in_bbox.
+
+    Berechnet die exakte Haversine-Distanz zu einem Testpunkt, setzt
+    den Radius auf genau diese Distanz und prueft, dass der Punkt
+    enthalten ist; ein Punkt minimal weiter draussen faellt aus.
+    """
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_edge.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.5, 8.5"),  # nahe Zuerich, definierter Ankerpunkt
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Distanz von Zuerich (47.0, 8.0) zu (47.5, 8.5) per Haversine berechnen
+    earth_r = 6371.0
+    lat1, lon1 = math.radians(47.0), math.radians(8.0)
+    lat2, lon2 = math.radians(47.5), math.radians(8.5)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2)
+    exact = 2 * earth_r * math.asin(math.sqrt(a))
+    # Genau auf der Grenze -> Treffer
+    hits = repo.list_objects_in_radius(47.0, 8.0, exact)
+    assert [r[0] for r in hits] == ["OBJ_0001"]
+    # Minimal kleiner -> keine Treffer
+    hits = repo.list_objects_in_radius(47.0, 8.0, exact - 0.001)
+    assert hits == []
+    c.close()
+
+
+def test_list_objects_in_radius_negativ_und_leere_db(tmp_path):
+    """Negativer Radius -> leer (semantisch leere Disk); leere DB -> leer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_misc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [("OBJ_0001", "47.0, 8.0")],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert repo.list_objects_in_radius(47.0, 8.0, -1.0) == []
+    assert repo.list_objects_in_radius(47.0, 8.0, 0.0) != []  # exakt zentrierter Punkt
+    c.close()
+    # Leere DB -> leere Trefferliste
+    c2 = open_db(tmp_path / "leer.sqlite3")
+    repo2 = ObjectRepo(c2)
+    assert repo2.list_objects_in_radius(47.0, 8.0, 100.0) == []
+    c2.close()

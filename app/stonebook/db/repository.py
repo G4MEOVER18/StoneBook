@@ -1417,6 +1417,73 @@ class ObjectRepo:
         return [(row["obj_id"], row["Fundort"]) for row in rows
                 if parse_coordinates(row["Fundort"]) is None]
 
+    def list_objects_in_radius(self, lat_center: float, lon_center: float,
+                               radius_km: float
+                               ) -> list[tuple[str, float, float, float]]:
+        """Listet Objekte mit Fundort-Koordinaten im Umkreis um einen Mittelpunkt.
+
+        Geografisches Disk-Pendant zu ``list_objects_in_bbox``: waehrend die
+        Bounding-Box ein rechteckiges Lat/Lon-Gebiet beschreibt (typografisch
+        einfach, aber nahe den Polen stark verzerrt), ist der Umkreis die
+        natuerliche Form fuer die Sammler-Frage 'welche Stuecke liegen in X km
+        Umgebung um meinen aktuellen Standort?'. Der Bounding-Box-Filter ist
+        eine grobe Annaeherung, der Umkreis-Filter die exakte Disk - beide
+        bedienen verschiedene Auspraegungen derselben geografischen
+        Such-Achse.
+
+        Distanz wird via Haversine-Formel auf einer Erd-Sphaere mit Radius
+        6371.0 km berechnet (mittlerer Erdradius; geodaetisch genau genug fuer
+        Sammler-Distanzen unter 1000 km, wo der Sphaeren-vs-Ellipsoid-Fehler
+        unter 0.5 % bleibt). Reuse-Pfad zu ``list_objects_in_bbox``: SELECT
+        Fundort fuer alle Objekte mit nicht-leerem Fundort,
+        ``parse_coordinates`` auf jeden Wert, Distanz-Test gegen den Umkreis.
+        Fundort-Eintraege ohne erkennbare Koordinaten (reine Ortsnamen wie
+        ``"Berner Oberland"``) werden uebergangen - sie laufen ueber
+        ``list_objects_ohne_koordinaten`` auf der Pflege-Achse.
+
+        Rueckgabe als ``(obj_id, lat, lon, distance_km)``-Tupel - die
+        Distanz wird durchgereicht, damit der Caller eine Trefferliste nach
+        Naehe sortieren oder gruppieren kann ohne erneuten Haversine-
+        Aufruf. Reihenfolge: aufsteigend nach Distanz, sekundaer nach
+        ``obj_id`` fuer deterministische Ausgabe (zwei Stuecke aus exakt
+        derselben Lokalitaet haben identische Distanz - die obj_id-
+        Sortierung verhindert nicht-deterministische Reihenfolge).
+
+        ``radius_km`` < 0 liefert eine leere Trefferliste (negative Radien
+        sind semantisch leer); ``radius_km`` == 0 trifft nur Stuecke exakt
+        am Mittelpunkt (selten relevant, aber konsistent zur Disk-Definition).
+        """
+        import math
+        from stonebook.migration.validators import parse_coordinates
+
+        if radius_km < 0:
+            return []
+        rows = self.conn.execute(
+            "SELECT obj_id, Fundort FROM objects "
+            "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        earth_radius_km = 6371.0
+        lat_c_rad = math.radians(lat_center)
+        lon_c_rad = math.radians(lon_center)
+        result: list[tuple[str, float, float, float]] = []
+        for row in rows:
+            coords = parse_coordinates(row["Fundort"])
+            if coords is None:
+                continue
+            lat, lon = coords
+            lat_rad = math.radians(lat)
+            lon_rad = math.radians(lon)
+            dlat = lat_rad - lat_c_rad
+            dlon = lon_rad - lon_c_rad
+            a = (math.sin(dlat / 2) ** 2
+                 + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+            distance_km = 2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a)))
+            if distance_km <= radius_km:
+                result.append((row["obj_id"], lat, lon, distance_km))
+        result.sort(key=lambda r: (r[3], r[0]))
+        return result
+
     def get(self, obj_id: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM objects WHERE obj_id = ?", (obj_id,)).fetchone()
 
