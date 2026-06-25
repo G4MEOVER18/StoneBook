@@ -5529,3 +5529,84 @@ def test_quote_mit_nachfrage_leere_db(tmp_path):
     assert st.quote_mit_nachfrage_prozent is None
     assert st.as_dict()["quote_mit_nachfrage_prozent"] is None
     c.close()
+
+
+def test_quote_mit_koordinaten_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer geocoded Fundort-Subset: Anteil der Objekte, deren
+    freitext-Fundort ein per parse_coordinates erkennbares Lat/Lon-Paar enthaelt.
+    Spiegelt quote_mit_fundort_prozent (broader Provenienz-Coverage) auf den
+    geocoded-Subset und beziffert die Voraussetzung der Bounding-Box-Filter-
+    Achse (list_objects_in_bbox). Die Differenz quote_mit_fundort -
+    quote_mit_koordinaten beziffert den freitext-only-Anteil (Ortsnamen ohne
+    Koordinaten - 'Berner Oberland', 'alte Halde bei X')."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qk.sqlite3")
+    # 5 Objekte: zwei mit parsebaren Koordinaten (40 % - Dezimal mit Hemisphaere
+    # und reine Dezimal-Schreibweise als typische Sammler-Notationen), eines mit
+    # reinem Ortsnamen ohne Koordinaten (zaehlt nicht-geocoded, aber sehr wohl
+    # zur Fundort-Coverage), zwei ohne Fundort (NULL und Whitespace -> beide
+    # Coverage-Quoten ignorieren).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.95° N, 7.45° E"),    # geocoded (Hemisphaeren-Suffix)
+            ("OBJ_0002", "47.3769, 8.5417"),       # geocoded (reine Dezimal)
+            ("OBJ_0003", "Berner Oberland"),       # Fundort ohne Koordinaten
+            ("OBJ_0004", None),                    # kein Fundort
+            ("OBJ_0005", "   "),                   # Whitespace
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Geocoded-Subset: 2 von 5 Objekten -> 40.0 %
+    assert st.objekte_mit_koordinaten == 2
+    assert st.quote_mit_koordinaten_prozent == 40.0
+    # Broader Provenienz-Achse: 3 von 5 Objekten haben einen Fundort-Eintrag
+    # (zwei geocoded + ein reiner Ortsname), Whitespace/NULL zaehlen nicht.
+    # Differenz beziffert den freitext-only-Anteil (hier 1 Objekt = 20 %).
+    assert st.objekte_mit_fundort == 3
+    assert st.quote_mit_fundort_prozent == 60.0
+    d = st.as_dict()
+    assert d["objekte_mit_koordinaten"] == 2
+    assert d["quote_mit_koordinaten_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_koordinaten_leere_db(tmp_path):
+    """Leere DB: quote_mit_koordinaten_prozent ist None (nicht 0%) - keine
+    Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-Konvention
+    der uebrigen quote_mit_X_prozent-Properties."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_koordinaten == 0
+    assert st.quote_mit_koordinaten_prozent is None
+    assert st.as_dict()["quote_mit_koordinaten_prozent"] is None
+    c.close()
+
+
+def test_quote_mit_koordinaten_alle_geocoded(tmp_path):
+    """Vollstaendig geocoded: quote_mit_koordinaten_prozent == 100 - obere
+    Grenze der Coverage-Skala bei einer durchgehend GPS-protokollierten
+    Sammlung (typisch fuer ausschliesslich nach 2010 erfasste Bestaende).
+    DMS-Schreibweise zaehlt explizit mit, spiegelt die Akzeptanz-Liste
+    von parse_coordinates (Dezimal mit/ohne Hemisphaere, DMS, ISO 6709)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+            ("OBJ_0002", "47°22'37\"N 8°32'30\"E"),  # DMS
+            ("OBJ_0003", "46.95°N 7.45°E"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_koordinaten == 3
+    assert st.quote_mit_koordinaten_prozent == 100.0
+    # quote_mit_fundort ebenfalls 100 % - jedes geocoded-Stueck ist per
+    # Definition auch ein dokumentierter Fundort, daher Obergrenze beider
+    # Coverage-Achsen identisch bei vollstaendiger Geocoding.
+    assert st.quote_mit_fundort_prozent == 100.0
+    c.close()

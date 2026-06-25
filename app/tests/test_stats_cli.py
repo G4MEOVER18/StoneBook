@@ -4186,3 +4186,50 @@ def test_text_ausgabe_zeigt_seltenheit_global_quote(tmp_path, capsys):
     # 2 von 4 Objekten haben gueltige Rarity-Werte (3 und 8); 11 ist
     # out-of-range, None nicht erfasst → 50.0 %
     assert "50.0 %" in out
+
+
+def test_text_ausgabe_zeigt_koordinaten_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Koordinaten-Quote direkt unter Fundort und vor
+    Farbe auf - geocoded-Subset der Fundort-Coverage. Spiegelt die repository-
+    Bounding-Box-Achse list_objects_in_bbox auf das CLI-Dashboard und
+    beziffert den freitext-only-Anteil als Differenz Fundort - Koordinaten
+    ('Berner Oberland' ohne GPS vs. '46.95° N 7.45° E')."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "koord.sqlite3"
+    c = open_db(db_file)
+    # 4 Objekte: zwei geocoded (50 % der Sammlung), eines mit reinem Ortsnamen
+    # (zaehlt nicht zur Koordinaten-Quote, aber zur Fundort-Quote), eines ohne
+    # Fundort -> Koordinaten 50 %, Fundort 75 %.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.95° N, 7.45° E"),
+            ("OBJ_0002", "47.3769, 8.5417"),
+            ("OBJ_0003", "Berner Oberland"),
+            ("OBJ_0004", None),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Koordinaten:" in out
+    assert "50.0 %" in out
+    # Reihenfolge: Koordinaten-Block steht zwischen Fundort und Farbe
+    # (geocoded-Subset von Fundort, vor der Farb-Achse).
+    fundort_pos = out.index("Fundort:")
+    koord_pos = out.index("Koordinaten:")
+    farbe_pos = out.index("Farbe (beobachtet):")
+    assert fundort_pos < koord_pos < farbe_pos
+
+
+def test_text_ausgabe_zeigt_koordinaten_quote_leere_db(tmp_path, capsys):
+    """Leere DB: Coverage-Block bleibt aus (objekte_total == 0), spiegelt
+    das Verhalten der uebrigen quote_mit_X-Bloecke (kein Wert -> kein Block)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "leer.sqlite3"
+    open_db(db_file).close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten:" not in out

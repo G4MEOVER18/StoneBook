@@ -284,6 +284,18 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"  Beste Verwendung:    {st.quote_mit_beste_verwendung_prozent:.1f} %")
         lines.append(f"  Fundort:             {st.quote_mit_fundort_prozent:.1f} %")
+        # Koordinaten direkt unter Fundort, weil sie das geocoded-Subset von
+        # Fundort beziffern: Anteil der Objekte, deren freitext-Fundort ein
+        # per parse_coordinates erkennbares Lat/Lon-Paar enthaelt. Die
+        # Differenz Fundort - Koordinaten beziffert den freitext-only-Anteil
+        # ("Berner Oberland", "alte Halde bei X") und damit den verbleibenden
+        # Geocoding-Pflege-Aufwand ohne neue Fundort-Akquise. Spiegelt die
+        # repository-Bounding-Box-Achse list_objects_in_bbox auf das CLI-
+        # Dashboard ("wie viel meiner Sammlung ist fuer geografische Filter
+        # erreichbar?"). Niedriger Wert ist typisch bei historisch gewachsenen
+        # Sammlungen mit Ortsnamen-only-Eintraegen aus Vor-GPS-Zeit.
+        lines.append(
+            f"  Koordinaten:         {st.quote_mit_koordinaten_prozent:.1f} %")
         # Farbe_beobachtet (tatsaechlich gesehene Mineral-Farbe) direkt nach
         # Fundort und vor Strichfarbe, weil sie die paarweise Farb-Achse zur
         # diagnostisch invarianten Strichfarbe darstellt - waehrend Strichfarbe

@@ -34,6 +34,7 @@ class Statistik:
     objekte_mit_bruch: int = 0
     objekte_mit_beste_verwendung: int = 0
     objekte_mit_fundort: int = 0
+    objekte_mit_koordinaten: int = 0
     objekte_mit_farbe: int = 0
     objekte_mit_strichfarbe: int = 0
     objekte_mit_hcl_reaktion: int = 0
@@ -697,6 +698,30 @@ class Statistik:
         return self._quote(self.objekte_mit_fundort)
 
     @property
+    def quote_mit_koordinaten_prozent(self) -> float | None:
+        # Geocoded-Subset-Coverage: Anteil der Objekte, deren Fundort-Eintrag
+        # ein per parse_coordinates erkennbares Lat/Lon-Paar enthaelt. Bezugs-
+        # menge bleibt objekte_total (nicht objekte_mit_fundort), damit die
+        # Quote direkt mit den uebrigen quote_mit_X_prozent vergleichbar ist
+        # ("welcher Anteil der gesamten Sammlung ist geografisch geocoded?"
+        # statt "welcher Anteil der bereits dokumentierten Fundorte..."). Die
+        # zwei-stufige Differenz (quote_mit_fundort - quote_mit_koordinaten)
+        # beziffert den freitext-only-Anteil ("Berner Oberland", "alte Halde
+        # bei X"), also den Pflege-Aufwand fuer eine vollstaendige Geocoding-
+        # Ergaenzung ohne neue Fundort-Akquise. Komplementaer zu der
+        # repository-Bounding-Box-Achse (list_objects_in_bbox): waehrend die
+        # Box-Abfrage punktuell auf ein Suchgebiet zugreift, beziffert die
+        # Coverage-Quote die Voraussetzung der Box-Abfrage selbst ("wie viel
+        # meiner Sammlung ist ueberhaupt fuer geografische Filter erreichbar?").
+        # Niedriger Wert ist typisch bei historisch gewachsenen Sammlungen mit
+        # Ortsnamen-only-Eintraegen aus Vor-GPS-Zeit; ein steigender Trend
+        # zeigt nachtraegliche Geocoding-Pflege oder neuere Touren mit GPS-
+        # protokollierten Fundpunkten. Whitespace und nicht-parsebare Frei-
+        # text-Eintraege zaehlen wie nicht-geocoded (spiegelt das None-
+        # Verhalten von parse_coordinates).
+        return self._quote(self.objekte_mit_koordinaten)
+
+    @property
     def quote_mit_farbe_prozent(self) -> float | None:
         # Coverage-Quote fuer Farbe_beobachtet (tatsaechlich gesehene Farbe(n)
         # eines Stuecks - die niederschwelligste visuelle Diagnose-Achse aus
@@ -1017,6 +1042,7 @@ class Statistik:
             "objekte_mit_beste_verwendung": self.objekte_mit_beste_verwendung,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
             "objekte_mit_fundort": self.objekte_mit_fundort,
+            "objekte_mit_koordinaten": self.objekte_mit_koordinaten,
             "objekte_mit_farbe": self.objekte_mit_farbe,
             "objekte_mit_strichfarbe": self.objekte_mit_strichfarbe,
             "objekte_mit_hcl_reaktion": self.objekte_mit_hcl_reaktion,
@@ -1275,6 +1301,8 @@ class Statistik:
             "quote_mit_beste_verwendung_prozent": _round_or_none(
                 self.quote_mit_beste_verwendung_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
+            "quote_mit_koordinaten_prozent": _round_or_none(
+                self.quote_mit_koordinaten_prozent),
             "quote_mit_farbe_prozent": _round_or_none(self.quote_mit_farbe_prozent),
             "quote_mit_strichfarbe_prozent": _round_or_none(
                 self.quote_mit_strichfarbe_prozent),
@@ -2470,6 +2498,28 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "SELECT COUNT(*) FROM objects "
         "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
     ).fetchone()[0]
+    # objekte_mit_koordinaten: geocoded-Subset von objekte_mit_fundort - Anzahl
+    # Objekte, deren freitext-Fundort ein per parse_coordinates erkennbares
+    # Lat/Lon-Paar enthaelt (Dezimal mit/ohne Hemisphaere, DMS, ISO 6709). Die
+    # Differenz zu objekte_mit_fundort beziffert den freitext-only-Anteil
+    # ("Berner Oberland", "alte Halde bei X") und damit den verbleibenden
+    # Pflege-Aufwand fuer eine vollstaendige Geocoding-Ergaenzung. Spiegelt
+    # die repository-Bounding-Box-Achse list_objects_in_bbox auf die Coverage-
+    # Sicht ("wie viel meiner Sammlung ist ueberhaupt fuer geografische Filter
+    # erreichbar?"). Python-Schicht ueber Fundort, weil parse_coordinates eine
+    # Python-Funktion mit Regex-Branching ohne SQL-Aequivalent ist; bei
+    # Sammler-DBs mit O(10^3) Eintraegen bleibt der Pfad unter Sekundenzeit
+    # (parallel zur Laufzeit-Annahme bei list_objects_in_bbox). Whitespace und
+    # nicht-parsebare Eintraege zaehlen wie nicht-geocoded (spiegelt das
+    # None-Verhalten von parse_coordinates).
+    from stonebook.migration.validators import parse_coordinates
+    fundort_rows = conn.execute(
+        "SELECT Fundort FROM objects "
+        "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
+    ).fetchall()
+    st.objekte_mit_koordinaten = sum(
+        1 for r in fundort_rows if parse_coordinates(r["Fundort"]) is not None
+    )
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).
