@@ -11,6 +11,7 @@ Beispiele:
     python -m stonebook.db.maintenance_cli cleanup --dry-run        # nur zaehlen, nicht loeschen
     python -m stonebook.db.maintenance_cli vacuum                   # VACUUM
     python -m stonebook.db.maintenance_cli vacuum --json
+    python -m stonebook.db.maintenance_cli analyze                  # ANALYZE
 """
 from __future__ import annotations
 
@@ -21,8 +22,9 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
 from stonebook.db.integrity import find_duplicate_image_sha256
-from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      deep_check, delete_dangling_aliases,
+from stonebook.db.maintenance import (analyze, database_size_bytes,
+                                      db_file_bytes, deep_check,
+                                      delete_dangling_aliases,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check, free_page_count,
@@ -249,6 +251,31 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    """Erfasst Index-Statistiken (PRAGMA-fremdes ANALYZE).
+
+    Spiegelt :func:`_cmd_vacuum` als zweite mutierende Wartungsoperation, aber
+    auf der Query-Planner-Achse statt der Datei-Groessen-Achse. Idempotent;
+    Exit-Code 0 immer (analog dupimg/cleanup), weil die Anzahl der erfassten
+    Index-Statistiken kein Fehlerkriterium ist.
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        n = analyze(conn)
+    finally:
+        conn.close()
+    info = {"stat_entries": n}
+    if args.json:
+        json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    else:
+        print(f"ANALYZE abgeschlossen: {n} Index-Statistik-Eintraege erfasst.")
+    return 0
+
+
 def _cmd_vacuum(args: argparse.Namespace) -> int:
     db_file = _resolve_db(args)
     if db_file is None:
@@ -325,6 +352,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_vacuum)
+
+    sp = sub.add_parser("analyze",
+                        help="Index-Statistiken (sqlite_stat1) fuer den "
+                             "Query-Planner aktualisieren (ANALYZE).")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_analyze)
     return p
 
 

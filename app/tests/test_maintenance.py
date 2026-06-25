@@ -1,7 +1,8 @@
 """DB-Wartung: vacuum, Groesse, quick_check, foreign_key_check, Orphan-Cleanup."""
 from stonebook.db.database import open_db
-from stonebook.db.maintenance import (database_size_bytes, db_file_bytes,
-                                      deep_check, delete_dangling_aliases,
+from stonebook.db.maintenance import (analyze, database_size_bytes,
+                                      db_file_bytes, deep_check,
+                                      delete_dangling_aliases,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check,
@@ -239,6 +240,55 @@ def test_orphan_cleanup_macht_foreign_key_check_sauber(tmp_path):
         assert len(foreign_key_check(c)) == 1
         delete_orphan_images(c)
         assert foreign_key_check(c) == []
+    finally:
+        c.close()
+
+
+def test_analyze_erzeugt_sqlite_stat1_eintraege(tmp_path):
+    """ANALYZE legt sqlite_stat1 an und liefert die Zahl der Eintraege."""
+    c = open_db(tmp_path / "an.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        # Mehrere Objekte, damit der Planner ueberhaupt Index-Verteilungen sammelt
+        for i in range(1, 21):
+            repo.create(f"OBJ_{i:04d}", Name=f"Stueck {i}",
+                        Mineral_Primaer="Quarz" if i % 2 else "Calcit")
+        n = analyze(c)
+        # ANALYZE muss mindestens einen Stat-Eintrag pro genutztem Index liefern
+        assert n > 0
+        # sqlite_stat1 ist materialisiert
+        assert c.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='sqlite_stat1'"
+        ).fetchone() is not None
+        # Daten ueberleben unangetastet
+        assert c.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 20
+    finally:
+        c.close()
+
+
+def test_analyze_leere_db_kein_crash(tmp_path):
+    """ANALYZE auf einer frisch initialisierten DB ohne Inhalte bleibt unkritisch."""
+    c = open_db(tmp_path / "an_leer.sqlite3")
+    try:
+        n = analyze(c)
+        # Ohne Daten liefert SQLite typisch 0 Stat-Eintraege; auf jeden Fall >= 0
+        assert n >= 0
+        assert quick_check(c) == []
+    finally:
+        c.close()
+
+
+def test_analyze_idempotent(tmp_path):
+    """Mehrfacher ANALYZE-Aufruf liefert dieselbe Anzahl Stat-Eintraege."""
+    c = open_db(tmp_path / "an_idem.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 11):
+            repo.create(f"OBJ_{i:04d}", Mineral_Primaer="Quarz")
+        first = analyze(c)
+        second = analyze(c)
+        assert first == second
+        assert quick_check(c) == []
     finally:
         c.close()
 

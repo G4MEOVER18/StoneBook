@@ -33,6 +33,31 @@ def vacuum(conn: sqlite3.Connection) -> tuple[int, int]:
     return before, after
 
 
+def analyze(conn: sqlite3.Connection) -> int:
+    """Fuehrt ``ANALYZE`` aus; gibt die Zahl der erfassten ``sqlite_stat1``-Eintraege zurueck.
+
+    ``ANALYZE`` sammelt Verteilungs-Kennzahlen ueber alle Indizes und legt sie in
+    der internen Tabelle ``sqlite_stat1`` ab. Der Query-Planner nutzt sie, um die
+    selektivere von zwei alternativen Index-Strategien zu waehlen - z.B. bei
+    Filter-Kombinationen aus :func:`ObjectRepo.list_objects`, die ueber mehrere
+    Spalten gleichzeitig filtern. Sinnvoll nach groesseren Datenaenderungen
+    (Migration, Stapel-Import, Massenarchivierung) und vor ``VACUUM`` im
+    Wartungsfenster, weil ``VACUUM`` die DB komplett neu schreibt, aber die
+    Statistiken nicht aktualisiert. Idempotent; mehrfacher Aufruf veraendert nur
+    die Statistik, nicht die Nutzdaten. Spiegelt :func:`vacuum` als zweite
+    optimierende Wartungsoperation: ``VACUUM`` reduziert die Datei-Groesse,
+    ``ANALYZE`` verbessert die Query-Plaene.
+    """
+    conn.execute("ANALYZE")
+    conn.commit()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE name='sqlite_stat1'"
+    ).fetchone()
+    if not row[0]:
+        return 0
+    return int(conn.execute("SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0])
+
+
 def quick_check(conn: sqlite3.Connection) -> list[str]:
     """SQLite-eigene Konsistenzpruefung (Schnell-Variante).
 

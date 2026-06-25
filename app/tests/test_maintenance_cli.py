@@ -6,6 +6,12 @@ from stonebook.db.maintenance_cli import main
 from stonebook.db.repository import ObjectRepo
 
 
+def _seed_objects(c, n: int) -> None:
+    repo = ObjectRepo(c)
+    for i in range(1, n + 1):
+        repo.create(f"OBJ_{i:04d}", Mineral_Primaer="Quarz")
+
+
 def test_size_text(tmp_path, capsys):
     db_file = tmp_path / "s.sqlite3"
     open_db(db_file).close()
@@ -350,3 +356,36 @@ def test_fehlende_db_datei(tmp_path, capsys):
     assert exit_code == 2
     err = capsys.readouterr().err
     assert "fehlt" in err
+
+
+def test_analyze_text(tmp_path, capsys):
+    """analyze-Subcommand: Text-Output enthaelt die Anzahl Stat-Eintraege."""
+    db_file = tmp_path / "an.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 10)
+    c.close()
+    exit_code = main(["analyze", "--db", str(db_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "ANALYZE abgeschlossen" in out
+    assert "Index-Statistik-Eintraege" in out
+
+
+def test_analyze_json(tmp_path, capsys):
+    """analyze-Subcommand JSON: stat_entries >= 0, Exit 0."""
+    db_file = tmp_path / "anj.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 10)
+    c.close()
+    exit_code = main(["analyze", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["stat_entries"] >= 0
+
+
+def test_analyze_fehlende_db(tmp_path, capsys):
+    """analyze auf nicht existierender DB liefert Exit 2 (spiegelt size/check)."""
+    bad = tmp_path / "fehlt.sqlite3"
+    exit_code = main(["analyze", "--db", str(bad)])
+    assert exit_code == 2
+    assert "fehlt" in capsys.readouterr().err
