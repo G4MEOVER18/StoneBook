@@ -4021,3 +4021,113 @@ def test_list_objects_in_radius_negativ_und_leere_db(tmp_path):
     repo2 = ObjectRepo(c2)
     assert repo2.list_objects_in_radius(47.0, 8.0, 100.0) == []
     c2.close()
+
+
+def test_list_objects_nearest_liefert_naechste_in_distanz_reihenfolge(tmp_path):
+    """list_objects_nearest liefert die N nahesten Stuecke aufsteigend nach Distanz.
+
+    K-Nearest-Neighbors-Pendant zu list_objects_in_radius: waehrend die
+    Disk-Suche eine Distanz-Grenze setzt (alle Stuecke innerhalb X km),
+    beantwortet die K-NN-Variante die spiegelbildliche Frage 'welche
+    sind die N nahesten?'. Beide teilen die Reuse-Logik
+    (parse_coordinates auf Fundort, Eintraege ohne Koords uebergangen,
+    Haversine-Distanz mit Erdradius 6371.0 km), unterscheiden sich nur
+    in der Trefferschranke. Decken muss: K-NN-Trefferzahl bei
+    typischem limit, Sortierung nach Distanz aufsteigend, Stuecke
+    ausserhalb der naechsten N (uebergangen), Fundort ohne
+    Koordinaten/leer/NULL (uebergangen), DMS-Notation (durchgereicht).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nearest.sqlite3")
+    # Mittelpunkt: Zuerich Hauptbahnhof (47.3779, 8.5403)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),         # Zuerich nahe, ~0.2 km
+            ("OBJ_0002", "47.5596, 7.5886"),         # Basel, ~73 km
+            ("OBJ_0003", "46.5197, 6.6323"),         # Lausanne, ~210 km
+            ("OBJ_0004", "Berner Oberland"),         # Ortsname, uebergangen
+            ("OBJ_0005", "47°22'37\"N 8°32'30\"E"),  # DMS Zuerich, ~0 km
+            ("OBJ_0006", ""),                        # leer
+            ("OBJ_0007", None),                      # NULL
+            ("OBJ_0008", "48.8566, 2.3522"),         # Paris, ~490 km
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # 3 naheste Stuecke um Zuerich -> Zuerich (DMS) + Zuerich nahe + Basel
+    hits = repo.list_objects_nearest(47.3779, 8.5403, 3)
+    ids = [r[0] for r in hits]
+    assert ids == ["OBJ_0005", "OBJ_0001", "OBJ_0002"]
+    # Distanzen aufsteigend
+    distances = [r[3] for r in hits]
+    assert distances == sorted(distances)
+    # Lat/Lon werden durchgereicht
+    obj1 = next(r for r in hits if r[0] == "OBJ_0001")
+    assert obj1[1] == pytest.approx(47.3769)
+    assert obj1[2] == pytest.approx(8.5417)
+    assert obj1[3] < 1.0
+    # 5 naheste -> alle 5 geocoded-en Stuecke (4 + 1 DMS), Reihenfolge nach Distanz
+    weite = repo.list_objects_nearest(47.3779, 8.5403, 5)
+    assert [r[0] for r in weite] == [
+        "OBJ_0005", "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0008",
+    ]
+    c.close()
+
+
+def test_list_objects_nearest_grenzwerte(tmp_path):
+    """limit <= 0 -> leer; limit > Anzahl -> alle verfuegbaren; Bindung deterministisch.
+
+    Spiegelt die Grenzwert-Konvention von list_objects_in_radius
+    (negativer Radius -> leer): semantisch leere K-NN-Anfrage liefert
+    nichts, ueberschiessendes limit liefert keine Polsterung. Bei
+    Distanz-Bindung sortiert die obj_id-Sekundaerschluessel-Konvention
+    deterministisch (zwei Stuecke aus exakt derselben Lokalitaet).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nearest_edge.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0002", "47.5, 8.5"),  # gleiche Lokalitaet wie OBJ_0001
+            ("OBJ_0001", "47.5, 8.5"),  # gleiche Lokalitaet wie OBJ_0002
+            ("OBJ_0003", "48.0, 9.0"),  # weiter weg
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # limit == 0 -> leer
+    assert repo.list_objects_nearest(47.0, 8.0, 0) == []
+    # limit < 0 -> leer
+    assert repo.list_objects_nearest(47.0, 8.0, -5) == []
+    # limit > Anzahl geocoded -> alle 3, keine Polsterung
+    alle = repo.list_objects_nearest(47.0, 8.0, 99)
+    assert len(alle) == 3
+    # Distanz-Bindung: OBJ_0001 vor OBJ_0002 (gleiche Distanz, sekundaer obj_id)
+    assert [r[0] for r in alle[:2]] == ["OBJ_0001", "OBJ_0002"]
+    assert alle[0][3] == pytest.approx(alle[1][3])
+    c.close()
+
+
+def test_list_objects_nearest_leere_db(tmp_path):
+    """Leere DB -> leere Trefferliste, unabhaengig vom limit."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "nearest_leer.sqlite3")
+    repo = ObjectRepo(c)
+    assert repo.list_objects_nearest(47.0, 8.0, 5) == []
+    assert repo.list_objects_nearest(47.0, 8.0, 1) == []
+    c.close()
+    # Auch DB mit ausschliesslich nicht-geocoded-en Eintraegen -> leere Liste
+    c2 = open_db(tmp_path / "nearest_keine_koords.sqlite3")
+    c2.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", ""),
+            ("OBJ_0003", None),
+        ],
+    )
+    c2.commit()
+    repo2 = ObjectRepo(c2)
+    assert repo2.list_objects_nearest(47.0, 8.0, 5) == []
+    c2.close()
