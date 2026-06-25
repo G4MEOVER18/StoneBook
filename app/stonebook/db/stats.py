@@ -72,6 +72,7 @@ class Statistik:
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahr: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
+    by_geaendert_am_monat: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -1057,6 +1058,7 @@ class Statistik:
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
             "by_geaendert_am_jahr": dict(self.by_geaendert_am_jahr),
             "by_geaendert_am_jahrzehnt": dict(self.by_geaendert_am_jahrzehnt),
+            "by_geaendert_am_monat": dict(self.by_geaendert_am_monat),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -1531,6 +1533,42 @@ def _count_geaendert_am_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY dekade ORDER BY dekade ASC"
     )
     return {f"{r['dekade']}er": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_geaendert_am_monat(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``geaendert_am``-Monat (Pflege-Saisonalitaet).
+
+    Spiegelt :func:`_count_erstellt_am_monat` um die Aenderungs-Achse und
+    schliesst die Histogramm-Trias auf der Aenderungs-Achse ab (Jahr / Jahrzehnt
+    / Monat) - parallel zur Funddatums- und Erfassungs-Achse, die alle drei
+    Aggregationsstufen tragen. Beantwortet "in welchen Monaten ueber alle Jahre
+    bin ich besonders aktiv im Pflegen gewesen?", aggregiert ueber alle Jahre,
+    Labels ``"01"`` .. ``"12"``; Monate ohne Treffer fehlen im Dict.
+
+    Aussenkontext-bedingt typisch konzentriert auf Winter-Indoor-Phasen
+    (Sammlungsdurchsicht waehrend der kalten Monate, Boersen-Vorbereitung
+    Januar-Februar) und auf Pflege-Wellen-Monate (z.B. ein Sommer-Monat mit
+    intensiver KI-Analyse-Welle), waehrend die Sommer-Feldsaison typisch
+    pflegearm bleibt - die Differenz zur Erfassungs-Saisonalitaet zeigt die
+    nachtraegliche Pflege-Verschiebung pro Saison, die im reinen Erfassungs-
+    Saison-Bild untergeht.
+
+    ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; Monatsteil sitzt deterministisch in Substring 6..7.
+    Eintraege ohne gueltigen Jahres-Praefix oder mit Monatsteil ausserhalb
+    01..12 werden ausgeschlossen (defensive Behandlung historischer Imports
+    mit kaputten Stempeln), damit die Saison-Statistik nicht verzerrt wird -
+    spiegelt :func:`_count_erstellt_am_monat` exakt.
+    """
+    sql = (
+        "SELECT substr(geaendert_am, 6, 2) AS monat, COUNT(*) AS n FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(geaendert_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY monat ORDER BY monat ASC"
+    )
+    return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -2174,6 +2212,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # durch Jahres-Rauschen verdeckt werden. Spiegelt by_erstellt_am_jahrzehnt
     # auf die Aenderungs-Achse.
     st.by_geaendert_am_jahrzehnt = _count_geaendert_am_jahrzehnt(conn)
+    # Pflege-Saisonalitaet (01..12, ueber alle Jahre): spiegelt
+    # by_erstellt_am_monat auf die Aenderungs-Achse und schliesst die
+    # Histogramm-Trias auf der Aenderungs-Achse ab (Jahr / Jahrzehnt / Monat),
+    # parallel zur Fund- und Erfassungs-Achse. Zeigt typische Winter-Indoor-
+    # Pflegephasen und Pflege-Wellen-Monate (KI-Analyse-Welle), waehrend die
+    # Sommer-Feldsaison pflegearm bleibt. Die Differenz zur Erfassungs-
+    # Saisonalitaet zeigt die nachtraegliche Pflege-Verschiebung pro Saison.
+    st.by_geaendert_am_monat = _count_geaendert_am_monat(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

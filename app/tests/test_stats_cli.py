@@ -1403,6 +1403,48 @@ def test_text_ausgabe_ohne_geaendert_am_jahrzehnt_keine_zeile(tmp_path, capsys):
     assert "Pflege-Aktivitaet pro Jahrzehnt:" not in out
 
 
+def test_text_ausgabe_zeigt_pflege_aktivitaet_pro_monat(tmp_path, capsys):
+    """Pflege-Monats-Block liegt unter dem Pflege-Dekaden-Block und gibt 01..12 chronologisch aus."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "pam.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # Januar - Winter-Indoor-Pflege
+            ("OBJ_0001", "2024-01-15 09:00:00"),
+            ("OBJ_0002", "2026-01-04 11:30:00"),
+            # Juni - KI-Analyse-Welle
+            ("OBJ_0003", "2024-06-13 14:30:00"),
+            ("OBJ_0004", "2025-06-01 10:00:00"),
+            # August - Sommer-Sammlungsdurchsicht
+            ("OBJ_0005", "2025-08-21 16:00:00"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Monat:" in out
+    block = out.split("Pflege-Aktivitaet pro Monat:", 1)[1]
+    # Chronologisch aufsteigend: 01 vor 06 vor 08
+    assert block.index("01") < block.index("06") < block.index("08")
+    # Liegt unter dem Pflege-Dekaden-Block (spiegelt _format_text-Reihenfolge)
+    assert (out.index("Pflege-Aktivitaet pro Jahrzehnt:")
+            < out.index("Pflege-Aktivitaet pro Monat:"))
+
+
+def test_text_ausgabe_ohne_geaendert_am_monat_keine_zeile(tmp_path, capsys):
+    """Leere DB → Pflege-Monats-Block bleibt aus (analog zu den anderen Pflege-Bloecken)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "pam0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Monat:" not in out
+
+
 def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
     """Monats-Block liegt unter Jahr/Jahrzehnt und gibt 01..12 chronologisch aus."""
     from stonebook.db.database import open_db

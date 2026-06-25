@@ -579,6 +579,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Pflege-Aktivitaet pro Jahrzehnt:"]
         for dekade, n in st.by_geaendert_am_jahrzehnt.items():
             lines.append(f"  {dekade:40s} {n}")
+    if st.by_geaendert_am_monat:
+        # Pflege-Saisonalitaet (01..12, ueber alle Jahre): direkt unter dem
+        # Pflege-Dekaden-Block, spiegelt "Sammlung erfasst pro Monat" auf die
+        # Aenderungs-Achse und schliesst die Histogramm-Trias auf der Aenderungs-
+        # Achse ab (Jahr / Jahrzehnt / Monat). Zeigt typische Winter-Indoor-
+        # Pflegephasen (Januar-Februar) und Pflege-Wellen-Monate (KI-Analyse),
+        # waehrend die Sommer-Feldsaison pflegearm bleibt. Reihenfolge bleibt
+        # 01..12.
+        lines += ["", "Pflege-Aktivitaet pro Monat:"]
+        for monat, n in st.by_geaendert_am_monat.items():
+            lines.append(f"  {monat:40s} {n}")
     if st.by_seltenheit_global:
         # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
         # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf

@@ -533,6 +533,67 @@ def test_by_geaendert_am_jahrzehnt_im_as_dict(tmp_path):
     c.close()
 
 
+def test_by_geaendert_am_monat_aus_seed_db(tmp_path):
+    """Pflege-Saisonalitaet aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "monat_p.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # Januar (2024 + 2026) - Winter-Indoor-Pflege
+            ("OBJ_0001", "2024-01-15 09:00:00"),
+            ("OBJ_0002", "2026-01-04 11:30:00"),
+            # Juni (2024 + 2025 + 2026) - KI-Analyse-Welle
+            ("OBJ_0003", "2024-06-13 14:30:00"),
+            ("OBJ_0004", "2025-06-01 10:00:00"),
+            ("OBJ_0005", "2026-06-19 08:45:00"),
+            # August (2025) - Sommer-Sammlungsdurchsicht
+            ("OBJ_0006", "2025-08-21 16:00:00"),
+            # Ungueltig / leer - werden defensiv ausgeschlossen
+            ("OBJ_0007", ""),
+            ("OBJ_0008", None),
+            ("OBJ_0009", "kaputt"),
+            ("OBJ_0010", "2024-13-01 00:00:00"),  # Monat 13 → ungueltig
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Aufsteigend nach Monat (01..12), kaputte Eintraege bleiben aussen vor
+    assert list(st.by_geaendert_am_monat.items()) == [
+        ("01", 2), ("06", 3), ("08", 1),
+    ]
+    c.close()
+
+
+def test_by_geaendert_am_monat_leer(tmp_path):
+    """Leere DB → leere Pflege-Saison-Statistik (kein Crash)."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer_monat_p.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_monat == {}
+    c.close()
+
+
+def test_by_geaendert_am_monat_im_as_dict(tmp_path):
+    """by_geaendert_am_monat erscheint serialisiert in as_dict() (JSON-tauglich)."""
+    import json
+
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "ad_monat_p.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        ("OBJ_0001", "2026-06-19 08:00:00"),
+    )
+    c.commit()
+    d = compute_statistics(c).as_dict()
+    assert d["by_geaendert_am_monat"] == {"06": 1}
+    json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
 def test_by_funddatum_monat_aus_seed_db(tmp_path):
     """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
     from stonebook.db.database import open_db
