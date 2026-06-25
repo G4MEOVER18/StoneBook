@@ -70,6 +70,7 @@ class Statistik:
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
+    by_geaendert_am_jahr: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -1053,6 +1054,7 @@ class Statistik:
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
+            "by_geaendert_am_jahr": dict(self.by_geaendert_am_jahr),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -1460,6 +1462,39 @@ def _count_erstellt_am_monat(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY monat ORDER BY monat ASC"
     )
     return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_geaendert_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``geaendert_am``-Jahr (Pflege-Aktivitaet pro Jahr).
+
+    Spiegelt :func:`_count_erstellt_am_jahr` um die Aenderungs-Achse: waehrend
+    ``by_erstellt_am_jahr`` das Sammlungswachstum beziffert (wann erfasst), zeigt
+    ``by_geaendert_am_jahr`` die Pflege-Aktivitaet (wann zuletzt redaktionell
+    beruehrt). Aussenkontext-bedingt sehr ungleichmaessig: ein Stueck, das nach
+    der Erst-Erfassung nie wieder angefasst wurde, traegt ``geaendert_am ==
+    erstellt_am`` (Insert-Pfad setzt beide synchron in repository._now()), und
+    landet daher im Sammlungswachstums-Histogramm. Stuecke, die spaeter nach-
+    gepflegt wurden (z.B. KI-Analyse uebernommen, Foto nachgereicht, Mineral-
+    Bestimmung korrigiert), erscheinen hier in einem spaeteren Jahr - die
+    Differenz beider Histogramme zeigt die nachtraegliche Pflege-Aktivitaet pro
+    Jahr.
+
+    ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; Substring 1..4 reicht als Jahres-Praefix und ist
+    analog zu :func:`_count_erstellt_am_jahr`. NULL/Whitespace und Eintraege
+    ohne vierstelligen Jahres-Praefix bleiben aus der Statistik (kaputte
+    Stempel historischer Imports). Sortierung chronologisch aufsteigend
+    (aelteste Jahre zuerst), damit das Pflege-Histogramm zeitlich lesbar
+    bleibt. Ohne Limit, weil die Zahl der Jahre ueberschaubar bleibt
+    (~10-30 ueber eine Sammler-Karriere).
+    """
+    sql = (
+        "SELECT substr(geaendert_am, 1, 4) AS jahr, COUNT(*) AS n FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "GROUP BY jahr ORDER BY jahr ASC"
+    )
+    return {r["jahr"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -2089,6 +2124,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # bleibt erhalten, weil geaendert_am wie erstellt_am im repository._now()-
     # Pfad mit Sekunden-Aufloesung gesetzt wird.
     st.geaendert_am_frueheste, st.geaendert_am_spaeteste = _geaendert_am_spanne(conn)
+    # Pflege-Aktivitaets-Histogramm pro Aenderungs-Jahr: spiegelt
+    # by_erstellt_am_jahr (Sammlungswachstum: wann erfasst) auf die Aenderungs-
+    # Achse (wann zuletzt redaktionell beruehrt). Beantwortet "in welchen Jahren
+    # bin ich besonders aktiv im Pflegen gewesen?". Die Differenz beider
+    # Histogramme zeigt nachtraegliche Pflege-Aktivitaet (KI-Analyse uebernommen,
+    # Foto nachgereicht, Bestimmung korrigiert), die im reinen Erfassungs-
+    # Wachstums-Bild untergeht.
+    st.by_geaendert_am_jahr = _count_geaendert_am_jahr(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

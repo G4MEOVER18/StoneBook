@@ -419,6 +419,61 @@ def test_by_erstellt_am_monat_leer(tmp_path):
     c.close()
 
 
+def test_by_geaendert_am_jahr_aus_seed_db(tmp_path):
+    """Pflege-Aktivitaets-Histogramm zaehlt Objekte pro geaendert_am-Jahr."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "pflege.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00"),
+            ("OBJ_0002", "2024-08-13 14:30:00"),
+            ("OBJ_0003", "2025-03-01 11:00:00"),
+            ("OBJ_0004", "2026-06-19 08:45:00"),
+            ("OBJ_0005", "2026-06-19 09:00:00"),
+            ("OBJ_0006", ""),        # leer
+            ("OBJ_0007", None),      # NULL
+            ("OBJ_0008", "kaputt"),  # kein Jahres-Praefix
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend, kaputte/leere Stempel ignoriert
+    assert list(st.by_geaendert_am_jahr.items()) == [
+        ("2024", 2), ("2025", 1), ("2026", 2),
+    ]
+    c.close()
+
+
+def test_by_geaendert_am_jahr_leer(tmp_path):
+    """Leere DB → leeres Pflege-Histogramm (kein Crash)."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "leer_pflege.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_jahr == {}
+    c.close()
+
+
+def test_by_geaendert_am_jahr_im_as_dict(tmp_path):
+    """Neues Feld erscheint serialisiert in as_dict() (JSON-tauglich)."""
+    import json
+
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "ad_pflege.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        ("OBJ_0001", "2026-06-19 08:00:00"),
+    )
+    c.commit()
+    d = compute_statistics(c).as_dict()
+    assert d["by_geaendert_am_jahr"] == {"2026": 1}
+    json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
 def test_by_funddatum_monat_aus_seed_db(tmp_path):
     """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
     from stonebook.db.database import open_db

@@ -559,6 +559,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Sammlung erfasst pro Monat:"]
         for monat, n in st.by_erstellt_am_monat.items():
             lines.append(f"  {monat:40s} {n}")
+    if st.by_geaendert_am_jahr:
+        # Pflege-Aktivitaet pro Aenderungs-Jahr: spiegelt "Sammlung erfasst
+        # pro Jahr" auf die Aenderungs-Achse. Macht nachtraegliche Pflege-
+        # Wellen sichtbar (KI-Analyse uebernommen, Foto nachgereicht, Mineral-
+        # Bestimmung korrigiert), die im Erfassungs-Wachstums-Histogramm
+        # untergehen, weil dort ein nie wieder beruehrtes Stueck dieselbe
+        # Stempel-Position haelt wie ein nachgepflegtes. Reihenfolge bleibt
+        # chronologisch aus _count_geaendert_am_jahr (aelteste zuerst).
+        lines += ["", "Pflege-Aktivitaet pro Jahr:"]
+        for jahr, n in st.by_geaendert_am_jahr.items():
+            lines.append(f"  {jahr:40s} {n}")
     if st.by_seltenheit_global:
         # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
         # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf

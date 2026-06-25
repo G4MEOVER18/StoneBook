@@ -1321,6 +1321,47 @@ def test_text_ausgabe_zeigt_sammlung_erfasst_pro_monat(tmp_path, capsys):
             < out.index("Sammlung erfasst pro Monat:"))
 
 
+def test_text_ausgabe_zeigt_pflege_aktivitaet_pro_jahr(tmp_path, capsys):
+    """Pflege-Aktivitaets-Block liegt unter den Erfassungs-Bloecken und ist chronologisch sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "paj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am) VALUES (?, ?, ?)",
+        [
+            # Nie nachgepflegt: erstellt_am == geaendert_am
+            ("OBJ_0001", "2024-01-15 09:00:00", "2024-01-15 09:00:00"),
+            # Spaeter nachgepflegt (KI-Analyse uebernommen 2025)
+            ("OBJ_0002", "2024-08-13 14:30:00", "2025-03-22 11:00:00"),
+            # Spaeter nachgepflegt (Foto nachgereicht 2026)
+            ("OBJ_0003", "2024-12-05 10:00:00", "2026-02-19 16:00:00"),
+            ("OBJ_0004", "2025-06-19 08:45:00", "2026-06-19 09:00:00"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Jahr:" in out
+    block = out.split("Pflege-Aktivitaet pro Jahr:", 1)[1]
+    # Chronologisch aufsteigend: 2024 (1x) -> 2025 (1x) -> 2026 (2x)
+    assert block.index("2024") < block.index("2025") < block.index("2026")
+    # Liegt unter den Erfassungs-Bloecken (spiegelt _format_text-Reihenfolge)
+    assert (out.index("Sammlung erfasst pro Monat:")
+            < out.index("Pflege-Aktivitaet pro Jahr:"))
+
+
+def test_text_ausgabe_ohne_geaendert_am_jahr_keine_zeile(tmp_path, capsys):
+    """Leere DB → Pflege-Aktivitaets-Block bleibt aus (analog zu den Erfassungs-Bloecken)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "paj0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Jahr:" not in out
+
+
 def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):
     """Monats-Block liegt unter Jahr/Jahrzehnt und gibt 01..12 chronologisch aus."""
     from stonebook.db.database import open_db
