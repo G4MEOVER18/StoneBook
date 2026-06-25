@@ -339,6 +339,8 @@ class ObjectRepo:
                      erstellt_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_monat: int | None = None,
                      erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
+                     erstellt_am_min: str | None = None,
+                     erstellt_am_max: str | None = None,
                      geaendert_am_jahr_min: int | None = None,
                      geaendert_am_jahr_max: int | None = None,
                      geaendert_am_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -939,6 +941,24 @@ class ObjectRepo:
                     f"AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(monate)
+        # erstellt_am-Bereich auf Tagesgenauigkeit/Sekundengenauigkeit: ISO
+        # YYYY-MM-DD[ HH:MM:SS] ist lexikographisch vergleichbar, daher reicht
+        # ein direkter String-Vergleich ohne Datums-Parsing. Spiegelt funddatum_
+        # min/_max auf die Erfassungs-Achse und ergaenzt die diskreten Jahr/
+        # Jahrzehnt/Monat-Filter um einen tagesgenauen Stichtag-Filter (z.B.
+        # "alle ab dem KI-Welle-Start 2024-03-15 erfassten Stuecke"). Akzeptiert
+        # auch YYYY-MM oder YYYY allein, weil ISO-Praefixe lexikographisch
+        # mit dem voll qualifizierten Stempel kompatibel sind. NULL/leere
+        # Stempel werden konsistent zur funddatum_min/_max-Konvention
+        # ausgeschlossen.
+        if erstellt_am_min is not None:
+            where.append("o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                         "AND o.erstellt_am >= ?")
+            params.append(str(erstellt_am_min))
+        if erstellt_am_max is not None:
+            where.append("o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                         "AND o.erstellt_am <= ?")
+            params.append(str(erstellt_am_max))
         # Aenderungs-Achse: filtert nach Jahr des ``geaendert_am``-Stempels (wann
         # zuletzt redaktionell angefasst). Spiegelt erstellt_am_jahr_min/_max auf
         # die zweite Zeitstempel-Spalte und beantwortet die typische Pflege-Frage

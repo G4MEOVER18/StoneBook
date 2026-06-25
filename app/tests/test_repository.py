@@ -3676,3 +3676,45 @@ def test_erstellt_am_monat_in_filter(tmp_path):
     with pytest.raises(ValueError, match="Unbekannte Erstellt-am-Monate"):
         repo.list_objects(erstellt_am_monat_in=[0])
     c.close()
+
+
+def test_erstellt_am_iso_range_filter(tmp_path):
+    """erstellt_am_min/_max filtert tagesgenau ueber ISO-Strings (lexikographisch).
+
+    Spiegelt funddatum_min/_max auf die Erfassungs-Achse: ISO YYYY-MM-DD[ HH:MM:SS]
+    ist lexikographisch vergleichbar, daher reicht ein direkter String-Vergleich
+    ohne Datums-Parsing. Komplementaer zu den groberen Jahr/Jahrzehnt/Monat-Filtern
+    auf der gleichen Achse, wenn ein tagesgenauer Stichtag noetig ist
+    (KI-Welle-Start, Migrationsdatum, Boersen-Nachbearbeitungs-Beginn).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ei.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-03-15 10:00:00"),
+            ("OBJ_0002", "2024-06-13 11:30:00"),
+            ("OBJ_0003", "2024-09-30 12:00:00"),
+            ("OBJ_0004", "2025-01-05 14:15:00"),
+            ("OBJ_0005", ""),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # April..August 2024
+    rows = repo.list_objects(erstellt_am_min="2024-04-01", erstellt_am_max="2024-08-31")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Alles ab 2024-09
+    rows = repo.list_objects(erstellt_am_min="2024-09-01")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Alles bis Ende 2024
+    rows = repo.list_objects(erstellt_am_max="2024-12-31")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Sekundengenauer Stichtag: erstellt_am-Stempel direkt vergleichen
+    rows = repo.list_objects(erstellt_am_min="2024-06-13 12:00:00")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Kombination mit erstellt_am_jahr_in: Schnittmenge
+    rows = repo.list_objects(erstellt_am_min="2024-06-01", erstellt_am_jahr_in=[2024])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    c.close()
