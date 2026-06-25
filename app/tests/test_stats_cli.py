@@ -835,6 +835,34 @@ def test_text_ausgabe_zeigt_reaktionshinweis_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_pruefempfehlungen_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Pruefempfehlungen-Quote (empfohlene
+    Bestaetigungstests aus der Sonstiges-Gruppe des Feldwoerterbuchs)
+    direkt nach Reaktionshinweis und vor Notizen auf - die drei Freitext-
+    Achsen decken zusammen den vollstaendigen Bestimmungs-Workflow ab
+    (Reaktionshinweis interpretiert die Vergangenheit, Pruefempfehlungen
+    plant die Zukunft, Notizen begleitet die Gegenwart). Symmetrische
+    CLI-Sichtbarkeit fuer das Datenpflege-Dashboard auf der Achse "wie
+    viel Anteil der Sammlung traegt einen dokumentierten Pruef-Plan?"."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "pe.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Pruefempfehlungen) VALUES (?,?)",
+        [("OBJ_0001", "Dichtebestimmung mit Pyknometer"),
+         ("OBJ_0002", "EDX-Analyse VHS-Kurs"),
+         ("OBJ_0003", None), ("OBJ_0004", "")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Pruefempfehlungen:" in out
+    # 2 von 4 Objekten haben Pruefempfehlungen → 50.0 %
+    assert "50.0 %" in out
+
+
 def test_text_ausgabe_zeigt_notizen_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Notizen-Quote (freie Beobachtungs-Spalte) am Ende
     der Feld-Sektion auf, vor der Merge-Quote. Notizen sind die "Sonstiges"-

@@ -355,6 +355,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # der 43 strukturierten Felder beziffert.
         lines.append(
             f"  Reaktionshinweis:    {st.quote_mit_reaktionshinweis_prozent:.1f} %")
+        # Pruefempfehlungen (empfohlene Bestaetigungstests aus der
+        # Sonstiges-Gruppe des Feldwoerterbuchs) direkt nach Reaktionshinweis
+        # und vor Notizen, weil sie konzeptionell die naechste-Schritt-Achse
+        # zur rueckblickenden Erklaer-Achse Reaktionshinweis ist - die drei
+        # Freitext-Achsen decken zusammen den vollstaendigen Bestimmungs-
+        # Workflow ab: Reaktionshinweis interpretiert die Vergangenheit
+        # (warum hat das Stueck so reagiert?), Pruefempfehlungen plant die
+        # Zukunft (welche Pruefung folgt als naechstes?), Notizen begleitet
+        # die Gegenwart (allgemeine Beobachtungen). Die Differenz
+        # quote_mit_confidence_prozent (quantitative Sicherheits-Achse) - quote
+        # _mit_pruefempfehlungen_prozent beziffert die Disziplin-Luecke bei
+        # der Markierung offener Pruef-Pfade fuer noch nicht endgueltig
+        # bestimmte Stuecke.
+        lines.append(
+            f"  Pruefempfehlungen:   {st.quote_mit_pruefempfehlungen_prozent:.1f} %")
         # Notizen (freie Beobachtungs-Spalte) am Ende der Feld-Coverage-Block-
         # Sektion, weil sie konzeptionell die "Sonstiges"-Achse ist - jenseits
         # der 43 strukturierten Standardfelder. Der Sammler pflegt Notizen nur

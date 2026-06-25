@@ -40,6 +40,7 @@ class Statistik:
     objekte_mit_uv_365nm: int = 0
     objekte_mit_uv_254nm: int = 0
     objekte_mit_reaktionshinweis: int = 0
+    objekte_mit_pruefempfehlungen: int = 0
     objekte_mit_notizen: int = 0
     bilder_total: int = 0
     aliase_total: int = 0
@@ -879,6 +880,55 @@ class Statistik:
         return self._quote(self.objekte_mit_reaktionshinweis)
 
     @property
+    def quote_mit_pruefempfehlungen_prozent(self) -> float | None:
+        # Coverage-Quote fuer Pruefempfehlungen (empfohlene Bestaetigungstests
+        # neben den schon durchgefuehrten Pruef-Achsen aus der
+        # Sonstiges-Gruppe des Feldwoerterbuchs). Spiegelt die Coverage-Quote
+        # quote_mit_reaktionshinweis_prozent (erklaerende Begleit-Notiz zu den
+        # Roh-Beobachtungen) auf die naechste-Schritt-Achse: waehrend
+        # Reaktionshinweis die Interpretation der bereits beobachteten
+        # Reaktionen festhaelt (warum reagiert das Stueck so?), zielt
+        # Pruefempfehlungen auf die noch offene Pruef-Liste (welche Tests
+        # bestaetigen die aktuelle Hypothese am zuverlaessigsten?). Mehrzeilige
+        # text-Spalte (Feldwoerterbuch-Typ "text"), Whitespace zaehlt wie leer -
+        # spiegelt die has_pruefempfehlungen-Filter-Konvention aus
+        # stonebook.db.repository. Bisher gab es zwar den
+        # has_pruefempfehlungen-Filter (Listen-Filter, Anwesenheits-Pruefung)
+        # als wahlfreies repository.filter_objects-Argument, aber keine
+        # Coverage-Kennzahl (Anteil-Sicht auf den Gesamtbestand) - waehrend
+        # die paarweise Sonstiges-Achse Reaktionshinweis und die freie
+        # Notizen-Achse bereits Coverage-Quoten tragen. Aussenkontext-bedingt
+        # typisch sehr niedrig in Sammler-Bestaenden, weil Pruefempfehlungen
+        # erst gepflegt werden, wenn die Bestimmung bewusst als vorlaeufig
+        # markiert ist und ein konkreter naechster Pruefschritt notiert wird
+        # (Dichtebestimmung mit Pyknometer, EDX-Analyse bei der Volkshochschule,
+        # XRD im Universitaetslabor, Spaltbarkeitsprobe an einer abgebrochenen
+        # Ecke) - die ueblicheren Faelle sind entweder vollstaendig bestimmt
+        # (keine offenen Pruefungen mehr) oder grob eingeordnet ohne expliziten
+        # Pflege-Plan. Aus Datenpflege-Sicht ein direkter Indikator fuer die
+        # Pflege-Disziplin: Stuecke mit dokumentierten Pruefempfehlungen sind
+        # bewusst als "Bestimmung im Gang" markiert (der Sammler hat einen
+        # konkreten Plan, wie er die Hypothese bestaetigt), waehrend Stuecke
+        # ohne Pruefempfehlungen entweder fertig sind oder ohne Pflege-Plan
+        # vorlaeufig - der Unterschied zwischen "ich habe einen Pruefplan" und
+        # "ich akzeptiere die aktuelle Bestimmung". Komplementaer zu
+        # quote_mit_confidence_prozent (quantitative Sicherheits-Achse): ein
+        # Stueck mit Confidence_Prozent unter dem Bestimmungs-Schwellwert
+        # sollte typisch auch Pruefempfehlungen tragen (welche Pruefung wuerde
+        # die Sicherheit erhoehen?), waehrend ein hoch-confidentes Stueck ohne
+        # Pruefempfehlungen die normale Endstation der Bestimmung ist; die
+        # Differenz beider Quoten beziffert die Disziplin-Luecke bei der
+        # Markierung offener Pruef-Pfade. Komplementaer zu
+        # quote_mit_reaktionshinweis_prozent (Interpretations-Tiefe der
+        # bereits beobachteten Reaktionen) und quote_mit_notizen_prozent
+        # (allgemeine Freitext-Beobachtungen): waehrend Reaktionshinweis
+        # rueckblickend erklaert und Notizen seitwaerts beobachtet, blickt
+        # Pruefempfehlungen vorwaerts auf den naechsten Pflege-Schritt - die
+        # drei Freitext-Achsen decken zusammen den vollstaendigen
+        # Bestimmungs-Workflow ab (Vergangenheit/Gegenwart/Zukunft).
+        return self._quote(self.objekte_mit_pruefempfehlungen)
+
+    @property
     def quote_mit_notizen_prozent(self) -> float | None:
         # Coverage-Quote fuer freie Notizen (notizen-Spalte). Spiegelt die
         # Feld-Coverage-Quoten (Bildern/Funddatum/Wert/Gewicht/Mineral/Fundort)
@@ -970,6 +1020,7 @@ class Statistik:
             "objekte_mit_uv_365nm": self.objekte_mit_uv_365nm,
             "objekte_mit_uv_254nm": self.objekte_mit_uv_254nm,
             "objekte_mit_reaktionshinweis": self.objekte_mit_reaktionshinweis,
+            "objekte_mit_pruefempfehlungen": self.objekte_mit_pruefempfehlungen,
             "objekte_mit_notizen": self.objekte_mit_notizen,
             "objekte_mit_seltenheit_global": self.objekte_mit_seltenheit_global,
             "objekte_mit_seltenheit_fundort": self.objekte_mit_seltenheit_fundort,
@@ -1229,6 +1280,8 @@ class Statistik:
                 self.quote_mit_uv_254nm_prozent),
             "quote_mit_reaktionshinweis_prozent": _round_or_none(
                 self.quote_mit_reaktionshinweis_prozent),
+            "quote_mit_pruefempfehlungen_prozent": _round_or_none(
+                self.quote_mit_pruefempfehlungen_prozent),
             "quote_mit_notizen_prozent": _round_or_none(self.quote_mit_notizen_prozent),
             "quote_mit_ki_analyse_uebernommen_prozent": _round_or_none(
                 self.quote_mit_ki_analyse_uebernommen_prozent
@@ -2356,6 +2409,18 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_reaktionshinweis = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Reaktionshinweis IS NOT NULL AND TRIM(Reaktionshinweis) != ''"
+    ).fetchone()[0]
+    # objekte_mit_pruefempfehlungen: Anzahl Objekte mit dokumentierter
+    # Pruef-Vorausschau (welche Tests bestaetigen die aktuelle Hypothese als
+    # naechstes?). Spiegelt objekte_mit_reaktionshinweis exakt in Struktur und
+    # Konvention - beide sind Sonstiges-Freitext-Achsen mit thematisch festem
+    # Geltungsbereich (Reaktionshinweis rueckblickend, Pruefempfehlungen
+    # vorausblickend), beide mehrzeilig (text-Spalte). Whitespace zaehlt wie
+    # leer, spiegelt die has_pruefempfehlungen-Filter-Konvention aus
+    # stonebook.db.repository.
+    st.objekte_mit_pruefempfehlungen = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Pruefempfehlungen IS NOT NULL AND TRIM(Pruefempfehlungen) != ''"
     ).fetchone()[0]
     # objekte_mit_notizen: Anzahl Objekte mit irgendeinem nicht-leeren
     # notizen-Eintrag (freie Beobachtungs-Spalte neben den 43 Standardfeldern).

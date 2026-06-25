@@ -2923,6 +2923,56 @@ def test_quote_mit_reaktionshinweis_leere_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_pruefempfehlungen_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer Pruefempfehlungen (empfohlene Bestaetigungstests
+    aus der Sonstiges-Gruppe des Feldwoerterbuchs) spiegelt die Coverage-
+    Quote quote_mit_reaktionshinweis_prozent auf die naechste-Schritt-Achse:
+    waehrend Reaktionshinweis rueckblickend die schon beobachteten Reaktionen
+    interpretiert, plant Pruefempfehlungen die noch offene Pruef-Liste.
+    Anteil der Objekte mit dokumentiertem Pruef-Plan, gerechnet ueber
+    objekte_total. Whitespace/NULL zaehlt wie leer (spiegelt die
+    has_pruefempfehlungen-Filter-Konvention aus stonebook.db.repository)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qpe.sqlite3")
+    # 5 Objekte: zwei mit dokumentierten Pruefempfehlungen (40%), drei ohne
+    # (NULL/leer/Whitespace zaehlen alle wie nicht-dokumentiert). Mehrzeiliger
+    # Eintrag (Newline) ist legitim und zaehlt mit, weil TRIM nur fuehrende/
+    # abschliessende Whitespace strippt - text-Spalte erlaubt mehrzeilige
+    # Pruef-Plaene mit mehreren Methoden untereinander.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Pruefempfehlungen) VALUES (?,?)",
+        [
+            # Quarz-/Bergkristall-typischer naechster Pruefschritt
+            ("OBJ_0001", "Dichtebestimmung mit Pyknometer zur Trennung Quarz vs. Glas"),
+            # Mehrzeiliger Pruef-Plan mit mehreren Methoden
+            ("OBJ_0002", "EDX-Analyse VHS-Kurs\nXRD-Messung Uni-Labor"),
+            ("OBJ_0003", ""),        # leerer Eintrag → ignoriert
+            ("OBJ_0004", "   "),     # nur Whitespace → ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_pruefempfehlungen == 2
+    assert st.quote_mit_pruefempfehlungen_prozent == 40.0
+    d = st.as_dict()
+    assert d["objekte_mit_pruefempfehlungen"] == 2
+    assert d["quote_mit_pruefempfehlungen_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_pruefempfehlungen_leere_db(tmp_path):
+    """Leere DB: quote_mit_pruefempfehlungen_prozent ist None (nicht 0%) -
+    keine Objekte zum Beziehen der Quote vorhanden, spiegelt _quote-
+    Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.quote_mit_pruefempfehlungen_prozent is None
+    assert st.as_dict()["quote_mit_pruefempfehlungen_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_notizen_aus_seed_db(tmp_path):
     """Coverage-Quote fuer freie Notizen (notizen-Spalte) spiegelt die
     Strukturfeld-Coverage-Quoten (Bildern/Funddatum/Mineral/Fundort) auf die
