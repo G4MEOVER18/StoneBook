@@ -2155,6 +2155,144 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_erstellt_am_jahrzehnt_zeile
     assert "Gewicht pro Erfassungs-Jahrzehnt" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_geaendert_am_jahrzehnt(tmp_path, capsys):
+    """Wert-pro-Aenderungs-Jahrzehnt-Block listet die wertvollsten Pflege-Dekaden absteigend.
+
+    Vervollstaendigt das Dekaden-Trio neben Fund- und Erfassungs-Dekaden-Bloecken
+    auf die dritte Zeit-Achse - bei aktiv gepflegten Stuecken driftet die Spitze
+    in die aktuelle Pflege-Dekade.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgaj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2005-05-13 09:00:00", 1000.0),   # 2000er
+            ("OBJ_0002", "2015-04-01 14:00:00", 250.0),    # 2010er
+            ("OBJ_0003", "2025-03-01 08:00:00", 50.0),     # 2020er
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Aenderungs-Jahrzehnt (CHF):" in out
+    block = out.split("Wert pro Aenderungs-Jahrzehnt (CHF):", 1)[1]
+    assert block.index("2000er") < block.index("2010er") < block.index("2020er")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_geaendert_am_jahrzehnt_zeile(tmp_path, capsys):
+    """Ohne CHF-Wertfelder erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgaj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", "2005-05-13 09:00:00"),
+         ("OBJ_0002", "2015-04-01 14:00:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Aenderungs-Jahrzehnt" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_geaendert_am_jahrzehnt(tmp_path, capsys):
+    """Gewicht-pro-Aenderungs-Jahrzehnt-Block listet die schwersten Pflege-Dekaden absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpgaj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2005-05-13 09:00:00", 1000.0),   # 2000er
+            ("OBJ_0002", "2015-04-01 14:00:00", 250.0),    # 2010er
+            ("OBJ_0003", "2025-03-01 08:00:00", 50.0),     # 2020er
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Aenderungs-Jahrzehnt (g):" in out
+    block = out.split("Gewicht pro Aenderungs-Jahrzehnt (g):", 1)[1]
+    assert block.index("2000er") < block.index("2010er") < block.index("2020er")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_geaendert_am_jahrzehnt_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpgaj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", "2005-05-13 09:00:00"),
+         ("OBJ_0002", "2015-04-01 14:00:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Aenderungs-Jahrzehnt" not in out
+
+
+def test_text_ausgabe_geaendert_am_jahrzehnt_block_folgt_auf_erstellt_am_jahrzehnt(tmp_path, capsys):
+    """Aenderungs-Dekaden-Bloecke stehen direkt unter den Erfassungs-Dekaden-Bloecken.
+
+    Reihenfolge spiegelt compute_statistics: Funddatum-Jahrzehnt -> Erfassungs-
+    Jahrzehnt -> Aenderungs-Jahrzehnt (Fund, Erfassung, Pflege).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "ord_gajzd.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am, Wert_CHF_roh, Gewicht_g) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2005-05-13 09:00:00", "2015-05-13 09:00:00", 1000.0, 1000.0),
+            ("OBJ_0002", "2015-04-01 14:00:00", "2025-04-01 14:00:00", 250.0, 250.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert (out.index("Wert pro Erfassungs-Jahrzehnt (CHF):")
+            < out.index("Gewicht pro Erfassungs-Jahrzehnt (g):")
+            < out.index("Wert pro Aenderungs-Jahrzehnt (CHF):")
+            < out.index("Gewicht pro Aenderungs-Jahrzehnt (g):"))
+
+
+def test_json_ausgabe_enthaelt_wert_und_gewicht_pro_geaendert_am_jahrzehnt(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt beide neuen Aenderungs-Dekaden-Aggregate."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgaj_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Gewicht_g) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2005-05-13 09:00:00", 1000.0, 100.0),    # 2000er
+            ("OBJ_0002", "2015-04-01 14:00:00", 100.0, 50.0),      # 2010er
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert "wert_pro_geaendert_am_jahrzehnt" in payload
+    assert "gewicht_pro_geaendert_am_jahrzehnt" in payload
+    assert payload["wert_pro_geaendert_am_jahrzehnt"] == [
+        ["2000er", 1000.0], ["2010er", 100.0],
+    ]
+    assert payload["gewicht_pro_geaendert_am_jahrzehnt"] == [
+        ["2000er", 100.0], ["2010er", 50.0],
+    ]
+
+
 def test_text_ausgabe_erstellt_am_jahrzehnt_block_folgt_auf_funddatum_jahrzehnt(tmp_path, capsys):
     """Erfassungs-Dekaden-Bloecke stehen direkt unter den Funddatum-Dekaden-Bloecken.
 

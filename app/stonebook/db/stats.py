@@ -119,6 +119,7 @@ class Statistik:
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -143,6 +144,7 @@ class Statistik:
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -1200,6 +1202,9 @@ class Statistik:
             "wert_pro_geaendert_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_geaendert_am_jahr
             ],
+            "wert_pro_geaendert_am_jahrzehnt": [
+                (d, round(w, 2)) for d, w in self.wert_pro_geaendert_am_jahrzehnt
+            ],
             "wert_pro_seltenheit_global": [
                 (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_global
             ],
@@ -1271,6 +1276,9 @@ class Statistik:
             ],
             "gewicht_pro_geaendert_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_geaendert_am_jahr
+            ],
+            "gewicht_pro_geaendert_am_jahrzehnt": [
+                (d, round(g, 2)) for d, g in self.gewicht_pro_geaendert_am_jahrzehnt
             ],
             "gewicht_pro_seltenheit_global": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_global
@@ -1950,6 +1958,42 @@ def _sum_by_erstellt_am_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
         where = f"{where} AND {extra_where}"
     sql = (
         f"SELECT (CAST(substr(erstellt_am, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
+        f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
+        f"GROUP BY dekade HAVING w > 0 "
+        f"ORDER BY w DESC, dekade ASC"
+    )
+    return [(f"{r['dekade']}er", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_geaendert_am_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
+                                   extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``geaendert_am``-Jahrzehnt.
+
+    Spiegelt :func:`_sum_by_erstellt_am_jahrzehnt` auf die Aenderungs-Achse:
+    aggregiert das Pflege-Jahres-Histogramm
+    (:func:`_sum_by_geaendert_am_jahr`) wertlich/gewichtsmaessig auf 10er-
+    Schritte. Komplementaer zu :func:`_count_geaendert_am_jahrzehnt` (Anzahl):
+    die Dekaden-Sicht macht uebergreifende Pflege-Wellen sichtbar, die im
+    Einzeljahr-Histogramm durch Rauschen verdeckt sind - typisch eine
+    Neu-Klassifizierungs-Welle ueber mehrere Jahre, in der Sammler nach
+    einem groesseren mineralogischen Lehrgang die Altbestaende wert-
+    technisch re-klassifizieren. Bei nie-aktualisierten Alt-Eintraegen
+    konvergiert die Dekaden-Spitze auf die Erfassungs-Dekade; bei aktiv
+    gepflegten Stuecken driftet sie in die aktuelle Pflege-Dekade.
+
+    Wie bei :func:`_sum_by_erstellt_am_jahrzehnt` zaehlen nur Eintraege mit
+    vierstelligem Jahres-Praefix; kaputte Stempel und NULL/leer bleiben
+    aussen vor. Label folgt der Sammler-Konvention (``2020er``). Sortierung
+    absteigend nach Summe, Tie-Break chronologisch aufsteigend. Ohne Limit,
+    weil die Zahl der Dekaden klein bleibt (~3-5 ueber eine Sammler-
+    Karriere, analog zu allen drei Zeit-Achsen-Dekaden-Helpern).
+    """
+    where = ("geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+             "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT (CAST(substr(geaendert_am, 1, 4) AS INTEGER) / 10) * 10 AS dekade, "
         f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
         f"GROUP BY dekade HAVING w > 0 "
         f"ORDER BY w DESC, dekade ASC"
@@ -3223,6 +3267,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Sammler-Karriere, analog zu wert_/gewicht_pro_funddatum_jahrzehnt).
     st.wert_pro_erstellt_am_jahrzehnt = _sum_by_erstellt_am_jahrzehnt(conn, wert_sql)
     st.gewicht_pro_erstellt_am_jahrzehnt = _sum_by_erstellt_am_jahrzehnt(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Aenderungs-Dekaden-Sicht: spiegelt wert_/gewicht_pro_erstellt_am_jahrzehnt
+    # auf die Pflege-Achse - in welcher Dekade ist wertlich/gewichtsmaessig am
+    # meisten redaktionell beruehrt worden? Vervollstaendigt die Dekaden-Sicht
+    # auf der dritten Zeit-Achse neben Fund und Erfassung. Bei nie-aktualisierten
+    # Alt-Eintraegen konvergiert die Dekaden-Spitze auf die Erfassungs-Dekade;
+    # bei aktiv gepflegten Stuecken driftet sie in die aktuelle Pflege-Dekade.
+    # Ohne Limit, weil die Zahl der Dekaden klein bleibt.
+    st.wert_pro_geaendert_am_jahrzehnt = _sum_by_geaendert_am_jahrzehnt(conn, wert_sql)
+    st.gewicht_pro_geaendert_am_jahrzehnt = _sum_by_geaendert_am_jahrzehnt(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Saison-Sicht des Sammlungswerts: "welcher Monat bringt am meisten Wert/
     # Gewicht?". Komplementaer zu by_funddatum_monat (Anzahl): zeigt nicht

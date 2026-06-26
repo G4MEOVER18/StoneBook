@@ -1029,6 +1029,24 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Erfassungs-Jahrzehnt (g):"]
         for dekade, gewicht in st.gewicht_pro_erstellt_am_jahrzehnt:
             lines.append(f"  {dekade:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_geaendert_am_jahrzehnt:
+        # Aenderungs-Dekaden-Wertsicht: in welcher Pflege-Dekade ist wertlich am
+        # meisten redaktionell beruehrt worden? Vervollstaendigt das Dekaden-Trio
+        # neben Fund (wert_pro_funddatum_jahrzehnt) und Erfassung (wert_pro_
+        # erstellt_am_jahrzehnt) auf die dritte Zeit-Achse. Bei nie-aktualisierten
+        # Alt-Eintraegen konvergiert die Spitze auf die Erfassungs-Dekade; bei
+        # aktiv gepflegten Stuecken driftet sie in die aktuelle Pflege-Dekade -
+        # typisch sichtbar bei Neu-Klassifizierungs-Wellen ueber mehrere Jahre.
+        lines += ["", "Wert pro Aenderungs-Jahrzehnt (CHF):"]
+        for dekade, wert in st.wert_pro_geaendert_am_jahrzehnt:
+            lines.append(f"  {dekade:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_geaendert_am_jahrzehnt:
+        # Spiegelbild Gewicht: welche Pflege-Dekade traegt die schwerste Masse?
+        # Komplementaer zu wert_pro_geaendert_am_jahrzehnt, um die Wert/Gewicht-
+        # Entkopplung auch auf der Aenderungs-Dekaden-Achse sichtbar zu machen.
+        lines += ["", "Gewicht pro Aenderungs-Jahrzehnt (g):"]
+        for dekade, gewicht in st.gewicht_pro_geaendert_am_jahrzehnt:
+            lines.append(f"  {dekade:40s} {gewicht:>12,.1f}")
     if st.wert_pro_funddatum_monat:
         # Saison-Ertrag in CHF: welcher Monat bringt ueber alle Jahre den meisten
         # Wert? Komplementaer zu by_funddatum_monat (Anzahl) - dort die Aktivitaet,
