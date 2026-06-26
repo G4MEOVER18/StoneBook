@@ -4233,3 +4233,77 @@ def test_text_ausgabe_zeigt_koordinaten_quote_leere_db(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Koordinaten:" not in out
+
+
+def test_text_ausgabe_zeigt_koordinaten_spanne(tmp_path, capsys):
+    """Koordinaten-Spanne-Block (lat A..B, lon C..D) erscheint direkt nach dem
+    Aenderungs-Spannen-Block - aeussere geografische Grenze der Sammlung
+    spiegelt das Zeit-Spannen-Trio (Fund/Erfassung/Aenderung) auf die
+    geografische Achse. Format mit 4 Nachkomma-Stellen (~11 m Aufloesung,
+    konsistent mit Sammler-Notation)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "bbox.sqlite3"
+    c = open_db(db_file)
+    # Drei geocoded Schweiz-Stuecke: lat 46.50..47.38, lon 7.45..9.84.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.95° N, 7.45° E"),
+            ("OBJ_0002", "47.3769, 8.5417"),
+            ("OBJ_0003", "46.5000, 9.8400"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten-Spanne:" in out
+    assert "lat 46.5000..47.3769" in out
+    assert "lon 7.4500..9.8400" in out
+
+
+def test_text_ausgabe_zeigt_keine_koordinaten_spanne_ohne_geocoded(tmp_path, capsys):
+    """Sammlung ohne geocoded-Eintraege (nur Freitext-Fundorte): Koordinaten-
+    Spanne-Block bleibt aus, weil koordinaten_bbox None ist - spiegelt das
+    Verhalten der Zeit-Spannen-Bloecke (kein Wert -> kein Block)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "freitext.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "alte Halde bei Goschenen"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten-Spanne:" not in out
+
+
+def test_json_ausgabe_enthaelt_koordinaten_bbox(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt koordinaten_bbox als Liste [lat_min, lat_max,
+    lon_min, lon_max] (JSON kennt keine Tuples, daher Liste). Bei leerer
+    Geocoding-Subsammlung serialisiert das Feld als null."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "bbox.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+            ("OBJ_0002", "46.5000, 9.8400"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["koordinaten_bbox"] == [
+        pytest.approx(46.5),
+        pytest.approx(47.3769),
+        pytest.approx(8.5417),
+        pytest.approx(9.84),
+    ]

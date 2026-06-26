@@ -5610,3 +5610,107 @@ def test_quote_mit_koordinaten_alle_geocoded(tmp_path):
     # Coverage-Achsen identisch bei vollstaendiger Geocoding.
     assert st.quote_mit_fundort_prozent == 100.0
     c.close()
+
+
+def test_koordinaten_bbox_aus_seed_db(tmp_path):
+    """Geografische Bounding-Box ueber alle geocoded Fundort-Eintraege -
+    Aggregations-Achse zur punktuellen list_objects_in_bbox-Sicht. Beziffert
+    'wie weit reicht meine Sammlung geografisch?' als minimal-umschliessende
+    Lat/Lon-Box. Spiegelt die funddatum_frueheste/spaeteste-Konvention auf
+    die geografische Achse: zwei aeussere Grenzen (Min/Max in beiden
+    Dimensionen). Whitespace/NULL und Freitext-only-Eintraege (ohne parsbare
+    Koordinaten) bleiben aus der Box - spiegelt das None-Verhalten von
+    parse_coordinates und die objekte_mit_koordinaten-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bbox.sqlite3")
+    # 5 Objekte mit unterschiedlichen Koordinaten-Formen: Bern (~46.95, 7.45),
+    # Zuerich (~47.38, 8.54), Sankt Moritz (~46.50, 9.84) als geocoded; ein
+    # reiner Ortsname (Berner Oberland) als Freitext-only, eines ohne Fundort.
+    # Erwartete Box: lat 46.50..47.38 (Min Moritz, Max Zuerich),
+    # lon 7.45..9.84 (Min Bern, Max Moritz).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.95° N, 7.45° E"),     # Bern
+            ("OBJ_0002", "47.3769, 8.5417"),       # Zuerich
+            ("OBJ_0003", "46.5000, 9.8400"),       # Sankt Moritz
+            ("OBJ_0004", "Berner Oberland"),       # Freitext-only, ignoriert
+            ("OBJ_0005", None),                    # kein Fundort, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_koordinaten == 3
+    assert st.koordinaten_bbox is not None
+    lat_min, lat_max, lon_min, lon_max = st.koordinaten_bbox
+    assert lat_min == pytest.approx(46.5000)
+    assert lat_max == pytest.approx(47.3769)
+    assert lon_min == pytest.approx(7.45)
+    assert lon_max == pytest.approx(9.84)
+    # Inverted-Box-Konvention: Min <= Max in beiden Dimensionen,
+    # spiegelt list_objects_in_bbox (BETWEEN-inklusiv).
+    assert lat_min <= lat_max
+    assert lon_min <= lon_max
+    # as_dict serialisiert die Box als JSON-taugliche Liste statt Tuple
+    # (Tuples sind in JSON nicht direkt darstellbar).
+    d = st.as_dict()
+    assert d["koordinaten_bbox"] == [lat_min, lat_max, lon_min, lon_max]
+    c.close()
+
+
+def test_koordinaten_bbox_leere_db(tmp_path):
+    """Leere DB: koordinaten_bbox ist None (kein Wertegrund fuer Min/Max) -
+    spiegelt funddatum_frueheste/spaeteste-Konvention bei leerer Spalte."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_bbox is None
+    assert st.as_dict()["koordinaten_bbox"] is None
+    c.close()
+
+
+def test_koordinaten_bbox_punkt_box_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert die Box zur Punkt-Box
+    (lat_min == lat_max, lon_min == lon_max). Konsistent zur list_objects_in_bbox-
+    Konvention (BETWEEN-inklusiv akzeptiert auch eine entartete Box mit Min==Max)
+    und liefert eine gueltige Box, kein None - der Caller kann eine Punkt-Box
+    weiterhin als Box-Filter benutzen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "punkt.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),  # einziger geocoded-Eintrag
+            ("OBJ_0002", "Berner Oberland"),  # Freitext-only, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_koordinaten == 1
+    assert st.koordinaten_bbox is not None
+    lat_min, lat_max, lon_min, lon_max = st.koordinaten_bbox
+    assert lat_min == lat_max == pytest.approx(47.3769)
+    assert lon_min == lon_max == pytest.approx(8.5417)
+    c.close()
+
+
+def test_koordinaten_bbox_nur_freitext_fundorte(tmp_path):
+    """Sammlung mit Fundort-Eintraegen, aber ohne parsbare Koordinaten
+    (typisch fuer historisch gewachsene Vor-GPS-Sammlungen): koordinaten_bbox
+    bleibt None, obwohl objekte_mit_fundort > 0. Die Differenz zu
+    objekte_mit_koordinaten == 0 isoliert den freitext-only-Pflege-Aufwand."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "alte Halde bei Goschenen"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_fundort == 2
+    assert st.objekte_mit_koordinaten == 0
+    assert st.koordinaten_bbox is None
+    c.close()

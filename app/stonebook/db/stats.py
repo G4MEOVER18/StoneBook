@@ -84,6 +84,7 @@ class Statistik:
     erstellt_am_spaeteste: str | None = None
     geaendert_am_frueheste: str | None = None
     geaendert_am_spaeteste: str | None = None
+    koordinaten_bbox: tuple[float, float, float, float] | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1095,6 +1096,10 @@ class Statistik:
             "erstellt_am_spaeteste": self.erstellt_am_spaeteste,
             "geaendert_am_frueheste": self.geaendert_am_frueheste,
             "geaendert_am_spaeteste": self.geaendert_am_spaeteste,
+            "koordinaten_bbox": (
+                list(self.koordinaten_bbox)
+                if self.koordinaten_bbox is not None else None
+            ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -2517,9 +2522,44 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "SELECT Fundort FROM objects "
         "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != ''"
     ).fetchall()
-    st.objekte_mit_koordinaten = sum(
-        1 for r in fundort_rows if parse_coordinates(r["Fundort"]) is not None
-    )
+    geocoded_coords: list[tuple[float, float]] = []
+    for r in fundort_rows:
+        coords = parse_coordinates(r["Fundort"])
+        if coords is not None:
+            geocoded_coords.append(coords)
+    st.objekte_mit_koordinaten = len(geocoded_coords)
+    # koordinaten_bbox: geografische Bounding-Box (lat_min, lat_max, lon_min,
+    # lon_max) ueber alle per parse_coordinates erkannten Fundort-Eintraege -
+    # spiegelt list_objects_in_bbox auf die Aggregations-Sicht: waehrend die
+    # repository-Sicht die Objekte zu einer vom Caller vorgegebenen Box auflistet
+    # ("welche Stuecke liegen in dieser Box?"), liefert die Aggregations-Sicht
+    # die minimal-umschliessende Box der Sammlung selbst ("wie weit reicht meine
+    # Sammlung geografisch?"). Beantwortet die natuerliche Vorfrage zur
+    # list_objects_in_bbox-Achse: ohne diese Extent-Achse muss der Caller die
+    # Box-Grenzen blind raten (Schweiz-typisch lat 45..48, lon 5..11 - was bei
+    # einer rein lokalen Bergketten-Sammlung viel zu weit ist und bei einer
+    # globalen Boersen-Sammlung viel zu eng). Reuse-Pfad teilt die fundort_rows-
+    # Iteration mit objekte_mit_koordinaten exakt (eine einzige parse_coordinates-
+    # Runde ueber den gesamten Bestand, kein zweiter Pass). Inverted-Box-Konvention
+    # spiegelt list_objects_in_bbox (BETWEEN-inklusiv, lat_min <= lat <= lat_max,
+    # lon_min <= lon <= lon_max) - alle vier Grenzen sind tatsaechliche Werte aus
+    # der Sammlung, daher gilt lat_min <= lat_max und lon_min <= lon_max trivial.
+    # Bei genau einem geocoded-Stueck kollabieren beide Grenzen zur Punkt-Box
+    # (lat_min == lat_max == lat_einzig, lon_min == lon_max == lon_einzig) - das
+    # ist konsistent zur list_objects_in_bbox-Konvention und liefert eine
+    # gueltige (wenn auch entartete) Box. Bei null geocoded-Stuecken bleibt die
+    # Box None (kein Wertegrund fuer eine Min/Max-Definition - spiegelt die
+    # funddatum_frueheste/spaeteste-Konvention, die bei leerer Spalte ebenfalls
+    # None statt 0 bzw. einer Sentinel-Box zurueckgibt). Datums-Grenze
+    # (lon ueber +/-180 hinweg) wird nicht behandelt - eine Sammlung, die
+    # die +/-180-Linie ueberspannt (z.B. Pazifik-Inselgruppen) erzeugt eine
+    # ganz-Welt-umfassende Box statt der korrekten Schmalband-Box, parallel
+    # zur entsprechenden list_objects_in_bbox-Einschraenkung (in der Praxis
+    # fuer Sammler-Daten irrelevant).
+    if geocoded_coords:
+        lats = [lat for lat, _ in geocoded_coords]
+        lons = [lon for _, lon in geocoded_coords]
+        st.koordinaten_bbox = (min(lats), max(lats), min(lons), max(lons))
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).

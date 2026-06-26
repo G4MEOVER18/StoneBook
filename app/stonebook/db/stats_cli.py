@@ -81,6 +81,26 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Aenderungs-Spanne:     {st.geaendert_am_frueheste or '?'} "
             f".. {st.geaendert_am_spaeteste or '?'}")
+    if st.koordinaten_bbox is not None:
+        # Koordinaten-Spanne: minimal-umschliessende geografische Bounding-Box
+        # ueber alle per parse_coordinates erkannten Fundort-Eintraege - die
+        # natuerliche Aggregations-Achse zur punktuellen list_objects_in_bbox-
+        # Suche (waehrend list_objects_in_bbox eine vom Caller vorgegebene Box
+        # abfragt, liefert die Aggregation die Sammlungs-Extent). Beziffert
+        # 'wie weit reicht meine Sammlung geografisch?' tagesgenau in Lat/Lon
+        # statt im Fundort-Freitext. Direkt unter dem Aenderungs-/Erfassungs-/
+        # Funddatum-Spannen-Trio einsortiert, weil alle vier Spannen aeussere
+        # Grenzwerte des Bestands beziffern (drei Zeit-Achsen, eine geografische
+        # Achse). Format: 'lat A..B, lon C..D' mit 4 Nachkomma-Stellen (~11 m
+        # geodaetische Aufloesung am Aequator, ausreichend fuer Fundort-Genauigkeit
+        # und konsistent mit der ueblichen Sammler-Notation). Bei genau einem
+        # geocoded-Stueck kollabiert die Box zur Punkt-Box (lat A..A, lon C..C);
+        # bei null geocoded-Stuecken bleibt der Block aus (Bedingung is not None).
+        lat_min, lat_max, lon_min, lon_max = st.koordinaten_bbox
+        lines.append(
+            f"Koordinaten-Spanne:    "
+            f"lat {lat_min:.4f}..{lat_max:.4f}, "
+            f"lon {lon_min:.4f}..{lon_max:.4f}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
