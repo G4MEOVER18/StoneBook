@@ -1747,6 +1747,117 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_erstellt_am_jahr_zeile(tmp_
     assert "Gewicht pro Erfassungs-Jahr" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_geaendert_am_jahr(tmp_path, capsys):
+    """Wert-pro-Aenderungs-Jahr-Block listet die wertvollsten Pflege-Jahrgaenge.
+
+    Vervollstaendigt das Zeit-Trio neben Fund- und Erfassungs-Achse: bei
+    aktiv gepflegten Stuecken driftet die Spitze ins aktuelle Pflege-Jahr.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0, None),     # 2024: 1000
+            ("OBJ_0002", "2025-04-01 14:00:00", 100.0, 200.0),     # 2025: 300
+            ("OBJ_0003", "2026-03-01 08:00:00", 50.0, None),       # 2026: 50
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Aenderungs-Jahr (CHF):" in out
+    block = out.split("Wert pro Aenderungs-Jahr (CHF):", 1)[1]
+    assert block.index("2024") < block.index("2025") < block.index("2026")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_geaendert_am_jahr_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Aenderungs-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-05-13 09:00:00"),
+         ("OBJ_0002", "2025-04-01 14:00:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Aenderungs-Jahr" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_geaendert_am_jahr(tmp_path, capsys):
+    """Gewicht-pro-Aenderungs-Jahr-Block listet die schwersten Pflege-Jahrgaenge."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpgj.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0),
+            ("OBJ_0002", "2025-04-01 14:00:00", 250.0),
+            ("OBJ_0003", "2026-03-01 08:00:00", 50.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Aenderungs-Jahr (g):" in out
+    block = out.split("Gewicht pro Aenderungs-Jahr (g):", 1)[1]
+    assert block.index("2024") < block.index("2025") < block.index("2026")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_geaendert_am_jahr_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Aenderungs-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpgj0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-05-13 09:00:00"),
+         ("OBJ_0002", "2025-04-01 14:00:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Aenderungs-Jahr" not in out
+
+
+def test_json_ausgabe_enthaelt_wert_und_gewicht_pro_geaendert_am_jahr(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt beide neuen Aenderungs-Jahr-Aggregate."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgj_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Gewicht_g) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0, 100.0),
+            ("OBJ_0002", "2025-04-01 14:00:00", 100.0, 50.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert "wert_pro_geaendert_am_jahr" in payload
+    assert "gewicht_pro_geaendert_am_jahr" in payload
+    assert payload["wert_pro_geaendert_am_jahr"] == [
+        ["2024", 1000.0], ["2025", 100.0],
+    ]
+    assert payload["gewicht_pro_geaendert_am_jahr"] == [
+        ["2024", 100.0], ["2025", 50.0],
+    ]
+
+
 def test_text_ausgabe_zeigt_wert_pro_erstellt_am_monat(tmp_path, capsys):
     """Wert-pro-Erfassungs-Monat-Block listet Indoor-Erfassungs-Spitzen wertlich.
 

@@ -976,6 +976,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Erfassungs-Jahr (g):"]
         for jahr, gewicht in st.gewicht_pro_erstellt_am_jahr[:top]:
             lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_geaendert_am_jahr:
+        # Aenderungs-Achse: welcher Pflege-Jahrgang traegt wertlich am meisten
+        # zur letzten Datenpflege bei? Vervollstaendigt das Zeit-Trio neben
+        # Fund- (wert_pro_funddatum_jahr) und Erfassungs-Achse
+        # (wert_pro_erstellt_am_jahr) auf die dritte Zeit-Achse aus dem
+        # Spannen-Trio. Bei nie-aktualisierten Alt-Eintraegen konvergiert
+        # die Spitze auf den Erfassungs-Jahrgang; bei aktiv gepflegten
+        # Stuecken driftet sie in das aktuelle Pflege-Jahr.
+        lines += ["", "Wert pro Aenderungs-Jahr (CHF):"]
+        for jahr, wert in st.wert_pro_geaendert_am_jahr[:top]:
+            lines.append(f"  {jahr:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_geaendert_am_jahr:
+        # Spiegelbild Gewicht: in welchem Pflege-Jahr liegt die schwerste
+        # zuletzt redaktionell beruehrte Masse? Komplementaer zu
+        # wert_pro_geaendert_am_jahr, um die Wert/Gewicht-Entkopplung auch
+        # auf der Aenderungs-Achse sichtbar zu machen.
+        lines += ["", "Gewicht pro Aenderungs-Jahr (g):"]
+        for jahr, gewicht in st.gewicht_pro_geaendert_am_jahr[:top]:
+            lines.append(f"  {jahr:40s} {gewicht:>12,.1f}")
     if st.wert_pro_funddatum_jahrzehnt:
         # Dekaden-Sicht des Sammlungswerts: groberes Raster gegen Einzeljahr-
         # Rauschen. Komplementaer zu by_funddatum_jahrzehnt (Anzahl) und
@@ -1171,7 +1190,9 @@ def main(argv: list[str] | None = None) -> int:
             top_wert_funddatum_jahr=args.top,
             top_gewicht_funddatum_jahr=args.top,
             top_wert_erstellt_am_jahr=args.top,
-            top_gewicht_erstellt_am_jahr=args.top)
+            top_gewicht_erstellt_am_jahr=args.top,
+            top_wert_geaendert_am_jahr=args.top,
+            top_gewicht_geaendert_am_jahr=args.top)
     finally:
         conn.close()
     if args.json:

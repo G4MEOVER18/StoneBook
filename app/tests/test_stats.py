@@ -1032,6 +1032,118 @@ def test_gewicht_pro_erstellt_am_jahr_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_geaendert_am_jahr_aus_seed_db(tmp_path):
+    """Wertsumme pro geaendert_am-Jahr, absteigend; vervollstaendigt das Zeit-Trio.
+
+    Aenderungs-Achse: zeigt, in welchem Pflege-Jahr wertlich am meisten
+    redaktionell angefasst wurde - unterscheidet sich strukturell von
+    wert_pro_erstellt_am_jahr bei nachgepflegten Stuecken, deren
+    geaendert_am vom urspruenglichen Erfassungs-Jahr abdriftet.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgj.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # 2024 (1000) - nie nachgepflegt nach Erfassung
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0, None),
+            # 2025 zwei Stuecke -> 300
+            ("OBJ_0002", "2025-04-01 14:00:00", 100.0, 200.0),
+            ("OBJ_0003", "2025-09-15 10:00:00", None, None),     # 0
+            # 2026 drei Stuecke -> 300 (Tie-Break: chronologisch nach 2025)
+            ("OBJ_0004", "2026-03-01 08:00:00", 100.0, None),
+            ("OBJ_0005", "2026-07-10 11:30:00", 100.0, None),
+            ("OBJ_0006", "2026-11-30 16:00:00", 100.0, None),
+            # 2027 ohne Wert -> faellt raus
+            ("OBJ_0007", "2027-01-01 09:00:00", None, None),
+            # Ungueltige/leere geaendert_am -> ignoriert
+            ("OBJ_0008", "", 999.0, None),
+            ("OBJ_0009", None, 999.0, None),
+            ("OBJ_0010", "kaputt", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # 2024 (1000) > 2025 (300) == 2026 (300) -> Tie-Break aufsteigend nach Jahr.
+    assert st.wert_pro_geaendert_am_jahr == [
+        ("2024", 1000.0),
+        ("2025", 300.0),
+        ("2026", 300.0),
+    ]
+    assert st.as_dict()["wert_pro_geaendert_am_jahr"] == [
+        ("2024", 1000.0), ("2025", 300.0), ("2026", 300.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_geaendert_am_jahr_limit(tmp_path):
+    """top_wert_geaendert_am_jahr begrenzt die Listenlaenge; behalten die Top-N."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgj_lim.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh) VALUES (?,?,?)",
+        [(f"OBJ_{i:04d}", f"20{i:02d}-01-01 12:00:00", float(i)) for i in range(1, 8)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_geaendert_am_jahr=3)
+    assert len(st.wert_pro_geaendert_am_jahr) == 3
+    werte = [w for _, w in st.wert_pro_geaendert_am_jahr]
+    assert werte == [7.0, 6.0, 5.0]
+    c.close()
+
+
+def test_wert_pro_geaendert_am_jahr_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_jahr == []
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_jahr_aus_seed_db(tmp_path):
+    """Gewichtsumme pro geaendert_am-Jahr; NULL/0 zaehlen nicht, kaputte Stempel ignoriert.
+
+    Spiegelt gewicht_pro_erstellt_am_jahr auf die Aenderungs-Achse; bei
+    nie-aktualisierten Alt-Eintraegen konvergieren beide Aggregate.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgj.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?,?,?)",
+        [
+            ("OBJ_0001", "2024-05-13 09:00:00", 1000.0),
+            ("OBJ_0002", "2025-04-01 14:00:00", 100.0),
+            ("OBJ_0003", "2025-09-15 10:00:00", 150.0),   # 2025 total 250
+            ("OBJ_0004", "2026-03-01 08:00:00", 50.0),
+            ("OBJ_0005", "2026-07-10 11:30:00", None),    # NULL -> ignoriert
+            ("OBJ_0006", "2026-11-30 16:00:00", 0.0),     # 0 -> ignoriert
+            # Kaputte Stempel werden ignoriert
+            ("OBJ_0007", "kaputt", 9999.0),
+            ("OBJ_0008", None, 9999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_pro_geaendert_am_jahr == [
+        ("2024", 1000.0),
+        ("2025", 250.0),
+        ("2026", 50.0),
+    ]
+    assert st.as_dict()["gewicht_pro_geaendert_am_jahr"] == [
+        ("2024", 1000.0), ("2025", 250.0), ("2026", 50.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_jahr_leer(tmp_path):
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_geaendert_am_jahr == []
+    c.close()
+
+
 def test_wert_pro_erstellt_am_monat_aus_seed_db(tmp_path):
     """Wertsumme pro erstellt_am-Monat aggregiert ueber alle Jahre.
 

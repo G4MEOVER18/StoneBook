@@ -118,6 +118,7 @@ class Statistik:
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -141,6 +142,7 @@ class Statistik:
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -1195,6 +1197,9 @@ class Statistik:
             "wert_pro_erstellt_am_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_erstellt_am_monat
             ],
+            "wert_pro_geaendert_am_jahr": [
+                (j, round(w, 2)) for j, w in self.wert_pro_geaendert_am_jahr
+            ],
             "wert_pro_seltenheit_global": [
                 (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_global
             ],
@@ -1263,6 +1268,9 @@ class Statistik:
             ],
             "gewicht_pro_erstellt_am_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_erstellt_am_monat
+            ],
+            "gewicht_pro_geaendert_am_jahr": [
+                (j, round(g, 2)) for j, g in self.gewicht_pro_geaendert_am_jahr
             ],
             "gewicht_pro_seltenheit_global": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_global
@@ -2011,6 +2019,44 @@ def _sum_by_erstellt_am_jahr(conn: sqlite3.Connection, value_sql: str,
     return [(r["k"], float(r["w"])) for r in conn.execute(sql, (int(limit),)).fetchall()]
 
 
+def _sum_by_geaendert_am_jahr(conn: sqlite3.Connection, value_sql: str,
+                              limit: int,
+                              extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``geaendert_am``-Jahr.
+
+    Spiegelt :func:`_sum_by_erstellt_am_jahr` auf die Aenderungs-Achse:
+    nicht "wann wurde digitalisiert" (Erst-Erfassung), sondern "wann
+    wurde zuletzt redaktionell angefasst". Komplementaer zu
+    :func:`_count_geaendert_am_jahr` (Anzahl) und zu
+    :func:`_sum_by_erstellt_am_jahr` (Wert/Gewicht je Erfassungs-Jahr) -
+    macht Pflege-Wellen wertlich/gewichtsmaessig sichtbar (z.B. ein
+    Neu-Klassifizierungs-Durchgang in einem Jahr, der eine Wert-Spitze
+    fern vom urspruenglichen Erfassungs-Zeitpunkt erzeugt). Wert/Gewicht
+    pro geaendert_am unterscheidet sich strukturell von Wert/Gewicht
+    pro erstellt_am bei nie-aktualisierten Alt-Eintraegen, deren
+    geaendert_am identisch zur erstellt_am bleibt (im _now()-Pfad
+    identische Strings) - dort konvergieren die beiden Aggregate auf
+    denselben Wert; bei nachgepflegten Stuecken driftet die Pflege-
+    Spitze vom urspruenglichen Erfassungs-Jahr weg.
+
+    Wie bei :func:`_sum_by_erstellt_am_jahr` zaehlen nur Eintraege mit
+    vierstelligem Jahres-Praefix; kaputte Stempel und NULL/leer bleiben
+    aussen vor. Top-N absteigend nach Summe, Tie-Break aufsteigend
+    nach Jahr (analog zu allen drei Zeit-Achsen-Helpern).
+    """
+    where = ("geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+             "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT substr(geaendert_am, 1, 4) AS k, SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY k HAVING w > 0 "
+        f"ORDER BY w DESC, k ASC LIMIT ?"
+    )
+    return [(r["k"], float(r["w"])) for r in conn.execute(sql, (int(limit),)).fetchall()]
+
+
 def _sum_by_funddatum_jahr(conn: sqlite3.Connection, value_sql: str,
                            limit: int,
                            extra_where: str = "") -> list[tuple[str, float]]:
@@ -2070,7 +2116,9 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert_funddatum_jahr: int = 10,
                        top_gewicht_funddatum_jahr: int = 10,
                        top_wert_erstellt_am_jahr: int = 10,
-                       top_gewicht_erstellt_am_jahr: int = 10) -> Statistik:
+                       top_gewicht_erstellt_am_jahr: int = 10,
+                       top_wert_geaendert_am_jahr: int = 10,
+                       top_gewicht_geaendert_am_jahr: int = 10) -> Statistik:
     """Berechnet alle Kennzahlen in einer Sammlung von SQL-Aggregaten."""
     st = Statistik()
     st.objekte_total = conn.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
@@ -3135,6 +3183,20 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         conn, wert_sql, top_wert_erstellt_am_jahr)
     st.gewicht_pro_erstellt_am_jahr = _sum_by_erstellt_am_jahr(
         conn, "Gewicht_g", top_gewicht_erstellt_am_jahr,
+        extra_where=gewicht_where)
+    # Aenderungs-Achse: wieviel Wert/Gewicht ist pro Pflege-Jahr in der
+    # Sammlung zuletzt redaktionell beruehrt worden? Vervollstaendigt die
+    # paarweise Wert/Gewicht-Aggregation auf der dritten Zeit-Achse neben
+    # wert_/gewicht_pro_funddatum_jahr (Fund) und wert_/gewicht_pro_erstellt_
+    # am_jahr (Erfassung). Bei nie-aktualisierten Alt-Eintraegen konvergiert
+    # die Aenderungs-Spitze auf den Erfassungs-Jahrgang (geaendert_am ==
+    # erstellt_am im _now()-Pfad); bei aktiv gepflegten Stuecken driftet sie
+    # in das aktuelle Pflege-Jahr ab und beziffert damit den wertlichen
+    # Schwerpunkt der letzten Datenpflege-Aktivitaet.
+    st.wert_pro_geaendert_am_jahr = _sum_by_geaendert_am_jahr(
+        conn, wert_sql, top_wert_geaendert_am_jahr)
+    st.gewicht_pro_geaendert_am_jahr = _sum_by_geaendert_am_jahr(
+        conn, "Gewicht_g", top_gewicht_geaendert_am_jahr,
         extra_where=gewicht_where)
     # Erfassungs-Saison-Ertrag: welcher Monat des Jahres bringt ueber alle Jahre
     # den hoechsten Erfassungs-Wert/-Masse-Eintrag? Komplementaer zu
