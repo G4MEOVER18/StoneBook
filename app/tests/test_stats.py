@@ -5714,3 +5714,77 @@ def test_koordinaten_bbox_nur_freitext_fundorte(tmp_path):
     assert st.objekte_mit_koordinaten == 0
     assert st.koordinaten_bbox is None
     c.close()
+
+
+def test_koordinaten_zentrum_aus_seed_db(tmp_path):
+    """Arithmetisches Mittel von Lat/Lon ueber alle geocoded Fundort-Eintraege -
+    geometrische Schwerpunkts-Achse zur Extent-Achse koordinaten_bbox: waehrend
+    die Box die aeusseren Grenzen beziffert, gibt das Zentrum den Schwerpunkt
+    der Sammlung an. Natuerlicher Default-Mittelpunkt fuer die K-NN-Sicht
+    (list_objects_nearest). Freitext-only-Eintraege und NULL bleiben aus dem
+    Mittel - spiegelt die objekte_mit_koordinaten/bbox-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "centroid.sqlite3")
+    # Drei geocoded Schweiz-Stuecke mit klaren Mittelwerten:
+    # lats: 46.0, 47.0, 48.0 -> Mittel 47.0
+    # lons: 7.0, 8.0, 9.0 -> Mittel 8.0
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+            ("OBJ_0004", "Berner Oberland"),   # freitext-only, ignoriert
+            ("OBJ_0005", None),                # ohne Fundort, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_zentrum is not None
+    lat_c, lon_c = st.koordinaten_zentrum
+    assert lat_c == pytest.approx(47.0)
+    assert lon_c == pytest.approx(8.0)
+    # Zentrum liegt per Konstruktion innerhalb der Bounding-Box (Mittelwert
+    # ueber Min/Max-eingeschlossene Werte), spiegelt die geometrische
+    # Grundeigenschaft des arithmetischen Mittels.
+    assert st.koordinaten_bbox is not None
+    lat_min, lat_max, lon_min, lon_max = st.koordinaten_bbox
+    assert lat_min <= lat_c <= lat_max
+    assert lon_min <= lon_c <= lon_max
+    # as_dict serialisiert das Zentrum als JSON-taugliche Liste statt Tuple.
+    d = st.as_dict()
+    assert d["koordinaten_zentrum"] == [pytest.approx(47.0), pytest.approx(8.0)]
+    c.close()
+
+
+def test_koordinaten_zentrum_leere_db(tmp_path):
+    """Leere DB: koordinaten_zentrum ist None (kein Wertegrund fuer Mittelwert) -
+    spiegelt die koordinaten_bbox-Konvention bei leerer Geocoding-Subsammlung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_zentrum is None
+    assert st.as_dict()["koordinaten_zentrum"] is None
+    c.close()
+
+
+def test_koordinaten_zentrum_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert das Zentrum auf das Stueck
+    selbst (lat_zentrum == lat_einzig, lon_zentrum == lon_einzig). Konsistent
+    zur Box-Konvention (Punkt-Box bei einem geocoded-Stueck) und zur
+    arithmetischen Mittelwert-Definition ueber einen einzelnen Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_zentrum is not None
+    lat_c, lon_c = st.koordinaten_zentrum
+    assert lat_c == pytest.approx(47.3769)
+    assert lon_c == pytest.approx(8.5417)
+    c.close()

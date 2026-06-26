@@ -101,6 +101,22 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
             f"Koordinaten-Spanne:    "
             f"lat {lat_min:.4f}..{lat_max:.4f}, "
             f"lon {lon_min:.4f}..{lon_max:.4f}")
+    if st.koordinaten_zentrum is not None:
+        # Koordinaten-Zentrum: arithmetischer Schwerpunkt aller geocoded
+        # Fundort-Eintraege - geometrische Schwerpunkts-Achse zur Extent-
+        # Achse Koordinaten-Spanne. Beantwortet "wo liegt der Schwerpunkt
+        # meiner Sammlung?" und ist die natuerliche Default-Wahl fuer den
+        # Mittelpunkt der list_objects_nearest-Sicht ("welche N Stuecke
+        # liegen meinem Sammlungs-Schwerpunkt am naechsten?"). Steht direkt
+        # unter der Koordinaten-Spanne, weil beide Achsen die gleiche
+        # geografische Aggregations-Sicht bedienen (Extent + Centroid =
+        # vollstaendige geografische Beschreibung). 4 Nachkomma-Stellen
+        # spiegeln die Box-Notation (~11 m Aufloesung, ausreichend fuer
+        # Fundort-Genauigkeit).
+        lat_c, lon_c = st.koordinaten_zentrum
+        lines.append(
+            f"Koordinaten-Zentrum:   "
+            f"lat {lat_c:.4f}, lon {lon_c:.4f}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

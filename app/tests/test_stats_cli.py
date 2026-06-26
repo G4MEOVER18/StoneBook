@@ -4307,3 +4307,75 @@ def test_json_ausgabe_enthaelt_koordinaten_bbox(tmp_path, capsys):
         pytest.approx(8.5417),
         pytest.approx(9.84),
     ]
+
+
+def test_text_ausgabe_zeigt_koordinaten_zentrum(tmp_path, capsys):
+    """Koordinaten-Zentrum-Block (lat A, lon B) erscheint direkt unter dem
+    Koordinaten-Spannen-Block - geometrische Schwerpunkts-Achse zur Extent-
+    Achse, beide gemeinsam beschreiben die Sammlung geografisch vollstaendig
+    (wo liegt sie, wie weit reicht sie). 4 Nachkomma-Stellen spiegeln die
+    Box-Notation."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "centroid.sqlite3"
+    c = open_db(db_file)
+    # Drei Punkte mit klarem Mittelwert: lat-Mittel 47.0, lon-Mittel 8.0.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten-Zentrum:" in out
+    assert "lat 47.0000, lon 8.0000" in out
+    # Reihenfolge: Zentrum direkt unter Koordinaten-Spanne (zwei
+    # zusammengehoerige geografische Aggregations-Achsen).
+    spanne_pos = out.index("Koordinaten-Spanne:")
+    zentrum_pos = out.index("Koordinaten-Zentrum:")
+    assert spanne_pos < zentrum_pos
+
+
+def test_text_ausgabe_zeigt_kein_koordinaten_zentrum_ohne_geocoded(tmp_path, capsys):
+    """Sammlung ohne geocoded-Eintraege: Koordinaten-Zentrum-Block bleibt aus
+    (koordinaten_zentrum None), spiegelt das Verhalten der Koordinaten-Spanne
+    bei nur-Freitext-Fundorten."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "freitext.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten-Zentrum:" not in out
+
+
+def test_json_ausgabe_enthaelt_koordinaten_zentrum(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt koordinaten_zentrum als Liste [lat, lon] (JSON
+    kennt keine Tuples, daher Liste). Bei leerer Geocoding-Subsammlung
+    serialisiert das Feld als null."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "centroid.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["koordinaten_zentrum"] == [pytest.approx(47.0), pytest.approx(8.0)]

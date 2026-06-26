@@ -85,6 +85,7 @@ class Statistik:
     geaendert_am_frueheste: str | None = None
     geaendert_am_spaeteste: str | None = None
     koordinaten_bbox: tuple[float, float, float, float] | None = None
+    koordinaten_zentrum: tuple[float, float] | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1099,6 +1100,10 @@ class Statistik:
             "koordinaten_bbox": (
                 list(self.koordinaten_bbox)
                 if self.koordinaten_bbox is not None else None
+            ),
+            "koordinaten_zentrum": (
+                list(self.koordinaten_zentrum)
+                if self.koordinaten_zentrum is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -2560,6 +2565,36 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         lats = [lat for lat, _ in geocoded_coords]
         lons = [lon for _, lon in geocoded_coords]
         st.koordinaten_bbox = (min(lats), max(lats), min(lons), max(lons))
+        # koordinaten_zentrum: arithmetisches Mittel von Lat und Lon ueber alle
+        # geocoded Fundort-Eintraege - geometrische Schwerpunkts-Achse zur
+        # Extent-Achse koordinaten_bbox: waehrend die Box die aeusseren Grenzen
+        # der Sammlung beziffert, gibt das Zentrum den Schwerpunkt an. Beide
+        # Achsen gemeinsam beschreiben die Sammlung geografisch vollstaendig
+        # (wo liegt sie, wie weit reicht sie) und ergaenzen sich symmetrisch.
+        # Beantwortet die natuerliche Vorfrage zur list_objects_nearest-Sicht:
+        # waehrend list_objects_nearest die N nahesten Stuecke zu einem
+        # vom Caller vorgegebenen Mittelpunkt liefert, ist das Zentrum die
+        # natuerliche Default-Wahl fuer den Mittelpunkt selbst ("welche
+        # Stuecke liegen meinem Sammlungs-Schwerpunkt am naechsten?" als
+        # natuerliche Start-Sicht bei der Bestand-Erkundung). Reuse-Pfad
+        # spiegelt die Bounding-Box-Berechnung exakt - dieselbe lats/lons-
+        # Liste wird einmal fuer min/max (Box) und einmal fuer den Mittelwert
+        # (Zentrum) verwendet, kein zweiter Pass und kein zweiter
+        # parse_coordinates-Aufruf. Konvention: arithmetisches Mittel ohne
+        # Gewichtung nach Wert/Gewicht/Anzahl-Bildern - jedes geocoded-Stueck
+        # zaehlt gleich, spiegelt die Bounding-Box-Konvention (Min/Max
+        # ueber alle Stuecke, kein wert-gewichteter Schwerpunkt). Bei genau
+        # einem geocoded-Stueck kollabiert das Zentrum auf das Stueck selbst
+        # (lat_zentrum == lat_einzig, lon_zentrum == lon_einzig); bei null
+        # geocoded-Stuecken bleibt das Zentrum None - spiegelt die
+        # koordinaten_bbox-Konvention exakt. Datums-Grenze (lon ueber +/-180
+        # hinweg) wird nicht behandelt - ein arithmetisches Mittel ueber die
+        # +/-180-Linie hinweg liefert ein nicht-geodaetisches Antipoden-Mittel
+        # (z.B. lon -179 + lon +179 mittelt auf 0 statt richtigerweise +/-180),
+        # parallel zur entsprechenden Box-Einschraenkung (in der Praxis fuer
+        # Sammler-Daten irrelevant).
+        n = len(geocoded_coords)
+        st.koordinaten_zentrum = (sum(lats) / n, sum(lons) / n)
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).
