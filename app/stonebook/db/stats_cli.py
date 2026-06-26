@@ -133,6 +133,24 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Koordinaten-Radius:    "
             f"{st.koordinaten_radius_max_km:.1f} km")
+    if st.koordinaten_radius_durchschnitt_km is not None:
+        # Koordinaten-Radius Ø: arithmetisches Mittel der Haversine-Distanzen
+        # vom Zentrum zu jedem geocoded Stueck - robuste "typische Streuung"-
+        # Achse zur ausreisser-dominierten Max-Achse (Koordinaten-Radius).
+        # Waehrend Max die aeusserste Reichweite beziffert (ein einziger
+        # Ausreisser-Fund zieht die Max-Achse hoch), gibt der Durchschnitt
+        # die typische Distanz pro Stueck zum Schwerpunkt an. Die Differenz
+        # beider beziffert die Ausreisser-Schiefe: symmetrisch verteilte
+        # Sammlungen liegen mit Mittel nahe Max/2, stark ausreisser-dominierte
+        # Sammlungen liegen mit Mittel deutlich unter Max/2. Steht direkt
+        # unter dem Koordinaten-Radius (Max), weil Max und Durchschnitt das
+        # paarweise Aggregations-Paar (extrem vs. typisch) ueber dieselbe
+        # Streuungs-Verteilung bilden - spiegelt das Wert-/Gewicht-Max+Mittel-
+        # Paar in der CLI-Reihenfolge. 1 Nachkommastelle (~100 m Aufloesung)
+        # spiegelt die Max-Achsen-Notation.
+        lines.append(
+            f"Koordinaten-Radius Ø:  "
+            f"{st.koordinaten_radius_durchschnitt_km:.1f} km")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

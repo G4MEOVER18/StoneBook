@@ -5891,3 +5891,152 @@ def test_koordinaten_radius_max_km_nur_freitext_fundorte(tmp_path):
     assert st.koordinaten_radius_max_km is None
     assert st.as_dict()["koordinaten_radius_max_km"] is None
     c.close()
+
+
+def test_koordinaten_radius_durchschnitt_km_aus_seed_db(tmp_path):
+    """Arithmetisches Mittel der Haversine-Distanzen vom Zentrum zu jedem
+    geocoded Stueck - robuste "typische Streuung"-Achse zur ausreisser-
+    dominierten Max-Achse koordinaten_radius_max_km. Spiegelt das wert_
+    durchschnitt_chf / wert_max_chf-Paar auf die geografische Streuungs-
+    Achse: Mittel + Max = paarweise Aggregations-Sicht (typisch vs.
+    extrem) ueber dieselbe Verteilung."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_avg.sqlite3")
+    # Drei geocoded Schweiz-Stuecke wie im Max-Test: Mittel-Stueck am Zentrum
+    # (Distanz 0), zwei Eck-Stuecke mit symmetrischer Distanz (~136 km je).
+    # Mittel ueber {0, ~136, ~136} = ~91 km, Max bleibt ~136 km.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_durchschnitt_km is not None
+    # Erwarteter Mittelwert: Haversine-Distanzen vom Zentrum (47, 8) zu jedem
+    # Punkt - analytisch nachgerechnet.
+    earth_radius_km = 6371.0
+    lat_c_rad = math.radians(47.0)
+    lon_c_rad = math.radians(8.0)
+    dists: list[float] = []
+    for lat, lon in [(46.0, 7.0), (47.0, 8.0), (48.0, 9.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    expected = sum(dists) / 3
+    assert st.koordinaten_radius_durchschnitt_km == pytest.approx(expected)
+    # Mittel muss strikt unter Max liegen, weil mindestens ein Stueck am
+    # Zentrum sitzt (Distanz 0 zieht den Mittelwert unter den Max-Wert).
+    assert st.koordinaten_radius_durchschnitt_km < st.koordinaten_radius_max_km
+    assert st.koordinaten_radius_durchschnitt_km > 0.0
+    # Plausibilitaets-Spanne: zwei von drei Punkten ~136 km weg, einer auf
+    # dem Zentrum -> Mittel um 91 km.
+    assert 80.0 < st.koordinaten_radius_durchschnitt_km < 100.0
+    d = st.as_dict()
+    assert d["koordinaten_radius_durchschnitt_km"] == round(expected, 3)
+    c.close()
+
+
+def test_koordinaten_radius_durchschnitt_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_radius_durchschnitt_km ist None (kein Wertegrund
+    fuer Mittelwert) - spiegelt die koordinaten_radius_max_km/zentrum/bbox-
+    Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_avg.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_durchschnitt_km is None
+    assert st.as_dict()["koordinaten_radius_durchschnitt_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_durchschnitt_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabieren Max und Durchschnitt
+    beide auf 0.0 (Distanz vom Punkt zu sich selbst). Konsistent zur Max-
+    Konvention und zur Definition des arithmetischen Mittels ueber einen
+    einzelnen Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_avg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_durchschnitt_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_max_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_durchschnitt_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung mit nur Freitext-Fundorten (keine geocodeden Stuecke):
+    koordinaten_radius_durchschnitt_km ist None, obwohl objekte_mit_fundort > 0.
+    Spiegelt die koordinaten_radius_max_km-Konvention bei leerer Geocoding-
+    Subsammlung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_avg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_durchschnitt_km is None
+    assert st.as_dict()["koordinaten_radius_durchschnitt_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_durchschnitt_km_ausreisser_schiefe(tmp_path):
+    """Bei stark ausreisser-dominierten Sammlungen liegt der Durchschnitt
+    deutlich unter Max/2 - das ist die Kern-Eigenschaft, die das Mittel-
+    Paar zur Max-Achse aussagekraeftig macht. Neun Stuecke am Schweizer-
+    Schwerpunkt plus ein einzelner Skandinavien-Ausreisser: das Mittel
+    folgt nur leicht dem Ausreisser, sodass der Mittel-Wert nahe der
+    Cluster-Konzentration bleibt waehrend der Max-Wert vom Ausreisser
+    diktiert wird."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "schief.sqlite3")
+    rows = [
+        # Neun eng beisammenliegende Bern-Cluster-Stuecke (lat/lon-Streuung
+        # innerhalb der Stadt). Der Zentroid bewegt sich nur um ~1/10
+        # Richtung Oslo, sodass die Cluster-Punkte nahe am Zentrum bleiben.
+        ("OBJ_0001", "46.95, 7.45"),
+        ("OBJ_0002", "46.96, 7.45"),
+        ("OBJ_0003", "46.95, 7.46"),
+        ("OBJ_0004", "46.94, 7.45"),
+        ("OBJ_0005", "46.95, 7.44"),
+        ("OBJ_0006", "46.93, 7.47"),
+        ("OBJ_0007", "46.96, 7.48"),
+        ("OBJ_0008", "46.97, 7.43"),
+        ("OBJ_0009", "46.94, 7.46"),
+        # Ein einzelner Skandinavien-Ausreisser (Oslo).
+        ("OBJ_0010", "59.91, 10.75"),
+    ]
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_max_km is not None
+    assert st.koordinaten_radius_durchschnitt_km is not None
+    # Ausreisser-Schiefe: Durchschnitt deutlich unter Max/2, weil neun von
+    # zehn Stuecken nahe beim Schwerpunkt liegen und nur das eine Oslo-Stueck
+    # die Max-Achse hochzieht. Bei 9-zu-1-Verteilung liegt das Mittel
+    # rechnerisch bei ~Oslo_Distanz * 18 / 100 vs. Max bei ~Oslo_Distanz * 9 / 10,
+    # also Mittel / Max ~ 0.2.
+    assert (st.koordinaten_radius_durchschnitt_km
+            < st.koordinaten_radius_max_km / 2)
+    c.close()

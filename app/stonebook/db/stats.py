@@ -87,6 +87,7 @@ class Statistik:
     koordinaten_bbox: tuple[float, float, float, float] | None = None
     koordinaten_zentrum: tuple[float, float] | None = None
     koordinaten_radius_max_km: float | None = None
+    koordinaten_radius_durchschnitt_km: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1109,6 +1110,10 @@ class Statistik:
             "koordinaten_radius_max_km": (
                 round(self.koordinaten_radius_max_km, 3)
                 if self.koordinaten_radius_max_km is not None else None
+            ),
+            "koordinaten_radius_durchschnitt_km": (
+                round(self.koordinaten_radius_durchschnitt_km, 3)
+                if self.koordinaten_radius_durchschnitt_km is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -2626,12 +2631,44 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # as_dict serialisiert mit 3 Nachkommastellen (~1 m Aufloesung in km,
         # ausreichend fuer Sammler-Distanzen, vermeidet float-Rauschen jenseits
         # der parse_coordinates-Eingabe-Genauigkeit).
+        # koordinaten_radius_durchschnitt_km: arithmetisches Mittel der
+        # Haversine-Distanzen vom Zentrum zu jedem geocoded Stueck - robuste
+        # "typische Streuung"-Achse zur ausreisser-dominierten Max-Achse
+        # koordinaten_radius_max_km. Waehrend Max die aeusserste Reichweite
+        # beziffert (ein einziger Ausreisser-Fund irgendwo in Skandinavien
+        # zieht den Max-Radius einer sonst rein lokalen Schweizer Sammlung
+        # auf 1500 km hoch, ohne dass das typische Sammlungs-Bild widergespiegelt
+        # wird), gibt der Durchschnitt die typische Distanz pro Stueck zum
+        # Schwerpunkt an - die robustere "wie weit liegt das durchschnittliche
+        # Stueck vom Zentrum?"-Achse, die wenig anfaellig auf einzelne weit
+        # entfernte Stuecke ist. Die Differenz beider (Max - Durchschnitt)
+        # beziffert die Ausreisser-Schiefe: bei symmetrisch um den Schwerpunkt
+        # verteilten Stuecken liegt der Durchschnitt nahe Max/2 (gleichmaessige
+        # Streuung), bei stark ausreisser-dominierten Sammlungen liegt der
+        # Durchschnitt deutlich unter Max/2 (die meisten Stuecke konzentrieren
+        # sich nahe dem Schwerpunkt, einzelne weit entfernte ziehen den Max-
+        # Wert hoch). Spiegelt das wert_durchschnitt_chf / wert_max_chf-Paar
+        # und das gewicht_durchschnitt_g / gewicht_max_g-Paar auf die
+        # geografische Streuungs-Achse: Mittel + Max = paarweise Aggregations-
+        # Sicht (typisch vs. extrem) ueber dieselbe Wert-/Streuungs-Verteilung.
+        # Reuse-Pfad teilt die einmalige Haversine-Schleife mit dem Max-Pfad:
+        # wir summieren die Distanzen waehrend wir das Max suchen (ein einziger
+        # Pass ueber geocoded_coords, kein zweiter Pass und kein zweiter
+        # parse_coordinates-Aufruf). Bei genau einem geocoded-Stueck kollabieren
+        # Max und Durchschnitt beide auf 0.0 (Distanz vom Punkt zu sich selbst),
+        # konsistent zur Max-Konvention und zur Definition des arithmetischen
+        # Mittels ueber einen einzelnen Wert. Bei null geocoded-Stuecken bleibt
+        # der Durchschnitt None (kein Wertegrund fuer einen Mittelwert) -
+        # spiegelt die koordinaten_radius_max_km/zentrum/bbox-Konvention.
+        # as_dict serialisiert auf 3 Nachkommastellen (~1 m Aufloesung in km,
+        # spiegelt die Max-Serialisierung).
         import math as _math
         lat_c, lon_c = st.koordinaten_zentrum
         lat_c_rad = _math.radians(lat_c)
         lon_c_rad = _math.radians(lon_c)
         earth_radius_km = 6371.0
         max_dist = 0.0
+        sum_dist = 0.0
         for lat, lon in geocoded_coords:
             lat_rad = _math.radians(lat)
             lon_rad = _math.radians(lon)
@@ -2640,9 +2677,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             a = (_math.sin(dlat / 2) ** 2
                  + _math.cos(lat_c_rad) * _math.cos(lat_rad) * _math.sin(dlon / 2) ** 2)
             d = 2 * earth_radius_km * _math.asin(min(1.0, _math.sqrt(a)))
+            sum_dist += d
             if d > max_dist:
                 max_dist = d
         st.koordinaten_radius_max_km = max_dist
+        st.koordinaten_radius_durchschnitt_km = sum_dist / len(geocoded_coords)
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).
