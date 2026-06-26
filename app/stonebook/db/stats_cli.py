@@ -1080,6 +1080,27 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Erfassungs-Monat (g):"]
         for monat, gewicht in st.gewicht_pro_erstellt_am_monat:
             lines.append(f"  {monat:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_geaendert_am_monat:
+        # Aenderungs-Saison-Wertsicht: welcher Monat des Jahres bringt ueber
+        # alle Jahre den hoechsten Pflege-Wert? Vervollstaendigt das Monats-
+        # Trio neben Fund (wert_pro_funddatum_monat) und Erfassung
+        # (wert_pro_erstellt_am_monat) auf die dritte Zeit-Achse. Bei nie-
+        # aktualisierten Alt-Eintraegen konvergiert die Saison auf die
+        # Erfassungs-Saison; bei aktiv gepflegten Stuecken driftet sie in
+        # die aktuellen Pflege-Monate ab - typisch sichtbar bei einer
+        # Boersen-Nachpflege-Welle, die einen Wert-Spitzen-Monat fern von
+        # der urspruenglichen Erfassungs-Saison erzeugt.
+        lines += ["", "Wert pro Aenderungs-Monat (CHF):"]
+        for monat, wert in st.wert_pro_geaendert_am_monat:
+            lines.append(f"  {monat:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_geaendert_am_monat:
+        # Spiegelbild Gewicht: welcher Pflege-Monat traegt die schwerste
+        # Masse? Komplementaer zu wert_pro_geaendert_am_monat, um die Wert/
+        # Gewicht-Entkopplung auch auf der Aenderungs-Monats-Achse sichtbar
+        # zu machen.
+        lines += ["", "Gewicht pro Aenderungs-Monat (g):"]
+        for monat, gewicht in st.gewicht_pro_geaendert_am_monat:
+            lines.append(f"  {monat:40s} {gewicht:>12,.1f}")
     if st.wert_pro_seltenheit_global:
         # Rarity-Wert-Sicht: wo steckt der Sammlungswert in der globalen
         # Seltenheits-Verteilung (1..10)? Komplementaer zu by_seltenheit_global

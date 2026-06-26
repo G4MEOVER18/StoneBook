@@ -2293,6 +2293,145 @@ def test_json_ausgabe_enthaelt_wert_und_gewicht_pro_geaendert_am_jahrzehnt(tmp_p
     ]
 
 
+def test_text_ausgabe_zeigt_wert_pro_geaendert_am_monat(tmp_path, capsys):
+    """Wert-pro-Aenderungs-Monat-Block listet Pflege-Saison-Spitzen wertlich.
+
+    Spiegelt wert_pro_erstellt_am_monat auf die Aenderungs-Achse - die Spitzen
+    der letzten Pflege-Saison (Boersen-Nachpflege, Neu-Klassifizierungs-Welle)
+    tauchen hier sortiert auf.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00", 500.0),   # Januar 500
+            ("OBJ_0002", "2025-06-13 14:30:00", 200.0),   # Juni 200
+            ("OBJ_0003", "2026-08-21 16:00:00", 50.0),    # August 50
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Aenderungs-Monat (CHF):" in out
+    block = out.split("Wert pro Aenderungs-Monat (CHF):", 1)[1]
+    assert block.index("01") < block.index("06") < block.index("08")
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_geaendert_am_monat_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Aenderungs-Wert-Monat-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-01-15 09:00:00"),
+         ("OBJ_0002", "2025-06-13 14:30:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Aenderungs-Monat" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_geaendert_am_monat(tmp_path, capsys):
+    """Gewicht-pro-Aenderungs-Monat-Block listet die schwersten Pflege-Monate."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpgm.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00", 500.0),
+            ("OBJ_0002", "2025-06-13 14:30:00", 200.0),
+            ("OBJ_0003", "2026-08-21 16:00:00", 50.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Aenderungs-Monat (g):" in out
+    block = out.split("Gewicht pro Aenderungs-Monat (g):", 1)[1]
+    assert block.index("01") < block.index("06") < block.index("08")
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_geaendert_am_monat_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Aenderungs-Gewicht-Monat-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpgm0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [("OBJ_0001", "2024-01-15 09:00:00"),
+         ("OBJ_0002", "2025-06-13 14:30:00")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Aenderungs-Monat" not in out
+
+
+def test_text_ausgabe_geaendert_am_monat_block_folgt_auf_erstellt_am_monat(tmp_path, capsys):
+    """Aenderungs-Monats-Bloecke stehen direkt unter den Erfassungs-Monats-Bloecken.
+
+    Reihenfolge spiegelt compute_statistics: Funddatum-Monat -> Erfassungs-
+    Monat -> Aenderungs-Monat (Fund, Erfassung, Pflege) - spiegelt die
+    Reihenfolge der Jahres- und Jahrzehnt-Bloecke.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "ord_gam.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, geaendert_am, Wert_CHF_roh, Gewicht_g) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00", "2025-03-10 09:00:00", 100.0, 50.0),
+            ("OBJ_0002", "2025-06-13 14:30:00", "2026-07-19 14:30:00", 200.0, 100.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert (out.index("Wert pro Erfassungs-Monat (CHF):")
+            < out.index("Gewicht pro Erfassungs-Monat (g):")
+            < out.index("Wert pro Aenderungs-Monat (CHF):")
+            < out.index("Gewicht pro Aenderungs-Monat (g):"))
+
+
+def test_json_ausgabe_enthaelt_wert_und_gewicht_pro_geaendert_am_monat(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt beide neuen Aenderungs-Monats-Aggregate."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpgm_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Gewicht_g) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15 09:00:00", 500.0, 100.0),   # Januar
+            ("OBJ_0002", "2025-06-13 14:30:00", 200.0, 50.0),    # Juni
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert "wert_pro_geaendert_am_monat" in payload
+    assert "gewicht_pro_geaendert_am_monat" in payload
+    assert payload["wert_pro_geaendert_am_monat"] == [
+        ["01", 500.0], ["06", 200.0],
+    ]
+    assert payload["gewicht_pro_geaendert_am_monat"] == [
+        ["01", 100.0], ["06", 50.0],
+    ]
+
+
 def test_text_ausgabe_erstellt_am_jahrzehnt_block_folgt_auf_funddatum_jahrzehnt(tmp_path, capsys):
     """Erfassungs-Dekaden-Bloecke stehen direkt unter den Funddatum-Dekaden-Bloecken.
 
