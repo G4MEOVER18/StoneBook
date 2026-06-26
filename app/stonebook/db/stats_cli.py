@@ -117,6 +117,22 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Koordinaten-Zentrum:   "
             f"lat {lat_c:.4f}, lon {lon_c:.4f}")
+    if st.koordinaten_radius_max_km is not None:
+        # Koordinaten-Radius: maximale geodaetische Distanz vom Zentrum zu
+        # einem geocoded Stueck - Streuungs-Achse zum Extent (Koordinaten-
+        # Spanne) und Centroid (Koordinaten-Zentrum). Beziffert die
+        # geodaetische Reichweite der Sammlung vom Schwerpunkt aus und ist
+        # der natuerliche Default-Radius fuer list_objects_in_radius mit
+        # Zentrum als Mittelpunkt (kleinste Disk um den Schwerpunkt, die
+        # alle geocoded Stuecke umfasst). Steht direkt unter dem Koordinaten-
+        # Zentrum, weil Extent/Centroid/Spread konzeptionell zusammen die
+        # vollstaendige geografische Beschreibung der Sammlung bilden.
+        # 1 Nachkommastelle (~100 m Aufloesung) reicht fuer die Sammler-
+        # Sicht aus und vermeidet Schein-Genauigkeit jenseits der
+        # parse_coordinates-Eingabe-Genauigkeit.
+        lines.append(
+            f"Koordinaten-Radius:    "
+            f"{st.koordinaten_radius_max_km:.1f} km")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

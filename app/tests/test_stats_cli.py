@@ -4379,3 +4379,77 @@ def test_json_ausgabe_enthaelt_koordinaten_zentrum(tmp_path, capsys):
     main(["--db", str(db_file), "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert payload["koordinaten_zentrum"] == [pytest.approx(47.0), pytest.approx(8.0)]
+
+
+def test_text_ausgabe_zeigt_koordinaten_radius(tmp_path, capsys):
+    """Koordinaten-Radius-Block (X.Y km) erscheint direkt unter dem Koordinaten-
+    Zentrum-Block - Streuungs-Achse zum Extent (Koordinaten-Spanne) und Centroid
+    (Koordinaten-Zentrum). Extent/Centroid/Spread beschreiben gemeinsam die
+    Sammlung geografisch vollstaendig. Format: 'X.Y km' mit 1 Nachkommastelle
+    (~100 m Aufloesung)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "radius.sqlite3"
+    c = open_db(db_file)
+    # Drei Punkte wie im Zentrum-Test (Mittel 47.0/8.0; OBJ_0002 am Zentrum,
+    # OBJ_0001/OBJ_0003 als Eck-Stuecke mit jeweils ~136 km Distanz).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten-Radius:" in out
+    # Reihenfolge: Radius direkt unter Koordinaten-Zentrum (Extent + Centroid
+    # + Spread sind die drei zusammengehoerigen geografischen Aggregations-
+    # Achsen).
+    zentrum_pos = out.index("Koordinaten-Zentrum:")
+    radius_pos = out.index("Koordinaten-Radius:")
+    assert zentrum_pos < radius_pos
+
+
+def test_text_ausgabe_zeigt_kein_koordinaten_radius_ohne_geocoded(tmp_path, capsys):
+    """Sammlung ohne geocoded-Eintraege: Koordinaten-Radius-Block bleibt aus
+    (koordinaten_radius_max_km None), spiegelt das Verhalten der Koordinaten-
+    Spanne/Zentrum bei nur-Freitext-Fundorten."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "freitext.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koordinaten-Radius:" not in out
+
+
+def test_json_ausgabe_enthaelt_koordinaten_radius(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt koordinaten_radius_max_km als float (auf 3
+    Nachkommastellen gerundet). Bei leerer Geocoding-Subsammlung serialisiert
+    das Feld als null."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "radius.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["koordinaten_radius_max_km"], float)
+    assert payload["koordinaten_radius_max_km"] > 0.0

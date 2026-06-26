@@ -5788,3 +5788,106 @@ def test_koordinaten_zentrum_bei_einem_geocoded(tmp_path):
     assert lat_c == pytest.approx(47.3769)
     assert lon_c == pytest.approx(8.5417)
     c.close()
+
+
+def test_koordinaten_radius_max_km_aus_seed_db(tmp_path):
+    """Maximale geodaetische Distanz vom Zentrum zu einem geocoded Stueck -
+    Streuungs-Achse zum Extent (koordinaten_bbox) und Centroid (koordinaten_
+    zentrum). Beziffert die geodaetische Reichweite der Sammlung vom
+    Schwerpunkt aus und ist der natuerliche Default-Radius fuer
+    list_objects_in_radius mit Zentrum als Mittelpunkt. Freitext-only-
+    Eintraege und NULL bleiben aus dem Max - spiegelt die objekte_mit_
+    koordinaten/bbox/zentrum-Konvention."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius.sqlite3")
+    # Drei geocoded Schweiz-Stuecke wie im Zentrum-Test:
+    # lats: 46.0, 47.0, 48.0 -> Mittel 47.0
+    # lons: 7.0, 8.0, 9.0 -> Mittel 8.0
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_max_km is not None
+    # OBJ_0002 liegt exakt am Zentrum -> Distanz 0; OBJ_0001 und OBJ_0003
+    # liegen symmetrisch zum Zentrum, der Max bestimmt sich aus einem der
+    # beiden Eck-Stuecke. Haversine-Distanz von (47.0, 8.0) zu (46.0, 7.0):
+    earth_radius_km = 6371.0
+    lat_c_rad = math.radians(47.0)
+    lat_rad = math.radians(46.0)
+    dlat = lat_rad - lat_c_rad
+    dlon = math.radians(7.0) - math.radians(8.0)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+    expected = 2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a)))
+    assert st.koordinaten_radius_max_km == pytest.approx(expected)
+    # Radius muss positiv sein, weil mindestens ein Stueck nicht am Zentrum
+    # liegt (Eck-Stuecke sind 1 Grad lat + 1 Grad lon vom Zentrum entfernt).
+    assert st.koordinaten_radius_max_km > 0.0
+    # Radius bleibt in plausibler Groessenordnung (~100 km fuer 1 Grad
+    # Lat/Lon-Versatz in der Naehe der Schweiz).
+    assert 100.0 < st.koordinaten_radius_max_km < 200.0
+    d = st.as_dict()
+    assert d["koordinaten_radius_max_km"] == round(expected, 3)
+    c.close()
+
+
+def test_koordinaten_radius_max_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_radius_max_km ist None (kein Wertegrund fuer
+    Max-Distanz) - spiegelt die koordinaten_bbox/_zentrum-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_max_km is None
+    assert st.as_dict()["koordinaten_radius_max_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_max_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert das Zentrum auf das Stueck
+    selbst und der Radius auf 0.0 (Distanz vom Punkt zu sich selbst).
+    Konsistent zur Punkt-Box-Konvention (lat_min == lat_max) und zur
+    Definition des max-Operators ueber einen einzelnen Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_max_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_max_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung mit nur Freitext-Fundorten (keine geocodeden Stuecke):
+    koordinaten_radius_max_km ist None, obwohl objekte_mit_fundort > 0.
+    Spiegelt die koordinaten_bbox/_zentrum-Konvention bei leerer Geocoding-
+    Subsammlung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_fundort == 2
+    assert st.objekte_mit_koordinaten == 0
+    assert st.koordinaten_radius_max_km is None
+    assert st.as_dict()["koordinaten_radius_max_km"] is None
+    c.close()

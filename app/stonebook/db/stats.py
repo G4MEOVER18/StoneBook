@@ -86,6 +86,7 @@ class Statistik:
     geaendert_am_spaeteste: str | None = None
     koordinaten_bbox: tuple[float, float, float, float] | None = None
     koordinaten_zentrum: tuple[float, float] | None = None
+    koordinaten_radius_max_km: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1104,6 +1105,10 @@ class Statistik:
             "koordinaten_zentrum": (
                 list(self.koordinaten_zentrum)
                 if self.koordinaten_zentrum is not None else None
+            ),
+            "koordinaten_radius_max_km": (
+                round(self.koordinaten_radius_max_km, 3)
+                if self.koordinaten_radius_max_km is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -2595,6 +2600,49 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # Sammler-Daten irrelevant).
         n = len(geocoded_coords)
         st.koordinaten_zentrum = (sum(lats) / n, sum(lons) / n)
+        # koordinaten_radius_max_km: maximale geodaetische Distanz vom Zentrum
+        # zu einem geocoded Stueck - Streuungs-Achse zum Extent (koordinaten_bbox)
+        # und Centroid (koordinaten_zentrum). Waehrend die Box die rechteckige
+        # Aussengrenze beziffert (achsenparallel in Lat/Lon, in der Naehe der
+        # Pole stark verzerrt) und das Zentrum den Schwerpunkt angibt, beziffert
+        # der Radius die maximale geodaetische Ausdehnung der Sammlung vom
+        # Schwerpunkt aus - die Sphaeren-distanz statt der Lat/Lon-Spanne.
+        # Beantwortet die natuerliche Vorfrage zur list_objects_in_radius-
+        # Sicht: waehrend list_objects_in_radius die Stuecke in einer vom
+        # Caller vorgegebenen Disk auflistet, ist die Disk um (zentrum,
+        # radius_max_km) die natuerliche "alles dabei"-Disk - der kleinste
+        # Radius um den Schwerpunkt, der die gesamte Sammlung umfasst (ohne
+        # dass der Caller die Disk-Groesse blind raten muss). Reuse-Pfad
+        # teilt geocoded_coords und das berechnete Zentrum exakt - dieselbe
+        # Liste, dieselbe Haversine-Formel (Erd-Sphaere mit Radius 6371.0 km)
+        # wie in repository.list_objects_in_radius/_nearest, ein einziger
+        # Pass ueber die Koordinaten ohne erneutes parse_coordinates. Bei
+        # genau einem geocoded-Stueck kollabiert das Zentrum auf das Stueck
+        # selbst und der Radius auf 0.0 (Distanz vom Punkt zu sich selbst) -
+        # konsistent zur Punkt-Box-Konvention (lat_min == lat_max) und zur
+        # Definition des max-Operators ueber einen einzelnen Wert. Bei null
+        # geocoded-Stuecken bleibt der Radius None (kein Wertegrund fuer eine
+        # max-Distanz) - spiegelt die koordinaten_bbox/_zentrum-Konvention.
+        # as_dict serialisiert mit 3 Nachkommastellen (~1 m Aufloesung in km,
+        # ausreichend fuer Sammler-Distanzen, vermeidet float-Rauschen jenseits
+        # der parse_coordinates-Eingabe-Genauigkeit).
+        import math as _math
+        lat_c, lon_c = st.koordinaten_zentrum
+        lat_c_rad = _math.radians(lat_c)
+        lon_c_rad = _math.radians(lon_c)
+        earth_radius_km = 6371.0
+        max_dist = 0.0
+        for lat, lon in geocoded_coords:
+            lat_rad = _math.radians(lat)
+            lon_rad = _math.radians(lon)
+            dlat = lat_rad - lat_c_rad
+            dlon = lon_rad - lon_c_rad
+            a = (_math.sin(dlat / 2) ** 2
+                 + _math.cos(lat_c_rad) * _math.cos(lat_rad) * _math.sin(dlon / 2) ** 2)
+            d = 2 * earth_radius_km * _math.asin(min(1.0, _math.sqrt(a)))
+            if d > max_dist:
+                max_dist = d
+        st.koordinaten_radius_max_km = max_dist
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).
