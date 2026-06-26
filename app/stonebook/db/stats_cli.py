@@ -151,6 +151,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Koordinaten-Radius Ø:  "
             f"{st.koordinaten_radius_durchschnitt_km:.1f} km")
+    if st.koordinaten_radius_median_km is not None:
+        # Koordinaten-Radius Median: ausreisser-robusteste der drei Streuungs-
+        # Achsen (Max + Mittel + Median). Waehrend Mittel anteilig dem Aus-
+        # reisser folgt, liegt der Median schlicht in der Mitte der sortierten
+        # Distanzen - bei 9 Bern-Stuecken plus 1 Oslo-Stueck ist der Median
+        # ein Bern-Distanz-Wert, der Mittel-Wert haengt jedoch direkt an
+        # Oslo. Steht direkt unter dem Durchschnitt, weil Mittel + Median
+        # das paarweise Aggregations-Paar (anfaellig vs. robust) ueber
+        # dieselbe Streuungs-Verteilung bilden - spiegelt das Wert-/Gewicht-
+        # Median-Layout in der CLI-Reihenfolge (Mittel direkt vor Median).
+        # 1 Nachkommastelle (~100 m Aufloesung) spiegelt Max- und Mittel-
+        # Achsen-Notation.
+        lines.append(
+            f"Median Koord.-Radius:  "
+            f"{st.koordinaten_radius_median_km:.1f} km")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

@@ -88,6 +88,7 @@ class Statistik:
     koordinaten_zentrum: tuple[float, float] | None = None
     koordinaten_radius_max_km: float | None = None
     koordinaten_radius_durchschnitt_km: float | None = None
+    koordinaten_radius_median_km: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1114,6 +1115,10 @@ class Statistik:
             "koordinaten_radius_durchschnitt_km": (
                 round(self.koordinaten_radius_durchschnitt_km, 3)
                 if self.koordinaten_radius_durchschnitt_km is not None else None
+            ),
+            "koordinaten_radius_median_km": (
+                round(self.koordinaten_radius_median_km, 3)
+                if self.koordinaten_radius_median_km is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -2662,13 +2667,39 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # spiegelt die koordinaten_radius_max_km/zentrum/bbox-Konvention.
         # as_dict serialisiert auf 3 Nachkommastellen (~1 m Aufloesung in km,
         # spiegelt die Max-Serialisierung).
+        # koordinaten_radius_median_km: Median der Haversine-Distanzen vom
+        # Zentrum zu jedem geocoded Stueck - die ausreisser-robusteste
+        # Streuungs-Achse zur durchschnittlichen Achse koordinaten_radius_
+        # durchschnitt_km und zur extremen Achse koordinaten_radius_max_km.
+        # Vervollstaendigt das Aggregations-Trio Max + Mittel + Median auf
+        # der geografischen Streuungs-Achse, spiegelt das wert_max_chf /
+        # wert_durchschnitt_chf / wert_median_chf-Trio und das
+        # gewicht_max_g / gewicht_durchschnitt_g / gewicht_median_g-Trio
+        # exakt: extrem (Max) + typisch-aber-ausreisser-anfaellig (Mittel)
+        # + robust-typisch (Median) ueber dieselbe Verteilung. Der Median
+        # ist die einzige der drei Achsen, die gegen einen einzigen weit
+        # entfernten Ausreisser vollstaendig unempfindlich ist (Mittel
+        # folgt dem Ausreisser anteilig, Median ueberhaupt nicht); fuer
+        # eine Sammlung mit 9 Stuecken in Bern und 1 in Oslo ist der
+        # Median schlicht der mittlere Bern-Bern-Abstand, der Mittel-
+        # Wert haengt jedoch direkt an der Oslo-Distanz. Reuse-Pfad
+        # teilt die einmalige Haversine-Schleife mit Max und Mittel:
+        # wir sammeln die Distanzen einmalig in eine Liste und leiten
+        # alle drei Achsen daraus ab (Max via builtins.max, Mittel via
+        # sum/len, Median via Sort und Mittel-Index). Bei genau einem
+        # geocoded-Stueck kollabieren alle drei auf 0.0 (Distanz vom
+        # Punkt zu sich selbst). Bei null geocoded-Stuecken bleibt der
+        # Median None - spiegelt die Max/Mittel-Konvention. Bei gerader
+        # Anzahl wird der Mittelwert der beiden mittleren Elemente
+        # genommen (klassische Median-Definition), spiegelt wert_median_
+        # chf / gewicht_median_g exakt. as_dict serialisiert auf 3 Nach-
+        # kommastellen (~1 m Aufloesung in km, spiegelt Max/Mittel).
         import math as _math
         lat_c, lon_c = st.koordinaten_zentrum
         lat_c_rad = _math.radians(lat_c)
         lon_c_rad = _math.radians(lon_c)
         earth_radius_km = 6371.0
-        max_dist = 0.0
-        sum_dist = 0.0
+        distances: list[float] = []
         for lat, lon in geocoded_coords:
             lat_rad = _math.radians(lat)
             lon_rad = _math.radians(lon)
@@ -2676,12 +2707,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             dlon = lon_rad - lon_c_rad
             a = (_math.sin(dlat / 2) ** 2
                  + _math.cos(lat_c_rad) * _math.cos(lat_rad) * _math.sin(dlon / 2) ** 2)
-            d = 2 * earth_radius_km * _math.asin(min(1.0, _math.sqrt(a)))
-            sum_dist += d
-            if d > max_dist:
-                max_dist = d
-        st.koordinaten_radius_max_km = max_dist
-        st.koordinaten_radius_durchschnitt_km = sum_dist / len(geocoded_coords)
+            distances.append(
+                2 * earth_radius_km * _math.asin(min(1.0, _math.sqrt(a))))
+        st.koordinaten_radius_max_km = max(distances)
+        st.koordinaten_radius_durchschnitt_km = sum(distances) / len(distances)
+        distances.sort()
+        n = len(distances)
+        st.koordinaten_radius_median_km = (
+            distances[n // 2] if n % 2
+            else (distances[n // 2 - 1] + distances[n // 2]) / 2)
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).

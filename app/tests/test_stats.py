@@ -6040,3 +6040,200 @@ def test_koordinaten_radius_durchschnitt_km_ausreisser_schiefe(tmp_path):
     assert (st.koordinaten_radius_durchschnitt_km
             < st.koordinaten_radius_max_km / 2)
     c.close()
+
+
+def test_koordinaten_radius_median_km_aus_seed_db(tmp_path):
+    """Median der Haversine-Distanzen vom Zentrum zu jedem geocoded Stueck -
+    ausreisser-robusteste der drei Streuungs-Achsen (Max + Mittel + Median).
+    Spiegelt das wert_median_chf / gewicht_median_g-Muster auf die
+    geografische Streuungs-Achse."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_median.sqlite3")
+    # Drei geocoded Schweiz-Stuecke: Mittel-Stueck am Zentrum (47/8,
+    # Distanz 0), Eck-Stuecke (46/7) und (48/9). Haversine ist breiten-
+    # abhaengig, daher d zu (46,7) != d zu (48,9). Sortiert: [0, d_min,
+    # d_max] -> Median = d_min (mittleres Element bei n=3).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_median_km is not None
+    earth_radius_km = 6371.0
+    lat_c_rad = math.radians(47.0)
+    lon_c_rad = math.radians(8.0)
+    dists: list[float] = []
+    for lat, lon in [(46.0, 7.0), (47.0, 8.0), (48.0, 9.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    dists.sort()
+    expected_median = dists[1]
+    assert st.koordinaten_radius_median_km == pytest.approx(expected_median)
+    # Median liegt zwischen Mittel und Max: das Zentrum-Stueck zieht den
+    # Mittelwert unter den Median, der entfernteste Eck-Punkt zieht den Max
+    # darueber. Mittel < Median < Max in dieser Konstellation.
+    assert (st.koordinaten_radius_durchschnitt_km
+            < st.koordinaten_radius_median_km
+            < st.koordinaten_radius_max_km)
+    d = st.as_dict()
+    assert d["koordinaten_radius_median_km"] == round(expected_median, 3)
+    c.close()
+
+
+def test_koordinaten_radius_median_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_radius_median_km ist None (kein Wertegrund fuer
+    Median) - spiegelt die koordinaten_radius_max_km/durchschnitt_km/zentrum/
+    bbox-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_median.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_median_km is None
+    assert st.as_dict()["koordinaten_radius_median_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_median_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabieren Max, Mittel und Median
+    alle auf 0.0 (Distanz vom Punkt zu sich selbst). Spiegelt die Max-/
+    Mittel-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_median.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_median_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_durchschnitt_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_max_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_median_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung mit nur Freitext-Fundorten (keine geocodeden Stuecke):
+    koordinaten_radius_median_km ist None, obwohl objekte_mit_fundort > 0.
+    Spiegelt die koordinaten_radius_max_km/durchschnitt_km-Konvention bei
+    leerer Geocoding-Subsammlung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_median.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_median_km is None
+    assert st.as_dict()["koordinaten_radius_median_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_median_km_ausreisser_robust(tmp_path):
+    """Kern-Eigenschaft des Median gegenueber Mittel und Max: der Oslo-
+    Ausreisser zieht das Zentrum von Bern weg, sodass alle Bern-Cluster-
+    Distanzen vom Zentroid in einem engen Band liegen (sortiert: 9 enge
+    Bern-zu-Zentroid-Werte + 1 grosser Oslo-Wert). Der Median ist der
+    mittlere Bern-zu-Zentroid-Wert (am Oslo-Wert vorbei), das Mittel
+    haengt am Oslo-Wert anteilig, der Max bleibt der Oslo-Wert selbst.
+    Median < Mittel ≪ Max ist die Robustheits-Signatur."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "median_robust.sqlite3")
+    rows = [
+        ("OBJ_0001", "46.95, 7.45"),
+        ("OBJ_0002", "46.96, 7.45"),
+        ("OBJ_0003", "46.95, 7.46"),
+        ("OBJ_0004", "46.94, 7.45"),
+        ("OBJ_0005", "46.95, 7.44"),
+        ("OBJ_0006", "46.93, 7.47"),
+        ("OBJ_0007", "46.96, 7.48"),
+        ("OBJ_0008", "46.97, 7.43"),
+        ("OBJ_0009", "46.94, 7.46"),
+        ("OBJ_0010", "59.91, 10.75"),
+    ]
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_median_km is not None
+    assert st.koordinaten_radius_durchschnitt_km is not None
+    assert st.koordinaten_radius_max_km is not None
+    # Median strikt unter Mittel: der Oslo-Wert hebt nur den Mittelwert
+    # anteilig (1/10 des Beitrags), nicht den Median (der wird allein
+    # vom mittleren sortierten Element bestimmt, ein Bern-zu-Zentroid-Wert).
+    assert (st.koordinaten_radius_median_km
+            < st.koordinaten_radius_durchschnitt_km)
+    # Robustheits-Spread: Max / Median > 5 - der Oslo-Wert dominiert die
+    # Max-Achse vollstaendig, waehrend der Median im Bern-zu-Zentroid-
+    # Band bleibt.
+    assert (st.koordinaten_radius_max_km
+            > 5 * st.koordinaten_radius_median_km)
+    c.close()
+
+
+def test_koordinaten_radius_median_km_gerade_anzahl(tmp_path):
+    """Bei gerader Anzahl geocoded-Stueck wird der Median als Mittel der
+    beiden mittleren sortierten Elemente berechnet (klassische Median-
+    Definition, spiegelt wert_median_chf/gewicht_median_g exakt)."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "median_gerade.sqlite3")
+    # Vier geocoded Stuecke um das Zentroid (46.5/7.5). Haversine ist
+    # breitenabhaengig (cos(lat)-Term), daher liefern die zwei suedlichen
+    # Eck-Punkte einen anderen Distanzwert als die zwei noerdlichen.
+    # Sortiert [d_n, d_n, d_s, d_s] -> Median = (d_n + d_s) / 2, was wegen
+    # der paarweisen Symmetrie auch dem Mittelwert aller vier Distanzen
+    # entspricht (Median == Mittel bei gleichgewichtigem Nord/Sued-Paar).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "46.0, 8.0"),
+            ("OBJ_0003", "47.0, 7.0"),
+            ("OBJ_0004", "47.0, 8.0"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_median_km is not None
+    earth_radius_km = 6371.0
+    lat_c_rad = math.radians(46.5)
+    lon_c_rad = math.radians(7.5)
+    dists: list[float] = []
+    for lat, lon in [(46.0, 7.0), (46.0, 8.0), (47.0, 7.0), (47.0, 8.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    dists.sort()
+    expected_median = (dists[1] + dists[2]) / 2
+    assert st.koordinaten_radius_median_km == pytest.approx(expected_median)
+    # Median == Mittel bei gleichgewichtigem Nord/Sued-Paar (jede der zwei
+    # Distanzen kommt genau zweimal vor) - der Median-Wert ist (d_n + d_s)/2,
+    # der Mittelwert ist (2*d_n + 2*d_s)/4 = (d_n + d_s)/2.
+    assert st.koordinaten_radius_median_km == pytest.approx(
+        st.koordinaten_radius_durchschnitt_km)
+    # Max ist die groessere der beiden Distanzen (suedliches Paar), strikt
+    # ueber dem Median.
+    assert st.koordinaten_radius_max_km > st.koordinaten_radius_median_km
+    c.close()
