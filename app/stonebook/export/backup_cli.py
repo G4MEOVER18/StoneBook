@@ -3,6 +3,7 @@
 Beispiele:
     python -m stonebook.export.backup_cli write   --backup-dir backups/
     python -m stonebook.export.backup_cli list    --backup-dir backups/
+    python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli compare <alt> <neu>
@@ -18,6 +19,7 @@ from pathlib import Path
 from stonebook.db.database import connect, default_db_file, open_db
 from stonebook.export.json_export import (compare_backups, import_json,
                                           inspect_backup, list_backups,
+                                          prune_backups_by_age,
                                           prune_old_backups, validate_backup,
                                           write_rotated_backup)
 
@@ -46,6 +48,20 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 def _cmd_prune(args: argparse.Namespace) -> int:
     deleted = prune_old_backups(args.backup_dir, keep=args.keep)
+    for p in deleted:
+        print(p)
+    return 0
+
+
+def _cmd_prune_age(args: argparse.Namespace) -> int:
+    """Loescht Backups, deren Dateinamen-Stempel aelter als max_age_days ist.
+
+    Spiegelt :func:`_cmd_prune` auf die Zeit-Achse (max_age_days statt keep).
+    Beide Strategien werden in Backup-Rotations-Cron-Jobs oft kombiniert -
+    eine Count-Obergrenze plus eine Age-Obergrenze garantieren das absolute
+    Disk-Budget unabhaengig von der Schreibe-Frequenz.
+    """
+    deleted = prune_backups_by_age(args.backup_dir, max_age_days=args.max_age_days)
     for p in deleted:
         print(p)
     return 0
@@ -125,6 +141,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--backup-dir", type=Path, required=True)
     sp.add_argument("--keep", type=int, required=True)
     sp.set_defaults(func=_cmd_prune)
+
+    sp = sub.add_parser(
+        "prune-age",
+        help="Backups loeschen, deren Dateinamen-Stempel aelter als "
+             "max_age_days ist (Zeit-Achse statt Count-Achse).")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.add_argument("--max-age-days", type=int, required=True,
+                    help="Hoechst-Alter in Tagen; aeltere Backups werden geloescht.")
+    sp.set_defaults(func=_cmd_prune_age)
 
     sp = sub.add_parser("inspect", help="Backup-Inhalt anzeigen (counts + meta).")
     sp.add_argument("path", type=Path)

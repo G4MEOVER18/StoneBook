@@ -1,5 +1,6 @@
 """CLI fuer JSON-Backup-Verwaltung."""
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -97,6 +98,52 @@ def test_restore_fordert_force_bei_existierender_db(migrated_db, tmp_path, capsy
     assert exit_code == 0
     counts = json.loads(capsys.readouterr().out)
     assert counts["objects"] == 546
+
+
+def test_prune_age_loescht_alte_backups(tmp_path, capsys):
+    """prune-age Subcommand: alte Backups (Datei-Stempel) werden geloescht.
+
+    Spiegelt :func:`test_prune_loescht_alte_backups` auf die Zeit-Achse:
+    Count-Pruning haelt die letzten N, Age-Pruning haelt alle der letzten K Tage.
+    Verwendet einen Stempel aus den 70ern, der garantiert aelter ist als
+    jeder vernuenftige max_age_days-Wert (unabhaengig vom aktuellen Datum
+    des Test-Laufs).
+    """
+    backup_dir = tmp_path / "page"
+    backup_dir.mkdir()
+    alt = backup_dir / "stonebook_backup_19700101_000000.json.gz"
+    alt.write_bytes(b"")
+    # Junger Stempel: einen Tag in der Vergangenheit (immer juenger als 30 Tage).
+    today = time.strftime("%Y%m%d")
+    jung = backup_dir / f"stonebook_backup_{today}_120000.json.gz"
+    jung.write_bytes(b"")
+    exit_code = main(["prune-age", "--backup-dir", str(backup_dir),
+                      "--max-age-days", "30"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "19700101" in out
+    assert today not in out
+    assert alt.exists() is False
+    assert jung.exists() is True
+
+
+def test_prune_age_ignoriert_fremde_dateien(tmp_path, capsys):
+    """prune-age Subcommand: Dateien ausserhalb des Namensschemas bleiben.
+
+    Spiegelt :func:`test_prune_loescht_alte_backups`: fremde Dateien
+    (README.txt, Backups eines anderen Schemas) werden nicht angefasst.
+    """
+    backup_dir = tmp_path / "pagef"
+    backup_dir.mkdir()
+    alt = backup_dir / "stonebook_backup_19700101_000000.json.gz"
+    alt.write_bytes(b"")
+    fremd = backup_dir / "notes.md"
+    fremd.write_text("nicht angetastet", encoding="utf-8")
+    exit_code = main(["prune-age", "--backup-dir", str(backup_dir),
+                      "--max-age-days", "30"])
+    assert exit_code == 0
+    assert alt.exists() is False
+    assert fremd.exists() is True
 
 
 def test_write_fehlende_db_exit_2(tmp_path, capsys):

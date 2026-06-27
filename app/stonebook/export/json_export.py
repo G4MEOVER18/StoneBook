@@ -314,6 +314,77 @@ def prune_old_backups(backup_dir: Path, keep: int) -> list[Path]:
     return deleted
 
 
+def _parse_backup_stamp(path: Path) -> datetime.datetime | None:
+    """Liest den Zeitstempel ``YYYYMMDD_HHMMSS`` aus einem Backup-Dateinamen.
+
+    Spiegelt das Namensschema von :func:`write_rotated_backup`. Liefert
+    ``None``, wenn der Dateiname nicht zum Schema passt oder der Stempel
+    semantisch ungueltig ist (z.B. Monat 13). Wird von
+    :func:`prune_backups_by_age` als reine Filenamen-Auswertung verwendet,
+    sodass weder ``mtime`` noch ``ctime`` der Datei (die durch Kopieren/
+    Verschieben veraenderlich sind) das Pruning-Verhalten beeinflussen -
+    der Wert im Dateinamen ist die Single-Source-of-Truth.
+    """
+    m = _BACKUP_RE.match(path.name)
+    if not m:
+        return None
+    try:
+        return datetime.datetime.strptime(m.group(1), "%Y%m%d_%H%M%S")
+    except ValueError:
+        return None
+
+
+def prune_backups_by_age(backup_dir: Path, max_age_days: int, *,
+                         now: datetime.datetime | None = None) -> list[Path]:
+    """Loescht Backups, deren Dateinamen-Zeitstempel aelter als ``max_age_days`` ist.
+
+    Spiegelt :func:`prune_old_backups` auf die Zeit-Achse: waehrend die
+    Count-Variante eine harte Obergrenze ueber die Anzahl behaelt (Default
+    der Rotation, ``keep=10`` letzte Backups), behaelt die Age-Variante
+    eine harte Obergrenze ueber das Alter (``max_age_days=30`` zuletzt
+    aufgenommene Backups). Beide Strategien werden in Backup-Rotations-
+    Cron-Jobs oft kombiniert: ``write -> prune_old_backups(keep=10) ->
+    prune_backups_by_age(max_age_days=30)`` haelt sowohl die Datei-Anzahl
+    als auch die Festplatten-Belegung in absoluten Grenzen, unabhaengig
+    von der Frequenz der Backup-Erstellung. Bei reiner Count-Pflege wachsen
+    Backups bei seltener Schreibe Quintessenz-monatelang an (10 Backups
+    aus einem Jahr); bei reiner Age-Pflege haeufen sich bei taeglicher
+    Schreibe ueber 30 Tage 30 Backups an. Erst die Kombination beider
+    Achsen liefert die Volume-Garantie.
+
+    Beruehrt ausschliesslich Dateien, die zum :func:`write_rotated_backup`-
+    Schema passen (``stonebook_backup_*.json[.gz]``) - alle anderen
+    Dateien im Ordner bleiben unangetastet (spiegelt
+    :func:`prune_old_backups`). Der Vergleich basiert auf dem Dateinamen-
+    Stempel (nicht ``mtime``/``ctime``), damit Backups, die vom Backup-
+    Server / NAS kopiert oder verschoben wurden, ihr originales Alter
+    behalten. ``now`` ist injizierbar fuer Tests/Replay.
+
+    ``max_age_days < 0`` wirft ``ValueError`` (spiegelt
+    :func:`prune_old_backups` mit ``keep < 1``). ``max_age_days == 0``
+    loescht alle Backups, deren Stempel vor dem ``now``-Zeitpunkt liegt
+    (geeignet als Cleanup-Befehl vor einem Voll-Reset). Nicht-loeschbare
+    Dateien (Lock, Parallel-Loeschung) werden uebersprungen statt zu
+    crashen (spiegelt :func:`prune_old_backups`). Liefert die geloeschten
+    Pfade zurueck.
+    """
+    if max_age_days < 0:
+        raise ValueError("max_age_days muss >= 0 sein")
+    now = now or datetime.datetime.now()
+    cutoff = now - datetime.timedelta(days=max_age_days)
+    deleted: list[Path] = []
+    for p in list_backups(backup_dir):
+        stamp = _parse_backup_stamp(p)
+        if stamp is None or stamp >= cutoff:
+            continue
+        try:
+            p.unlink()
+            deleted.append(p)
+        except OSError:
+            pass
+    return deleted
+
+
 def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
                          keep: int = 10, compress: bool = True,
                          now: datetime.datetime | None = None) -> Path:

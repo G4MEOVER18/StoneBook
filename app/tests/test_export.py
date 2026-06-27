@@ -9,8 +9,8 @@ from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION, export_json,
                                           import_json, inspect_backup,
-                                          list_backups, prune_old_backups,
-                                          read_backup_meta,
+                                          list_backups, prune_backups_by_age,
+                                          prune_old_backups, read_backup_meta,
                                           write_rotated_backup)
 from stonebook.migration.migrate import migrate
 
@@ -662,3 +662,102 @@ def test_prune_old_backups_nichts_zu_tun(tmp_path):
 def test_prune_old_backups_keep_zu_klein_raises(tmp_path):
     with pytest.raises(ValueError):
         prune_old_backups(tmp_path / "b", keep=0)
+
+
+def test_prune_backups_by_age_loescht_alte(tmp_path):
+    """prune_backups_by_age entfernt alle Backups aelter als max_age_days.
+
+    Spiegelt :func:`test_prune_old_backups_loescht_alte` auf die Zeit-Achse:
+    Count-Pruning haelt die letzten N Backups, Age-Pruning haelt alle Backups
+    der letzten K Tage.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    # Drei Backups, je 1 Tag auseinander
+    for days_back in (40, 20, 5):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    assert len(list_backups(backups_dir)) == 3
+    # Cutoff 30 Tage -> loescht das 40-Tage-alte Backup
+    deleted = prune_backups_by_age(backups_dir, max_age_days=30, now=now)
+    assert len(deleted) == 1
+    assert "_40" not in deleted[0].name  # nicht im Stempel, aber Sanity
+    remaining = list_backups(backups_dir)
+    assert len(remaining) == 2
+    # Die zwei juengeren Backups bleiben
+    assert any("20240524" in p.name for p in remaining)  # 20 Tage zurueck
+    assert any("20240608" in p.name for p in remaining)  # 5 Tage zurueck
+    db.close()
+
+
+def test_prune_backups_by_age_nichts_zu_tun(tmp_path):
+    """Sind alle Backups juenger als das Cutoff, wird nichts geloescht."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99,
+                         now=now - datetime.timedelta(days=5))
+    deleted = prune_backups_by_age(backups_dir, max_age_days=30, now=now)
+    assert deleted == []
+    assert len(list_backups(backups_dir)) == 1
+    db.close()
+
+
+def test_prune_backups_by_age_negativer_wert_raises(tmp_path):
+    """Negative max_age_days sind sinnlos und werden abgelehnt."""
+    with pytest.raises(ValueError):
+        prune_backups_by_age(tmp_path / "b", max_age_days=-1)
+
+
+def test_prune_backups_by_age_null_loescht_alles_vor_now(tmp_path):
+    """max_age_days=0 loescht alle Backups, deren Stempel < now ist.
+
+    Geeignet als Cleanup-Befehl vor einem Voll-Reset, ohne den Ordner zu
+    entfernen oder neuere Backups (== now-Stempel, wie eines simultanen
+    Schreibers) zu beruehren.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    # Zwei alte Backups; eines exakt zur "jetzt"-Sekunde
+    write_rotated_backup(db, backups_dir, keep=99,
+                         now=now - datetime.timedelta(days=1))
+    write_rotated_backup(db, backups_dir, keep=99, now=now)
+    deleted = prune_backups_by_age(backups_dir, max_age_days=0, now=now)
+    assert len(deleted) == 1
+    remaining = list_backups(backups_dir)
+    assert len(remaining) == 1
+    assert "20240613_100000" in remaining[0].name
+    db.close()
+
+
+def test_prune_backups_by_age_ignoriert_fremde_dateien(tmp_path):
+    """Dateien, die nicht zum Backup-Namensschema passen, bleiben unberuehrt.
+
+    Spiegelt das Verhalten von :func:`prune_old_backups`: nur Dateien, die
+    zum ``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``-Muster passen, werden
+    erfasst. Andere Dateien (README, fremde Backups, Konfig-Dateien) bleiben.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99,
+                         now=now - datetime.timedelta(days=50))
+    fremd = backups_dir / "README.txt"
+    fremd.write_text("nicht ein Backup", encoding="utf-8")
+    fremdes_archiv = backups_dir / "andere_backup_20100101_000000.json.gz"
+    fremdes_archiv.write_bytes(b"")
+    deleted = prune_backups_by_age(backups_dir, max_age_days=30, now=now)
+    assert len(deleted) == 1
+    assert fremd.exists()
+    assert fremdes_archiv.exists()
+    db.close()
