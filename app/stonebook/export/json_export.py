@@ -128,6 +128,66 @@ def inspect_backup(path: Path) -> dict:
     }
 
 
+def compare_backups(path_a: Path, path_b: Path) -> dict:
+    """Vergleicht zwei Backups und liefert die strukturellen Diff-Stats.
+
+    Geeignet als Sanity-Check vor einem Restore: ``compare_backups(alt, neu)``
+    zeigt vorher, was sich gegenueber dem aktuellen Stand aendern wuerde -
+    wieviele Objekte verschwinden, wieviele kommen dazu, wieviele werden
+    veraendert. Vergleicht jeweils auf Zeilen-Ebene per Primaer-Key
+    (``obj_id`` fuer objects/images/ki_analysen ueber id, ``alias_id`` fuer
+    aliases) und auf Spalten-Ebene fuer objects-Eintraege, die in beiden
+    Backups existieren.
+
+    Liefert ein Dict pro Tabelle mit ``added`` (neu in b), ``removed`` (fehlt
+    in b), ``modified`` (existiert in beiden mit unterschiedlichem Inhalt,
+    nur fuer objects) und ``unchanged``. Zusaetzlich ``modified_obj_ids``
+    fuer eine begrenzte Liste der veraenderten obj_ids (max 100, sortiert).
+
+    Wirft ``ValueError`` bei kaputten/format-fremden Dateien.
+    """
+    data_a = _load_backup_dict(path_a)
+    data_b = _load_backup_dict(path_b)
+
+    def _ids(rows, key):
+        return {r.get(key) for r in (rows or []) if isinstance(r, dict) and r.get(key)}
+
+    def _by_id(rows, key):
+        out = {}
+        for r in rows or []:
+            if isinstance(r, dict) and r.get(key):
+                out[r[key]] = r
+        return out
+
+    result: dict[str, dict] = {}
+
+    objs_a = _by_id(data_a.get("objects"), "obj_id")
+    objs_b = _by_id(data_b.get("objects"), "obj_id")
+    added = sorted(set(objs_b) - set(objs_a))
+    removed = sorted(set(objs_a) - set(objs_b))
+    common = set(objs_a) & set(objs_b)
+    modified_ids = sorted(oid for oid in common if objs_a[oid] != objs_b[oid])
+    result["objects"] = {
+        "added": len(added),
+        "removed": len(removed),
+        "modified": len(modified_ids),
+        "unchanged": len(common) - len(modified_ids),
+        "modified_obj_ids": modified_ids[:100],
+    }
+
+    for table, key in (("images", "id"), ("aliases", "alias_id"),
+                       ("ki_analysen", "id")):
+        ids_a = _ids(data_a.get(table), key)
+        ids_b = _ids(data_b.get(table), key)
+        result[table] = {
+            "added": len(ids_b - ids_a),
+            "removed": len(ids_a - ids_b),
+            "unchanged": len(ids_a & ids_b),
+        }
+
+    return result
+
+
 def validate_backup(path: Path) -> dict:
     """Prueft die innere Konsistenz eines Backups, ohne es zu restaurieren.
 

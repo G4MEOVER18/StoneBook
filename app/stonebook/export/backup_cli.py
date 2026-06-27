@@ -5,6 +5,7 @@ Beispiele:
     python -m stonebook.export.backup_cli list    --backup-dir backups/
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
+    python -m stonebook.export.backup_cli compare <alt> <neu>
     python -m stonebook.export.backup_cli restore <file> --db <pfad>
 """
 from __future__ import annotations
@@ -15,9 +16,10 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file, open_db
-from stonebook.export.json_export import (import_json, inspect_backup,
-                                          list_backups, prune_old_backups,
-                                          validate_backup, write_rotated_backup)
+from stonebook.export.json_export import (compare_backups, import_json,
+                                          inspect_backup, list_backups,
+                                          prune_old_backups, validate_backup,
+                                          write_rotated_backup)
 
 
 def _cmd_write(args: argparse.Namespace) -> int:
@@ -67,6 +69,19 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")
     return 0 if info["ok"] else 1
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    """Vergleicht zwei Backups (added/removed/modified je Tabelle).
+
+    Geeignet als Sanity-Check vor restore: zeigt, was sich zwischen dem
+    aktuell laufenden Backup (a) und einem alten/anderen Backup (b)
+    aendern wuerde.
+    """
+    diff = compare_backups(args.a, args.b)
+    json.dump(diff, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0
 
 
 def _cmd_restore(args: argparse.Namespace) -> int:
@@ -120,6 +135,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Innere Konsistenz pruefen (orphan FK, doppelte IDs); Exit 1 bei Fehlern.")
     sp.add_argument("path", type=Path)
     sp.set_defaults(func=_cmd_validate)
+
+    sp = sub.add_parser(
+        "compare",
+        help="Zwei Backups vergleichen (added/removed/modified je Tabelle).")
+    sp.add_argument("a", type=Path, help="Erstes Backup (Basis).")
+    sp.add_argument("b", type=Path, help="Zweites Backup (Vergleichs-Ziel).")
+    sp.set_defaults(func=_cmd_compare)
 
     sp = sub.add_parser("restore", help="Backup in eine DB einspielen.")
     sp.add_argument("path", type=Path)
