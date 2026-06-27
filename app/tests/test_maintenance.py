@@ -6,7 +6,8 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check,
-                                      free_page_count, quick_check, vacuum)
+                                      free_page_count, optimize, quick_check,
+                                      vacuum)
 from stonebook.db.repository import ObjectRepo
 
 
@@ -287,6 +288,56 @@ def test_analyze_idempotent(tmp_path):
             repo.create(f"OBJ_{i:04d}", Mineral_Primaer="Quarz")
         first = analyze(c)
         second = analyze(c)
+        assert first == second
+        assert quick_check(c) == []
+    finally:
+        c.close()
+
+
+def test_optimize_leere_db_kein_crash(tmp_path):
+    """PRAGMA optimize auf einer frisch initialisierten DB ist sicher.
+
+    Spiegelt test_analyze_leere_db_kein_crash auf die selektive Variante.
+    """
+    c = open_db(tmp_path / "opt_leer.sqlite3")
+    try:
+        n = optimize(c)
+        assert n >= 0
+        assert quick_check(c) == []
+    finally:
+        c.close()
+
+
+def test_optimize_konsistent_mit_analyze(tmp_path):
+    """Nach ANALYZE liefert PRAGMA optimize denselben Statistik-Stand.
+
+    PRAGMA optimize ist die selektive Variante - nach einer vorhergehenden
+    vollstaendigen ANALYZE auf unveraendertem Datenbestand bleibt der
+    sqlite_stat1-Stand stabil; beide Funktionen melden dieselbe Eintragsanzahl.
+    """
+    c = open_db(tmp_path / "opt_konsistent.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 21):
+            repo.create(f"OBJ_{i:04d}", Name=f"Stueck {i}",
+                        Mineral_Primaer="Quarz" if i % 2 else "Calcit")
+        analyze_count = analyze(c)
+        optimize_count = optimize(c)
+        assert optimize_count == analyze_count
+        assert quick_check(c) == []
+    finally:
+        c.close()
+
+
+def test_optimize_idempotent(tmp_path):
+    """Mehrfacher PRAGMA-optimize-Aufruf bleibt stabil und liefert dasselbe."""
+    c = open_db(tmp_path / "opt_idem.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 11):
+            repo.create(f"OBJ_{i:04d}", Mineral_Primaer="Quarz")
+        first = optimize(c)
+        second = optimize(c)
         assert first == second
         assert quick_check(c) == []
     finally:

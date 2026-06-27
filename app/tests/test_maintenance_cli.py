@@ -389,3 +389,36 @@ def test_analyze_fehlende_db(tmp_path, capsys):
     exit_code = main(["analyze", "--db", str(bad)])
     assert exit_code == 2
     assert "fehlt" in capsys.readouterr().err
+
+
+def test_optimize_text(tmp_path, capsys):
+    """optimize-Subcommand: Text-Output enthaelt PRAGMA-optimize-Meldung."""
+    db_file = tmp_path / "opt.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 10)
+    c.close()
+    exit_code = main(["optimize", "--db", str(db_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "PRAGMA optimize abgeschlossen" in out
+    assert "Index-Statistik-Eintraege" in out
+
+
+def test_optimize_json(tmp_path, capsys):
+    """optimize-Subcommand JSON: stat_entries >= 0, Exit 0."""
+    db_file = tmp_path / "optj.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 10)
+    c.close()
+    exit_code = main(["optimize", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["stat_entries"] >= 0
+
+
+def test_optimize_fehlende_db(tmp_path, capsys):
+    """optimize auf nicht existierender DB liefert Exit 2 (spiegelt analyze)."""
+    bad = tmp_path / "fehlt.sqlite3"
+    exit_code = main(["optimize", "--db", str(bad)])
+    assert exit_code == 2
+    assert "fehlt" in capsys.readouterr().err

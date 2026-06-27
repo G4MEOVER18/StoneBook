@@ -58,6 +58,38 @@ def analyze(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0])
 
 
+def optimize(conn: sqlite3.Connection) -> int:
+    """Fuehrt ``PRAGMA optimize`` aus; gibt die Zahl der ``sqlite_stat1``-Eintraege zurueck.
+
+    ``PRAGMA optimize`` ist die SQLite-empfohlene periodische Wartungs-Operation
+    auf der Query-Planner-Achse und spiegelt :func:`analyze` als selektive
+    Variante: waehrend ``ANALYZE`` immer eine vollstaendige Verteilungs-
+    Erfassung ueber alle Indizes erzwingt (unabhaengig davon, ob sich die
+    Tabellen-Inhalte seit dem letzten Lauf merklich geaendert haben),
+    untersucht ``PRAGMA optimize`` zunaechst die Tabellen und fuehrt
+    ``ANALYZE`` nur dort aus, wo SQLite die bestehenden Statistiken als
+    veraltet einstuft (z.B. nach merklicher Aenderung der Zeilenzahl seit dem
+    letzten Lauf; die Heuristik liegt in den Header-Kommentaren der SQLite-
+    Quellen unter ``sqlite3Optimize`` dokumentiert). Damit ist ``PRAGMA
+    optimize`` die leichtgewichtige Operation fuer regelmaessige Wartungs-
+    Cron-Jobs (taeglich/wochentags ohne Performance-Einbruch), waehrend
+    ``ANALYZE`` als manueller Voll-Refresh nach Migration / Stapel-Import /
+    Massenarchivierung gedacht ist. Idempotent: zwei Aufrufe in Folge sind
+    sicher; SQLite ueberspringt die zweite Iteration komplett, weil die
+    Statistiken bereits frisch sind. Liefert die Anzahl der vorhandenen
+    Index-Statistik-Eintraege zurueck - spiegelt :func:`analyze` im Rueckgabe-
+    Format, damit beide Operationen austauschbar in CLI/JSON-Reportern sind.
+    """
+    conn.execute("PRAGMA optimize")
+    conn.commit()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE name='sqlite_stat1'"
+    ).fetchone()
+    if not row[0]:
+        return 0
+    return int(conn.execute("SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0])
+
+
 def quick_check(conn: sqlite3.Connection) -> list[str]:
     """SQLite-eigene Konsistenzpruefung (Schnell-Variante).
 

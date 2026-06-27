@@ -12,6 +12,7 @@ Beispiele:
     python -m stonebook.db.maintenance_cli vacuum                   # VACUUM
     python -m stonebook.db.maintenance_cli vacuum --json
     python -m stonebook.db.maintenance_cli analyze                  # ANALYZE
+    python -m stonebook.db.maintenance_cli optimize                 # PRAGMA optimize
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check, free_page_count,
-                                      quick_check, vacuum)
+                                      optimize, quick_check, vacuum)
 
 
 def _resolve_db(args: argparse.Namespace) -> Path | None:
@@ -276,6 +277,34 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_optimize(args: argparse.Namespace) -> int:
+    """Fuehrt ``PRAGMA optimize`` aus - selektiver Refresh der Index-Statistiken.
+
+    Spiegelt :func:`_cmd_analyze` als zweite Wartungsoperation auf der Query-
+    Planner-Achse: waehrend ``analyze`` immer eine vollstaendige ANALYZE
+    erzwingt, fuehrt ``optimize`` ANALYZE nur dort aus, wo SQLite die
+    bestehenden Statistiken als veraltet einstuft - die SQLite-empfohlene
+    leichte Variante fuer regelmaessige Cron-Wartung. Idempotent; Exit-Code 0
+    immer (analog analyze/vacuum/cleanup), weil die Anzahl der erfassten
+    Index-Statistiken kein Fehlerkriterium ist.
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        n = optimize(conn)
+    finally:
+        conn.close()
+    info = {"stat_entries": n}
+    if args.json:
+        json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    else:
+        print(f"PRAGMA optimize abgeschlossen: {n} Index-Statistik-Eintraege vorhanden.")
+    return 0
+
+
 def _cmd_vacuum(args: argparse.Namespace) -> int:
     db_file = _resolve_db(args)
     if db_file is None:
@@ -359,6 +388,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_analyze)
+
+    sp = sub.add_parser("optimize",
+                        help="PRAGMA optimize ausfuehren - selektive ANALYZE "
+                             "nur fuer Tabellen mit veralteten Statistiken.")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_optimize)
     return p
 
 
