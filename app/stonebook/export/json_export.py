@@ -128,6 +128,69 @@ def inspect_backup(path: Path) -> dict:
     }
 
 
+def _diff_backup_dicts(data_a: dict, data_b: dict) -> dict:
+    """Reine Diff-Logik zwischen zwei Backup-Dicts (Datei oder DB-Spiegelung).
+
+    Geteilte Implementation hinter :func:`compare_backups` (Datei vs. Datei)
+    und :func:`compare_backup_to_db` (DB vs. Datei). Vergleicht jeweils auf
+    Zeilen-Ebene per Primaer-Key (``obj_id`` fuer objects/images/ki_analysen
+    ueber id, ``alias_id`` fuer aliases) und auf Spalten-Ebene fuer
+    objects-Eintraege, die in beiden Quellen existieren.
+    """
+    def _ids(rows, key):
+        return {r.get(key) for r in (rows or []) if isinstance(r, dict) and r.get(key)}
+
+    def _by_id(rows, key):
+        out = {}
+        for r in rows or []:
+            if isinstance(r, dict) and r.get(key):
+                out[r[key]] = r
+        return out
+
+    result: dict[str, dict] = {}
+
+    objs_a = _by_id(data_a.get("objects"), "obj_id")
+    objs_b = _by_id(data_b.get("objects"), "obj_id")
+    added = sorted(set(objs_b) - set(objs_a))
+    removed = sorted(set(objs_a) - set(objs_b))
+    common = set(objs_a) & set(objs_b)
+
+    def _row_eq(row_a: dict, row_b: dict) -> bool:
+        # Normalisiert auf die Vereinigung der Schluessel: fehlende Schluessel
+        # zaehlen als None. Spiegelt damit die restore-Semantik von
+        # :func:`import_json`, das fehlende JSON-Spalten ueber das ``INSERT
+        # OR REPLACE``-Statement implizit als NULL einfuegt. Ohne diese
+        # Normalisierung wuerde ein direkt aus der DB gezogenes Backup
+        # (alle 43 Objects-Spalten) systematisch != zu einem hand-geschriebenen
+        # JSON mit Teil-Spalten sein, obwohl beide nach dem Restore zu
+        # identischen DB-Zeilen fuehren.
+        for k in set(row_a) | set(row_b):
+            if row_a.get(k) != row_b.get(k):
+                return False
+        return True
+
+    modified_ids = sorted(oid for oid in common if not _row_eq(objs_a[oid], objs_b[oid]))
+    result["objects"] = {
+        "added": len(added),
+        "removed": len(removed),
+        "modified": len(modified_ids),
+        "unchanged": len(common) - len(modified_ids),
+        "modified_obj_ids": modified_ids[:100],
+    }
+
+    for table, key in (("images", "id"), ("aliases", "alias_id"),
+                       ("ki_analysen", "id")):
+        ids_a = _ids(data_a.get(table), key)
+        ids_b = _ids(data_b.get(table), key)
+        result[table] = {
+            "added": len(ids_b - ids_a),
+            "removed": len(ids_a - ids_b),
+            "unchanged": len(ids_a & ids_b),
+        }
+
+    return result
+
+
 def compare_backups(path_a: Path, path_b: Path) -> dict:
     """Vergleicht zwei Backups und liefert die strukturellen Diff-Stats.
 
@@ -148,44 +211,51 @@ def compare_backups(path_a: Path, path_b: Path) -> dict:
     """
     data_a = _load_backup_dict(path_a)
     data_b = _load_backup_dict(path_b)
+    return _diff_backup_dicts(data_a, data_b)
 
-    def _ids(rows, key):
-        return {r.get(key) for r in (rows or []) if isinstance(r, dict) and r.get(key)}
 
-    def _by_id(rows, key):
-        out = {}
-        for r in rows or []:
-            if isinstance(r, dict) and r.get(key):
-                out[r[key]] = r
-        return out
+def _db_to_backup_dict(conn: sqlite3.Connection) -> dict:
+    """Spiegelt den DB-Zustand als Backup-Dict (objects/images/aliases/ki_analysen).
 
-    result: dict[str, dict] = {}
-
-    objs_a = _by_id(data_a.get("objects"), "obj_id")
-    objs_b = _by_id(data_b.get("objects"), "obj_id")
-    added = sorted(set(objs_b) - set(objs_a))
-    removed = sorted(set(objs_a) - set(objs_b))
-    common = set(objs_a) & set(objs_b)
-    modified_ids = sorted(oid for oid in common if objs_a[oid] != objs_b[oid])
-    result["objects"] = {
-        "added": len(added),
-        "removed": len(removed),
-        "modified": len(modified_ids),
-        "unchanged": len(common) - len(modified_ids),
-        "modified_obj_ids": modified_ids[:100],
+    Verwendet das gleiche Spalten-Layout wie :func:`export_json` (alle Spalten
+    aus ``SELECT *``), sodass das Resultat strukturgleich mit einer Backup-
+    Datei ist und sich direkt mit einem geladenen Backup-Dict vergleichen
+    laesst. Geteilte Implementation hinter :func:`compare_backup_to_db`.
+    """
+    return {
+        table: [dict(r) for r in conn.execute(f"SELECT * FROM {table}").fetchall()]
+        for table in TABLES
     }
 
-    for table, key in (("images", "id"), ("aliases", "alias_id"),
-                       ("ki_analysen", "id")):
-        ids_a = _ids(data_a.get(table), key)
-        ids_b = _ids(data_b.get(table), key)
-        result[table] = {
-            "added": len(ids_b - ids_a),
-            "removed": len(ids_a - ids_b),
-            "unchanged": len(ids_a & ids_b),
-        }
 
-    return result
+def compare_backup_to_db(conn: sqlite3.Connection, path: Path) -> dict:
+    """Vergleicht ein Backup gegen den aktuellen DB-Stand.
+
+    Spiegelt :func:`compare_backups` (Datei vs. Datei) auf die Datei-vs-DB-
+    Achse: waehrend ``compare_backups`` zwei archivierte Backups gegeneinander
+    stellt, beantwortet ``compare_backup_to_db`` die naheliegende Restore-
+    Vorfeld-Frage "was wuerde sich gegenueber dem aktuellen DB-Stand
+    veraendern, wenn ich dieses Backup einspiele?". Das Ergebnis ist
+    struktur-identisch zu :func:`compare_backups` (gleiche Schluessel pro
+    Tabelle), damit Cron-Reporter und Restore-Dialoge denselben Auswerter
+    benutzen koennen.
+
+    DB nimmt die Rolle von ``a``, Backup die Rolle von ``b`` ein - in der
+    Restore-Semantik des CLI ``restore``-Pfads (DB wird vor dem Import
+    geloescht und aus dem Backup neu aufgebaut) heisst das: ``added`` =
+    Eintraege, die nach dem Restore neu da waeren; ``removed`` = Eintraege,
+    die nach dem Restore verloren gingen; ``modified`` = Objekte, die im
+    Backup mit anderem Inhalt liegen als in der DB; ``unchanged`` =
+    Identitaet auf beiden Seiten. Eignet sich damit als Pre-Flight-Check vor
+    ``restore --force``: der User sieht vorher, wieviele DB-Aenderungen seit
+    dem Backup verloren gingen.
+
+    Wirft ``ValueError`` bei kaputten/format-fremden Backup-Dateien (gleich
+    wie :func:`compare_backups`).
+    """
+    data_db = _db_to_backup_dict(conn)
+    data_backup = _load_backup_dict(path)
+    return _diff_backup_dicts(data_db, data_backup)
 
 
 def validate_backup(path: Path) -> dict:

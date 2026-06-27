@@ -7,6 +7,7 @@ Beispiele:
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli compare <alt> <neu>
+    python -m stonebook.export.backup_cli compare-db <file>
     python -m stonebook.export.backup_cli restore <file> --db <pfad>
 """
 from __future__ import annotations
@@ -17,9 +18,9 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file, open_db
-from stonebook.export.json_export import (compare_backups, import_json,
-                                          inspect_backup, list_backups,
-                                          prune_backups_by_age,
+from stonebook.export.json_export import (compare_backup_to_db, compare_backups,
+                                          import_json, inspect_backup,
+                                          list_backups, prune_backups_by_age,
                                           prune_old_backups, validate_backup,
                                           write_rotated_backup)
 
@@ -100,6 +101,34 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_compare_db(args: argparse.Namespace) -> int:
+    """Vergleicht ein Backup gegen den aktuellen DB-Stand.
+
+    Spiegelt :func:`_cmd_compare` (Datei vs. Datei) auf die Datei-vs-DB-
+    Achse: beantwortet die Pre-Flight-Frage vor einem ``restore``, was sich
+    in der laufenden DB aendern wuerde, wenn das Backup eingespielt wird -
+    wieviele Objekte verloren gingen (``removed``), wieviele neu kaemen
+    (``added``), wieviele veraendert wuerden (``modified``). Eignet sich
+    damit als Cron-Reporter-Check oder als Bestaetigungs-Dialog vor
+    ``restore --force``.
+
+    Exit-Code 0 immer; die Diff-Zahlen sind kein Fehlerkriterium, der
+    Caller entscheidet ueber die Bewertung (spiegelt :func:`_cmd_compare`).
+    """
+    db_file = args.db if args.db else default_db_file()
+    if not db_file.is_file():
+        print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
+        return 2
+    conn = connect(db_file)
+    try:
+        diff = compare_backup_to_db(conn, args.path)
+    finally:
+        conn.close()
+    json.dump(diff, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0
+
+
 def _cmd_restore(args: argparse.Namespace) -> int:
     target = args.db if args.db else default_db_file()
     if target.exists() and not args.force:
@@ -167,6 +196,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("a", type=Path, help="Erstes Backup (Basis).")
     sp.add_argument("b", type=Path, help="Zweites Backup (Vergleichs-Ziel).")
     sp.set_defaults(func=_cmd_compare)
+
+    sp = sub.add_parser(
+        "compare-db",
+        help="Backup gegen den aktuellen DB-Stand vergleichen "
+             "(Pre-Flight-Check vor restore).")
+    sp.add_argument("path", type=Path, help="Backup-Datei.")
+    sp.add_argument("--db", type=Path, default=None,
+                    help="Pfad zur SQLite-DB (Default: <repo>/data/db/stonebook.sqlite3).")
+    sp.set_defaults(func=_cmd_compare_db)
 
     sp = sub.add_parser("restore", help="Backup in eine DB einspielen.")
     sp.add_argument("path", type=Path)
