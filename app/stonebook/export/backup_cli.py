@@ -4,6 +4,7 @@ Beispiele:
     python -m stonebook.export.backup_cli write   --backup-dir backups/
     python -m stonebook.export.backup_cli list    --backup-dir backups/
     python -m stonebook.export.backup_cli inspect <file>
+    python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli restore <file> --db <pfad>
 """
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 from stonebook.db.database import connect, default_db_file, open_db
 from stonebook.export.json_export import (import_json, inspect_backup,
                                           list_backups, prune_old_backups,
-                                          write_rotated_backup)
+                                          validate_backup, write_rotated_backup)
 
 
 def _cmd_write(args: argparse.Namespace) -> int:
@@ -53,6 +54,19 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")
     return 0
+
+
+def _cmd_validate(args: argparse.Namespace) -> int:
+    """Prueft die innere Konsistenz eines Backups vor dem Restore.
+
+    Exit-Code 0 bei sauberem Backup, 1 bei gefundenen Inkonsistenzen
+    (orphan FK-Verweise, doppelte obj_ids, leere IDs). Geeignet als
+    Pre-Flight-Check in Restore-Scripten/Cronjobs.
+    """
+    info = validate_backup(args.path)
+    json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0 if info["ok"] else 1
 
 
 def _cmd_restore(args: argparse.Namespace) -> int:
@@ -100,6 +114,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("inspect", help="Backup-Inhalt anzeigen (counts + meta).")
     sp.add_argument("path", type=Path)
     sp.set_defaults(func=_cmd_inspect)
+
+    sp = sub.add_parser(
+        "validate",
+        help="Innere Konsistenz pruefen (orphan FK, doppelte IDs); Exit 1 bei Fehlern.")
+    sp.add_argument("path", type=Path)
+    sp.set_defaults(func=_cmd_validate)
 
     sp = sub.add_parser("restore", help="Backup in eine DB einspielen.")
     sp.add_argument("path", type=Path)

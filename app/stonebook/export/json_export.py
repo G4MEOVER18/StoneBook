@@ -128,6 +128,92 @@ def inspect_backup(path: Path) -> dict:
     }
 
 
+def validate_backup(path: Path) -> dict:
+    """Prueft die innere Konsistenz eines Backups, ohne es zu restaurieren.
+
+    Liest objects/images/aliases/ki_analysen aus der Datei und sucht nach
+    referenziellen Problemen, die beim eigentlichen ``import_json`` erst durch
+    SQLite-Foreign-Keys auffallen wuerden - dann ist die Ziel-DB aber schon
+    geleert. Geeignet als Pre-Flight-Check vor ``restore`` und als
+    Sanity-Check fuer alte Backups, deren Ursprungs-DB nicht mehr existiert.
+
+    Geprueft werden:
+    - leere/fehlende ``obj_id`` in objects (Primaer-Key waere NULL)
+    - doppelte ``obj_id`` in objects (zweite Zeile wuerde die erste
+      ueberschreiben, faktischer Datenverlust)
+    - leere/fehlende ``alias_id`` bzw. ``canonical_id`` in aliases
+    - ``aliases.canonical_id`` ohne passenden Eintrag in objects (orphan)
+    - ``images.obj_id`` ohne passenden Eintrag in objects (orphan)
+    - ``ki_analysen.obj_id`` ohne passenden Eintrag in objects (orphan)
+    - ``aliases.alias_id`` kollidiert mit einer ``obj_id`` aus objects
+      (das gemerg-te Original wuerde sich selbst aliasieren)
+
+    Liefert ``{"ok": bool, "errors": [str, ...], "counts": {...}}``;
+    ``ok`` ist genau dann ``True``, wenn ``errors`` leer ist. Akzeptiert
+    ``.json`` und ``.json.gz``. Wirft ``ValueError`` bei kaputten Dateien
+    (Parse-/Format-Fehler aus :func:`_load_backup_dict`).
+    """
+    data = _load_backup_dict(path)
+    counts = {}
+    for table in TABLES:
+        rows = data.get(table, [])
+        counts[table] = len(rows) if isinstance(rows, list) else 0
+
+    errors: list[str] = []
+
+    objects = data.get("objects", []) or []
+    obj_ids: set[str] = set()
+    duplicate_ids: set[str] = set()
+    for i, row in enumerate(objects):
+        if not isinstance(row, dict):
+            errors.append(f"objects[{i}]: kein JSON-Objekt")
+            continue
+        oid = row.get("obj_id")
+        if not oid or not str(oid).strip():
+            errors.append(f"objects[{i}]: obj_id leer oder fehlt")
+            continue
+        if oid in obj_ids:
+            duplicate_ids.add(oid)
+        else:
+            obj_ids.add(oid)
+    for dup in sorted(duplicate_ids):
+        errors.append(f"objects: doppelte obj_id {dup!r}")
+
+    aliases = data.get("aliases", []) or []
+    for i, row in enumerate(aliases):
+        if not isinstance(row, dict):
+            errors.append(f"aliases[{i}]: kein JSON-Objekt")
+            continue
+        alias_id = row.get("alias_id")
+        canonical = row.get("canonical_id")
+        if not alias_id or not str(alias_id).strip():
+            errors.append(f"aliases[{i}]: alias_id leer oder fehlt")
+        if not canonical or not str(canonical).strip():
+            errors.append(f"aliases[{i}]: canonical_id leer oder fehlt")
+            continue
+        if canonical not in obj_ids:
+            errors.append(
+                f"aliases[{i}]: canonical_id {canonical!r} ohne objects-Eintrag")
+        if alias_id in obj_ids:
+            errors.append(
+                f"aliases[{i}]: alias_id {alias_id!r} kollidiert mit objects.obj_id")
+
+    for table in ("images", "ki_analysen"):
+        for i, row in enumerate(data.get(table, []) or []):
+            if not isinstance(row, dict):
+                errors.append(f"{table}[{i}]: kein JSON-Objekt")
+                continue
+            oid = row.get("obj_id")
+            if not oid or not str(oid).strip():
+                errors.append(f"{table}[{i}]: obj_id leer oder fehlt")
+                continue
+            if oid not in obj_ids:
+                errors.append(
+                    f"{table}[{i}]: obj_id {oid!r} ohne objects-Eintrag")
+
+    return {"ok": not errors, "errors": errors, "counts": counts}
+
+
 BACKUP_PREFIX = "stonebook_backup_"
 # Erkennt sowohl .json als auch .json.gz mit ISO-Datumstempel im Dateinamen
 _BACKUP_RE = re.compile(
