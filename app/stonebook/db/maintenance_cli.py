@@ -13,6 +13,9 @@ Beispiele:
     python -m stonebook.db.maintenance_cli vacuum --json
     python -m stonebook.db.maintenance_cli analyze                  # ANALYZE
     python -m stonebook.db.maintenance_cli optimize                 # PRAGMA optimize
+    python -m stonebook.db.maintenance_cli fts-check                # FTS5 integrity-check
+    python -m stonebook.db.maintenance_cli fts-optimize             # FTS5 optimize (Segmente mergen)
+    python -m stonebook.db.maintenance_cli fts-rebuild              # FTS5 aus objects neu aufbauen
 """
 from __future__ import annotations
 
@@ -29,7 +32,9 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check, free_page_count,
-                                      optimize, quick_check, vacuum)
+                                      fts_integrity_check, fts_optimize,
+                                      fts_rebuild, optimize, quick_check,
+                                      vacuum)
 
 
 def _resolve_db(args: argparse.Namespace) -> Path | None:
@@ -305,6 +310,92 @@ def _cmd_optimize(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fts_check(args: argparse.Namespace) -> int:
+    """FTS5 ``integrity-check`` auf ``objects_fts``; Exit 1 bei Befund.
+
+    Spiegelt :func:`_cmd_check`/:func:`_cmd_deepcheck` (Basistabellen-Selbst-
+    pruefung) und :func:`_cmd_fkcheck` (referentielle Achse) auf die FTS-Achse:
+    der Output-Vertrag ist identisch (``ok``/``messages`` im JSON, OK/FEHLER
+    im Text, Exit-Code 1 bei Befund), damit Cron-Reporter alle vier Selbst-
+    pruefungen austauschbar konsumieren koennen. FTS-Inkonsistenzen entstehen
+    typisch nach manueller DB-Editierung mit ``PRAGMA foreign_keys=OFF``,
+    JSON-Restore aus partiellen Backups oder nach Schema-Aenderungen, die die
+    Insert/Update/Delete-Trigger nicht durchlaufen haben - alle Pfade, die die
+    FTS-Tabelle aus dem Sync mit den Basistabellen laufen lassen koennen.
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        messages = fts_integrity_check(conn)
+    finally:
+        conn.close()
+    if args.json:
+        json.dump({"ok": not messages, "messages": messages},
+                  sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    elif messages:
+        print("FEHLER: FTS5 integrity-check meldet Probleme:")
+        for m in messages:
+            print(f"  - {m}")
+    else:
+        print("OK: FTS5 integrity-check ohne Befund.")
+    return 0 if not messages else 1
+
+
+def _cmd_fts_optimize(args: argparse.Namespace) -> int:
+    """FTS5 ``optimize`` auf ``objects_fts`` (Segmente mergen).
+
+    Spiegelt :func:`_cmd_optimize` (Query-Planner-Statistiken) auf die FTS-
+    Achse: waehrend ``optimize`` die ``sqlite_stat1``-Verteilungen pflegt,
+    pflegt ``fts-optimize`` den FTS5-Segment-Layout - nach vielen Update/
+    Delete-Operationen liegt der FTS-Index fragmentiert vor und jede MATCH-
+    Suche muss linear ueber alle Segmente. Die Optimize-Operation merged sie
+    zu einem einzigen grossen Segment und macht die Suche schneller. Idem-
+    potent; Exit-Code 0 immer (analog optimize/analyze/vacuum/cleanup).
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        fts_optimize(conn)
+    finally:
+        conn.close()
+    if args.json:
+        json.dump({"ok": True}, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    else:
+        print("FTS5 optimize abgeschlossen.")
+    return 0
+
+
+def _cmd_fts_rebuild(args: argparse.Namespace) -> int:
+    """FTS5 ``rebuild`` auf ``objects_fts`` (aus ``objects`` neu aufbauen).
+
+    Spiegelt :func:`_cmd_fts_check` als zugehoerige Reparatur-Operation:
+    wenn der Integrity-Check eine FTS-Inkonsistenz meldet, stellt ``rebuild``
+    den Index bit-genau aus dem Content-Table wieder her. Liefert die
+    Anzahl FTS-Zeilen nach dem Rebuild - sollte mit der ``objects``-Zeilenzahl
+    uebereinstimmen, ist also fuer Cron-Reporter ein Erfolgs-Mass.
+    """
+    db_file = _resolve_db(args)
+    if db_file is None:
+        return 2
+    conn = connect(db_file)
+    try:
+        n = fts_rebuild(conn)
+    finally:
+        conn.close()
+    if args.json:
+        json.dump({"fts_rows": n}, sys.stdout, ensure_ascii=False, indent=1)
+        sys.stdout.write("\n")
+    else:
+        print(f"FTS5 rebuild abgeschlossen: {n} Eintraege im objects_fts-Index.")
+    return 0
+
+
 def _cmd_vacuum(args: argparse.Namespace) -> int:
     db_file = _resolve_db(args)
     if db_file is None:
@@ -395,6 +486,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None)
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=_cmd_optimize)
+
+    sp = sub.add_parser("fts-check",
+                        help="FTS5 integrity-check auf objects_fts "
+                             "(erkennt Inkonsistenzen gegen objects).")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_fts_check)
+
+    sp = sub.add_parser("fts-optimize",
+                        help="FTS5 optimize auf objects_fts - Segmente zu "
+                             "einem grossen Segment mergen (Such-Latenz).")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_fts_optimize)
+
+    sp = sub.add_parser("fts-rebuild",
+                        help="FTS5 rebuild auf objects_fts - Index aus dem "
+                             "objects-Content-Table neu aufbauen (Repair).")
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=_cmd_fts_rebuild)
     return p
 
 

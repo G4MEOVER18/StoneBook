@@ -422,3 +422,137 @@ def test_optimize_fehlende_db(tmp_path, capsys):
     exit_code = main(["optimize", "--db", str(bad)])
     assert exit_code == 2
     assert "fehlt" in capsys.readouterr().err
+
+
+def test_fts_check_text_ok(tmp_path, capsys):
+    """fts-check Subcommand: leere DB -> OK + Exit 0 (spiegelt check/deepcheck)."""
+    db_file = tmp_path / "ftsc.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["fts-check", "--db", str(db_file)])
+    assert exit_code == 0
+    assert "OK" in capsys.readouterr().out
+
+
+def test_fts_check_json_ok(tmp_path, capsys):
+    """fts-check JSON: leere DB -> ok=True, messages=[] (spiegelt deepcheck-Format)."""
+    db_file = tmp_path / "ftscj.sqlite3"
+    open_db(db_file).close()
+    exit_code = main(["fts-check", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {"ok": True, "messages": []}
+
+
+def test_fts_check_meldet_inkonsistenz(tmp_path, capsys):
+    """fts-check JSON: kaputter Index -> Exit 1 + Meldung im Output.
+
+    Spiegelt :func:`test_fkcheck_meldet_orphan` auf die FTS-Achse: nach einem
+    Insert ohne FTS-Trigger ist der Index nicht mehr konsistent, der CLI-Pfad
+    erkennt das und gibt Exit 1 + Meldungs-Liste zurueck.
+    """
+    db_file = tmp_path / "fts_broken_cli.sqlite3"
+    c = open_db(db_file)
+    c.execute("DROP TRIGGER objects_ai")
+    c.execute("INSERT INTO objects(obj_id, Name) VALUES ('OBJ_X', 'Geist')")
+    c.commit()
+    c.close()
+    exit_code = main(["fts-check", "--db", str(db_file), "--json"])
+    assert exit_code == 1
+    info = json.loads(capsys.readouterr().out)
+    assert info["ok"] is False
+    assert info["messages"] != []
+
+
+def test_fts_check_fehlende_db(tmp_path, capsys):
+    """fts-check auf nicht existierender DB liefert Exit 2 (spiegelt check)."""
+    bad = tmp_path / "fehlt.sqlite3"
+    exit_code = main(["fts-check", "--db", str(bad)])
+    assert exit_code == 2
+    assert "fehlt" in capsys.readouterr().err
+
+
+def test_fts_optimize_text(tmp_path, capsys):
+    """fts-optimize Subcommand: Text-Output enthaelt Abschluss-Meldung."""
+    db_file = tmp_path / "ftso.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 5)
+    c.close()
+    exit_code = main(["fts-optimize", "--db", str(db_file)])
+    assert exit_code == 0
+    assert "FTS5 optimize abgeschlossen" in capsys.readouterr().out
+
+
+def test_fts_optimize_json(tmp_path, capsys):
+    """fts-optimize JSON: ok=True, Exit 0 (spiegelt optimize-Vertrag)."""
+    db_file = tmp_path / "ftsoj.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 5)
+    c.close()
+    exit_code = main(["fts-optimize", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {"ok": True}
+
+
+def test_fts_optimize_fehlende_db(tmp_path, capsys):
+    """fts-optimize auf nicht existierender DB liefert Exit 2."""
+    bad = tmp_path / "fehlt.sqlite3"
+    exit_code = main(["fts-optimize", "--db", str(bad)])
+    assert exit_code == 2
+    assert "fehlt" in capsys.readouterr().err
+
+
+def test_fts_rebuild_text(tmp_path, capsys):
+    """fts-rebuild Subcommand: Text-Output enthaelt Zeilen-Zaehler."""
+    db_file = tmp_path / "ftsr.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 6)
+    c.close()
+    exit_code = main(["fts-rebuild", "--db", str(db_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "FTS5 rebuild abgeschlossen" in out
+    assert "6 Eintraege" in out
+
+
+def test_fts_rebuild_json(tmp_path, capsys):
+    """fts-rebuild JSON: fts_rows entspricht der objects-Zeilenzahl."""
+    db_file = tmp_path / "ftsrj.sqlite3"
+    c = open_db(db_file)
+    _seed_objects(c, 4)
+    c.close()
+    exit_code = main(["fts-rebuild", "--db", str(db_file), "--json"])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {"fts_rows": 4}
+
+
+def test_fts_rebuild_repariert_kaputten_index(tmp_path, capsys):
+    """fts-rebuild reparariert nach manuellem Bypass die FTS-Tabelle.
+
+    Spiegelt :func:`test_fts_check_meldet_inkonsistenz` und den check->fix-
+    Workflow aus :func:`test_cleanup_*`: erst check entdeckt das Problem,
+    dann rebuild stellt den Index wieder her, dann ist check wieder sauber.
+    """
+    db_file = tmp_path / "ftsr_repair.sqlite3"
+    c = open_db(db_file)
+    c.execute("DROP TRIGGER objects_ai")
+    c.execute("INSERT INTO objects(obj_id, Name) VALUES ('OBJ_X', 'Geist')")
+    c.commit()
+    c.close()
+    # Check meldet das Problem
+    assert main(["fts-check", "--db", str(db_file)]) == 1
+    capsys.readouterr()  # drain output
+    # Rebuild stellt es her
+    assert main(["fts-rebuild", "--db", str(db_file)]) == 0
+    capsys.readouterr()
+    # Check ist wieder OK
+    assert main(["fts-check", "--db", str(db_file)]) == 0
+
+
+def test_fts_rebuild_fehlende_db(tmp_path, capsys):
+    """fts-rebuild auf nicht existierender DB liefert Exit 2."""
+    bad = tmp_path / "fehlt.sqlite3"
+    exit_code = main(["fts-rebuild", "--db", str(bad)])
+    assert exit_code == 2
+    assert "fehlt" in capsys.readouterr().err

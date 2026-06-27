@@ -6,8 +6,9 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check,
-                                      free_page_count, optimize, quick_check,
-                                      vacuum)
+                                      free_page_count, fts_integrity_check,
+                                      fts_optimize, fts_rebuild, optimize,
+                                      quick_check, vacuum)
 from stonebook.db.repository import ObjectRepo
 
 
@@ -340,6 +341,128 @@ def test_optimize_idempotent(tmp_path):
         second = optimize(c)
         assert first == second
         assert quick_check(c) == []
+    finally:
+        c.close()
+
+
+def test_fts_integrity_check_leere_db_ok(tmp_path):
+    """FTS-Integrity-Check auf frischer DB ohne Inhalte ist sauber.
+
+    Spiegelt :func:`test_deep_check_neu_angelegte_db_ok` auf die FTS-Achse:
+    leere Tabellen erzeugen einen leeren FTS-Index, der per Definition
+    konsistent zum Content-Table ist. Output-Vertrag: leere Liste = OK.
+    """
+    c = open_db(tmp_path / "fts_ok.sqlite3")
+    try:
+        assert fts_integrity_check(c) == []
+    finally:
+        c.close()
+
+
+def test_fts_integrity_check_nach_inserts_ok(tmp_path):
+    """Nach regulaeren Inserts pflegen die Trigger den FTS-Index konsistent."""
+    c = open_db(tmp_path / "fts_inserts.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 11):
+            repo.create(f"OBJ_{i:04d}", Name=f"Stueck {i}",
+                        Mineral_Primaer="Quarz" if i % 2 else "Calcit",
+                        notizen="Test-Beschreibung")
+        assert fts_integrity_check(c) == []
+        # Daten ueberleben unangetastet
+        assert c.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 10
+    finally:
+        c.close()
+
+
+def test_fts_integrity_check_idempotent(tmp_path):
+    """Mehrfacher Aufruf bleibt stabil und meldet konsistent das gleiche."""
+    c = open_db(tmp_path / "fts_idem.sqlite3")
+    ObjectRepo(c).create("OBJ_0001", Name="Test", Mineral_Primaer="Quarz")
+    try:
+        first = fts_integrity_check(c)
+        second = fts_integrity_check(c)
+        assert first == second == []
+    finally:
+        c.close()
+
+
+def test_fts_integrity_check_erkennt_kaputten_index(tmp_path):
+    """Wenn der FTS-Index aus dem Sync mit objects laeuft, wird das gemeldet.
+
+    Simuliert den Pfad ``manueller direkt-Insert in objects ohne die FTS-
+    Trigger`` (typisch nach JSON-Restore aus einem partiellen Backup ohne FTS-
+    Tabelle, oder nach Schema-Aenderungen). Der FTS-Integrity-Check muss die
+    Diskrepanz erkennen und mindestens eine Meldung liefern.
+    """
+    c = open_db(tmp_path / "fts_broken.sqlite3")
+    try:
+        # Insert ohne FTS-Trigger: erst Trigger entfernen, dann einfuegen.
+        c.execute("DROP TRIGGER objects_ai")
+        c.execute("INSERT INTO objects(obj_id, Name) VALUES ('OBJ_X', 'Geist')")
+        c.commit()
+        messages = fts_integrity_check(c)
+        assert messages != []
+    finally:
+        c.close()
+
+
+def test_fts_optimize_leere_db_kein_crash(tmp_path):
+    """FTS-Optimize auf einer leeren DB ist sicher; Index bleibt konsistent."""
+    c = open_db(tmp_path / "fts_opt_leer.sqlite3")
+    try:
+        fts_optimize(c)
+        assert fts_integrity_check(c) == []
+    finally:
+        c.close()
+
+
+def test_fts_optimize_idempotent(tmp_path):
+    """Mehrfacher FTS-Optimize bleibt stabil; Inhalte ueberleben unveraendert."""
+    c = open_db(tmp_path / "fts_opt_idem.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 11):
+            repo.create(f"OBJ_{i:04d}", Mineral_Primaer="Quarz")
+        fts_optimize(c)
+        fts_optimize(c)
+        assert fts_integrity_check(c) == []
+        assert c.execute("SELECT COUNT(*) FROM objects").fetchone()[0] == 10
+    finally:
+        c.close()
+
+
+def test_fts_rebuild_repariert_kaputten_index(tmp_path):
+    """Rebuild stellt den FTS-Index aus objects wieder her; Integrity-Check OK.
+
+    Spiegelt das ``check`` -> ``fix``-Pattern aus :func:`delete_orphan_images`/
+    :func:`foreign_key_check` auf die FTS-Achse: erst Inkonsistenz feststellen,
+    dann reparieren, dann erneut pruefen.
+    """
+    c = open_db(tmp_path / "fts_repair.sqlite3")
+    try:
+        c.execute("DROP TRIGGER objects_ai")
+        c.execute("INSERT INTO objects(obj_id, Name) VALUES ('OBJ_X', 'Geist')")
+        c.commit()
+        assert fts_integrity_check(c) != []
+        n = fts_rebuild(c)
+        assert n == 1
+        assert fts_integrity_check(c) == []
+    finally:
+        c.close()
+
+
+def test_fts_rebuild_zaehler_passt_zu_objects(tmp_path):
+    """Nach Rebuild stimmt die Zeilenzahl im FTS-Index mit objects ueberein."""
+    c = open_db(tmp_path / "fts_count.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 8):
+            repo.create(f"OBJ_{i:04d}", Mineral_Primaer="Quarz")
+        n = fts_rebuild(c)
+        assert n == 7
+        assert c.execute(
+            "SELECT COUNT(*) FROM objects_fts").fetchone()[0] == n
     finally:
         c.close()
 

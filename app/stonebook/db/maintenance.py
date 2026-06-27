@@ -90,6 +90,85 @@ def optimize(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0])
 
 
+def fts_integrity_check(conn: sqlite3.Connection) -> list[str]:
+    """SQLite-FTS5-eigene Konsistenzpruefung des ``objects_fts``-Index.
+
+    Spiegelt :func:`quick_check`/:func:`deep_check` (Page-/Index-Korruption der
+    Basistabellen) und :func:`foreign_key_check` (referentielle Achse) auf die
+    FTS-Achse: ``INSERT INTO objects_fts(objects_fts) VALUES('integrity-check')``
+    laesst die FTS5-Engine ihre internen Segment-Strukturen gegen den
+    Content-Table (``content='objects'``) abgleichen und meldet Inkonsistenzen
+    als ``sqlite3.DatabaseError`` (typisch nach manueller DB-Edition mit
+    ``PRAGMA foreign_keys=OFF``, JSON-Restore aus partiellen Backups oder
+    abgebrochenen Migrations-Laeufen, die die FTS-Trigger nicht durchlaufen
+    haben). Liefert ``[]`` bei intaktem FTS-Index, sonst die Fehler-Meldungen
+    der Engine als String-Liste - spiegelt das Listen-Format von
+    :func:`quick_check`/:func:`deep_check` exakt, damit Cron-Reporter und
+    JSON-CLI-Pfade die gleiche Auswertung nutzen koennen.
+
+    Behoben wird ein gemeldeter Schaden ueber :func:`fts_rebuild`, das den
+    FTS-Index vollstaendig aus dem Content-Table neu aufbaut.
+
+    Verwendet die FTS5-Variante ``('integrity-check', 1)``: das ``rank=1``-
+    Argument schaltet die zusaetzliche Pruefung gegen den Content-Table
+    (``content='objects'``) frei - ohne dieses Argument prueft FTS5 nur die
+    internen Index-Strukturen (B-Tree-Konsistenz), nicht aber die Spiegelung
+    zwischen Content-Table und Index-Eintraegen, sodass Trigger-Bypass-
+    Inkonsistenzen unentdeckt blieben.
+    """
+    try:
+        conn.execute(
+            "INSERT INTO objects_fts(objects_fts, rank) "
+            "VALUES('integrity-check', 1)")
+        return []
+    except sqlite3.DatabaseError as exc:
+        return [str(exc)]
+
+
+def fts_optimize(conn: sqlite3.Connection) -> None:
+    """Fuehrt ``INSERT INTO objects_fts(objects_fts) VALUES('optimize')`` aus.
+
+    Spiegelt :func:`optimize` (Query-Planner-Statistiken) auf die FTS-Achse:
+    waehrend ``PRAGMA optimize`` die ``sqlite_stat1``-Verteilungen pflegt,
+    pflegt ``fts_optimize`` den FTS5-Segment-Layout. Nach vielen
+    Update/Delete-Operationen liegt der FTS-Index fragmentiert in vielen
+    kleinen Segmenten, die jede MATCH-Suche linear durchsuchen muss; die
+    Optimize-Operation merged sie zu einem einzigen grossen Segment und
+    macht die Suche deutlich schneller. Idempotent: zwei Aufrufe in Folge
+    sind sicher; SQLite ueberspringt die zweite Iteration komplett, weil
+    der Index bereits maximal kompakt ist.
+
+    Geeignet fuer Wartungs-Cron neben :func:`optimize` und :func:`vacuum`:
+    ``vacuum`` reduziert die Datei-Groesse, ``optimize`` die Query-Plaene,
+    ``fts_optimize`` die FTS-Such-Latenz. Liefert ``None`` zurueck (kein
+    sinnvolles Mass wie bei ``optimize``/``analyze`` - die Engine meldet
+    weder die vorherige Segment-Zahl noch die neue im SQL-Interface).
+    """
+    conn.execute("INSERT INTO objects_fts(objects_fts) VALUES('optimize')")
+    conn.commit()
+
+
+def fts_rebuild(conn: sqlite3.Connection) -> int:
+    """Baut den ``objects_fts``-Index vollstaendig aus den Inhalten neu auf.
+
+    Spiegelt :func:`fts_integrity_check` als die zugehoerige Reparatur-
+    Operation: wenn der Integrity-Check eine FTS-Inkonsistenz meldet (typisch
+    nach manuellem Direkt-Insert in ``objects`` ohne die Insert-Trigger, nach
+    JSON-Restore aus einem Backup, dessen FTS-Tabelle leer war, oder nach
+    Schema-Aenderungen, die die FTS-Trigger nicht durchlaufen haben), stellt
+    ``INSERT INTO objects_fts(objects_fts) VALUES('rebuild')`` den Index
+    bit-genau aus dem Content-Table (``content='objects'``) wieder her.
+
+    Liefert die Anzahl Zeilen in ``objects_fts`` nach dem Rebuild zurueck -
+    spiegelt damit das Rueckgabe-Format von :func:`analyze`/:func:`optimize`
+    (Zaehler) und macht den Erfolg fuer Cron-Reporter messbar (Anzahl muss
+    der ``objects``-Zeilenzahl entsprechen).
+    """
+    conn.execute("INSERT INTO objects_fts(objects_fts) VALUES('rebuild')")
+    conn.commit()
+    return int(conn.execute("SELECT COUNT(*) FROM objects_fts").fetchone()[0])
+
+
 def quick_check(conn: sqlite3.Connection) -> list[str]:
     """SQLite-eigene Konsistenzpruefung (Schnell-Variante).
 
