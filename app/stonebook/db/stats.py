@@ -90,6 +90,8 @@ class Statistik:
     koordinaten_radius_durchschnitt_km: float | None = None
     koordinaten_radius_median_km: float | None = None
     koordinaten_diameter_km: float | None = None
+    mohs_kollektion_min: float | None = None
+    mohs_kollektion_max: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1131,6 +1133,14 @@ class Statistik:
                 round(self.koordinaten_diameter_km, 3)
                 if self.koordinaten_diameter_km is not None else None
             ),
+            "mohs_kollektion_min": (
+                round(self.mohs_kollektion_min, 1)
+                if self.mohs_kollektion_min is not None else None
+            ),
+            "mohs_kollektion_max": (
+                round(self.mohs_kollektion_max, 1)
+                if self.mohs_kollektion_max is not None else None
+            ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -1731,6 +1741,39 @@ def _geaendert_am_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | No
         "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'"
     ).fetchone()
     return (row["lo"], row["hi"])
+
+
+def _mohs_spanne(conn: sqlite3.Connection) -> tuple[float | None, float | None]:
+    """Liefert (kleinste, groesste) Mohs-Haerte als Kollektion-Spanne.
+
+    Spiegelt :func:`_funddatum_spanne` auf die Mohs-Haerte-Achse: waehrend die
+    Funddatum-Spanne den Sammlungs-Zeitraum auf der Fund-Achse beziffert,
+    beziffert die Mohs-Spanne die Haerte-Bandbreite der Sammlung ("vom
+    weichsten Talk-Stueck zum haertesten Korund-Stueck") und ergaenzt damit
+    die Coverage-Quote ``quote_mit_mohs_prozent`` (Pflege-Sicht) um die
+    physikalische Extent-Sicht ueber den dokumentierten Bestand.
+
+    Mohs-Haerte liegt pro Objekt als Bereich vor (``Mohs_Haerte_min``/
+    ``Mohs_Haerte_max``), z.B. "5-6" fuer Apatit-typische Stuecke; in der
+    Praxis ist oft nur eine Achse gepflegt (Punkt-Wert wie "7" fuer Quarz
+    wird als ``min=7`` ohne max gespeichert, oder als ``min=max=7``).
+    COALESCE(min, max)/COALESCE(max, min) faengt die Single-Point-Faelle ab
+    und behandelt sie als beidseitige Grenze - spiegelt die has_mohs-/
+    objekte_mit_mohs-Konvention exakt: ein Objekt zaehlt, sobald eines der
+    beiden Bereichsfelder gesetzt ist. WHERE filtert Eintraege ohne jegliche
+    Haerte-Angabe (beide NULL) heraus, damit nicht-gepflegte Stuecke die
+    Spanne nicht auf ``(NULL, NULL)`` verfaelschen. Leere DB → (None, None),
+    spiegelt das _funddatum_spanne-/_erstellt_am_spanne-Verhalten.
+    """
+    row = conn.execute(
+        "SELECT MIN(COALESCE(Mohs_Haerte_min, Mohs_Haerte_max)) AS lo, "
+        "MAX(COALESCE(Mohs_Haerte_max, Mohs_Haerte_min)) AS hi "
+        "FROM objects "
+        "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
+    ).fetchone()
+    lo = float(row["lo"]) if row["lo"] is not None else None
+    hi = float(row["hi"]) if row["hi"] is not None else None
+    return (lo, hi)
 
 
 SCALE_1_10_COLUMNS: frozenset[str] = frozenset({
@@ -3079,6 +3122,18 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "SELECT COUNT(*) FROM objects "
         "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
     ).fetchone()[0]
+    # Mohs-Haerte-Spanne ueber die ganze Sammlung: kleinste und groesste
+    # Haerte, die ueberhaupt im Bestand dokumentiert ist. Spiegelt das
+    # funddatum_/erstellt_am_/geaendert_am-Spannen-Trio auf die physikalische
+    # Haerte-Achse - waehrend die Coverage-Quote (quote_mit_mohs_prozent)
+    # beziffert, wieviel der Sammlung ueberhaupt eine Mohs-Pflege hat, zeigt
+    # die Spanne die Haerte-Bandbreite des dokumentierten Anteils ("vom
+    # weichsten Talk-Stueck zum haertesten Korund-Stueck"). Reuse der
+    # has_mohs-/objekte_mit_mohs-Konvention (ein Objekt zaehlt, sobald eines
+    # der beiden Bereichsfelder gesetzt ist). Bei leerer DB / ohne jegliche
+    # Mohs-Pflege bleiben beide Grenzen None, spiegelt das _funddatum_spanne-
+    # Verhalten.
+    st.mohs_kollektion_min, st.mohs_kollektion_max = _mohs_spanne(conn)
     # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
     # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
     # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen

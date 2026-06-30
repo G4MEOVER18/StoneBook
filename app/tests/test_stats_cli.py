@@ -4004,6 +4004,54 @@ def test_text_ausgabe_ohne_geaendert_am_keine_spanne_zeile(tmp_path, capsys):
     assert "Aenderungs-Spanne:" not in out
 
 
+def test_text_ausgabe_zeigt_mohs_spanne(tmp_path, capsys):
+    """Mohs-Spanne erscheint, sobald gueltige Haerte-Werte vorliegen.
+
+    Spiegelt test_text_ausgabe_zeigt_funddatum_spanne auf die physikalische
+    Haerte-Achse: zeigt die Haerte-Bandbreite des dokumentierten Bestands.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mohs_spanne.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 1.0, 1.0),
+            ("OBJ_0002", 8.5, 9.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Mohs-Spanne:" in out
+    assert "1.0" in out
+    assert "9.0" in out
+
+
+def test_text_ausgabe_ohne_mohs_keine_spanne_zeile(tmp_path, capsys):
+    """Bei DB ohne gepflegte Mohs-Haerte erscheint die Mohs-Spanne-Zeile gar nicht.
+
+    Spiegelt test_text_ausgabe_ohne_funddatum_keine_spanne_zeile: leere Pflege
+    laesst die Zeile entfallen, damit der Bericht keine nichtssagenden Nullen
+    enthaelt.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mohs_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Mohs-Spanne:" not in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0

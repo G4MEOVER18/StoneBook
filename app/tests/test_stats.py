@@ -1833,6 +1833,89 @@ def test_geaendert_am_spanne_leer(tmp_path):
     c.close()
 
 
+def test_mohs_spanne_aus_seed_db(tmp_path):
+    """kollektion_min/max = MIN/MAX der Mohs-Haerte ueber die Sammlung.
+
+    Spiegelt test_funddatum_spanne_aus_seed_db auf die physikalische Haerte-
+    Achse: zeigt die Haerte-Bandbreite des dokumentierten Bestands ("vom
+    weichsten Talk-Stueck zum haertesten Korund-Stueck"). Reuse der has_mohs-/
+    objekte_mit_mohs-Konvention (ein Objekt zaehlt, sobald eines der beiden
+    Bereichsfelder gesetzt ist); Single-Point-Faelle (nur min ODER nur max
+    gesetzt) tragen mit dem einen Wert zu beiden Grenzen bei. Eintraege ohne
+    jegliche Haerte-Pflege bleiben aus der Spanne.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_spanne.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.5, 7.0),     # Quarz-Bereich
+            ("OBJ_0002", 1.0, 1.0),     # Talk: untere Grenze der Sammlung
+            ("OBJ_0003", 8.5, 9.0),     # Topas/Korund: obere Grenze
+            ("OBJ_0004", 5.0, None),    # Point-only min → 5.0/5.0
+            ("OBJ_0005", None, 7.5),    # Point-only max → 7.5/7.5
+            ("OBJ_0006", None, None),   # ignoriert (keine Haerte-Pflege)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_min == 1.0
+    assert st.mohs_kollektion_max == 9.0
+    d = st.as_dict()
+    assert d["mohs_kollektion_min"] == 1.0
+    assert d["mohs_kollektion_max"] == 9.0
+    c.close()
+
+
+def test_mohs_spanne_leer(tmp_path):
+    """Ohne dokumentierte Mohs-Haerte sind beide Grenzen None.
+
+    Spiegelt test_funddatum_spanne_leer: bei einem Bestand ohne jegliche
+    Mohs-Pflege (z.B. frisch importierte CSV ohne Haerte-Spalte) bleiben
+    beide Grenzen None - die Spanne-Zeile entfaellt damit in der CLI.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_min is None
+    assert st.mohs_kollektion_max is None
+    d = st.as_dict()
+    assert d["mohs_kollektion_min"] is None
+    assert d["mohs_kollektion_max"] is None
+    c.close()
+
+
+def test_mohs_spanne_einzelner_eintrag(tmp_path):
+    """Ein einziges gepflegtes Stueck → Spanne kollabiert auf den Punkt.
+
+    Konsistent zur Funddatum-Spanne mit nur einem Eintrag (frueheste ==
+    spaeteste). Bei einem Point-only-Eintrag (nur min ODER nur max gesetzt)
+    tragen beide Grenzen denselben Wert.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_single.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        ("OBJ_0001", 7.0, None),
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_min == 7.0
+    assert st.mohs_kollektion_max == 7.0
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")

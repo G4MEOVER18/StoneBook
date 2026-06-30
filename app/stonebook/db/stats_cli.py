@@ -185,6 +185,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Koord.-Durchmesser:    "
             f"{st.koordinaten_diameter_km:.1f} km")
+    if st.mohs_kollektion_min is not None and st.mohs_kollektion_max is not None:
+        # Mohs-Spanne ueber die ganze Sammlung: kleinste/groesste Mohs-Haerte
+        # im dokumentierten Bestand. Spiegelt das Funddatum-/Erfassungs-/
+        # Aenderungs-Spannen-Trio (drei Zeit-Achsen) und die Koordinaten-
+        # Spanne (eine geografische Achse) auf die physikalische Haerte-Achse;
+        # ergaenzt die Mohs-Coverage-Quote (Pflege-Sicht) um die Bandbreite-
+        # Sicht ueber den gepflegten Anteil ("vom weichsten Talk-Stueck zum
+        # haertesten Korund-Stueck"). Steht direkt unter dem Koordinaten-
+        # Spannen-Block, weil alle "Spannen"-Zeilen aeussere Grenzwerte des
+        # Bestands beziffern (Fund/Erfassung/Aenderung als Zeit, Koordinaten
+        # als geografisch, Mohs als physikalische Haerte). 1 Nachkommastelle
+        # reicht fuer Mohs aus (Skala 1..10 mit ueblichen 0.5-Schritten);
+        # identische Werte erscheinen als "X.X .. X.X" (transparent fuer
+        # den Leser, spiegelt die Funddatum-Spanne-Konvention). Block nur
+        # ausgeben, wenn ueberhaupt eine Mohs-Pflege vorliegt - sonst
+        # belastet die Zeile den Bericht mit nichtssagenden Nullen.
+        lines.append(
+            f"Mohs-Spanne:           "
+            f"{st.mohs_kollektion_min:.1f} .. {st.mohs_kollektion_max:.1f}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
