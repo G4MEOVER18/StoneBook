@@ -6540,3 +6540,193 @@ def test_koordinaten_radius_median_km_gerade_anzahl(tmp_path):
     # ueber dem Median.
     assert st.koordinaten_radius_max_km > st.koordinaten_radius_median_km
     c.close()
+
+
+def _haversine_km(lat1: float, lon1: float,
+                  lat2: float, lon2: float) -> float:
+    """Test-Helper: Haversine-Distanz zwischen zwei Punkten in km.
+
+    Spiegelt die in compute_statistics und repository.list_objects_in_radius/
+    _nearest verwendete Formel exakt (Erd-Sphaere mit Radius 6371.0 km) -
+    damit der erwartete Diameter unabhaengig in den Tests berechnet werden
+    kann, ohne die Implementierung zu spiegeln.
+    """
+    import math
+    earth_radius_km = 6371.0
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2)
+    return 2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a)))
+
+
+def test_koordinaten_diameter_km_aus_seed_db(tmp_path):
+    """Maximaler paarweise Abstand zwischen je zwei geocoded Stuecken -
+    die geografische Sammlungs-Spannweite als Punkt-Paar-Achse zur
+    Schwerpunkts-Achse koordinaten_radius_max_km. Spiegelt das Punkt-Paar-
+    Konzept als orthogonale Sicht zur Zentroid-Sicht."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "diameter.sqlite3")
+    # Drei geocoded Stuecke: (46,7), (47,8), (48,9). Das groesste Paar ist
+    # (46,7) <-> (48,9), spiegelt list_objects_in_bbox-typische Sammlungs-
+    # Geometrie. Freitext-/None-Eintraege werden ignoriert wie bei
+    # koordinaten_radius_*.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_diameter_km is not None
+    expected = _haversine_km(46.0, 7.0, 48.0, 9.0)
+    assert st.koordinaten_diameter_km == pytest.approx(expected)
+    # Geometrische Invariante: radius_max <= diameter <= 2*radius_max.
+    # Linke Schranke gilt strikt < hier, weil das mittlere Stueck (47,8)
+    # mit dem Zentroid kollidiert und die Aussen-Stuecke das paarweise
+    # Maximum bilden.
+    assert (st.koordinaten_radius_max_km
+            <= st.koordinaten_diameter_km
+            <= 2 * st.koordinaten_radius_max_km)
+    d = st.as_dict()
+    assert d["koordinaten_diameter_km"] == round(expected, 3)
+    c.close()
+
+
+def test_koordinaten_diameter_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_diameter_km ist None (kein Wertegrund fuer
+    paarweise Maximum) - spiegelt die koordinaten_radius_*/zentrum/bbox-
+    Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_diameter.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_diameter_km is None
+    assert st.as_dict()["koordinaten_diameter_km"] is None
+    c.close()
+
+
+def test_koordinaten_diameter_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert der Durchmesser auf 0.0
+    (kein Paar, der Punkt zu sich selbst hat Distanz 0). Spiegelt die
+    koordinaten_radius_max/durchschnitt/median-Konvention bei n=1."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_diameter.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_diameter_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_max_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_diameter_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung mit nur Freitext-Fundorten: koordinaten_diameter_km ist None,
+    obwohl objekte_mit_fundort > 0. Spiegelt die koordinaten_radius_*-Konvention
+    bei leerer Geocoding-Subsammlung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_diameter.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_diameter_km is None
+    assert st.as_dict()["koordinaten_diameter_km"] is None
+    c.close()
+
+
+def test_koordinaten_diameter_km_groesser_als_radius_max_bei_bipolarer_sammlung(
+        tmp_path):
+    """Bipolare Sammlung (zwei diametrale Cluster um den Zentroid):
+    diameter ~ 2*radius_max - der Zentroid liegt genau zwischen den zwei
+    aeussersten Stuecken, sodass beide etwa gleich weit vom Schwerpunkt
+    entfernt sind und ihr paarweiser Abstand die maximale Spannweite
+    bildet. Differenziert klar vom einseitig geclusterten Fall (siehe
+    Schiefe-Test), wo diameter deutlich unter 2*radius_max liegt."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bipolar_diameter.sqlite3")
+    # Zwei spiegelsymmetrische Stuecke um (47,8): (46,7) und (48,9).
+    # Zentroid = (47,8) genau in der Mitte. Radius_max ist die Distanz
+    # vom Zentroid zu einem der Eckpunkte, der Durchmesser ist die
+    # Distanz zwischen den zwei Eckpunkten -> exakt 2*radius_max
+    # (modulo Sphaeren-Verzerrung, die bei 2 Grad Spannweite minimal ist).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_diameter_km is not None
+    assert st.koordinaten_radius_max_km is not None
+    # Bei diametraler Verteilung um den Zentroid liegt der Durchmesser
+    # nahe 2*radius_max (Sphaeren-Verzerrung bei 2 Grad Lat/Lon-Span
+    # bleibt klein, daher Abweichung < 0.5 %).
+    assert st.koordinaten_diameter_km == pytest.approx(
+        2 * st.koordinaten_radius_max_km, rel=0.005)
+    c.close()
+
+
+def test_koordinaten_diameter_km_einseitig_geclusterte_sammlung(tmp_path):
+    """Einseitig geclusterte Sammlung (9 enge Stuecke + 1 Ausreisser):
+    der Zentroid wird zum Ausreisser gezogen, sodass radius_max gross wird
+    (Distanz vom verschobenen Zentroid zum am weitesten weg liegenden
+    Cluster-Punkt) - der Durchmesser bleibt jedoch konstant der Cluster-
+    zu-Ausreisser-Abstand. Diameter < 2*radius_max ist die Schiefe-
+    Signatur, klar abgegrenzt vom bipolaren Fall (diameter ~ 2*radius_max)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "schief_diameter.sqlite3")
+    # 9 Bern-Stuecke (46.95/7.45 +/- 0.02) + 1 Oslo-Stueck. Der Durchmesser
+    # ist die Bern-zu-Oslo-Distanz (alle anderen Paare sind enger). Der
+    # Zentroid wird durch Oslo um ca. 1/10 in Richtung Oslo verschoben.
+    rows = [
+        ("OBJ_0001", "46.95, 7.45"),
+        ("OBJ_0002", "46.96, 7.45"),
+        ("OBJ_0003", "46.95, 7.46"),
+        ("OBJ_0004", "46.94, 7.45"),
+        ("OBJ_0005", "46.95, 7.44"),
+        ("OBJ_0006", "46.93, 7.47"),
+        ("OBJ_0007", "46.96, 7.48"),
+        ("OBJ_0008", "46.97, 7.43"),
+        ("OBJ_0009", "46.94, 7.46"),
+        ("OBJ_0010", "59.91, 10.75"),
+    ]
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_diameter_km is not None
+    assert st.koordinaten_radius_max_km is not None
+    # Durchmesser ist die Bern-zu-Oslo-Distanz. Naehert sich der Bern-
+    # zu-Oslo-Direktdistanz nicht ueber radius_max hinaus an (radius_max
+    # ist die Distanz vom verschobenen Zentroid zum aeussersten Punkt,
+    # der Durchmesser ist die volle Bern-Oslo-Distanz).
+    bern_oslo = _haversine_km(46.95, 7.45, 59.91, 10.75)
+    assert st.koordinaten_diameter_km == pytest.approx(bern_oslo, rel=0.01)
+    # Schiefe-Signatur: diameter strikt < 2*radius_max (Bern-Cluster zieht
+    # den Zentroid in Richtung Bern, sodass radius_max nur knapp ueber der
+    # Haelfte des Durchmessers liegt - wenn Oslo der einzige weit-entfernte
+    # Punkt ist, dominiert er die Radius-Berechnung und liegt nahe der
+    # vollen Durchmesser-Distanz).
+    assert st.koordinaten_diameter_km < 2 * st.koordinaten_radius_max_km
+    # Geometrische Invariante: radius_max <= diameter immer.
+    assert st.koordinaten_radius_max_km <= st.koordinaten_diameter_km
+    c.close()

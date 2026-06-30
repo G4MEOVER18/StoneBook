@@ -4989,3 +4989,77 @@ def test_json_ausgabe_enthaelt_koordinaten_radius_median(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert isinstance(payload["koordinaten_radius_median_km"], float)
     assert payload["koordinaten_radius_median_km"] > 0.0
+
+
+def test_text_ausgabe_zeigt_koordinaten_diameter(tmp_path, capsys):
+    """Koord.-Durchmesser-Block (X.Y km) erscheint direkt unter dem Median-
+    Koord.-Radius-Block - die Punkt-Paar-Sicht zur Schwerpunkts-Sicht der
+    Radius-Block-Trias (Max + Mittel + Median). Beziffert die geografische
+    Sammlungs-Spannweite (Distanz zwischen den zwei am weitesten voneinander
+    entfernten Stuecken) als orthogonale Aggregations-Achse zu den Zentroid-
+    basierten Radius-Massen."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "diameter.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koord.-Durchmesser:" in out
+    # Reihenfolge: Durchmesser direkt unter Median-Radius (Schwerpunkts-
+    # Sicht vs. Punkt-Paar-Sicht als orthogonale Aggregations-Achsen).
+    median_pos = out.index("Median Koord.-Radius:")
+    diameter_pos = out.index("Koord.-Durchmesser:")
+    assert median_pos < diameter_pos
+
+
+def test_text_ausgabe_zeigt_kein_koordinaten_diameter_ohne_geocoded(
+        tmp_path, capsys):
+    """Sammlung ohne geocoded-Eintraege: Koord.-Durchmesser-Block bleibt
+    aus (koordinaten_diameter_km None), spiegelt das Verhalten der Radius-/
+    Zentrum-/Spannen-Bloecke bei nur-Freitext-Fundorten."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "freitext_diameter.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Koord.-Durchmesser:" not in out
+
+
+def test_json_ausgabe_enthaelt_koordinaten_diameter(tmp_path, capsys):
+    """JSON-Ausgabe enthaelt koordinaten_diameter_km als float (auf 3
+    Nachkommastellen gerundet). Bei leerer Geocoding-Subsammlung
+    serialisiert das Feld als null - spiegelt die radius_max/durchschnitt/
+    median-Serialisierungs-Konvention."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "diameter.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 7.0"),
+            ("OBJ_0002", "48.0, 9.0"),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["koordinaten_diameter_km"], float)
+    assert payload["koordinaten_diameter_km"] > 0.0

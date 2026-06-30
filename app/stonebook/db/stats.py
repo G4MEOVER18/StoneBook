@@ -89,6 +89,7 @@ class Statistik:
     koordinaten_radius_max_km: float | None = None
     koordinaten_radius_durchschnitt_km: float | None = None
     koordinaten_radius_median_km: float | None = None
+    koordinaten_diameter_km: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1125,6 +1126,10 @@ class Statistik:
             "koordinaten_radius_median_km": (
                 round(self.koordinaten_radius_median_km, 3)
                 if self.koordinaten_radius_median_km is not None else None
+            ),
+            "koordinaten_diameter_km": (
+                round(self.koordinaten_diameter_km, 3)
+                if self.koordinaten_diameter_km is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -2851,6 +2856,55 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         st.koordinaten_radius_median_km = (
             distances[n // 2] if n % 2
             else (distances[n // 2 - 1] + distances[n // 2]) / 2)
+        # koordinaten_diameter_km: maximaler paarweise geodaetischer Abstand
+        # zwischen je zwei geocoded Fundort-Eintraegen - die geografische
+        # Sammlungs-Ausdehnung als Punkt-Paar-Achse zur Schwerpunkt-Achse
+        # koordinaten_radius_max_km. Waehrend radius_max die Distanz vom
+        # Zentroid zum entferntesten Stueck beziffert (Schwerpunkts-Sicht),
+        # gibt der Durchmesser die echte Sammlungs-Spannweite zwischen den
+        # beiden am weitesten voneinander entfernten Stuecken an
+        # (Punkt-Paar-Sicht). Geometrisch gilt immer
+        # radius_max <= diameter <= 2*radius_max: die untere Grenze wird
+        # erreicht, wenn ein Stueck genau am Zentroid liegt und der
+        # entfernteste Punkt das andere Ende des Durchmessers bildet
+        # (Singleton-/Punkt-am-Zentroid-Sammlung), die obere wenn die
+        # zwei aeussersten Stuecke diametral um den Zentroid liegen (rein
+        # bipolare Sammlung). Die Differenz zwischen Durchmesser und 2*Radius
+        # beziffert die Schwerpunkts-Schiefe: bei symmetrischer Verteilung
+        # um den Zentroid liegt der Durchmesser nahe 2*Radius, bei einseitig
+        # geclusterten Sammlungen mit Einzel-Ausreisser liegt er deutlich
+        # darunter (der Zentroid wird zum Ausreisser gezogen, sodass radius_max
+        # gross wird, aber die Bern-zu-Bern-Distanzen klein bleiben). Reuse-Pfad
+        # nutzt die bereits berechneten geocoded_coords-Liste (keine zweite
+        # parse_coordinates-Runde) und dieselbe Haversine-Formel auf einer
+        # Erd-Sphaere mit Radius 6371.0 km wie radius_max / repository.
+        # list_objects_in_radius/_nearest. Die Komplexitaet ist O(n^2) ueber
+        # die Paar-Iteration (n*(n-1)/2 Paare); fuer Sammler-DBs mit O(10^3)
+        # Eintraegen bleibt das unter Sekundenzeit. Bei genau einem geocoded-
+        # Stueck kollabiert der Durchmesser auf 0.0 (kein Paar, der Punkt zu
+        # sich selbst hat Distanz 0) - konsistent zur radius_max/durchschnitt/
+        # median-Konvention bei n=1. Bei null geocoded-Stuecken bleibt der
+        # Durchmesser None - spiegelt die uebrigen koordinaten_*-Konventionen.
+        # as_dict serialisiert auf 3 Nachkommastellen (~1 m Aufloesung in km,
+        # spiegelt die radius_max/durchschnitt/median-Serialisierung).
+        max_pair_km = 0.0
+        precomputed = [
+            (_math.radians(lat), _math.radians(lon))
+            for lat, lon in geocoded_coords
+        ]
+        for i in range(n):
+            lat_i, lon_i = precomputed[i]
+            cos_lat_i = _math.cos(lat_i)
+            for j in range(i + 1, n):
+                lat_j, lon_j = precomputed[j]
+                dlat = lat_j - lat_i
+                dlon = lon_j - lon_i
+                a = (_math.sin(dlat / 2) ** 2
+                     + cos_lat_i * _math.cos(lat_j) * _math.sin(dlon / 2) ** 2)
+                d_km = 2 * earth_radius_km * _math.asin(min(1.0, _math.sqrt(a)))
+                if d_km > max_pair_km:
+                    max_pair_km = d_km
+        st.koordinaten_diameter_km = max_pair_km
     # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Farbe_beobachtet
     # (tatsaechlich gesehene Mineral-Farbe, die niederschwelligste visuelle
     # Diagnose-Achse - keine Werkzeuge noetig, am Tageslicht beobachtbar).

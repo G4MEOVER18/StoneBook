@@ -166,6 +166,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Median Koord.-Radius:  "
             f"{st.koordinaten_radius_median_km:.1f} km")
+    if st.koordinaten_diameter_km is not None:
+        # Koordinaten-Durchmesser: maximaler paarweise geodaetischer Abstand
+        # zwischen je zwei geocoded Fundort-Eintraegen - die geografische
+        # Sammlungs-Spannweite als Punkt-Paar-Achse zum Schwerpunkt-Radius
+        # (Koordinaten-Radius). Waehrend Radius den entferntesten Punkt vom
+        # Zentroid misst (Schwerpunkts-Sicht), gibt der Durchmesser den
+        # echten Spannungs-Abstand zwischen den zwei aeussersten Stuecken
+        # an (Punkt-Paar-Sicht). Geometrisch gilt radius_max <= diameter
+        # <= 2*radius_max; die Differenz zu 2*Radius beziffert die
+        # Schwerpunkts-Schiefe (bei symmetrischer Verteilung diameter ~
+        # 2*radius_max, bei einseitig geclusterten Sammlungen deutlich
+        # weniger). Steht direkt unter dem Median-Radius, weil Radius und
+        # Durchmesser zusammen die zwei orthogonalen Auspraegungen der
+        # Sammlungs-Ausdehnung bilden (vom Zentroid aus vs. zwischen
+        # zwei Stuecken). 1 Nachkommastelle (~100 m Aufloesung) spiegelt
+        # die Radius-Achsen-Notation.
+        lines.append(
+            f"Koord.-Durchmesser:    "
+            f"{st.koordinaten_diameter_km:.1f} km")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")
