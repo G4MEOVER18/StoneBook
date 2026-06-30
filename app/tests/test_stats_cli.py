@@ -176,11 +176,13 @@ def test_text_ausgabe_zeigt_durchschnitt_und_median_wert_gewicht(tmp_path, capsy
     assert "Median Wert (CHF):" in out
     assert "Ø Gewicht (g):" in out
     assert "Median Gewicht (g):" in out
+    assert "Minimales Gewicht:" in out
     assert "Maximales Gewicht:" in out
     # Median Wert = mittlerer von [100, 200, 600] = 200
     assert "200" in out
-    # Max Gewicht = 200
+    # Max Gewicht = 200, Min Gewicht = 10
     assert "200.0" in out
+    assert "10.0" in out
 
 
 def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
@@ -200,6 +202,8 @@ def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
     assert "Median Wert" not in out
     assert "Ø Gewicht" not in out
     assert "Median Gewicht" not in out
+    assert "Minimales Gewicht" not in out
+    assert "Maximales Gewicht" not in out
 
 
 def test_text_ausgabe_zeigt_coverage_quoten(tmp_path, capsys):

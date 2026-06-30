@@ -4143,11 +4143,13 @@ def test_gewicht_kennzahlen_aus_seed_db(tmp_path):
     st = compute_statistics(c)
     assert st.objekte_mit_gewicht == 3
     assert st.gewicht_summe_g == 260.0
+    assert st.gewicht_min_g == 10.0
     assert st.gewicht_max_g == 200.0
     assert st.gewicht_median_g == 50.0           # mittlerer von [10, 50, 200]
     assert st.gewicht_durchschnitt_g == pytest.approx(260.0 / 3)
     d = st.as_dict()
     assert d["objekte_mit_gewicht"] == 3
+    assert d["gewicht_min_g"] == 10.0
     assert d["gewicht_max_g"] == 200.0
     assert d["gewicht_median_g"] == 50.0
     c.close()
@@ -4172,9 +4174,26 @@ def test_gewicht_kennzahlen_leer(tmp_path):
     c = open_db(tmp_path / "leer.sqlite3")
     st = compute_statistics(c)
     assert st.objekte_mit_gewicht == 0
+    assert st.gewicht_min_g == 0.0
     assert st.gewicht_max_g == 0.0
     assert st.gewicht_median_g == 0.0
     assert st.gewicht_durchschnitt_g == 0.0
+    c.close()
+
+
+def test_gewicht_min_einzelobjekt_gleich_max(tmp_path):
+    """Bei genau einem Objekt mit Gewicht kollabieren Min und Max auf denselben Wert."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_single.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 42.5), ("OBJ_0002", None), ("OBJ_0003", 0.0)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_gewicht == 1
+    assert st.gewicht_min_g == 42.5
+    assert st.gewicht_max_g == 42.5
     c.close()
 
 

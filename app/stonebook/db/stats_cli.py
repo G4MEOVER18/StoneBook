@@ -55,6 +55,7 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
     if st.objekte_mit_gewicht:
         lines.append(f"  Ø Gewicht (g):       {st.gewicht_durchschnitt_g:,.1f}")
         lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")
+        lines.append(f"  Minimales Gewicht:   {st.gewicht_min_g:,.1f}")
         lines.append(f"  Maximales Gewicht:   {st.gewicht_max_g:,.1f}")
     if st.funddatum_frueheste or st.funddatum_spaeteste:
         # Spanne nur anzeigen, wenn ueberhaupt ein gueltiges Funddatum vorliegt.

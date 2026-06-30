@@ -159,6 +159,7 @@ class Statistik:
     gewicht_summe_g: float = 0.0
     gewicht_durchschnitt_g: float = 0.0
     gewicht_median_g: float = 0.0
+    gewicht_min_g: float = 0.0
     gewicht_max_g: float = 0.0
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
@@ -1328,6 +1329,7 @@ class Statistik:
             "gewicht_summe_g": round(self.gewicht_summe_g, 2),
             "gewicht_durchschnitt_g": round(self.gewicht_durchschnitt_g, 2),
             "gewicht_median_g": round(self.gewicht_median_g, 2),
+            "gewicht_min_g": round(self.gewicht_min_g, 2),
             "gewicht_max_g": round(self.gewicht_max_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
@@ -3220,6 +3222,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Grenzen None, spiegelt das _mohs_spanne-/_funddatum_spanne-Verhalten.
     st.dichte_kollektion_min, st.dichte_kollektion_max = _dichte_spanne(conn)
     if gewichte:
+        st.gewicht_min_g = gewichte[0]
         st.gewicht_max_g = gewichte[-1]
         st.gewicht_durchschnitt_g = sum(gewichte) / len(gewichte)
         n = len(gewichte)
