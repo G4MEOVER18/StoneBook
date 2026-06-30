@@ -1916,6 +1916,90 @@ def test_mohs_spanne_einzelner_eintrag(tmp_path):
     c.close()
 
 
+def test_dichte_spanne_aus_seed_db(tmp_path):
+    """kollektion_min/max = MIN/MAX der Dichte (g/cm3) ueber die Sammlung.
+
+    Spiegelt test_mohs_spanne_aus_seed_db auf die physikalische Dichte-Achse:
+    zeigt die Massendichte-Bandbreite des dokumentierten Bestands ("vom
+    leichtesten Bims-/Opal-Stueck zum schwersten Pyrit-/Galenit-Stueck").
+    Reuse der has_dichte-/objekte_mit_dichte-Konvention (ein Objekt zaehlt,
+    sobald eines der beiden Bereichsfelder gesetzt ist); Single-Point-Faelle
+    (nur min ODER nur max gesetzt) tragen mit dem einen Wert zu beiden
+    Grenzen bei. Eintraege ohne jegliche Dichte-Pflege bleiben aus der Spanne.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_spanne.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.65, 2.66),    # Quarz-Bereich
+            ("OBJ_0002", 1.00, 1.10),    # Bims/Opal: untere Grenze
+            ("OBJ_0003", 7.40, 7.60),    # Galenit: obere Grenze
+            ("OBJ_0004", 3.18, None),    # Point-only min → 3.18/3.18
+            ("OBJ_0005", None, 5.02),    # Point-only max → 5.02/5.02
+            ("OBJ_0006", None, None),    # ignoriert (keine Dichte-Pflege)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_min == 1.00
+    assert st.dichte_kollektion_max == 7.60
+    d = st.as_dict()
+    assert d["dichte_kollektion_min"] == 1.00
+    assert d["dichte_kollektion_max"] == 7.60
+    c.close()
+
+
+def test_dichte_spanne_leer(tmp_path):
+    """Ohne dokumentierte Dichte sind beide Grenzen None.
+
+    Spiegelt test_mohs_spanne_leer: bei einem Bestand ohne jegliche
+    Dichte-Pflege (z.B. frisch importierte CSV ohne Dichte-Spalte) bleiben
+    beide Grenzen None - die Spanne-Zeile entfaellt damit in der CLI.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_min is None
+    assert st.dichte_kollektion_max is None
+    d = st.as_dict()
+    assert d["dichte_kollektion_min"] is None
+    assert d["dichte_kollektion_max"] is None
+    c.close()
+
+
+def test_dichte_spanne_einzelner_eintrag(tmp_path):
+    """Ein einziges gepflegtes Stueck → Spanne kollabiert auf den Punkt.
+
+    Konsistent zur Mohs-Spanne mit nur einem Eintrag. Bei einem Point-only-
+    Eintrag (nur min ODER nur max gesetzt) tragen beide Grenzen denselben
+    Wert. Spiegelt die Single-Point-Tabellen-Uebernahme aus Mineral-
+    Datenbanken (z.B. Quarz 2.65 als min=max=2.65).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_single.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        ("OBJ_0001", 2.65, None),
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_min == 2.65
+    assert st.dichte_kollektion_max == 2.65
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")

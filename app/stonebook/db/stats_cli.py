@@ -204,6 +204,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Mohs-Spanne:           "
             f"{st.mohs_kollektion_min:.1f} .. {st.mohs_kollektion_max:.1f}")
+    if st.dichte_kollektion_min is not None and st.dichte_kollektion_max is not None:
+        # Dichte-Spanne ueber die ganze Sammlung: kleinste/groesste Dichte
+        # in g/cm3 im dokumentierten Bestand. Spiegelt die Mohs-Spanne auf
+        # die zweite zentrale physikalische Pruef-Achse: waehrend Mohs die
+        # Haerte-Bandbreite (1..10) beziffert, beziffert Dichte die Masse-
+        # pro-Volumen-Bandbreite ("vom leichtesten Bims-/Opal-Stueck (~1.0)
+        # zum schwersten Pyrit-/Galenit-Stueck (~7.5)"). Steht direkt unter
+        # der Mohs-Spanne, weil Mohs und Dichte zusammen die zwei
+        # quantitativen Pruef-Methoden der mineralogischen Diagnose bilden
+        # (Quarz/Calcit/Fluorit-Klassen-Trennung). 2 Nachkommastellen
+        # spiegeln die ueblichen Tabellenwerte aus Mineraldatenbanken
+        # (Quarz 2.65, Calcit 2.71, Fluorit 3.18); identische Werte
+        # erscheinen als "X.XX .. X.XX" (transparent fuer den Leser,
+        # spiegelt die Mohs-Spanne-Konvention). Block nur ausgeben, wenn
+        # ueberhaupt eine Dichte-Pflege vorliegt - sonst belastet die Zeile
+        # den Bericht mit nichtssagenden Nullen.
+        lines.append(
+            f"Dichte-Spanne:         "
+            f"{st.dichte_kollektion_min:.2f} .. {st.dichte_kollektion_max:.2f} g/cm3")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

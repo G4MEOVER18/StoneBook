@@ -4052,6 +4052,56 @@ def test_text_ausgabe_ohne_mohs_keine_spanne_zeile(tmp_path, capsys):
     assert "Mohs-Spanne:" not in out
 
 
+def test_text_ausgabe_zeigt_dichte_spanne(tmp_path, capsys):
+    """Dichte-Spanne erscheint, sobald gueltige Dichte-Werte vorliegen.
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_spanne auf die physikalische
+    Dichte-Achse: zeigt die Massendichte-Bandbreite des dokumentierten
+    Bestands inkl. Einheit g/cm3.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dichte_spanne.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 1.00, 1.10),
+            ("OBJ_0002", 7.40, 7.60),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Dichte-Spanne:" in out
+    assert "1.00" in out
+    assert "7.60" in out
+    assert "g/cm3" in out
+
+
+def test_text_ausgabe_ohne_dichte_keine_spanne_zeile(tmp_path, capsys):
+    """Bei DB ohne gepflegte Dichte erscheint die Dichte-Spanne-Zeile gar nicht.
+
+    Spiegelt test_text_ausgabe_ohne_mohs_keine_spanne_zeile: leere Pflege
+    laesst die Zeile entfallen, damit der Bericht keine nichtssagenden
+    Nullen oder " .. " ohne Werte enthaelt.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dichte_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Dichte-Spanne:" not in out
+
+
 def test_json_ausgabe(migrated_db, capsys):
     exit_code = main(["--db", str(migrated_db), "--json"])
     assert exit_code == 0

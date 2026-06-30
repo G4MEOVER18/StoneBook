@@ -92,6 +92,8 @@ class Statistik:
     koordinaten_diameter_km: float | None = None
     mohs_kollektion_min: float | None = None
     mohs_kollektion_max: float | None = None
+    dichte_kollektion_min: float | None = None
+    dichte_kollektion_max: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_max_chf: float = 0.0
@@ -1141,6 +1143,14 @@ class Statistik:
                 round(self.mohs_kollektion_max, 1)
                 if self.mohs_kollektion_max is not None else None
             ),
+            "dichte_kollektion_min": (
+                round(self.dichte_kollektion_min, 2)
+                if self.dichte_kollektion_min is not None else None
+            ),
+            "dichte_kollektion_max": (
+                round(self.dichte_kollektion_max, 2)
+                if self.dichte_kollektion_max is not None else None
+            ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
@@ -1770,6 +1780,46 @@ def _mohs_spanne(conn: sqlite3.Connection) -> tuple[float | None, float | None]:
         "MAX(COALESCE(Mohs_Haerte_max, Mohs_Haerte_min)) AS hi "
         "FROM objects "
         "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
+    ).fetchone()
+    lo = float(row["lo"]) if row["lo"] is not None else None
+    hi = float(row["hi"]) if row["hi"] is not None else None
+    return (lo, hi)
+
+
+def _dichte_spanne(conn: sqlite3.Connection) -> tuple[float | None, float | None]:
+    """Liefert (kleinste, groesste) Dichte als Kollektion-Spanne in g/cm3.
+
+    Spiegelt :func:`_mohs_spanne` auf die physikalische Dichte-Achse:
+    waehrend die Mohs-Spanne die Haerte-Bandbreite ueber den dokumentierten
+    Bestand beziffert ("vom weichsten Talk-Stueck zum haertesten Korund-
+    Stueck"), beziffert die Dichte-Spanne die Massendichte-Bandbreite ("vom
+    leichtesten Bims-/Opal-Stueck zum schwersten Pyrit-/Galenit-Stueck") und
+    ergaenzt damit die Coverage-Quote ``quote_mit_dichte_prozent`` (Pflege-
+    Sicht) um die physikalische Extent-Sicht ueber den dokumentierten Anteil.
+    Vervollstaendigt das Spannen-Trio der physikalischen Mess-Achsen
+    (Mohs/Dichte) auf der Bestands-Extent-Sicht symmetrisch zur Coverage-
+    Achse - bisher gab es nur die Mohs-Spanne als physikalische Bandbreite-
+    Kennzahl, waehrend Dichte als die zweite zentrale quantitative Pruef-
+    Methode ohne Bandbreite-Sicht blieb.
+
+    Dichte liegt pro Objekt als Bereich vor (``Dichte_min_gcm3``/
+    ``Dichte_max_gcm3``), z.B. "2.6-2.7" fuer Quarz-typische Stuecke; in der
+    Praxis ist oft nur eine Achse gepflegt (Punkt-Wert als Tabellen-
+    Uebernahme aus einer Mineraldatenbank wird als ``min=max`` oder nur
+    ``min`` gespeichert, oder eine Roh-Skala "2.6-2.7" als ``min=2.6/max=2.7``).
+    COALESCE(min, max)/COALESCE(max, min) faengt die Single-Point-Faelle ab
+    und behandelt sie als beidseitige Grenze - spiegelt die has_dichte-/
+    objekte_mit_dichte-Konvention exakt: ein Objekt zaehlt, sobald eines der
+    beiden Bereichsfelder gesetzt ist. WHERE filtert Eintraege ohne jegliche
+    Dichte-Angabe (beide NULL) heraus, damit nicht-gepflegte Stuecke die
+    Spanne nicht auf ``(NULL, NULL)`` verfaelschen. Leere DB → (None, None),
+    spiegelt das _mohs_spanne-/_funddatum_spanne-Verhalten.
+    """
+    row = conn.execute(
+        "SELECT MIN(COALESCE(Dichte_min_gcm3, Dichte_max_gcm3)) AS lo, "
+        "MAX(COALESCE(Dichte_max_gcm3, Dichte_min_gcm3)) AS hi "
+        "FROM objects "
+        "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL"
     ).fetchone()
     lo = float(row["lo"]) if row["lo"] is not None else None
     hi = float(row["hi"]) if row["hi"] is not None else None
@@ -3153,6 +3203,22 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "SELECT COUNT(*) FROM objects "
         "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL"
     ).fetchone()[0]
+    # Dichte-Spanne ueber die ganze Sammlung: kleinste und groesste
+    # Massendichte, die ueberhaupt im Bestand dokumentiert ist. Spiegelt das
+    # Mohs-Spannen-Pendant (physikalische Haerte-Achse) auf die zweite
+    # zentrale physikalische Pruef-Achse - waehrend die Coverage-Quote
+    # (quote_mit_dichte_prozent) beziffert, wieviel der Sammlung ueberhaupt
+    # eine Dichte-Pflege hat, zeigt die Spanne die Massendichte-Bandbreite
+    # des dokumentierten Anteils ("vom leichtesten Bims-/Opal-Stueck zum
+    # schwersten Pyrit-/Galenit-Stueck"). Vervollstaendigt damit die
+    # physikalische Spannen-Achse: Mohs (Haerte 1..10) und Dichte (g/cm3,
+    # typisch 1.0..7.5 fuer Sammlerbestaende) - die zwei zentralen
+    # quantitativen Pruef-Methoden, die zusammen Quarz/Calcit/Fluorit-Klassen
+    # diskriminieren. Reuse der has_dichte-/objekte_mit_dichte-Konvention
+    # (ein Objekt zaehlt, sobald eines der beiden Bereichsfelder gesetzt
+    # ist). Bei leerer DB / ohne jegliche Dichte-Pflege bleiben beide
+    # Grenzen None, spiegelt das _mohs_spanne-/_funddatum_spanne-Verhalten.
+    st.dichte_kollektion_min, st.dichte_kollektion_max = _dichte_spanne(conn)
     if gewichte:
         st.gewicht_max_g = gewichte[-1]
         st.gewicht_durchschnitt_g = sum(gewichte) / len(gewichte)
