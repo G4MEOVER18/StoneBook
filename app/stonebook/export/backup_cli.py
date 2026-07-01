@@ -12,6 +12,7 @@ Beispiele:
     python -m stonebook.export.backup_cli diff-object <alt> <neu> OBJ_0001
     python -m stonebook.export.backup_cli diff-object-db <file> OBJ_0001
     python -m stonebook.export.backup_cli restore <file> --db <pfad>
+    python -m stonebook.export.backup_cli restore-latest --backup-dir backups/ --db <pfad>
 """
 from __future__ import annotations
 
@@ -26,7 +27,8 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           diff_backup_object_fields,
                                           diff_backup_to_db_object_fields,
                                           import_json, inspect_backup,
-                                          list_backups, prune_backups_by_age,
+                                          latest_backup, list_backups,
+                                          prune_backups_by_age,
                                           prune_old_backups, validate_backup,
                                           write_rotated_backup)
 
@@ -204,6 +206,51 @@ def _cmd_restore(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_restore_latest(args: argparse.Namespace) -> int:
+    """Restauriert das juengste Backup im Ordner ohne expliziten Datei-Pfad.
+
+    Spiegelt :func:`_cmd_restore` auf die Auto-Auswahl-Achse: waehrend
+    ``restore`` einen konkreten Backup-Pfad braucht, sucht ``restore-latest``
+    das neueste Backup im Ordner via :func:`latest_backup` (Filename-Stempel
+    als Single-Source-of-Truth, spiegelt ``prune_backups_by_age``). Der
+    Restore-Pfad selbst ist identisch (Target-DB muss leer sein oder
+    ``--force`` gesetzt sein; ``INSERT OR REPLACE``; atomische Transaktion
+    ueber ``import_json``). Geeignet als Standard-Wiederherstellungs-
+    Befehl in Cron-Recovery-Scripten und Restore-Dialogen, die dem User
+    das juengste Backup vorschlagen, ohne dass er den Datei-Pfad tippen
+    muss.
+
+    Der ausgewaehlte Pfad wird auf stderr geschrieben (informativer
+    Hinweis, wie ``write`` seinen Pfad auf stdout schreibt); die
+    JSON-Counts kommen auf stdout (spiegelt ``restore`` exakt, sodass
+    Downstream-Auswerter das gleiche Ausgabeformat verarbeiten). Bei
+    leerem Ordner (kein Backup vorhanden) wird auf stderr eine Meldung
+    geschrieben und Exit-Code 2 zurueckgegeben (spiegelt ``restore`` mit
+    fehlender Datei), damit der Aufrufer den Fehler klar von einem
+    erfolgreichen Restore unterscheiden kann.
+    """
+    latest = latest_backup(args.backup_dir)
+    if latest is None:
+        print(f"Kein Backup im Ordner: {args.backup_dir}", file=sys.stderr)
+        return 2
+    target = args.db if args.db else default_db_file()
+    if target.exists() and not args.force:
+        print(f"Ziel-DB existiert: {target} (mit --force ueberschreiben)",
+              file=sys.stderr)
+        return 2
+    if target.exists():
+        target.unlink()
+    print(f"Restore aus: {latest}", file=sys.stderr)
+    conn = open_db(target)
+    try:
+        counts = import_json(conn, latest, replace=True)
+    finally:
+        conn.close()
+    json.dump(counts, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m stonebook.export.backup_cli",
@@ -294,6 +341,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--force", action="store_true",
                     help="Ziel-DB ueberschreiben, falls vorhanden.")
     sp.set_defaults(func=_cmd_restore)
+
+    sp = sub.add_parser(
+        "restore-latest",
+        help="Juengstes Backup im Ordner in eine DB einspielen "
+             "(Auto-Auswahl ueber Filename-Stempel).")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.add_argument("--db", type=Path, default=None)
+    sp.add_argument("--force", action="store_true",
+                    help="Ziel-DB ueberschreiben, falls vorhanden.")
+    sp.set_defaults(func=_cmd_restore_latest)
     return p
 
 

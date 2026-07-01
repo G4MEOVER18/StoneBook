@@ -197,3 +197,91 @@ def test_stats_leerer_ordner_liefert_null_report(tmp_path, capsys):
         "oldest_stamp": None,
         "newest_stamp": None,
     }
+
+
+def test_restore_latest_waehlt_juengstes_backup(migrated_db, tmp_path, capsys):
+    """restore-latest Subcommand: das juengste Backup wird ausgewaehlt und eingespielt.
+
+    Spiegelt :func:`test_write_list_und_restore_round_trip` auf die Auto-
+    Auswahl-Achse: der User muss nicht den Datei-Pfad tippen, sondern nur
+    den Ordner - der Restore geht auf das juengste Backup (Filename-
+    Stempel). Die Counts auf stdout muessen identisch zum ``restore``-
+    Subcommand sein (spiegelt das JSON-Ausgabeformat), damit Downstream-
+    Auswerter beide CLI-Pfade uniform verarbeiten koennen. Der ausgewaehlte
+    Pfad steht auf stderr als informativer Hinweis.
+    """
+    backup_dir = tmp_path / "backups"
+    # Zwei Backups schreiben; das juengste soll gewaehlt werden.
+    main(["write", "--backup-dir", str(backup_dir),
+          "--db", str(migrated_db), "--keep", "5"])
+    _ = capsys.readouterr()  # Pfad-Ausgabe verwerfen
+    # Zweites Backup mit spaeterer Zeit (write_rotated_backup ohne now nutzt
+    # datetime.now(), das minimal spaeter ist als das erste Backup)
+    time.sleep(1.1)
+    main(["write", "--backup-dir", str(backup_dir),
+          "--db", str(migrated_db), "--keep", "5"])
+    zweites = Path(capsys.readouterr().out.strip())
+
+    new_db = tmp_path / "restored.sqlite3"
+    exit_code = main(["restore-latest",
+                      "--backup-dir", str(backup_dir),
+                      "--db", str(new_db)])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    counts = json.loads(captured.out)
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
+    # Der informative Hinweis auf stderr enthaelt den ausgewaehlten Pfad
+    assert str(zweites) in captured.err
+
+
+def test_restore_latest_leerer_ordner_exit_2(tmp_path, capsys):
+    """restore-latest ohne Backup im Ordner: Exit 2, klarer Fehlerhinweis.
+
+    Spiegelt :func:`test_write_fehlende_db_exit_2` auf die Auto-Auswahl-
+    Achse: ohne verfuegbares Backup ist ``restore-latest`` semantisch
+    identisch zu ``restore`` mit fehlender Datei - der User muss sofort
+    sehen, warum kein Restore stattfand, statt dass ein leerer Restore
+    stillschweigend durchlaeuft. Exit 2 spiegelt die uebrigen
+    "fehlende Grundvoraussetzung"-Faelle (fehlende DB in write/compare-db,
+    existierende Ziel-DB ohne --force in restore).
+    """
+    backup_dir = tmp_path / "leer"
+    backup_dir.mkdir()
+    exit_code = main(["restore-latest",
+                      "--backup-dir", str(backup_dir),
+                      "--db", str(tmp_path / "neu.sqlite3")])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "Kein Backup" in err
+
+
+def test_restore_latest_fordert_force_bei_existierender_db(migrated_db, tmp_path, capsys):
+    """restore-latest ueberschreibt keine existierende Ziel-DB ohne --force.
+
+    Spiegelt :func:`test_restore_fordert_force_bei_existierender_db` auf
+    die Auto-Auswahl-Achse: die Force-Semantik ist identisch zum ``restore``-
+    Subcommand, damit User nicht per Zufall ihre laufende DB durch ein
+    Backup ueberschreiben, nur weil sie sich in einem Automations-Script
+    auf ``restore-latest`` verlassen. Mit --force geht es dann durch
+    (spiegelt ``restore --force``).
+    """
+    backup_dir = tmp_path / "fr"
+    main(["write", "--backup-dir", str(backup_dir),
+          "--db", str(migrated_db)])
+    _ = capsys.readouterr()
+
+    existing = tmp_path / "existing.sqlite3"
+    existing.write_bytes(b"placeholder")
+    exit_code = main(["restore-latest",
+                      "--backup-dir", str(backup_dir),
+                      "--db", str(existing)])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "existiert" in err
+
+    exit_code = main(["restore-latest",
+                      "--backup-dir", str(backup_dir),
+                      "--db", str(existing), "--force"])
+    assert exit_code == 0
+    counts = json.loads(capsys.readouterr().out)
+    assert counts["objects"] == 546

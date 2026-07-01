@@ -462,6 +462,40 @@ def list_backups(backup_dir: Path) -> list[Path]:
     return matches
 
 
+def latest_backup(backup_dir: Path) -> Path | None:
+    """Liefert das neueste Backup aus dem Ordner (Filename-Stempel), oder ``None``.
+
+    Spiegelt :func:`list_backups` auf den Ein-Datei-Fall: waehrend
+    ``list_backups`` alle Backup-Pfade als aufsteigend sortierte Liste
+    liefert, beantwortet ``latest_backup`` die naheliegende Cron-/Restore-
+    Frage "was ist das juengste Backup?" in einem Schritt, ohne dass der
+    Caller ``[-1]`` oder ``max()`` neu formulieren muss. Geeignet als
+    Ziel-Anker fuer ``restore-latest`` (statt einer expliziten Datei),
+    als Anker-Kennzahl fuer Cron-Reporter ("letztes Backup ist X Stunden
+    alt", vgl. ``_parse_backup_stamp``) und als Standard-Auswahl im
+    Restore-Dialog eines UI (vorgefuellt mit dem juengsten Eintrag).
+
+    Beruehrt ausschliesslich Dateien, die zum :func:`write_rotated_backup`-
+    Schema passen (``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``) - fremde
+    Dateien im Ordner (README, andere Exporte, Lock-Files) bleiben
+    unbetrachtet, spiegelt exakt das Filtern von :func:`list_backups` und
+    der prune-Funktionen ueber ``_BACKUP_RE``. Die Sortierung basiert auf
+    dem Dateinamen-Stempel (nicht ``mtime``/``ctime``), damit Backups,
+    die vom Backup-Server / NAS kopiert oder verschoben wurden, ihr
+    originales Alter behalten - Single-Source-of-Truth = Filename-Stempel,
+    spiegelt :func:`prune_backups_by_age`.
+
+    Leerer Ordner / nur fremde Dateien / nicht existierender Ordner
+    liefern ``None`` (spiegelt das ``list_backups``-Verhalten bei
+    fehlendem Ordner: leere Liste statt Crash), sodass ``latest_backup``
+    ohne Sonderbehandlung vor der ersten Backup-Schreibe aufrufbar
+    bleibt und der Caller mit einem einfachen ``if latest is None``-Guard
+    "noch kein Backup vorhanden" abfangen kann.
+    """
+    backups = list_backups(backup_dir)
+    return backups[-1] if backups else None
+
+
 def prune_old_backups(backup_dir: Path, keep: int) -> list[Path]:
     """Loescht aelteste Backups im Verzeichnis bis nur noch ``keep`` uebrig sind.
 

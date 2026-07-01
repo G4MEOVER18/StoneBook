@@ -10,7 +10,8 @@ from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           backup_directory_stats, export_json,
                                           import_json, inspect_backup,
-                                          list_backups, prune_backups_by_age,
+                                          latest_backup, list_backups,
+                                          prune_backups_by_age,
                                           prune_old_backups, read_backup_meta,
                                           write_rotated_backup)
 from stonebook.migration.migrate import migrate
@@ -624,6 +625,105 @@ def test_list_backups_leerer_ordner(tmp_path):
     leer = tmp_path / "leer"
     leer.mkdir()
     assert list_backups(leer) == []
+
+
+def test_latest_backup_leerer_ordner(tmp_path):
+    """latest_backup liefert None bei fehlendem/leerem/fremd-nur Ordner.
+
+    Spiegelt :func:`test_list_backups_leerer_ordner`: der Ein-Datei-Wrapper
+    muss dieselben Grenzfaelle abfangen wie der Listen-Wrapper (fehlender
+    Ordner → keine Datei; leerer Ordner → keine Datei; Ordner mit nur
+    fremden Dateien → keine passende Datei), damit Cron-Reporter und
+    Restore-Dialoge ohne Sonderbehandlung "noch kein Backup vorhanden"
+    ueber ``if latest is None``-Guard abfangen koennen.
+    """
+    assert latest_backup(tmp_path / "nichtda") is None
+    leer = tmp_path / "leer"
+    leer.mkdir()
+    assert latest_backup(leer) is None
+    # Nur fremde Dateien -> auch None (spiegelt list_backups-Filter ueber _BACKUP_RE)
+    (leer / "README.txt").write_text("keine Backup", encoding="utf-8")
+    (leer / "andere_backup_20240101_000000.json.gz").write_bytes(b"")
+    assert latest_backup(leer) is None
+
+
+def test_latest_backup_liefert_juengsten_stempel(tmp_path):
+    """latest_backup liefert die Datei mit dem groessten Filename-Stempel.
+
+    Filename-Stempel als Single-Source-of-Truth (spiegelt
+    :func:`prune_backups_by_age`): auch wenn eine spaeter geschriebene Datei
+    einen frueheren Namens-Stempel traegt (z.B. weil sie von einem
+    NAS-Backup-Server kopiert wurde), gewinnt der lexikographisch groessere
+    Name. Reihenfolge der Erstellung im Test sind absichtlich verwuerfelt,
+    damit ``mtime``-basierte Implementierungen scheitern wuerden.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    # Reihenfolge der Erstellung: aeltester Stempel zuerst geschrieben,
+    # dann juengster, dann mittlerer - damit mtime-basierte Auswahl auf den
+    # mittleren zeigen wuerde (letzte Schreibe), aber der juengste Namens-
+    # Stempel korrekt gewinnt.
+    stamps = ("20240613_100000", "20240613_120000", "20240613_110000")
+    for stamp in stamps:
+        write_rotated_backup(
+            db, backups_dir, keep=99,
+            now=datetime.datetime.strptime(stamp, "%Y%m%d_%H%M%S"))
+    latest = latest_backup(backups_dir)
+    assert latest is not None
+    assert "20240613_120000" in latest.name  # juengster Stempel
+    db.close()
+
+
+def test_latest_backup_ignoriert_fremde_dateien(tmp_path):
+    """Fremde Dateien im Ordner (README, andere Backup-Schemata) werden ignoriert.
+
+    Spiegelt :func:`test_prune_backups_by_age_ignoriert_fremde_dateien`
+    auf die latest-Achse: nur Dateien, die zum ``stonebook_backup_
+    YYYYMMDD_HHMMSS.json[.gz]``-Muster passen, kommen als "juengstes
+    Backup" in Frage. Eine lexikographisch groessere fremde Datei
+    (``zzz_neuer.json.gz`` oder ``andere_backup_29990101_000000.json.gz``)
+    darf das echte juengste Backup nicht verdraengen, sonst wuerde
+    ``restore-latest`` das falsche File einspielen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99, now=now)
+    # Fremde Datei mit lexikographisch groesserem Namen als das echte Backup
+    fremd = backups_dir / "zzz_andere_backup_29990101_000000.json.gz"
+    fremd.write_bytes(b"")
+    latest = latest_backup(backups_dir)
+    assert latest is not None
+    assert "20240613_100000" in latest.name
+    assert latest != fremd
+    db.close()
+
+
+def test_latest_backup_einzelne_datei(tmp_path):
+    """Ein einzelnes Backup ist gleichzeitig das juengste.
+
+    Grenzfall count=1: die Datei ist gleichzeitig ``list_backups[0]`` und
+    ``list_backups[-1]``; spiegelt :func:`prune_backups_by_age_null_loescht
+    _alles_vor_now`, wo der Ein-Datei-Fall in denselben Wrapper-Funktionen
+    korrekt behandelt sein muss. Wichtiger Sanity-Check fuer die Auto-
+    Auswahl im Restore-Dialog: nach der ersten Backup-Schreibe muss
+    ``restore-latest`` auf dieses einzige Backup zeigen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    write_rotated_backup(
+        db, backups_dir, keep=99,
+        now=datetime.datetime(2024, 6, 13, 10, 0, 0))
+    latest = latest_backup(backups_dir)
+    assert latest is not None
+    assert latest == list_backups(backups_dir)[0]
+    db.close()
 
 
 def test_prune_old_backups_loescht_alte(tmp_path):
