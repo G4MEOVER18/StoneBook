@@ -38,6 +38,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         f"in {st.objekte_mit_ki_analyse_uebernommen} Objekten)",
         f"Mineral-Arten:         {st.mineral_arten_total}",
         f"Fundorte:              {st.fundorte_total}",
+        # Kategorien-Arten: Diversitaets-Zaehler parallel zu Mineral-Arten
+        # und Fundorten - Anzahl distinct dokumentierter Objekt-Kategorien
+        # (Handstueck/Kristall/Duennschliff/...). Steht direkt unter Fundorten,
+        # weil Kategorie die vorgelagerte Inventar-Klassifizierungs-Achse ist
+        # ("wie viele Objekt-Typen sammle ich?") - komplementaer zu Mineral-Arten
+        # (mineralogisch) und Fundorten (geografisch): die drei zentralen
+        # Diversitaets-Achsen der Sammlung. Bei leerer DB / ohne jegliche
+        # Kategorie-Pflege bleibt 0 (spiegelt Mineral-Arten / Fundorten-
+        # Konvention: Zeile immer ausgeben, damit der Header-Block deterministisch
+        # bleibt und das Kennzahlen-Trio in jedem Bericht an derselben Stelle steht).
+        f"Kategorien-Arten:      {st.kategorien_total}",
         "",
         f"Wert (Summe, CHF):     {st.wert_summe_chf:,.0f}",
         f"  davon Roh:           {st.wert_roh_summe_chf:,.0f}",

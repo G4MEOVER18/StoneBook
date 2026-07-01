@@ -4600,6 +4600,45 @@ def test_mineral_arten_total_leer(tmp_path):
     st = compute_statistics(c)
     assert st.mineral_arten_total == 0
     assert st.fundorte_total == 0
+    # kategorien_total spiegelt die uebrigen Diversitaets-Kennzahlen auf die
+    # Inventar-Klassifizierungs-Achse: bei leerer DB bleibt der Zaehler bei 0
+    # (dataclass-Default), damit as_dict deterministisch bleibt und die
+    # Dashboard-Downstream-Konsumenten nicht zwischen 0 und None differenzieren
+    # muessen (spiegelt mineral_arten_total / fundorte_total).
+    assert st.kategorien_total == 0
+
+
+def test_kategorien_total_zaehlt_distinct(tmp_path):
+    """kategorien_total spiegelt mineral_arten_total auf die Kategorie-Achse.
+
+    Zaehlt distinct dokumentierte Objekt-Kategorien (Handstueck/Kristall/
+    Duennschliff/...), unabhaengig von Top-N-Limits in by_kategorie und
+    ohne NULL/leere Zeichen. Downstream-Konsumenten (Dashboards, JSON-Export)
+    lesen den Skalar direkt statt len(by_kategorie) zu berechnen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "kdiv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Kategorie) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Handstueck"),
+            ("OBJ_0002", "Handstueck"),   # Duplikat, zaehlt nur 1x
+            ("OBJ_0003", "Kristall"),
+            ("OBJ_0004", "Duennschliff"),
+            ("OBJ_0005", ""),             # leere Kategorie -> ignoriert
+            ("OBJ_0006", "   "),          # Whitespace-only -> ignoriert
+            ("OBJ_0007", None),           # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.kategorien_total == 3   # Handstueck, Kristall, Duennschliff
+    d = st.as_dict()
+    assert d["kategorien_total"] == 3
+    # by_kategorie enthaelt die drei Kategorien - kategorien_total spiegelt
+    # deren Anzahl exakt, macht die Zaehlung aber ohne Umweg ueber die
+    # Dict-Laenge verfuegbar (spiegelt mineral_arten_total-Rolle).
+    assert len(st.by_kategorie) == st.kategorien_total
     c.close()
 
 

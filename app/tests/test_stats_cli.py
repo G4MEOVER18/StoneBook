@@ -25,6 +25,13 @@ def test_text_ausgabe(migrated_db, capsys):
     assert "546" in out
     assert "Bilder:" in out
     assert "Top-Minerale:" in out
+    # Diversitaets-Trio Mineral-Arten / Fundorte / Kategorien-Arten im Header:
+    # Kategorien-Arten spiegelt Mineral-Arten und Fundorten auf die Inventar-
+    # Klassifizierungs-Achse und erscheint direkt nach Fundorten.
+    assert "Mineral-Arten:" in out
+    assert "Fundorte:" in out
+    assert "Kategorien-Arten:" in out
+    assert out.index("Fundorte:") < out.index("Kategorien-Arten:")
 
 
 def test_text_ausgabe_zeigt_confidence_buckets(migrated_db, capsys):

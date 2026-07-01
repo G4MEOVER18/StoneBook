@@ -52,6 +52,7 @@ class Statistik:
     objekte_mit_ki_analyse_uebernommen: int = 0
     mineral_arten_total: int = 0
     fundorte_total: int = 0
+    kategorien_total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_mineral: dict[str, int] = field(default_factory=dict)
     by_varietaet: dict[str, int] = field(default_factory=dict)
@@ -1089,6 +1090,7 @@ class Statistik:
             "objekte_mit_ki_analyse_uebernommen": self.objekte_mit_ki_analyse_uebernommen,
             "mineral_arten_total": self.mineral_arten_total,
             "fundorte_total": self.fundorte_total,
+            "kategorien_total": self.kategorien_total,
             "by_status": dict(self.by_status),
             "by_mineral": dict(self.by_mineral),
             "by_varietaet": dict(self.by_varietaet),
@@ -2669,6 +2671,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Diversitaets-Kennzahlen: Anzahl distinct, unabhaengig von Top-N-Limits.
     st.mineral_arten_total = _count_distinct(conn, "Mineral_Primaer")
     st.fundorte_total = _count_distinct(conn, "Fundort")
+    # kategorien_total: Anzahl distinct dokumentierter Objekt-Kategorien
+    # (Handstueck/Kristall/Duennschliff/...). Spiegelt mineral_arten_total
+    # und fundorte_total auf die Inventar-Klassifizierungs-Achse und macht die
+    # Diversitaets-Sicht "wie viele Kategorien pflege ich?" als eigene
+    # Skalarkennzahl verfuegbar - Downstream-Konsumenten (Dashboards, JSON-
+    # Export, XLSX-Bericht) muessen nicht ueber len(by_kategorie) abstrahieren
+    # und behalten die Kennzahl konsistent, falls by_kategorie spaeter ein
+    # Top-N-Limit bekommt (spiegelt die mineral_arten_total-Rolle: by_mineral
+    # hat top_mineral=10-Default, mineral_arten_total dagegen die volle Zaehlung).
+    # NULL und Whitespace-only werden ignoriert (spiegelt _count_distinct-
+    # Konvention). Bei leerer DB / ohne jegliche Kategorie-Pflege bleibt 0
+    # (dataclass-Default, spiegelt die uebrigen Diversitaets-Kennzahlen).
+    st.kategorien_total = _count_distinct(conn, "Kategorie")
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)
