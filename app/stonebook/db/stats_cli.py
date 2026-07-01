@@ -53,6 +53,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(f"  Ø Wert (CHF):        {st.wert_durchschnitt_chf:,.0f}")
         lines.append(f"  Median Wert (CHF):   {st.wert_median_chf:,.0f}")
         lines.append(f"  Minimaler Einzelwert:{st.wert_min_chf:,.0f}")
+        # sigma Wert: Dispersions-Achse zur zentralen-Tendenz-Achse.
+        # Spiegelt sigma Gewicht auf die monetaere Wert-Achse - waehrend
+        # Durchschnitt und Median den typischen Objekt-Wert beziffern,
+        # beziffert die Standardabweichung die versicherungsrelevante
+        # Streuung um den Durchschnitt. Am Ende des Wert-Blocks (nach Ø/
+        # Median/Min), spiegelt die Gewicht-Reihenfolge.
+        lines.append(
+            f"  σ Wert (CHF):        {st.wert_standardabweichung_chf:,.0f}")
     if st.objekte_mit_gewicht:
         lines.append(f"  Ø Gewicht (g):       {st.gewicht_durchschnitt_g:,.1f}")
         lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")

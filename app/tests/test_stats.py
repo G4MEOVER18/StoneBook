@@ -251,6 +251,119 @@ def test_wert_min_chf_summiert_ueber_wert_felder(tmp_path):
     c.close()
 
 
+def test_wert_standardabweichung_aus_seed_db(tmp_path):
+    """kollektion_standardabweichung = Populations-Std ueber Objekt-Werte.
+
+    Ergaenzt Ø/Median (zentrale Tendenz) um die Dispersions-Achse. Vier
+    Werte 100/200/300/400 → Ø=250, Varianz=((100-250)^2 + (200-250)^2 +
+    (300-250)^2 + (400-250)^2)/4 = (22500+2500+2500+22500)/4 = 50000/4 =
+    12500 → σ = sqrt(12500) ≈ 111.803. Spiegelt
+    test_gewicht_standardabweichung_aus_seed_db auf die Wert-Achse;
+    Population-Divisor n (nicht n-1).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_std.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 100.0),
+            ("OBJ_0002", 200.0),
+            ("OBJ_0003", 300.0),
+            ("OBJ_0004", 400.0),
+            ("OBJ_0005", None),  # ignoriert
+            ("OBJ_0006", 0.0),   # ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_durchschnitt_chf == 250.0
+    assert st.wert_standardabweichung_chf == pytest.approx(
+        12500.0 ** 0.5, abs=1e-9)
+    d = st.as_dict()
+    assert d["wert_standardabweichung_chf"] == pytest.approx(111.80, abs=1e-2)
+    c.close()
+
+
+def test_wert_standardabweichung_leer(tmp_path):
+    """Ohne Wert-Pflege bleibt die Standardabweichung 0.0 (dataclass-Default).
+
+    Spiegelt die uebrigen leeren-Wert-Kennzahlen (min/max/median/Ø = 0.0
+    bei leerer DB), damit as_dict deterministisch bleibt und die CLI-Zeile
+    im ohne-Wert-Fall gar nicht ausgibt (if objekte_mit_wert:).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_std_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_standardabweichung_chf == 0.0
+    d = st.as_dict()
+    assert d["wert_standardabweichung_chf"] == 0.0
+    c.close()
+
+
+def test_wert_standardabweichung_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Wert-Eintrag kollabiert die Streuung auf 0.0.
+
+    Keine Dispersion moeglich; spiegelt gewicht_standardabweichung Single-
+    Point-Kollaps auf die Wert-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_std_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 500.0), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 1
+    assert st.wert_standardabweichung_chf == 0.0
+    c.close()
+
+
+def test_wert_standardabweichung_uniform(tmp_path):
+    """Bei identischen Werten ist die Streuung 0.0.
+
+    Reine Feldspat-Sammlung ohne Preisdispersion: fuenf Stuecke CHF 50 →
+    sigma 0.0. Kern-Eigenschaft der Populations-Std.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_std_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 50.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_standardabweichung_chf == 0.0
+    c.close()
+
+
+def test_wert_standardabweichung_reagiert_auf_ausreisser(tmp_path):
+    """Standardabweichung reagiert stark auf Wert-Ausreisser (Komplement zum Median).
+
+    Typische versicherungsrelevante Konstellation: neun gleichmaessige
+    Feldspat-Stuecke (CHF 50) plus ein Investment-Bergkristall (CHF 5000).
+    Ø = (9*50 + 5000)/10 = 545, Var = (9*(50-545)^2 + (5000-545)^2)/10 =
+    (9*245025 + 19847025)/10 = (2205225 + 19847025)/10 = 22052250/10 =
+    2205225 → σ = sqrt(2205225) = 1485.0 exakt (1485*1485 = 2205225).
+    Spiegelt test_gewicht_standardabweichung_reagiert_auf_ausreisser auf
+    die Wert-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_std_ausreisser.sqlite3")
+    feldspat = [("OBJ_%04d" % i, 50.0) for i in range(1, 10)]
+    feldspat.append(("OBJ_0010", 5000.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        feldspat,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_standardabweichung_chf == pytest.approx(1485.0, abs=1e-6)
+    # Median bleibt bei 50.0 (5. Element der sortierten Liste)
+    assert st.wert_median_chf == 50.0
+    c.close()
+
+
 def test_top_wert_limit_respektiert(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "limit.sqlite3")

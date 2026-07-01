@@ -106,6 +106,7 @@ class Statistik:
     wert_max_chf: float = 0.0
     wert_durchschnitt_chf: float = 0.0
     wert_median_chf: float = 0.0
+    wert_standardabweichung_chf: float = 0.0
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
@@ -1190,6 +1191,8 @@ class Statistik:
             "wert_max_chf": round(self.wert_max_chf, 2),
             "wert_durchschnitt_chf": round(self.wert_durchschnitt_chf, 2),
             "wert_median_chf": round(self.wert_median_chf, 2),
+            "wert_standardabweichung_chf": round(
+                self.wert_standardabweichung_chf, 2),
             "objekte_mit_wert": self.objekte_mit_wert,
             "top_wert_objekte": [
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
@@ -3590,6 +3593,42 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         st.wert_min_chf = werte[0]
         st.wert_median_chf = (werte[n // 2] if n % 2
                               else (werte[n // 2 - 1] + werte[n // 2]) / 2)
+        # Wert-Standardabweichung: Dispersions-Achse zur zentralen-Tendenz-
+        # Achse (Durchschnitt/Median). Spiegelt mohs_kollektion_standardab-
+        # weichung / dichte_kollektion_standardabweichung / gewicht_standard-
+        # abweichung_g auf die monetaere Wert-Achse: waehrend Durchschnitt
+        # und Median den "typischen" Objekt-Wert beziffern, beziffert die
+        # Standardabweichung die Streuung der Werte um den Durchschnitt -
+        # eine gleichfoermige Feldspat-Sammlung mit CHF 30..50 pro Stueck
+        # zeigt hier ~5, eine gemischte Sammlung mit einzelnen wertvollen
+        # Bergkristallen (~CHF 5000) daneben hunderte CHF; Spanne und
+        # Zentrums-Kennzahlen allein sehen bei enger vs. weiter Verteilung
+        # um denselben Durchschnitt herum identisch aus, erst die Standard-
+        # abweichung macht die Verteilungs-Form ueber die Bandbreite hinaus
+        # sichtbar (typische versicherungsrelevante Frage: "wie homogen ist
+        # meine Sammlung wertlich?" ist ueber Ø und Median allein nicht
+        # beantwortbar - eine Sammlung mit Median CHF 100 kann eine
+        # gleichfoermige Feldspat-Klasse sein oder ein einzelner Bergkristall
+        # dominiert die Versicherungssumme). Vervollstaendigt damit das
+        # Wert-Kennzahlen-Sextett (summe/min/max/durchschnitt/median) um die
+        # Dispersions-Achse und stellt es strukturell parallel zur Gewicht-
+        # Achse auf (gewicht_standardabweichung_g). Reuse der bereits
+        # geladenen und sortierten werte-Liste (kein zweiter SQL-Round-Trip,
+        # weil werte kurz vorher fuer min/median gefuellt wurde). Populations-
+        # Variante (Divisor n statt n-1), spiegelt die _mohs_/_dichte_/
+        # gewicht_standardabweichung-Konvention. Numerisch stabile Formel
+        # via sum((w - mean)**2) / n statt E[X^2] - E[X]^2, weil Werte in
+        # CHF bis in den 10^5-Bereich reichen koennen (Museums-Stuecke,
+        # Investment-Mineralien) und die Katastrophal-Kancellations-Version
+        # bei grossen Werten mit kleiner Varianz Rundungsfehler erzeugt -
+        # spiegelt die gewicht_standardabweichung_g-Formel exakt. Bei einem
+        # einzelnen Wert-Eintrag kollabiert die Streuung auf 0.0 (keine
+        # Dispersion moeglich); bei leerer DB / ohne jegliche Wert-Pflege
+        # bleibt 0.0 (dataclass-Default, spiegelt die uebrigen Wert-
+        # Kennzahlen min/max/median/durchschnitt = 0.0 bei leerer DB).
+        wert_mean = st.wert_durchschnitt_chf
+        st.wert_standardabweichung_chf = (
+            sum((w - wert_mean) ** 2 for w in werte) / n) ** 0.5
     st.top_wert_objekte = [
         (r["obj_id"], r["Name"] or "", float(r["w"]))
         for r in conn.execute(
