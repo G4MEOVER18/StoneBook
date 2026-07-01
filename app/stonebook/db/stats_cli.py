@@ -217,6 +217,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # vorliegt - sonst nichtssagende 0.0-Zeile.
         lines.append(
             f"Ø Mohs:                {st.mohs_kollektion_durchschnitt:.1f}")
+    if st.mohs_kollektion_median is not None:
+        # Mohs-Median: ausreisser-robuste zentrale Tendenz zum Durchschnitt.
+        # Waehrend der Durchschnitt sensibel auf einzelne Ausreisser reagiert
+        # (Diamant-Splitter mit Mohs 10 in einer Calcit-lastigen Sammlung zieht
+        # den Durchschnitt), bleibt der Median unempfindlich - das "typische"
+        # Stueck als 50%-Quantil der Verteilung. Steht direkt unter Ø Mohs
+        # (Zentrum -> robustes Zentrum), spiegelt die Werte-/Gewicht-Reihen-
+        # folge (Ø + Median als paarweise zentrale Tendenz).
+        lines.append(
+            f"Median Mohs:           {st.mohs_kollektion_median:.1f}")
     if st.dichte_kollektion_min is not None and st.dichte_kollektion_max is not None:
         # Dichte-Spanne ueber die ganze Sammlung: kleinste/groesste Dichte
         # in g/cm3 im dokumentierten Bestand. Spiegelt die Mohs-Spanne auf

@@ -4059,6 +4059,41 @@ def test_text_ausgabe_ohne_mohs_keine_spanne_zeile(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Mohs-Spanne:" not in out
     assert "Ø Mohs:" not in out
+    assert "Median Mohs:" not in out
+
+
+def test_text_ausgabe_zeigt_mohs_median(tmp_path, capsys):
+    """Median-Mohs-Zeile erscheint direkt unter Ø Mohs.
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_durchschnitt auf die ausreisser-
+    robuste zentrale Tendenz. Fuenf Mittelpunkte 7.0/4.0/7.0/2.0/9.5
+    → sortiert [2.0, 4.0, 7.0, 7.0, 9.5] → Median 7.0. Reihenfolge:
+    Spanne (Extent) vor Ø (Zentrum) vor Median (robust) - spiegelt das
+    Wert-/Gewicht-Layout in der CLI-Ausgabe.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mohs_med.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.0, 8.0),   # Mittelpunkt 7.0
+            ("OBJ_0002", 3.0, 5.0),   # Mittelpunkt 4.0
+            ("OBJ_0003", 7.0, None),  # 7.0
+            ("OBJ_0004", None, 2.0),  # 2.0
+            ("OBJ_0005", 9.0, 10.0),  # Mittelpunkt 9.5
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Median Mohs:" in out
+    # Reihenfolge: Ø Mohs vor Median Mohs
+    assert out.index("Ø Mohs:") < out.index("Median Mohs:")
+    # Median Mohs = 7.0 (mittleres Element)
+    assert "7.0" in out
 
 
 def test_text_ausgabe_zeigt_mohs_durchschnitt(tmp_path, capsys):

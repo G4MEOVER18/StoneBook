@@ -93,6 +93,7 @@ class Statistik:
     mohs_kollektion_min: float | None = None
     mohs_kollektion_max: float | None = None
     mohs_kollektion_durchschnitt: float | None = None
+    mohs_kollektion_median: float | None = None
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
     dichte_kollektion_durchschnitt: float | None = None
@@ -1147,6 +1148,10 @@ class Statistik:
                 round(self.mohs_kollektion_max, 1)
                 if self.mohs_kollektion_max is not None else None
             ),
+            "mohs_kollektion_median": (
+                round(self.mohs_kollektion_median, 1)
+                if self.mohs_kollektion_median is not None else None
+            ),
             "mohs_kollektion_durchschnitt": (
                 round(self.mohs_kollektion_durchschnitt, 1)
                 if self.mohs_kollektion_durchschnitt is not None else None
@@ -1828,6 +1833,46 @@ def _mohs_durchschnitt(conn: sqlite3.Connection) -> float | None:
         "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
     ).fetchone()
     return float(row["avg"]) if row["avg"] is not None else None
+
+
+def _mohs_median(conn: sqlite3.Connection) -> float | None:
+    """Liefert den Median der Mohs-Haerte-Mittelpunkte ueber die Sammlung.
+
+    Spiegelt :func:`_mohs_durchschnitt` (arithmetisches Mittel als zentrale
+    Tendenz) auf die ausreisser-robuste zentrale Tendenz: waehrend der
+    Durchschnitt sensibel auf einzelne sehr weiche/harte Ausreisser reagiert
+    (ein Diamant-Splitter mit Mohs 10 in einer sonst Calcit-lastigen Sammlung
+    zieht den Durchschnitt nach oben), bleibt der Median unempfindlich - er
+    beziffert das "typische" Stueck als 50%-Quantil der Haerte-Verteilung.
+    Vervollstaendigt damit das Mohs-Kennzahlen-Trio (min/max/durchschnitt) um
+    die Median-Achse, spiegelt das gewicht_max_g/gewicht_durchschnitt_g/
+    gewicht_median_g- und wert_max_chf/wert_durchschnitt_chf/wert_median_chf-
+    Quartett auf die physikalische Haerte-Achse.
+
+    Pro Objekt wird der Mittelpunkt des dokumentierten Bereichs verwendet
+    (bei zwei Werten: (min+max)/2; bei Single-Point-Pflege: der eine Wert -
+    spiegelt die _mohs_durchschnitt-Konvention via COALESCE). Reuse der
+    has_mohs-/objekte_mit_mohs-Konvention (ein Objekt zaehlt, sobald eines
+    der beiden Bereichsfelder gesetzt ist). Median berechnet sich klassisch:
+    bei ungerader Anzahl das mittlere Element der sortierten Liste, bei
+    gerader Anzahl der Mittelwert der beiden mittleren Elemente - spiegelt
+    das gewicht_median_g-/wert_median_chf-Verhalten exakt. Bei leerer DB /
+    ohne jegliche Mohs-Pflege bleibt der Median None (spiegelt das
+    _mohs_durchschnitt-/_mohs_spanne-Verhalten und macht die CLI-Zeile bei
+    nicht-gepflegter Sammlung optional).
+    """
+    mittelpunkte = [float(r["mid"]) for r in conn.execute(
+        "SELECT (COALESCE(Mohs_Haerte_min, Mohs_Haerte_max) + "
+        "COALESCE(Mohs_Haerte_max, Mohs_Haerte_min)) / 2.0 AS mid "
+        "FROM objects "
+        "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL "
+        "ORDER BY mid"
+    ).fetchall()]
+    if not mittelpunkte:
+        return None
+    n = len(mittelpunkte)
+    return (mittelpunkte[n // 2] if n % 2
+            else (mittelpunkte[n // 2 - 1] + mittelpunkte[n // 2]) / 2)
 
 
 def _dichte_durchschnitt(conn: sqlite3.Connection) -> float | None:
@@ -3263,6 +3308,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Wert), gemittelt ueber alle Objekte mit mindestens einem gesetzten
     # Bereichsfeld. Spiegelt gewicht_durchschnitt_g auf die Haerte-Achse.
     st.mohs_kollektion_durchschnitt = _mohs_durchschnitt(conn)
+    # Mohs-Median: ausreisser-robuste zentrale Tendenz zur Durchschnitts-Achse.
+    # Waehrend der Durchschnitt sensibel auf einzelne sehr weiche/harte
+    # Ausreisser reagiert, bleibt der Median unempfindlich - das "typische"
+    # Stueck als 50%-Quantil der Haerte-Verteilung. Spiegelt gewicht_median_g/
+    # wert_median_chf auf die physikalische Haerte-Achse und vervollstaendigt
+    # das Mohs-Kennzahlen-Trio (min/max/durchschnitt) um die Median-Achse.
+    st.mohs_kollektion_median = _mohs_median(conn)
     # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
     # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
     # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen

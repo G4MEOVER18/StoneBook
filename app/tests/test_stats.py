@@ -2086,6 +2086,112 @@ def test_mohs_durchschnitt_einzelpunkt(tmp_path):
     c.close()
 
 
+def test_mohs_median_ungerade_anzahl(tmp_path):
+    """kollektion_median = mittleres Element der sortierten Mohs-Mittelpunkte.
+
+    Spiegelt test_mohs_durchschnitt_aus_seed_db (arithmetisches Mittel) auf die
+    ausreisser-robuste zentrale Tendenz: bei ungerader Anzahl das mittlere
+    Element, spiegelt das gewicht_median_g-/wert_median_chf-Verhalten. Fuenf
+    Mittelpunkte 7.0/4.0/7.0/2.0/9.5 → sortiert [2.0, 4.0, 7.0, 7.0, 9.5]
+    → Median 7.0 (mittleres Element).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_med.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.0, 8.0),     # Mittelpunkt 7.0
+            ("OBJ_0002", 3.0, 5.0),     # Mittelpunkt 4.0
+            ("OBJ_0003", 7.0, None),    # Point-only min → 7.0
+            ("OBJ_0004", None, 2.0),    # Point-only max → 2.0
+            ("OBJ_0005", 9.0, 10.0),    # Mittelpunkt 9.5
+            ("OBJ_0006", None, None),   # ignoriert (keine Pflege)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # sortiert: [2.0, 4.0, 7.0, 7.0, 9.5] → Median 7.0
+    assert st.mohs_kollektion_median == 7.0
+    d = st.as_dict()
+    assert d["mohs_kollektion_median"] == 7.0
+    c.close()
+
+
+def test_mohs_median_gerade_anzahl(tmp_path):
+    """Bei gerader Anzahl: Mittelwert der zwei mittleren sortierten Elemente.
+
+    Spiegelt test_gewicht_median_gerade_anzahl auf die Haerte-Achse: vier
+    Mittelpunkte 7.0/4.0/7.0/2.0 → sortiert [2.0, 4.0, 7.0, 7.0] → Median
+    (4.0 + 7.0) / 2 = 5.5.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_med_even.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.0, 8.0),   # Mittelpunkt 7.0
+            ("OBJ_0002", 3.0, 5.0),   # Mittelpunkt 4.0
+            ("OBJ_0003", 7.0, None),  # Point-only min → 7.0
+            ("OBJ_0004", None, 2.0),  # Point-only max → 2.0
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # sortiert: [2.0, 4.0, 7.0, 7.0] → Median (4.0 + 7.0) / 2 = 5.5
+    assert st.mohs_kollektion_median == 5.5
+    c.close()
+
+
+def test_mohs_median_leer(tmp_path):
+    """Ohne Mohs-Pflege bleibt der Median None (spiegelt _mohs_durchschnitt)."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_med_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_median is None
+    d = st.as_dict()
+    assert d["mohs_kollektion_median"] is None
+    c.close()
+
+
+def test_mohs_median_ausreisser_robust(tmp_path):
+    """Median bleibt gegen einen einzelnen weit entfernten Ausreisser robust.
+
+    Kern-Eigenschaft der Median-Achse zur Durchschnitts-Achse: neun typische
+    Calcit-Stuecke (Mohs ~3) plus ein Diamant-Splitter (Mohs 10) - der
+    Durchschnitt wird nach oben gezogen (~3.7), der Median bleibt bei 3.0
+    (mittleres Element der sortierten Calcit-Cluster).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_ausreisser.sqlite3")
+    calcite = [("OBJ_%04d" % i, 3.0, 3.0) for i in range(1, 10)]  # 9x Mohs 3.0
+    calcite.append(("OBJ_0010", 10.0, 10.0))  # Diamant-Ausreisser
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        calcite,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # sortiert: 9x 3.0 + 10.0 → Median = (3.0 + 3.0) / 2 = 3.0 (Ausreisser
+    # ignoriert)
+    assert st.mohs_kollektion_median == 3.0
+    # Durchschnitt reagiert dagegen sichtbar auf den Ausreisser
+    assert st.mohs_kollektion_durchschnitt > 3.0
+    c.close()
+
+
 def test_dichte_spanne_aus_seed_db(tmp_path):
     """kollektion_min/max = MIN/MAX der Dichte (g/cm3) ueber die Sammlung.
 
