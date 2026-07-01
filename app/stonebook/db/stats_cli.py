@@ -257,6 +257,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Ø Dichte:              "
             f"{st.dichte_kollektion_durchschnitt:.2f} g/cm3")
+    if st.dichte_kollektion_median is not None:
+        # Dichte-Median: ausreisser-robuste zentrale Tendenz zur Durchschnitts-
+        # Achse. Waehrend der Durchschnitt sensibel auf einzelne Ausreisser
+        # reagiert (Galenit-Stueck mit 7.5 g/cm3 in einer Quarz-lastigen
+        # Sammlung zieht den Durchschnitt hoch), bleibt der Median unempfindlich
+        # - das "typische" Stueck als 50%-Quantil der Verteilung. Steht direkt
+        # unter Ø Dichte (Zentrum -> robustes Zentrum), spiegelt die Mohs-Reihen-
+        # folge (Ø + Median als paarweise zentrale Tendenz).
+        lines.append(
+            f"Median Dichte:         "
+            f"{st.dichte_kollektion_median:.2f} g/cm3")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

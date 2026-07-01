@@ -4176,6 +4176,7 @@ def test_text_ausgabe_ohne_dichte_keine_spanne_zeile(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Dichte-Spanne:" not in out
     assert "Ø Dichte:" not in out
+    assert "Median Dichte:" not in out
 
 
 def test_text_ausgabe_zeigt_dichte_durchschnitt(tmp_path, capsys):
@@ -4206,6 +4207,45 @@ def test_text_ausgabe_zeigt_dichte_durchschnitt(tmp_path, capsys):
     # (2.70 + 5.00) / 2 = 3.85
     assert "3.85" in out
     assert out.index("Dichte-Spanne:") < out.index("Ø Dichte:")
+
+
+def test_text_ausgabe_zeigt_dichte_median(tmp_path, capsys):
+    """Median-Dichte-Zeile erscheint direkt unter Ø Dichte.
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_median auf die Dichte-Achse:
+    Fuenf Mittelpunkte 2.70/1.10/5.00/3.20/7.50 → sortiert
+    [1.10, 2.70, 3.20, 5.00, 7.50] → Median 3.20 als mittleres Element.
+    Reihenfolge: Spanne (Extent) vor Ø (Zentrum) vor Median (robust) -
+    spiegelt das Mohs-/Werte-/Gewicht-Layout in der CLI-Ausgabe.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dichte_med.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.60, 2.80),   # Mittelpunkt 2.70
+            ("OBJ_0002", 1.00, 1.20),   # Mittelpunkt 1.10
+            ("OBJ_0003", 5.00, None),   # 5.00
+            ("OBJ_0004", None, 3.20),   # 3.20
+            ("OBJ_0005", 7.00, 8.00),   # Mittelpunkt 7.50
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Median Dichte:" in out
+    # Reihenfolge: Dichte-Spanne < Ø Dichte < Median Dichte
+    assert (out.index("Dichte-Spanne:")
+            < out.index("Ø Dichte:")
+            < out.index("Median Dichte:"))
+    # Median = 3.20 (mittleres Element der sortierten Mittelpunkte)
+    assert "3.20" in out
+    # Zeile enthaelt die g/cm3-Einheit (spiegelt Ø Dichte / Dichte-Spanne)
+    median_line = [ln for ln in out.splitlines() if "Median Dichte:" in ln][0]
+    assert "g/cm3" in median_line
 
 
 def test_json_ausgabe(migrated_db, capsys):

@@ -97,6 +97,7 @@ class Statistik:
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
     dichte_kollektion_durchschnitt: float | None = None
+    dichte_kollektion_median: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_min_chf: float = 0.0
@@ -1168,6 +1169,10 @@ class Statistik:
                 round(self.dichte_kollektion_durchschnitt, 2)
                 if self.dichte_kollektion_durchschnitt is not None else None
             ),
+            "dichte_kollektion_median": (
+                round(self.dichte_kollektion_median, 2)
+                if self.dichte_kollektion_median is not None else None
+            ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_min_chf": round(self.wert_min_chf, 2),
@@ -1903,6 +1908,45 @@ def _dichte_durchschnitt(conn: sqlite3.Connection) -> float | None:
         "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL"
     ).fetchone()
     return float(row["avg"]) if row["avg"] is not None else None
+
+
+def _dichte_median(conn: sqlite3.Connection) -> float | None:
+    """Liefert den Median der Dichte-Mittelpunkte in g/cm3 ueber die Sammlung.
+
+    Spiegelt :func:`_mohs_median` (ausreisser-robuste zentrale Tendenz zur
+    Durchschnitts-Achse) auf die physikalische Dichte-Achse: waehrend der
+    Durchschnitt sensibel auf einzelne sehr leichte/schwere Ausreisser
+    reagiert (ein Galenit-Stueck mit ~7.5 g/cm3 in einer sonst Quarz-lastigen
+    Sammlung zieht den Durchschnitt hoch), bleibt der Median unempfindlich -
+    er beziffert das "typische" Stueck als 50%-Quantil der Dichte-Verteilung
+    und bleibt auch bei extremen Ausreissern beim Cluster-Wert. Vervollstaendigt
+    damit das Dichte-Kennzahlen-Trio (min/max/durchschnitt) um die Median-
+    Achse und stellt es strukturidentisch neben das Mohs-Kennzahlen-Quartett
+    (min/max/durchschnitt/median).
+
+    Pro Objekt wird der Mittelpunkt des dokumentierten Bereichs verwendet
+    (bei zwei Werten: (min+max)/2; bei Single-Point-Pflege: der eine Wert -
+    spiegelt die _dichte_durchschnitt-Konvention via COALESCE). Reuse der
+    has_dichte-/objekte_mit_dichte-Konvention (ein Objekt zaehlt, sobald
+    eines der beiden Bereichsfelder gesetzt ist). Median berechnet sich
+    klassisch: bei ungerader Anzahl das mittlere Element der sortierten
+    Liste, bei gerader Anzahl der Mittelwert der beiden mittleren Elemente -
+    spiegelt das _mohs_median-Verhalten exakt. SQL sortiert deterministisch
+    ueber ORDER BY mid. Bei leerer DB / ohne jegliche Dichte-Pflege bleibt
+    der Median None (spiegelt das _mohs_median-/_dichte_spanne-Verhalten).
+    """
+    mittelpunkte = [float(r["mid"]) for r in conn.execute(
+        "SELECT (COALESCE(Dichte_min_gcm3, Dichte_max_gcm3) + "
+        "COALESCE(Dichte_max_gcm3, Dichte_min_gcm3)) / 2.0 AS mid "
+        "FROM objects "
+        "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL "
+        "ORDER BY mid"
+    ).fetchall()]
+    if not mittelpunkte:
+        return None
+    n = len(mittelpunkte)
+    return (mittelpunkte[n // 2] if n % 2
+            else (mittelpunkte[n // 2 - 1] + mittelpunkte[n // 2]) / 2)
 
 
 def _dichte_spanne(conn: sqlite3.Connection) -> tuple[float | None, float | None]:
@@ -3355,6 +3399,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Pflege der eine Wert), gemittelt ueber alle Objekte mit mindestens einem
     # gesetzten Bereichsfeld. Spiegelt _mohs_durchschnitt auf die Dichte-Achse.
     st.dichte_kollektion_durchschnitt = _dichte_durchschnitt(conn)
+    # Dichte-Median: ausreisser-robuste zentrale Tendenz zur Durchschnitts-
+    # Achse. Vervollstaendigt das Dichte-Kennzahlen-Trio (min/max + durchschnitt)
+    # um die Median-Achse und stellt es strukturidentisch neben das
+    # Mohs-Kennzahlen-Quartett (min/max/durchschnitt/median).
+    st.dichte_kollektion_median = _dichte_median(conn)
     if gewichte:
         st.gewicht_min_g = gewichte[0]
         st.gewicht_max_g = gewichte[-1]

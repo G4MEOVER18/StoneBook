@@ -2347,6 +2347,114 @@ def test_dichte_durchschnitt_einzelpunkt(tmp_path):
     c.close()
 
 
+def test_dichte_median_aus_seed_db(tmp_path):
+    """kollektion_median = Median der Dichte-Mittelpunkte in g/cm3.
+
+    Spiegelt test_mohs_median_aus_seed_db auf die Dichte-Achse: pro Objekt
+    der Mittelpunkt des dokumentierten Bereichs (min UND max: (a+b)/2;
+    Single-Point-Pflege: der eine Wert - COALESCE-Konvention identisch zum
+    Durchschnitt), sortiert, mittleres Element bei ungerader Anzahl. Fuenf
+    Mittelpunkte 2.70/1.10/5.00/3.20/7.50 → sortiert
+    [1.10, 2.70, 3.20, 5.00, 7.50] → Median 3.20 als mittleres Element.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_med.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.60, 2.80),   # Mittelpunkt 2.70 (Quarz-Range)
+            ("OBJ_0002", 1.00, 1.20),   # Mittelpunkt 1.10 (Bims)
+            ("OBJ_0003", 5.00, None),   # Point-only min → 5.00
+            ("OBJ_0004", None, 3.20),   # Point-only max → 3.20
+            ("OBJ_0005", 7.00, 8.00),   # Mittelpunkt 7.50 (Galenit)
+            ("OBJ_0006", None, None),   # ignoriert (keine Pflege)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # sortiert: [1.10, 2.70, 3.20, 5.00, 7.50] → Median 3.20
+    assert st.dichte_kollektion_median == 3.20
+    d = st.as_dict()
+    # Serialisierung: 2 Nachkommastellen (Mineraldatenbank-Konvention)
+    assert d["dichte_kollektion_median"] == 3.20
+    c.close()
+
+
+def test_dichte_median_gerade_anzahl(tmp_path):
+    """Bei gerader Anzahl: Mittelwert der zwei mittleren sortierten Elemente.
+
+    Spiegelt test_mohs_median_gerade_anzahl auf die Dichte-Achse: vier
+    Mittelpunkte 2.70/1.10/5.00/3.20 → sortiert [1.10, 2.70, 3.20, 5.00] →
+    Median (2.70 + 3.20) / 2 = 2.95.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_med_even.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.60, 2.80),   # Mittelpunkt 2.70
+            ("OBJ_0002", 1.00, 1.20),   # Mittelpunkt 1.10
+            ("OBJ_0003", 5.00, None),   # Point-only min → 5.00
+            ("OBJ_0004", None, 3.20),   # Point-only max → 3.20
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # sortiert: [1.10, 2.70, 3.20, 5.00] → Median (2.70 + 3.20) / 2 = 2.95
+    assert st.dichte_kollektion_median == pytest.approx(2.95)
+    c.close()
+
+
+def test_dichte_median_leer(tmp_path):
+    """Ohne Dichte-Pflege bleibt der Median None (spiegelt _dichte_durchschnitt)."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_med_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_median is None
+    d = st.as_dict()
+    assert d["dichte_kollektion_median"] is None
+    c.close()
+
+
+def test_dichte_median_ausreisser_robust(tmp_path):
+    """Median bleibt gegen einen einzelnen sehr schweren Ausreisser robust.
+
+    Kern-Eigenschaft der Median-Achse zur Durchschnitts-Achse: neun typische
+    Quarz-Stuecke (2.65) plus ein Galenit-Ausreisser (7.50) - der Durchschnitt
+    wird nach oben gezogen (~2.15 -> ~3.14), der Median bleibt beim Cluster-Wert
+    2.65 (mittleres Element der sortierten Quarz-Reihe). Spiegelt
+    test_mohs_median_ausreisser_robust auf die Massendichte-Achse.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_ausreisser.sqlite3")
+    quarze = [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 10)]  # 9x Quarz 2.65
+    quarze.append(("OBJ_0010", 7.50, 7.50))  # Galenit-Ausreisser
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        quarze,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # sortiert: 9x 2.65 + 7.50 → Median = (2.65 + 2.65) / 2 = 2.65
+    assert st.dichte_kollektion_median == 2.65
+    # Durchschnitt reagiert dagegen sichtbar auf den Ausreisser
+    assert st.dichte_kollektion_durchschnitt > 2.65
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")
