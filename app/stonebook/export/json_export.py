@@ -191,6 +191,108 @@ def _diff_backup_dicts(data_a: dict, data_b: dict) -> dict:
     return result
 
 
+def _diff_row_fields(row_a: dict, row_b: dict) -> dict[str, dict]:
+    """Reine Feld-Diff-Logik zwischen zwei Zeilen (dict).
+
+    Normalisiert auf die Vereinigung der Schluessel und markiert fehlende
+    Schluessel als ``None``, spiegelt damit die _row_eq-Konvention in
+    :func:`_diff_backup_dicts` (restore-Semantik von :func:`import_json`,
+    das fehlende JSON-Spalten als NULL einfuegt). Liefert nur die Spalten,
+    die sich tatsaechlich unterscheiden.
+    """
+    diffs: dict[str, dict] = {}
+    for k in set(row_a) | set(row_b):
+        va = row_a.get(k)
+        vb = row_b.get(k)
+        if va != vb:
+            diffs[k] = {"a": va, "b": vb}
+    return diffs
+
+
+def _diff_object_fields(data_a: dict, data_b: dict, obj_id: str) -> dict:
+    """Feld-Diff fuer ein einzelnes Objekt aus zwei Backup-Dicts.
+
+    Ergaenzt :func:`_diff_backup_dicts`, das nur Aggregat-Counts und die Liste
+    der modifizierten obj_ids liefert. Fuer die Restore-Entscheidung ist aber
+    genau die Spalten-Ebene relevant: bei einem "modified: 3"-Report muss der
+    User wissen, ob nur ein Name-Tippfehler oder ein Wert_CHF_roh-Update
+    verantwortlich ist, bevor er ``restore --force`` bestaetigt.
+
+    Liefert ``{"obj_id": ..., "status": ..., "fields": {col: {"a":.., "b":..}}}``
+    mit ``status`` in ``{"unchanged", "modified", "added", "removed", "missing"}``:
+    - ``unchanged``: obj_id in beiden Quellen, alle Spalten identisch (nach
+      Normalisierung ueber die Vereinigung der Schluessel)
+    - ``modified``: obj_id in beiden Quellen, mindestens eine Spalte unterschiedlich
+    - ``added``: obj_id nur in b (kaeme nach restore neu in die Ziel-DB dazu)
+    - ``removed``: obj_id nur in a (ginge nach restore verloren)
+    - ``missing``: obj_id in keiner Quelle vorhanden (Aufrufer-Tippfehler o.ae.)
+    """
+    def _find(rows, oid):
+        for r in rows or []:
+            if isinstance(r, dict) and r.get("obj_id") == oid:
+                return r
+        return None
+
+    row_a = _find(data_a.get("objects"), obj_id)
+    row_b = _find(data_b.get("objects"), obj_id)
+    if row_a is None and row_b is None:
+        return {"obj_id": obj_id, "status": "missing", "fields": {}}
+    if row_a is None:
+        return {"obj_id": obj_id, "status": "added", "fields": {}}
+    if row_b is None:
+        return {"obj_id": obj_id, "status": "removed", "fields": {}}
+    fields = _diff_row_fields(row_a, row_b)
+    return {
+        "obj_id": obj_id,
+        "status": "modified" if fields else "unchanged",
+        "fields": fields,
+    }
+
+
+def diff_backup_object_fields(path_a: Path, path_b: Path, obj_id: str) -> dict:
+    """Feld-Diff fuer ein einzelnes Objekt zwischen zwei Backups.
+
+    Ergaenzt :func:`compare_backups` um die Spalten-Sicht: waehrend
+    ``compare_backups`` nur die Aggregat-Counts (``added``/``removed``/
+    ``modified``/``unchanged``) und maximal 100 modifizierte obj_ids liefert,
+    beantwortet ``diff_backup_object_fields`` die naheliegende Folge-Frage
+    "welche Spalten haben sich in Objekt X geaendert?". Typischer Workflow:
+    ``compare_backups(alt, neu)`` liefert die Liste veraenderter obj_ids,
+    dann iteriert der Aufrufer ueber diese Liste mit
+    ``diff_backup_object_fields(alt, neu, oid)`` und bekommt pro Objekt die
+    veraenderten Spalten mit ``a``-/``b``-Wert - genug Kontext, um vor
+    ``restore --force`` bewusst zu entscheiden.
+
+    Wirft ``ValueError`` bei kaputten/format-fremden Backup-Dateien (spiegelt
+    :func:`compare_backups`).
+    """
+    data_a = _load_backup_dict(path_a)
+    data_b = _load_backup_dict(path_b)
+    return _diff_object_fields(data_a, data_b, obj_id)
+
+
+def diff_backup_to_db_object_fields(conn: sqlite3.Connection, path: Path,
+                                    obj_id: str) -> dict:
+    """Feld-Diff fuer ein einzelnes Objekt zwischen DB und Backup.
+
+    Spiegelt :func:`diff_backup_object_fields` (Datei vs. Datei) auf die
+    Datei-vs-DB-Achse, exakt wie :func:`compare_backup_to_db` die Achse zu
+    :func:`compare_backups` spiegelt. DB nimmt die Rolle von ``a``, Backup
+    die Rolle von ``b`` ein (Restore-Semantik: was wuerde sich in der
+    laufenden DB aendern, wenn dieses Backup eingespielt wird). Typischer
+    Workflow: ``compare_backup_to_db(conn, path)`` liefert die Liste der
+    obj_ids, die sich unterscheiden, dann liefert
+    ``diff_backup_to_db_object_fields(conn, path, oid)`` fuer jede ID die
+    veraenderten Spalten mit ``a`` = DB-Stand, ``b`` = Backup-Stand.
+
+    Wirft ``ValueError`` bei kaputten/format-fremden Backup-Dateien (spiegelt
+    :func:`compare_backup_to_db`).
+    """
+    data_db = _db_to_backup_dict(conn)
+    data_backup = _load_backup_dict(path)
+    return _diff_object_fields(data_db, data_backup, obj_id)
+
+
 def compare_backups(path_a: Path, path_b: Path) -> dict:
     """Vergleicht zwei Backups und liefert die strukturellen Diff-Stats.
 

@@ -7,6 +7,8 @@ import pytest
 from stonebook.db.database import connect, open_db
 from stonebook.export.backup_cli import main
 from stonebook.export.json_export import (compare_backup_to_db, compare_backups,
+                                          diff_backup_object_fields,
+                                          diff_backup_to_db_object_fields,
                                           export_json)
 from stonebook.migration.migrate import migrate
 
@@ -343,4 +345,255 @@ def test_cli_compare_db_fehlende_db(tmp_path, capsys):
     _write(backup, {"objects": []})
     fehlt = tmp_path / "fehlt.sqlite3"
     code = main(["compare-db", str(backup), "--db", str(fehlt)])
+    assert code == 2
+
+
+# diff_backup_object_fields: Feld-Diff fuer einzelnes Objekt zwischen zwei Backups.
+
+
+def test_diff_object_fields_modified(tmp_path):
+    """Objekt in beiden Backups mit unterschiedlichen Spalten -> status modified,
+    fields listet nur die geaenderten Spalten mit a-/b-Wert."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [
+        {"obj_id": "OBJ_0001", "Name": "Original", "Fundort_Freitext": "Aare"},
+    ]})
+    _write(b, {"objects": [
+        {"obj_id": "OBJ_0001", "Name": "Geaendert", "Fundort_Freitext": "Aare"},
+    ]})
+    diff = diff_backup_object_fields(a, b, "OBJ_0001")
+    assert diff["obj_id"] == "OBJ_0001"
+    assert diff["status"] == "modified"
+    assert diff["fields"] == {"Name": {"a": "Original", "b": "Geaendert"}}
+
+
+def test_diff_object_fields_unchanged(tmp_path):
+    """Objekt in beiden Backups identisch -> status unchanged, fields leer."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [{"obj_id": "OBJ_0001", "Name": "Konstant"}]})
+    _write(b, {"objects": [{"obj_id": "OBJ_0001", "Name": "Konstant"}]})
+    diff = diff_backup_object_fields(a, b, "OBJ_0001")
+    assert diff["status"] == "unchanged"
+    assert diff["fields"] == {}
+
+
+def test_diff_object_fields_added(tmp_path):
+    """Objekt nur in b -> status added, fields leer (Spalten kommen als Ganzes)."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [{"obj_id": "OBJ_0001"}]})
+    _write(b, {"objects": [{"obj_id": "OBJ_0001"}, {"obj_id": "OBJ_0002"}]})
+    diff = diff_backup_object_fields(a, b, "OBJ_0002")
+    assert diff["status"] == "added"
+    assert diff["fields"] == {}
+
+
+def test_diff_object_fields_removed(tmp_path):
+    """Objekt nur in a -> status removed (ginge nach restore verloren)."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [{"obj_id": "OBJ_0001"}, {"obj_id": "OBJ_0002"}]})
+    _write(b, {"objects": [{"obj_id": "OBJ_0001"}]})
+    diff = diff_backup_object_fields(a, b, "OBJ_0002")
+    assert diff["status"] == "removed"
+
+
+def test_diff_object_fields_missing_in_beiden(tmp_path):
+    """Objekt in keiner Quelle vorhanden (Tippfehler o.ae.) -> status missing."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [{"obj_id": "OBJ_0001"}]})
+    _write(b, {"objects": [{"obj_id": "OBJ_0001"}]})
+    diff = diff_backup_object_fields(a, b, "OBJ_9999")
+    assert diff["status"] == "missing"
+
+
+def test_diff_object_fields_mehrere_spalten(tmp_path):
+    """Mehrere veraenderte Spalten - alle erscheinen im fields-Dict."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [
+        {"obj_id": "OBJ_0001", "Name": "A", "Mineral_Name": "Quarz",
+         "Wert_CHF_roh": 100},
+    ]})
+    _write(b, {"objects": [
+        {"obj_id": "OBJ_0001", "Name": "B", "Mineral_Name": "Calcit",
+         "Wert_CHF_roh": 100},
+    ]})
+    diff = diff_backup_object_fields(a, b, "OBJ_0001")
+    assert diff["status"] == "modified"
+    assert set(diff["fields"]) == {"Name", "Mineral_Name"}
+    assert diff["fields"]["Name"] == {"a": "A", "b": "B"}
+    assert diff["fields"]["Mineral_Name"] == {"a": "Quarz", "b": "Calcit"}
+
+
+def test_diff_object_fields_fehlende_spalte_gilt_als_none(tmp_path):
+    """Fehlende Spalte in einem der Backups wird als None normalisiert.
+
+    Spiegelt die _row_eq-Konvention in _diff_backup_dicts: fehlende JSON-
+    Spalten haben die gleiche Semantik wie NULL (import_json fuegt sie ueber
+    INSERT OR REPLACE mit NULL ein). Ohne Normalisierung waere ein Backup
+    ohne die Spalte != einem Backup mit expliziter None, obwohl beide nach
+    dem Restore identisch waeren.
+    """
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [{"obj_id": "OBJ_0001", "Name": "X"}]})
+    _write(b, {"objects": [{"obj_id": "OBJ_0001", "Name": "X",
+                             "Mineral_Name": None}]})
+    diff = diff_backup_object_fields(a, b, "OBJ_0001")
+    # Mineral_Name: fehlt in a, None in b -> beide werden als None gelesen,
+    # kein Diff -> unchanged.
+    assert diff["status"] == "unchanged"
+    assert diff["fields"] == {}
+
+
+def test_diff_object_fields_kaputtes_backup_wirft(tmp_path):
+    a = tmp_path / "ok.json"
+    b = tmp_path / "kaputt.json"
+    _write(a, {"objects": []})
+    b.write_text("nicht json", encoding="utf-8")
+    with pytest.raises(ValueError):
+        diff_backup_object_fields(a, b, "OBJ_0001")
+
+
+# diff_backup_to_db_object_fields: Feld-Diff zwischen DB und Backup (Datei-vs-DB-Achse).
+
+
+def test_diff_object_db_modified(tmp_path):
+    """DB-Objekt und Backup-Objekt unterscheiden sich -> modified mit Feld-Diff.
+
+    Spiegelt test_diff_object_fields_modified: a = DB-Stand, b = Backup-Stand
+    (Restore-Semantik von compare_backup_to_db).
+    """
+    db_file = tmp_path / "db.sqlite3"
+    conn = open_db(db_file)
+    conn.execute("INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+                 ("OBJ_0001", "DB-Name"))
+    conn.commit()
+    db_row = dict(conn.execute("SELECT * FROM objects WHERE obj_id=?",
+                               ("OBJ_0001",)).fetchone())
+    changed = dict(db_row)
+    changed["Name"] = "Backup-Name"
+
+    backup = tmp_path / "backup.json"
+    _write(backup, {"objects": [changed]})
+    try:
+        diff = diff_backup_to_db_object_fields(conn, backup, "OBJ_0001")
+    finally:
+        conn.close()
+    assert diff["obj_id"] == "OBJ_0001"
+    assert diff["status"] == "modified"
+    assert diff["fields"] == {"Name": {"a": "DB-Name", "b": "Backup-Name"}}
+
+
+def test_diff_object_db_unchanged(tmp_path):
+    """DB und Backup identisch fuer das Objekt -> unchanged."""
+    db_file = tmp_path / "db.sqlite3"
+    conn = open_db(db_file)
+    conn.execute("INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+                 ("OBJ_0001", "same"))
+    conn.commit()
+    db_row = dict(conn.execute("SELECT * FROM objects WHERE obj_id=?",
+                               ("OBJ_0001",)).fetchone())
+
+    backup = tmp_path / "backup.json"
+    _write(backup, {"objects": [db_row]})
+    try:
+        diff = diff_backup_to_db_object_fields(conn, backup, "OBJ_0001")
+    finally:
+        conn.close()
+    assert diff["status"] == "unchanged"
+    assert diff["fields"] == {}
+
+
+def test_diff_object_db_added(tmp_path):
+    """Objekt nur im Backup -> added (kaeme nach restore neu in die DB)."""
+    db_file = tmp_path / "db.sqlite3"
+    conn = open_db(db_file)
+    conn.commit()
+
+    backup = tmp_path / "backup.json"
+    _write(backup, {"objects": [{"obj_id": "OBJ_0001", "Name": "Backup-only"}]})
+    try:
+        diff = diff_backup_to_db_object_fields(conn, backup, "OBJ_0001")
+    finally:
+        conn.close()
+    assert diff["status"] == "added"
+
+
+def test_diff_object_db_removed(tmp_path):
+    """Objekt nur in der DB -> removed (ginge nach restore verloren)."""
+    db_file = tmp_path / "db.sqlite3"
+    conn = open_db(db_file)
+    conn.execute("INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+                 ("OBJ_0001", "DB-only"))
+    conn.commit()
+
+    backup = tmp_path / "backup.json"
+    _write(backup, {"objects": []})
+    try:
+        diff = diff_backup_to_db_object_fields(conn, backup, "OBJ_0001")
+    finally:
+        conn.close()
+    assert diff["status"] == "removed"
+
+
+def test_diff_object_db_kaputtes_backup_wirft(tmp_path):
+    db_file = tmp_path / "db.sqlite3"
+    conn = open_db(db_file)
+    kaputt = tmp_path / "kaputt.json"
+    kaputt.write_text("nicht json", encoding="utf-8")
+    try:
+        with pytest.raises(ValueError):
+            diff_backup_to_db_object_fields(conn, kaputt, "OBJ_0001")
+    finally:
+        conn.close()
+
+
+def test_cli_diff_object_gibt_json(tmp_path, capsys):
+    """CLI diff-object: gibt das Feld-Diff-JSON aus, Exit 0."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    _write(a, {"objects": [{"obj_id": "OBJ_0001", "Name": "A"}]})
+    _write(b, {"objects": [{"obj_id": "OBJ_0001", "Name": "B"}]})
+    code = main(["diff-object", str(a), str(b), "OBJ_0001"])
+    assert code == 0
+    diff = json.loads(capsys.readouterr().out)
+    assert diff["obj_id"] == "OBJ_0001"
+    assert diff["status"] == "modified"
+    assert diff["fields"]["Name"] == {"a": "A", "b": "B"}
+
+
+def test_cli_diff_object_db_gibt_json(tmp_path, capsys):
+    """CLI diff-object-db: gibt das Feld-Diff-JSON aus, Exit 0."""
+    db_file = tmp_path / "db.sqlite3"
+    conn = open_db(db_file)
+    conn.execute("INSERT INTO objects (obj_id, Name) VALUES (?, ?)",
+                 ("OBJ_0001", "DB"))
+    conn.commit()
+    db_row = dict(conn.execute("SELECT * FROM objects WHERE obj_id=?",
+                               ("OBJ_0001",)).fetchone())
+    changed = dict(db_row)
+    changed["Name"] = "BAK"
+    conn.close()
+
+    backup = tmp_path / "backup.json"
+    _write(backup, {"objects": [changed]})
+    code = main(["diff-object-db", str(backup), "OBJ_0001", "--db", str(db_file)])
+    assert code == 0
+    diff = json.loads(capsys.readouterr().out)
+    assert diff["obj_id"] == "OBJ_0001"
+    assert diff["status"] == "modified"
+    assert diff["fields"]["Name"] == {"a": "DB", "b": "BAK"}
+
+
+def test_cli_diff_object_db_fehlende_db(tmp_path, capsys):
+    """CLI diff-object-db: fehlende DB -> Exit 2 (spiegelt compare-db-Pfad)."""
+    backup = tmp_path / "backup.json"
+    _write(backup, {"objects": [{"obj_id": "OBJ_0001"}]})
+    fehlt = tmp_path / "fehlt.sqlite3"
+    code = main(["diff-object-db", str(backup), "OBJ_0001", "--db", str(fehlt)])
     assert code == 2

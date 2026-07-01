@@ -8,6 +8,8 @@ Beispiele:
     python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli compare <alt> <neu>
     python -m stonebook.export.backup_cli compare-db <file>
+    python -m stonebook.export.backup_cli diff-object <alt> <neu> OBJ_0001
+    python -m stonebook.export.backup_cli diff-object-db <file> OBJ_0001
     python -m stonebook.export.backup_cli restore <file> --db <pfad>
 """
 from __future__ import annotations
@@ -19,6 +21,8 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file, open_db
 from stonebook.export.json_export import (compare_backup_to_db, compare_backups,
+                                          diff_backup_object_fields,
+                                          diff_backup_to_db_object_fields,
                                           import_json, inspect_backup,
                                           list_backups, prune_backups_by_age,
                                           prune_old_backups, validate_backup,
@@ -129,6 +133,43 @@ def _cmd_compare_db(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_diff_object(args: argparse.Namespace) -> int:
+    """Feld-Diff fuer ein einzelnes Objekt zwischen zwei Backups.
+
+    Ergaenzt :func:`_cmd_compare` (Aggregat-Counts) um die Spalten-Sicht:
+    zeigt genau, welche Spalten sich in Objekt X zwischen Backup a und b
+    unterscheiden. Exit-Code 0 immer (spiegelt _cmd_compare); der Status im
+    JSON (``modified``/``unchanged``/``added``/``removed``/``missing``) ist
+    Aufrufer-Signal.
+    """
+    diff = diff_backup_object_fields(args.a, args.b, args.obj_id)
+    json.dump(diff, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _cmd_diff_object_db(args: argparse.Namespace) -> int:
+    """Feld-Diff fuer ein einzelnes Objekt zwischen DB und Backup.
+
+    Spiegelt :func:`_cmd_diff_object` auf die Datei-vs-DB-Achse, exakt wie
+    :func:`_cmd_compare_db` die Achse zu :func:`_cmd_compare` spiegelt. DB
+    nimmt die Rolle von ``a``, Backup die Rolle von ``b`` ein (Restore-
+    Semantik). Fehlende DB -> Exit 2 (spiegelt write/restore/compare-db-Pfad).
+    """
+    db_file = args.db if args.db else default_db_file()
+    if not db_file.is_file():
+        print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)
+        return 2
+    conn = connect(db_file)
+    try:
+        diff = diff_backup_to_db_object_fields(conn, args.path, args.obj_id)
+    finally:
+        conn.close()
+    json.dump(diff, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
+    return 0
+
+
 def _cmd_restore(args: argparse.Namespace) -> int:
     target = args.db if args.db else default_db_file()
     if target.exists() and not args.force:
@@ -205,6 +246,24 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--db", type=Path, default=None,
                     help="Pfad zur SQLite-DB (Default: <repo>/data/db/stonebook.sqlite3).")
     sp.set_defaults(func=_cmd_compare_db)
+
+    sp = sub.add_parser(
+        "diff-object",
+        help="Feld-Diff fuer ein einzelnes Objekt zwischen zwei Backups.")
+    sp.add_argument("a", type=Path, help="Erstes Backup (Basis).")
+    sp.add_argument("b", type=Path, help="Zweites Backup (Vergleichs-Ziel).")
+    sp.add_argument("obj_id", type=str, help="Objekt-ID (z.B. OBJ_0001).")
+    sp.set_defaults(func=_cmd_diff_object)
+
+    sp = sub.add_parser(
+        "diff-object-db",
+        help="Feld-Diff fuer ein einzelnes Objekt zwischen DB und Backup "
+             "(Pre-Flight-Detail vor restore).")
+    sp.add_argument("path", type=Path, help="Backup-Datei.")
+    sp.add_argument("obj_id", type=str, help="Objekt-ID (z.B. OBJ_0001).")
+    sp.add_argument("--db", type=Path, default=None,
+                    help="Pfad zur SQLite-DB (Default: <repo>/data/db/stonebook.sqlite3).")
+    sp.set_defaults(func=_cmd_diff_object_db)
 
     sp = sub.add_parser("restore", help="Backup in eine DB einspielen.")
     sp.add_argument("path", type=Path)
