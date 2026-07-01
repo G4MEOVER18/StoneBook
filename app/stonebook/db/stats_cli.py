@@ -52,6 +52,7 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
     if st.objekte_mit_wert:
         lines.append(f"  Ø Wert (CHF):        {st.wert_durchschnitt_chf:,.0f}")
         lines.append(f"  Median Wert (CHF):   {st.wert_median_chf:,.0f}")
+        lines.append(f"  Minimaler Einzelwert:{st.wert_min_chf:,.0f}")
     if st.objekte_mit_gewicht:
         lines.append(f"  Ø Gewicht (g):       {st.gewicht_durchschnitt_g:,.1f}")
         lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")

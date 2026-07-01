@@ -89,6 +89,7 @@ def test_wert_kennzahlen_aus_seed_db(tmp_path):
     c.commit()
     st = compute_statistics(c)
     assert st.objekte_mit_wert == 2
+    assert st.wert_min_chf == 300.0
     assert st.wert_max_chf == 500.0
     assert st.wert_summe_chf == 800.0
     assert st.wert_durchschnitt_chf == 400.0
@@ -151,6 +152,102 @@ def test_wert_median_leere_db(tmp_path):
     c = open_db(tmp_path / "leer.sqlite3")
     st = compute_statistics(c)
     assert st.wert_median_chf == 0.0
+    c.close()
+
+
+def test_wert_min_chf_aus_seed_db(tmp_path):
+    """wert_min_chf ist der kleinste Objekt-Wert > 0; NULL und 0 zaehlen nicht mit.
+
+    Spiegelt test_gewicht_kennzahlen_aus_seed_db auf die Wert-Achse.
+    Objekte ohne dokumentierten Wert (alle WERT_FELDER NULL) bleiben aussen
+    vor, damit die Minimums-Achse nicht auf 0 zusammenbricht - spiegelt die
+    objekte_mit_wert-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wmin.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 10.0),
+            ("OBJ_0002", 50.0),
+            ("OBJ_0003", 200.0),
+            ("OBJ_0004", None),  # ignoriert
+            ("OBJ_0005", 0.0),   # ignoriert (kein echter Wert)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 3
+    assert st.wert_min_chf == 10.0
+    assert st.wert_max_chf == 200.0
+    assert st.wert_summe_chf == 260.0
+    d = st.as_dict()
+    assert d["wert_min_chf"] == 10.0
+    assert d["wert_max_chf"] == 200.0
+    c.close()
+
+
+def test_wert_min_chf_leer(tmp_path):
+    """Leere DB / keine Objekte mit Wert → wert_min_chf == 0.0 (dataclass-Default).
+
+    Spiegelt test_gewicht_kennzahlen_leer auf die Wert-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 0
+    assert st.wert_min_chf == 0.0
+    assert st.wert_max_chf == 0.0
+    c.close()
+
+
+def test_wert_min_chf_einzelobjekt_gleich_max(tmp_path):
+    """Bei genau einem Objekt mit Wert kollabieren Min und Max auf denselben Wert.
+
+    Spiegelt test_gewicht_min_einzelobjekt_gleich_max auf die Wert-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wmin_single.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 42.5), ("OBJ_0002", None), ("OBJ_0003", 0.0)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 1
+    assert st.wert_min_chf == 42.5
+    assert st.wert_max_chf == 42.5
+    c.close()
+
+
+def test_wert_min_chf_summiert_ueber_wert_felder(tmp_path):
+    """wert_min_chf nutzt wert_pro_objekt_sql = Summe aller WERT_FELDER, nicht Einzelfeld.
+
+    Kein Objekt haette einzeln den kleinsten Wert, wenn nur eines der 5
+    WERT_FELDER betrachtet wuerde - hier zeigt der Test, dass die
+    Aggregation aus wert_pro_objekt_sql greift (analog zu wert_max_chf /
+    wert_summe_chf, die dieselbe Summe verwenden).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wmin_sum.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh, Wert_CHF_poliert, "
+        "Wert_CHF_Schmuck, Marktwert_Industrie, Wissenschaftlicher_Wert_CHF) "
+        "VALUES (?,?,?,?,?,?)",
+        [
+            # 5 + 5 + 5 + 5 + 5 = 25 (kleinster Objekt-Wert)
+            ("OBJ_0001", 5.0, 5.0, 5.0, 5.0, 5.0),
+            # 100 + 200 = 300
+            ("OBJ_0002", 100.0, 200.0, None, None, None),
+            # 50 + 400 = 450
+            ("OBJ_0003", 50.0, None, None, None, 400.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 3
+    assert st.wert_min_chf == 25.0
+    assert st.wert_max_chf == 450.0
     c.close()
 
 

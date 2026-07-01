@@ -96,6 +96,7 @@ class Statistik:
     dichte_kollektion_max: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
+    wert_min_chf: float = 0.0
     wert_max_chf: float = 0.0
     wert_durchschnitt_chf: float = 0.0
     wert_median_chf: float = 0.0
@@ -1154,6 +1155,7 @@ class Statistik:
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
+            "wert_min_chf": round(self.wert_min_chf, 2),
             "wert_max_chf": round(self.wert_max_chf, 2),
             "wert_durchschnitt_chf": round(self.wert_durchschnitt_chf, 2),
             "wert_median_chf": round(self.wert_median_chf, 2),
@@ -3243,6 +3245,26 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             f"WHERE {wert_sql} > 0 ORDER BY w"
         ).fetchall()]
         n = len(werte)
+        # wert_min_chf: kleinster Objekt-Wert (Summe der WERT_FELDER pro
+        # Objekt) in der Sammlung, symmetrisches Pendant zum bereits
+        # bestehenden wert_max_chf. Spiegelt das gewicht_min_g /
+        # gewicht_max_g-Paar auf die Wert-Achse: waehrend die Gewicht-
+        # Extrema die physikalische Massen-Spanne ("leichtestes vs.
+        # schwerstes Stueck") beziffern, beziffern die Wert-Extrema die
+        # monetaere Spanne ("billigstes vs. teuerstes Stueck"). Ergaenzt
+        # damit das wert_max_chf / wert_durchschnitt_chf / wert_median_chf-
+        # Trio um die untere Grenze und vervollstaendigt so die Wert-
+        # Kennzahlen-Achse symmetrisch zur Gewicht-Achse (gewicht_min_g /
+        # gewicht_max_g / gewicht_durchschnitt_g / gewicht_median_g). Reuse
+        # der bereits sortierten werte-Liste (ORDER BY w aufsteigend) -
+        # werte[0] ist der kleinste Wert > 0, spiegelt den gewichte[0]-
+        # Zugriff exakt. Der WHERE-Filter (wert_sql > 0) schliesst Objekte
+        # ohne dokumentierten Wert (alle WERT_FELDER NULL oder 0) aus,
+        # damit die Minimums-Achse nicht durch nicht-gepflegte Stuecke auf
+        # 0 zusammenbricht - spiegelt die objekte_mit_wert-/objekte_mit_
+        # gewicht-Konvention. Leere DB / keine Objekte mit Wert → 0.0,
+        # spiegelt das gewicht_min_g-Verhalten (Default aus dataclass).
+        st.wert_min_chf = werte[0]
         st.wert_median_chf = (werte[n // 2] if n % 2
                               else (werte[n // 2 - 1] + werte[n // 2]) / 2)
     st.top_wert_objekte = [

@@ -174,12 +174,14 @@ def test_text_ausgabe_zeigt_durchschnitt_und_median_wert_gewicht(tmp_path, capsy
     out = capsys.readouterr().out
     assert "Ø Wert (CHF):" in out
     assert "Median Wert (CHF):" in out
+    assert "Minimaler Einzelwert:" in out
     assert "Ø Gewicht (g):" in out
     assert "Median Gewicht (g):" in out
     assert "Minimales Gewicht:" in out
     assert "Maximales Gewicht:" in out
-    # Median Wert = mittlerer von [100, 200, 600] = 200
+    # Median Wert = mittlerer von [100, 200, 600] = 200, Min = 100
     assert "200" in out
+    assert "100" in out
     # Max Gewicht = 200, Min Gewicht = 10
     assert "200.0" in out
     assert "10.0" in out
@@ -200,6 +202,7 @@ def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Ø Wert" not in out
     assert "Median Wert" not in out
+    assert "Minimaler Einzelwert" not in out
     assert "Ø Gewicht" not in out
     assert "Median Gewicht" not in out
     assert "Minimales Gewicht" not in out
