@@ -557,6 +557,64 @@ def prune_backups_by_age(backup_dir: Path, max_age_days: int, *,
     return deleted
 
 
+def backup_directory_stats(backup_dir: Path) -> dict:
+    """Fasst den Backup-Ordner als Disk-Belegungs-Report zusammen.
+
+    Spiegelt :func:`list_backups` (Aufzaehlung) auf die Volume-Achse:
+    waehrend ``list_backups`` einzelne Pfade liefert, fasst
+    ``backup_directory_stats`` den Ordner in einem Schritt zu einem
+    numerischen Report zusammen - Anzahl Backups, Gesamt-Bytes auf Platte,
+    frueheste und spaeteste Zeitstempel. Ergaenzt das prune-Vokabular
+    (:func:`prune_old_backups`, :func:`prune_backups_by_age`) um einen
+    read-only Reporter fuer Cron-Jobs und Wartungs-Dashboards, die vor
+    einer Prune-Entscheidung wissen wollen, wie viel Speicher die aktuelle
+    Backup-Halde belegt und wie weit der aelteste Eintrag zurueckreicht.
+
+    Beruehrt ausschliesslich Dateien, die zum
+    :func:`write_rotated_backup`-Schema passen
+    (``stonebook_backup_*.json[.gz]``) - fremde Dateien im Ordner
+    (README, andere Exporte, Lock-Files) bleiben unangetastet und zaehlen
+    weder in ``count`` noch in ``total_bytes``. ``oldest_stamp`` und
+    ``newest_stamp`` beziehen sich auf den Dateinamen-Zeitstempel
+    (nicht ``mtime``/``ctime``), damit Backups, die vom Backup-Server
+    kopiert oder verschoben wurden, ihr originales Alter behalten
+    (Single-Source-of-Truth = Filename-Stempel, spiegelt
+    :func:`prune_backups_by_age`).
+
+    Leerer Ordner / nur fremde Dateien liefert
+    ``{"count": 0, "total_bytes": 0, "oldest_stamp": None,
+    "newest_stamp": None}``. Nicht existierender Ordner liefert
+    dasselbe (spiegelt :func:`list_backups`, das bei fehlendem Ordner
+    eine leere Liste zurueckgibt statt zu crashen - geeignet fuer
+    Cron-Reporter, die den Report-Aufruf vor der ersten Backup-Schreibe
+    machen). Unlesbare Dateien (Race gegen paralleles Loeschen) werden
+    beim ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt
+    das ``try: unlink except OSError``-Verhalten der prune-Funktionen.
+    Zeitstempel werden als ISO-8601-String ``YYYY-MM-DDTHH:MM:SS``
+    ausgegeben (nicht als ``datetime``-Objekt), damit der Report ohne
+    Konvertierung durch ``json.dumps`` laeuft - spiegelt das
+    Ausgabeformat von :func:`inspect_backup` / :func:`validate_backup`.
+    """
+    count = 0
+    total_bytes = 0
+    stamps: list[datetime.datetime] = []
+    for p in list_backups(backup_dir):
+        count += 1
+        try:
+            total_bytes += p.stat().st_size
+        except OSError:
+            pass
+        stamp = _parse_backup_stamp(p)
+        if stamp is not None:
+            stamps.append(stamp)
+    return {
+        "count": count,
+        "total_bytes": total_bytes,
+        "oldest_stamp": min(stamps).isoformat() if stamps else None,
+        "newest_stamp": max(stamps).isoformat() if stamps else None,
+    }
+
+
 def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
                          keep: int = 10, compress: bool = True,
                          now: datetime.datetime | None = None) -> Path:

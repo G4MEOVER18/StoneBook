@@ -153,3 +153,47 @@ def test_write_fehlende_db_exit_2(tmp_path, capsys):
     assert exit_code == 2
     err = capsys.readouterr().err
     assert "DB-Datei fehlt" in err
+
+
+def test_stats_zeigt_report(migrated_db, tmp_path, capsys):
+    """stats Subcommand: Ordner mit zwei Backups liefert count/bytes/Stempel.
+
+    Spiegelt :func:`test_inspect_zeigt_counts` auf die Ordner-Achse
+    (statt einer einzelnen Backup-Datei): der Report fasst den ganzen
+    Backup-Ordner numerisch zusammen. Sowohl Grenzstempel (aeltestes /
+    juengstes Backup) als auch Gesamt-Bytes werden geprueft.
+    """
+    backup_dir = tmp_path / "sd"
+    main(["write", "--backup-dir", str(backup_dir), "--db", str(migrated_db)])
+    _ = capsys.readouterr()  # Pfad-Output verwerfen
+    # Zweites Backup, damit oldest_stamp und newest_stamp unterscheidbar sind.
+    time.sleep(1.1)
+    main(["write", "--backup-dir", str(backup_dir), "--db", str(migrated_db)])
+    _ = capsys.readouterr()
+
+    exit_code = main(["stats", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["count"] == 2
+    assert info["total_bytes"] > 0
+    assert info["oldest_stamp"] is not None
+    assert info["newest_stamp"] is not None
+    assert info["oldest_stamp"] <= info["newest_stamp"]
+
+
+def test_stats_leerer_ordner_liefert_null_report(tmp_path, capsys):
+    """stats Subcommand: nicht existierender Ordner liefert Null-Report, Exit 0.
+
+    Spiegelt :func:`test_backup_directory_stats_leerer_und_nichtexistierender_ordner`
+    auf der CLI-Achse - kein Crash, Cron-Reporter kann den Report vor der
+    ersten Backup-Schreibe machen ohne Exit-Code-Sonderbehandlung.
+    """
+    exit_code = main(["stats", "--backup-dir", str(tmp_path / "nichts")])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info == {
+        "count": 0,
+        "total_bytes": 0,
+        "oldest_stamp": None,
+        "newest_stamp": None,
+    }

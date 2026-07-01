@@ -7,7 +7,8 @@ import pytest
 from stonebook.db.database import connect, open_db
 from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
-from stonebook.export.json_export import (BACKUP_FORMAT_VERSION, export_json,
+from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
+                                          backup_directory_stats, export_json,
                                           import_json, inspect_backup,
                                           list_backups, prune_backups_by_age,
                                           prune_old_backups, read_backup_meta,
@@ -761,3 +762,106 @@ def test_prune_backups_by_age_ignoriert_fremde_dateien(tmp_path):
     assert fremd.exists()
     assert fremdes_archiv.exists()
     db.close()
+
+
+def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
+    """Leerer und nicht existierender Ordner liefern beide den Null-Report.
+
+    Spiegelt :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
+    statt einer Exception zurueckgibt - geeignet fuer Cron-Reporter, die
+    den Report vor der ersten Backup-Schreibe machen.
+    """
+    empty = tmp_path / "leer"
+    empty.mkdir()
+    info = backup_directory_stats(empty)
+    assert info == {
+        "count": 0,
+        "total_bytes": 0,
+        "oldest_stamp": None,
+        "newest_stamp": None,
+    }
+    info = backup_directory_stats(tmp_path / "existiert_nicht")
+    assert info == {
+        "count": 0,
+        "total_bytes": 0,
+        "oldest_stamp": None,
+        "newest_stamp": None,
+    }
+
+
+def test_backup_directory_stats_zaehlt_und_summiert(tmp_path):
+    """Drei Backups liefern korrektes Count/Bytes/frueheste/spaeteste Stempel-Tupel.
+
+    Verifiziert das Kern-Verhalten des Reports: Zaehlung stimmt mit
+    :func:`list_backups`, Bytes-Summe stimmt mit ``sum(p.stat().st_size)``,
+    und die Zeitstempel spiegeln den Dateinamen (nicht ``mtime``).
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamps = [
+        datetime.datetime(2024, 1, 15, 10, 0, 0),
+        datetime.datetime(2024, 3, 20, 12, 30, 0),
+        datetime.datetime(2024, 6, 1, 8, 15, 0),
+    ]
+    for stamp in stamps:
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    db.close()
+
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    expected_bytes = sum(p.stat().st_size for p in list_backups(backups_dir))
+    assert info["total_bytes"] == expected_bytes
+    assert info["total_bytes"] > 0
+    assert info["oldest_stamp"] == "2024-01-15T10:00:00"
+    assert info["newest_stamp"] == "2024-06-01T08:15:00"
+
+
+def test_backup_directory_stats_ignoriert_fremde_dateien(tmp_path):
+    """Fremde Dateien im Backup-Ordner zaehlen weder in count noch in total_bytes.
+
+    Spiegelt das Verhalten von :func:`list_backups` und den prune-Funktionen:
+    nur Dateien, die zum ``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``-Muster
+    passen, werden erfasst. README-Dateien, andere Exporte, Lock-Files
+    bleiben unangetastet vom Report.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamp = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    db.close()
+    fremd = backups_dir / "README.txt"
+    fremd.write_text("nicht ein Backup", encoding="utf-8")
+    (backups_dir / "andere_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 10_000)
+
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    only_backup_bytes = list_backups(backups_dir)[0].stat().st_size
+    assert info["total_bytes"] == only_backup_bytes
+    # Fremdes Archiv (10_000 Byte) darf nicht in total_bytes einfliessen
+    assert info["total_bytes"] < 10_000
+    assert info["oldest_stamp"] == "2024-06-13T10:00:00"
+    assert info["newest_stamp"] == "2024-06-13T10:00:00"
+
+
+def test_backup_directory_stats_einzelnes_backup(tmp_path):
+    """Bei einem einzigen Backup sind oldest_stamp und newest_stamp identisch.
+
+    Kein Edge-Case-Fehler beim Grenzfall count=1 - die min/max-Reduktion
+    ueber die stamps-Liste liefert deterministisch denselben Wert.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamp = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    db.close()
+
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["oldest_stamp"] == info["newest_stamp"] == "2024-06-13T14:30:45"

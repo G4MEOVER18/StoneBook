@@ -3,6 +3,7 @@
 Beispiele:
     python -m stonebook.export.backup_cli write   --backup-dir backups/
     python -m stonebook.export.backup_cli list    --backup-dir backups/
+    python -m stonebook.export.backup_cli stats   --backup-dir backups/
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
@@ -20,7 +21,8 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file, open_db
-from stonebook.export.json_export import (compare_backup_to_db, compare_backups,
+from stonebook.export.json_export import (backup_directory_stats,
+                                          compare_backup_to_db, compare_backups,
                                           diff_backup_object_fields,
                                           diff_backup_to_db_object_fields,
                                           import_json, inspect_backup,
@@ -69,6 +71,20 @@ def _cmd_prune_age(args: argparse.Namespace) -> int:
     deleted = prune_backups_by_age(args.backup_dir, max_age_days=args.max_age_days)
     for p in deleted:
         print(p)
+    return 0
+
+
+def _cmd_stats(args: argparse.Namespace) -> int:
+    """Report ueber Backup-Ordner: Anzahl, Gesamt-Bytes, aeltester/neuester Stempel.
+
+    Spiegelt :func:`_cmd_list` (Aufzaehlung) auf die Volume-Achse:
+    ``list`` liefert die einzelnen Pfade, ``stats`` fasst den Ordner
+    numerisch zusammen. Geeignet fuer Cron-Reporter und Wartungs-
+    Dashboards vor einer Prune-Entscheidung.
+    """
+    info = backup_directory_stats(args.backup_dir)
+    json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
+    sys.stdout.write("\n")
     return 0
 
 
@@ -206,6 +222,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("list", help="Vorhandene Backups auflisten.")
     sp.add_argument("--backup-dir", type=Path, required=True)
     sp.set_defaults(func=_cmd_list)
+
+    sp = sub.add_parser(
+        "stats",
+        help="Backup-Ordner zusammenfassen (Anzahl, Gesamt-Bytes, "
+             "aeltester/neuester Stempel) als JSON-Report.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.set_defaults(func=_cmd_stats)
 
     sp = sub.add_parser("prune", help="Alte Backups loeschen (nur ``keep`` neueste bleiben).")
     sp.add_argument("--backup-dir", type=Path, required=True)
