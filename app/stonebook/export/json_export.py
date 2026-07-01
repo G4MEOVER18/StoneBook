@@ -496,6 +496,46 @@ def latest_backup(backup_dir: Path) -> Path | None:
     return backups[-1] if backups else None
 
 
+def oldest_backup(backup_dir: Path) -> Path | None:
+    """Liefert das aelteste Backup aus dem Ordner (Filename-Stempel), oder ``None``.
+
+    Spiegelt :func:`latest_backup` auf den Gegen-Endpunkt der Backup-Halde:
+    waehrend ``latest_backup`` das juengste Backup liefert (typisch fuer
+    Restore-Dialoge und "letztes Backup ist X Stunden alt"-Reporter),
+    beantwortet ``oldest_backup`` die naheliegende komplementaere
+    Wartungs-Frage "wie weit reicht meine Halde zurueck?" in einem Schritt
+    (statt ueber ``list_backups[0]``). Geeignet als Anker fuer
+    Prune-Preview ("was ist das aelteste Backup, das prune-age
+    --max-age-days 30 loeschen wuerde?", vgl. :func:`prune_backups_by_age`),
+    als Sanity-Check nach Rotations-Jobs ("ist mein aeltestes Backup
+    juenger als das erwartete Cutoff?") und als Startpunkt fuer historische
+    Diff-Analysen (``compare_backups(oldest_backup(dir), latest_backup(dir))``
+    zeigt, wie sich die Sammlung ueber die ganze Halden-Zeitspanne
+    entwickelt hat).
+
+    Beruehrt ausschliesslich Dateien, die zum :func:`write_rotated_backup`-
+    Schema passen - fremde Dateien im Ordner bleiben unbetrachtet, spiegelt
+    exakt das Filtern von :func:`latest_backup` / :func:`list_backups`
+    ueber ``_BACKUP_RE``. Die Sortierung basiert auf dem Dateinamen-Stempel
+    (nicht ``mtime``/``ctime``), damit Backups, die vom Backup-Server /
+    NAS kopiert oder verschoben wurden, ihr originales Alter behalten -
+    Single-Source-of-Truth = Filename-Stempel, spiegelt
+    :func:`prune_backups_by_age` / :func:`latest_backup`. Ordner mit
+    genau einer Backup-Datei liefern dieselbe Datei fuer oldest und
+    latest (spiegelt :func:`backup_directory_stats` mit
+    ``oldest_stamp == newest_stamp``).
+
+    Leerer Ordner / nur fremde Dateien / nicht existierender Ordner
+    liefern ``None`` (spiegelt das ``latest_backup``/``list_backups``-
+    Verhalten bei fehlendem Ordner: keine Datei statt Crash), sodass
+    ``oldest_backup`` ohne Sonderbehandlung vor der ersten Backup-Schreibe
+    aufrufbar bleibt und der Caller mit einem einfachen ``if oldest is
+    None``-Guard "noch kein Backup vorhanden" abfangen kann.
+    """
+    backups = list_backups(backup_dir)
+    return backups[0] if backups else None
+
+
 def prune_old_backups(backup_dir: Path, keep: int) -> list[Path]:
     """Loescht aelteste Backups im Verzeichnis bis nur noch ``keep`` uebrig sind.
 

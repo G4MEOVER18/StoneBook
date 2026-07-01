@@ -11,7 +11,7 @@ from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           backup_directory_stats, export_json,
                                           import_json, inspect_backup,
                                           latest_backup, list_backups,
-                                          prune_backups_by_age,
+                                          oldest_backup, prune_backups_by_age,
                                           prune_old_backups, read_backup_meta,
                                           write_rotated_backup)
 from stonebook.migration.migrate import migrate
@@ -723,6 +723,102 @@ def test_latest_backup_einzelne_datei(tmp_path):
     latest = latest_backup(backups_dir)
     assert latest is not None
     assert latest == list_backups(backups_dir)[0]
+    db.close()
+
+
+def test_oldest_backup_leerer_ordner(tmp_path):
+    """oldest_backup liefert None bei fehlendem/leerem/fremd-nur Ordner.
+
+    Spiegelt :func:`test_latest_backup_leerer_ordner` auf den Gegen-Endpunkt
+    der Backup-Halde: der Ein-Datei-Wrapper muss dieselben Grenzfaelle
+    abfangen wie sein Symmetrie-Partner (fehlender Ordner → keine Datei;
+    leerer Ordner → keine Datei; Ordner mit nur fremden Dateien → keine
+    passende Datei), damit Wartungs-Dashboards und Prune-Preview ohne
+    Sonderbehandlung "noch kein Backup vorhanden" ueber ``if oldest is
+    None``-Guard abfangen koennen.
+    """
+    assert oldest_backup(tmp_path / "nichtda") is None
+    leer = tmp_path / "leer"
+    leer.mkdir()
+    assert oldest_backup(leer) is None
+    (leer / "README.txt").write_text("keine Backup", encoding="utf-8")
+    (leer / "andere_backup_20240101_000000.json.gz").write_bytes(b"")
+    assert oldest_backup(leer) is None
+
+
+def test_oldest_backup_liefert_aeltesten_stempel(tmp_path):
+    """oldest_backup liefert die Datei mit dem kleinsten Filename-Stempel.
+
+    Spiegelt :func:`test_latest_backup_liefert_juengsten_stempel` auf den
+    Gegen-Endpunkt: waehrend latest_backup den lexikographisch groessten
+    Namen liefert, liefert oldest_backup den lexikographisch kleinsten.
+    Filename-Stempel als Single-Source-of-Truth (spiegelt
+    :func:`prune_backups_by_age`): auch wenn eine frueher geschriebene
+    Datei einen spaeteren Namens-Stempel traegt (weil ein alter NAS-
+    Backup nachtraeglich importiert wurde), gewinnt der lexikographisch
+    kleinere Name. Reihenfolge der Erstellung im Test sind absichtlich
+    verwuerfelt, damit ``mtime``-basierte Implementierungen scheitern
+    wuerden.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamps = ("20240613_110000", "20240613_100000", "20240613_120000")
+    for stamp in stamps:
+        write_rotated_backup(
+            db, backups_dir, keep=99,
+            now=datetime.datetime.strptime(stamp, "%Y%m%d_%H%M%S"))
+    oldest = oldest_backup(backups_dir)
+    assert oldest is not None
+    assert "20240613_100000" in oldest.name  # aeltester Stempel
+    db.close()
+
+
+def test_oldest_backup_ignoriert_fremde_dateien(tmp_path):
+    """Fremde Dateien im Ordner (README, andere Backup-Schemata) werden ignoriert.
+
+    Spiegelt :func:`test_latest_backup_ignoriert_fremde_dateien` auf den
+    Gegen-Endpunkt: eine lexikographisch kleinere fremde Datei
+    (``aaaa_frueher.json.gz`` oder ``andere_backup_19700101_000000.json.gz``)
+    darf das echte aelteste Backup nicht verdraengen, sonst wuerde
+    Prune-Preview auf die falsche Datei zeigen und Wartungs-Reporter
+    falsche Halden-Zeitspannen anzeigen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99, now=now)
+    # Fremde Datei mit lexikographisch kleinerem Namen als das echte Backup
+    fremd = backups_dir / "aaaa_andere_backup_19700101_000000.json.gz"
+    fremd.write_bytes(b"")
+    oldest = oldest_backup(backups_dir)
+    assert oldest is not None
+    assert "20240613_100000" in oldest.name
+    assert oldest != fremd
+    db.close()
+
+
+def test_oldest_und_latest_bei_einzelbackup_identisch(tmp_path):
+    """Ein einzelnes Backup ist gleichzeitig aeltestes und juengstes.
+
+    Grenzfall count=1: oldest == latest == list_backups[0] == list_backups[-1];
+    spiegelt :func:`test_latest_backup_einzelne_datei` auf die Symmetrie-
+    Achse und die Konvention von :func:`backup_directory_stats`, wo
+    oldest_stamp == newest_stamp bei genau einer Datei zusammenfallen.
+    Sanity-Check fuer Halden-Reporter, die den Ein-Datei-Fall nicht als
+    Sonderfall behandeln muessen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    write_rotated_backup(
+        db, backups_dir, keep=99,
+        now=datetime.datetime(2024, 6, 13, 10, 0, 0))
+    assert oldest_backup(backups_dir) == latest_backup(backups_dir)
     db.close()
 
 
