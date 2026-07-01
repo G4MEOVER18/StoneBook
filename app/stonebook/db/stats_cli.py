@@ -236,6 +236,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Dichte-Spanne:         "
             f"{st.dichte_kollektion_min:.2f} .. {st.dichte_kollektion_max:.2f} g/cm3")
+    if st.dichte_kollektion_durchschnitt is not None:
+        # Dichte-Durchschnitt: zentrale-Tendenz-Achse zur Dichte-Spannen-Achse.
+        # Waehrend die Spanne die Bandbreite beziffert ("leichtestes bis
+        # schwerstes Stueck"), beziffert der Durchschnitt die typische Dichte
+        # der Sammlung - spiegelt Ø Mohs auf die Massendichte-Achse. Steht
+        # direkt unter der Dichte-Spanne (Extent -> Zentrum), spiegelt die
+        # Mohs-Reihenfolge (Spanne + Ø). Nur ausgeben, wenn ueberhaupt
+        # Dichte-Pflege vorliegt.
+        lines.append(
+            f"Ø Dichte:              "
+            f"{st.dichte_kollektion_durchschnitt:.2f} g/cm3")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

@@ -2170,6 +2170,77 @@ def test_dichte_spanne_einzelner_eintrag(tmp_path):
     c.close()
 
 
+def test_dichte_durchschnitt_aus_seed_db(tmp_path):
+    """kollektion_durchschnitt = arithmetischer Mittelwert der Dichte-Mittelpunkte.
+
+    Spiegelt test_mohs_durchschnitt_aus_seed_db auf die Dichte-Achse: pro
+    Objekt der Mittelpunkt des dokumentierten Bereichs (min UND max: (a+b)/2;
+    Single-Point-Pflege: der eine Wert), gemittelt ueber alle Objekte mit
+    mindestens einem gesetzten Bereichsfeld. Eintraege ohne jegliche Dichte-
+    Pflege bleiben aus dem Durchschnitt.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_avg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.60, 2.80),   # Mittelpunkt 2.70 (Quarz-Range)
+            ("OBJ_0002", 1.00, 1.20),   # Mittelpunkt 1.10 (Bims)
+            ("OBJ_0003", 5.00, None),   # Point-only min → 5.00
+            ("OBJ_0004", None, 3.20),   # Point-only max → 3.20
+            ("OBJ_0005", None, None),   # ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # (2.70 + 1.10 + 5.00 + 3.20) / 4 = 3.00
+    assert st.dichte_kollektion_durchschnitt == 3.00
+    d = st.as_dict()
+    # Serialisierung: 2 Nachkommastellen (Mineraldatenbank-Konvention)
+    assert d["dichte_kollektion_durchschnitt"] == 3.00
+    c.close()
+
+
+def test_dichte_durchschnitt_leer(tmp_path):
+    """Ohne dokumentierte Dichte bleibt der Durchschnitt None.
+
+    Spiegelt test_mohs_durchschnitt_leer / test_dichte_spanne_leer: leere
+    Pflege laesst die Kennzahl None, damit die CLI-Zeile entfaellt.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_avg_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_durchschnitt is None
+    d = st.as_dict()
+    assert d["dichte_kollektion_durchschnitt"] is None
+    c.close()
+
+
+def test_dichte_durchschnitt_einzelpunkt(tmp_path):
+    """Ein Point-only-Eintrag → Durchschnitt kollabiert auf diesen Wert."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_avg_single.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        ("OBJ_0001", 2.65, None),
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_durchschnitt == 2.65
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")

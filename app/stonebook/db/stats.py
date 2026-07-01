@@ -95,6 +95,7 @@ class Statistik:
     mohs_kollektion_durchschnitt: float | None = None
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
+    dichte_kollektion_durchschnitt: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_min_chf: float = 0.0
@@ -1158,6 +1159,10 @@ class Statistik:
                 round(self.dichte_kollektion_max, 2)
                 if self.dichte_kollektion_max is not None else None
             ),
+            "dichte_kollektion_durchschnitt": (
+                round(self.dichte_kollektion_durchschnitt, 2)
+                if self.dichte_kollektion_durchschnitt is not None else None
+            ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_min_chf": round(self.wert_min_chf, 2),
@@ -1821,6 +1826,36 @@ def _mohs_durchschnitt(conn: sqlite3.Connection) -> float | None:
         "COALESCE(Mohs_Haerte_max, Mohs_Haerte_min)) / 2.0) AS avg "
         "FROM objects "
         "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
+    ).fetchone()
+    return float(row["avg"]) if row["avg"] is not None else None
+
+
+def _dichte_durchschnitt(conn: sqlite3.Connection) -> float | None:
+    """Liefert den arithmetischen Mittelwert der Dichte-Mittelpunkte in g/cm3.
+
+    Spiegelt :func:`_mohs_durchschnitt` (zentrale-Tendenz-Achse zur Mohs-
+    Spannen-Achse) auf die physikalische Dichte-Achse: waehrend die Dichte-
+    Spanne die Massendichte-Bandbreite beziffert ("vom leichtesten Bims-/
+    Opal-Stueck zum schwersten Pyrit-/Galenit-Stueck"), beziffert der
+    Durchschnitt die "typische" Dichte des dokumentierten Bestands.
+    Vervollstaendigt damit die Dichte-Kennzahlen-Achse (min/max/durchschnitt)
+    und macht sie strukturidentisch zur Mohs-Kennzahlen-Achse.
+
+    Pro Objekt wird der Mittelpunkt des dokumentierten Bereichs verwendet:
+    bei zwei Werten (min UND max) der arithmetische Mittelwert (min+max)/2,
+    bei Single-Point-Pflege (nur min ODER nur max gesetzt) der eine Wert -
+    spiegelt die _dichte_spanne-Konvention via COALESCE. Reuse der has_dichte-/
+    objekte_mit_dichte-Konvention (ein Objekt zaehlt, sobald eines der beiden
+    Bereichsfelder gesetzt ist); Eintraege ohne jegliche Dichte-Pflege
+    bleiben aus dem Durchschnitt. Bei leerer DB / ohne jegliche Dichte-Pflege
+    liefert AVG NULL, das wird auf None gemappt und macht die CLI-Zeile
+    optional (spiegelt das _mohs_durchschnitt-/_dichte_spanne-Verhalten).
+    """
+    row = conn.execute(
+        "SELECT AVG((COALESCE(Dichte_min_gcm3, Dichte_max_gcm3) + "
+        "COALESCE(Dichte_max_gcm3, Dichte_min_gcm3)) / 2.0) AS avg "
+        "FROM objects "
+        "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL"
     ).fetchone()
     return float(row["avg"]) if row["avg"] is not None else None
 
@@ -3263,6 +3298,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # ist). Bei leerer DB / ohne jegliche Dichte-Pflege bleiben beide
     # Grenzen None, spiegelt das _mohs_spanne-/_funddatum_spanne-Verhalten.
     st.dichte_kollektion_min, st.dichte_kollektion_max = _dichte_spanne(conn)
+    # Dichte-Durchschnitt: zentrale-Tendenz-Achse zur Dichte-Spannen-Achse; pro
+    # Objekt der Mittelpunkt von Dichte_min_gcm3/max_gcm3 (bei Single-Point-
+    # Pflege der eine Wert), gemittelt ueber alle Objekte mit mindestens einem
+    # gesetzten Bereichsfeld. Spiegelt _mohs_durchschnitt auf die Dichte-Achse.
+    st.dichte_kollektion_durchschnitt = _dichte_durchschnitt(conn)
     if gewichte:
         st.gewicht_min_g = gewichte[0]
         st.gewicht_max_g = gewichte[-1]

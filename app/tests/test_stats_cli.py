@@ -4124,7 +4124,8 @@ def test_text_ausgabe_ohne_dichte_keine_spanne_zeile(tmp_path, capsys):
 
     Spiegelt test_text_ausgabe_ohne_mohs_keine_spanne_zeile: leere Pflege
     laesst die Zeile entfallen, damit der Bericht keine nichtssagenden
-    Nullen oder " .. " ohne Werte enthaelt.
+    Nullen oder " .. " ohne Werte enthaelt. Der Dichte-Durchschnitt
+    entfaellt bei leerer Pflege ebenfalls (kein "Ø Dichte: 0.00").
     """
     from stonebook.db.database import open_db
     db_file = tmp_path / "dichte_leer.sqlite3"
@@ -4139,6 +4140,37 @@ def test_text_ausgabe_ohne_dichte_keine_spanne_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Dichte-Spanne:" not in out
+    assert "Ø Dichte:" not in out
+
+
+def test_text_ausgabe_zeigt_dichte_durchschnitt(tmp_path, capsys):
+    """Dichte-Durchschnitt erscheint direkt unter der Dichte-Spanne.
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_durchschnitt auf die Dichte-Achse:
+    Extent-Zeile (Spanne) vor Zentrums-Zeile (Ø), spiegelt die Werte-/
+    Gewicht-/Mohs-Reihenfolge (Extent-Block, dann Zentrum). Ausgabe mit
+    Einheit g/cm3 auf 2 Nachkommastellen (Mineraldatenbank-Konvention:
+    Quarz 2.65, Calcit 2.71, Fluorit 3.18).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dichte_avg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.60, 2.80),  # Mittelpunkt 2.70
+            ("OBJ_0002", 4.90, 5.10),  # Mittelpunkt 5.00
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Ø Dichte:" in out
+    # (2.70 + 5.00) / 2 = 3.85
+    assert "3.85" in out
+    assert out.index("Dichte-Spanne:") < out.index("Ø Dichte:")
 
 
 def test_json_ausgabe(migrated_db, capsys):
