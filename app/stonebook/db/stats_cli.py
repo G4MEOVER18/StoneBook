@@ -282,6 +282,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Median Dichte:         "
             f"{st.dichte_kollektion_median:.2f} g/cm3")
+    if st.dichte_kollektion_standardabweichung is not None:
+        # Dichte-Standardabweichung: Dispersions-Achse zur zentralen-Tendenz-
+        # Achse (Durchschnitt/Median). Spiegelt sigma Mohs auf die Dichte-Achse:
+        # waehrend Durchschnitt und Median das "typische" Stueck beziffern,
+        # beziffert die Standardabweichung die Streuung um den Durchschnitt -
+        # eine reine Quarz-Familie (2.65..2.67) zeigt hier ~0.01, eine
+        # gemischte Sammlung mit Bims bis Galenit ~2.0. Steht direkt unter
+        # Median Dichte (Zentrum -> Streuung), spiegelt die Mohs-Reihenfolge
+        # (Extent -> Zentrum -> Dispersion). 3 Nachkommastellen (~1 mg/cm3
+        # Aufloesung), weil bei enger Streuung (0.010..0.100) die zweite
+        # Stelle bereits Verteilungs-Kontrast lesbar macht, spiegelt die
+        # Radius-Serialisierung auf 3 dp.
+        lines.append(
+            f"σ Dichte:              "
+            f"{st.dichte_kollektion_standardabweichung:.3f} g/cm3")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

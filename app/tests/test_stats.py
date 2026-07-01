@@ -2575,6 +2575,125 @@ def test_dichte_median_ausreisser_robust(tmp_path):
     c.close()
 
 
+def test_dichte_standardabweichung_aus_seed_db(tmp_path):
+    """kollektion_standardabweichung = Populations-Std ueber die Mittelpunkte.
+
+    Ergaenzt Ø/Median (zentrale Tendenz) um die Dispersions-Achse. Vier
+    Mittelpunkte 2.0/2.0/4.0/4.0 → Ø=3.0, Varianz=((2-3)^2*2 + (4-3)^2*2)/4
+    = 4/4 = 1.0 → σ = 1.0. Spiegelt test_mohs_standardabweichung_aus_seed_db
+    auf die Dichte-Achse; Population-Divisor n (nicht n-1).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_std.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.0, 2.0),
+            ("OBJ_0002", 1.5, 2.5),   # Mittelpunkt 2.0
+            ("OBJ_0003", 4.0, None),  # Point-only min → 4.0
+            ("OBJ_0004", None, 4.0),  # Point-only max → 4.0
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_durchschnitt == 3.0
+    assert st.dichte_kollektion_standardabweichung == pytest.approx(1.0, abs=1e-9)
+    d = st.as_dict()
+    assert d["dichte_kollektion_standardabweichung"] == 1.0
+    c.close()
+
+
+def test_dichte_standardabweichung_leer(tmp_path):
+    """Ohne Dichte-Pflege bleibt die Standardabweichung None."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_std_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_standardabweichung is None
+    d = st.as_dict()
+    assert d["dichte_kollektion_standardabweichung"] is None
+    c.close()
+
+
+def test_dichte_standardabweichung_einzelpunkt(tmp_path):
+    """Bei einem einzelnen Eintrag kollabiert die Streuung auf 0.0.
+
+    Keine Dispersion moeglich (spiegelt _dichte_spanne / _mohs_standardabweichung
+    Single-Point-Kollaps). Der max(...,0.0)-Guard faengt Floating-Point-Rundung.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_std_1.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        ("OBJ_0001", 2.65, 2.65),
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_standardabweichung == 0.0
+    c.close()
+
+
+def test_dichte_standardabweichung_uniform(tmp_path):
+    """Bei identischen Mittelpunkten ist die Streuung 0.0.
+
+    Reine Quarz-Familie ohne Dispersion: zehn Stuecke Dichte 2.65 → sigma 0.0.
+    Kern-Eigenschaft der Populations-Std (E[X^2] = E[X]^2 wenn alle Werte
+    identisch).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_std_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 11)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_standardabweichung == 0.0
+    c.close()
+
+
+def test_dichte_standardabweichung_reagiert_auf_ausreisser(tmp_path):
+    """Standardabweichung reagiert stark auf Dichte-Ausreisser (Komplement zum Median).
+
+    Komplementaer zu test_dichte_median_ausreisser_robust: waehrend der Median
+    bei 9x Quarz 2.65 + 1x Galenit 7.50 unbeeinflusst bleibt, zieht der
+    Galenit die Streuung deutlich nach oben. Spiegelt
+    test_mohs_standardabweichung_reagiert_auf_ausreisser auf die Massendichte-
+    Achse. Ø = (9*2.65 + 7.5)/10 = 3.135, Var = (9*(2.65-3.135)^2 +
+    (7.5-3.135)^2)/10 = (9*0.235225 + 19.052225)/10 = 21.169250/10 = 2.116925
+    → σ ≈ 1.4550.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "dichte_std_ausreisser.sqlite3")
+    quarze = [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 10)]
+    quarze.append(("OBJ_0010", 7.50, 7.50))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        quarze,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_standardabweichung == pytest.approx(
+        1.4550, abs=1e-3)
+    # Median bleibt bei 2.65 (siehe test_dichte_median_ausreisser_robust)
+    assert st.dichte_kollektion_median == 2.65
+    c.close()
+
+
 def test_durchschnitt_confidence_und_wert_roh(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "conf.sqlite3")

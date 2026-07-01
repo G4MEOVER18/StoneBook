@@ -4209,6 +4209,7 @@ def test_text_ausgabe_ohne_dichte_keine_spanne_zeile(tmp_path, capsys):
     assert "Dichte-Spanne:" not in out
     assert "Ø Dichte:" not in out
     assert "Median Dichte:" not in out
+    assert "σ Dichte:" not in out
 
 
 def test_text_ausgabe_zeigt_dichte_durchschnitt(tmp_path, capsys):
@@ -4278,6 +4279,41 @@ def test_text_ausgabe_zeigt_dichte_median(tmp_path, capsys):
     # Zeile enthaelt die g/cm3-Einheit (spiegelt Ø Dichte / Dichte-Spanne)
     median_line = [ln for ln in out.splitlines() if "Median Dichte:" in ln][0]
     assert "g/cm3" in median_line
+
+
+def test_text_ausgabe_zeigt_dichte_standardabweichung(tmp_path, capsys):
+    """σ-Dichte-Zeile erscheint direkt unter Median Dichte (Dispersion nach Zentrum).
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_standardabweichung auf die Dichte-
+    Achse: vier Mittelpunkte 2.0/2.0/4.0/4.0 → Ø=3.0, σ=1.0. Reihenfolge:
+    Dichte-Spanne < Ø Dichte < Median Dichte < σ Dichte. Ausgabe mit
+    g/cm3-Einheit auf 3 Nachkommastellen (spiegelt Radius-Serialisierung
+    und macht enge Streuung 0.010..0.100 lesbar).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "dichte_std.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.0, 2.0),
+            ("OBJ_0002", 1.5, 2.5),   # Mittelpunkt 2.0
+            ("OBJ_0003", 4.0, None),  # 4.0
+            ("OBJ_0004", None, 4.0),  # 4.0
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Dichte:" in out
+    # Reihenfolge: Median Dichte vor σ Dichte (Zentrum -> Streuung)
+    assert out.index("Median Dichte:") < out.index("σ Dichte:")
+    # σ Dichte = 1.000 (Populations-Std auf 3 dp)
+    sigma_line = [ln for ln in out.splitlines() if "σ Dichte:" in ln][0]
+    assert "1.000" in sigma_line
+    assert "g/cm3" in sigma_line
 
 
 def test_json_ausgabe(migrated_db, capsys):

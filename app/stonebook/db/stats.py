@@ -99,6 +99,7 @@ class Statistik:
     dichte_kollektion_max: float | None = None
     dichte_kollektion_durchschnitt: float | None = None
     dichte_kollektion_median: float | None = None
+    dichte_kollektion_standardabweichung: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_min_chf: float = 0.0
@@ -1178,6 +1179,10 @@ class Statistik:
                 round(self.dichte_kollektion_median, 2)
                 if self.dichte_kollektion_median is not None else None
             ),
+            "dichte_kollektion_standardabweichung": (
+                round(self.dichte_kollektion_standardabweichung, 3)
+                if self.dichte_kollektion_standardabweichung is not None else None
+            ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
             "wert_min_chf": round(self.wert_min_chf, 2),
@@ -1961,6 +1966,48 @@ def _dichte_durchschnitt(conn: sqlite3.Connection) -> float | None:
         "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL"
     ).fetchone()
     return float(row["avg"]) if row["avg"] is not None else None
+
+
+def _dichte_standardabweichung(conn: sqlite3.Connection) -> float | None:
+    """Liefert die Populations-Standardabweichung der Dichte-Mittelpunkte in g/cm3.
+
+    Spiegelt :func:`_mohs_standardabweichung` (Dispersions-Achse zur zentralen-
+    Tendenz-Achse) auf die physikalische Dichte-Achse: waehrend Durchschnitt
+    und Median das "typische" Stueck beziffern, beziffert die Standardabweichung
+    die Streuung der Sammlung um den Durchschnitt - eine reine Quarz-Familie
+    (Dichte 2.65..2.67) zeigt hier ~0.01, eine gemischte Sammlung mit Bims
+    (~1.0) bis Galenit (~7.5) dagegen ~2.0. Vervollstaendigt damit das Dichte-
+    Kennzahlen-Quartett (min/max/durchschnitt/median) um die Dispersions-Achse
+    und stellt es strukturell parallel zum Mohs-Kennzahlen-Quintett auf
+    (Extent + Zentrum + robustes Zentrum + Streuung).
+
+    Pro Objekt wird der Mittelpunkt des dokumentierten Bereichs verwendet
+    (bei zwei Werten: (min+max)/2; bei Single-Point-Pflege: der eine Wert -
+    spiegelt die _dichte_durchschnitt-/_dichte_median-Konvention via COALESCE).
+    Reuse der has_dichte-/objekte_mit_dichte-Konvention (ein Objekt zaehlt,
+    sobald eines der beiden Bereichsfelder gesetzt ist). Berechnung nach der
+    Populations-Formel sqrt(E[X^2] - E[X]^2) mit AVG-basiertem E[X] und
+    AVG(mid*mid)-basiertem E[X^2] in einer einzigen SQL-Round-Trip; bewusst
+    die Populations-Variante (Divisor n statt n-1), spiegelt die
+    _mohs_standardabweichung-Konvention (Sammlung als vollstaendige Grund-
+    gesamtheit, nicht Stichprobe). Bei einem einzelnen Dichte-Eintrag
+    kollabiert die Streuung auf 0.0, bei identischen Mittelpunkten ebenfalls
+    0.0. Bei leerer DB / ohne jegliche Dichte-Pflege bleibt None. Der
+    max(...,0.0)-Guard faengt negative Floating-Point-Artefakte ab (bei
+    identischen Werten kann E[X^2] - E[X]^2 durch Rundung auf -1e-16 fallen,
+    sqrt wuerde NaN liefern) - spiegelt _mohs_standardabweichung exakt.
+    """
+    row = conn.execute(
+        "SELECT AVG(mid) AS mean, AVG(mid * mid) AS mean_sq "
+        "FROM (SELECT (COALESCE(Dichte_min_gcm3, Dichte_max_gcm3) + "
+        "COALESCE(Dichte_max_gcm3, Dichte_min_gcm3)) / 2.0 AS mid "
+        "FROM objects "
+        "WHERE Dichte_min_gcm3 IS NOT NULL OR Dichte_max_gcm3 IS NOT NULL)"
+    ).fetchone()
+    if row["mean"] is None:
+        return None
+    var = float(row["mean_sq"]) - float(row["mean"]) ** 2
+    return (max(var, 0.0)) ** 0.5
 
 
 def _dichte_median(conn: sqlite3.Connection) -> float | None:
@@ -3466,6 +3513,13 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # um die Median-Achse und stellt es strukturidentisch neben das
     # Mohs-Kennzahlen-Quartett (min/max/durchschnitt/median).
     st.dichte_kollektion_median = _dichte_median(conn)
+    # Dichte-Standardabweichung: Dispersions-Achse zur zentralen-Tendenz-Achse
+    # (Durchschnitt/Median). Spiegelt mohs_kollektion_standardabweichung auf
+    # die Dichte-Achse: waehrend Durchschnitt und Median das "typische" Stueck
+    # beziffern, beziffert die Standardabweichung die Streuung um den
+    # Durchschnitt - eine reine Quarz-Familie (Dichte 2.65..2.67) zeigt hier
+    # ~0.01, eine gemischte Sammlung mit Bims bis Galenit ~2.0.
+    st.dichte_kollektion_standardabweichung = _dichte_standardabweichung(conn)
     if gewichte:
         st.gewicht_min_g = gewichte[0]
         st.gewicht_max_g = gewichte[-1]
