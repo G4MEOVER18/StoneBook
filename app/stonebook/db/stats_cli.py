@@ -58,6 +58,14 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")
         lines.append(f"  Minimales Gewicht:   {st.gewicht_min_g:,.1f}")
         lines.append(f"  Maximales Gewicht:   {st.gewicht_max_g:,.1f}")
+        # sigma Gewicht: Dispersions-Achse zur zentralen-Tendenz-Achse.
+        # Waehrend Durchschnitt und Median das typische Stueck beziffern,
+        # beziffert die Standardabweichung die Streuung der Massen um den
+        # Durchschnitt - spiegelt sigma Mohs / sigma Dichte auf die Massen-Achse.
+        # Am Ende des Gewicht-Blocks (nach Extrema), damit der Extrema-Block
+        # zusammen bleibt und die Dispersions-Zeile abschliesst.
+        lines.append(
+            f"  σ Gewicht (g):       {st.gewicht_standardabweichung_g:,.1f}")
     if st.funddatum_frueheste or st.funddatum_spaeteste:
         # Spanne nur anzeigen, wenn ueberhaupt ein gueltiges Funddatum vorliegt.
         # Beide Grenzen werden gemeinsam ausgewiesen; identische Werte

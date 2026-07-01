@@ -4891,6 +4891,118 @@ def test_gewicht_min_einzelobjekt_gleich_max(tmp_path):
     c.close()
 
 
+def test_gewicht_standardabweichung_aus_seed_db(tmp_path):
+    """kollektion_standardabweichung = Populations-Std ueber Gewicht_g.
+
+    Ergaenzt Ø/Median (zentrale Tendenz) um die Dispersions-Achse. Vier
+    Gewichte 10/20/30/40 → Ø=25, Varianz=((10-25)^2 + (20-25)^2 +
+    (30-25)^2 + (40-25)^2)/4 = (225+25+25+225)/4 = 500/4 = 125.0 →
+    σ = sqrt(125) ≈ 11.1803. Spiegelt test_mohs_standardabweichung_aus_seed_db
+    auf die Massen-Achse; Population-Divisor n (nicht n-1).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_std.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 10.0),
+            ("OBJ_0002", 20.0),
+            ("OBJ_0003", 30.0),
+            ("OBJ_0004", 40.0),
+            ("OBJ_0005", None),  # ignoriert
+            ("OBJ_0006", 0.0),   # ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_durchschnitt_g == 25.0
+    assert st.gewicht_standardabweichung_g == pytest.approx(
+        125.0 ** 0.5, abs=1e-9)
+    d = st.as_dict()
+    assert d["gewicht_standardabweichung_g"] == pytest.approx(11.18, abs=1e-2)
+    c.close()
+
+
+def test_gewicht_standardabweichung_leer(tmp_path):
+    """Ohne Gewicht-Pflege bleibt die Standardabweichung 0.0 (dataclass-Default).
+
+    Spiegelt die uebrigen leeren-Gewicht-Kennzahlen (min/max/median/Ø = 0.0
+    bei leerer DB), damit as_dict deterministisch bleibt (round(0.0) = 0.0
+    statt None) und die CLI-Zeile die Zeile im ohne-Gewicht-Fall gar nicht
+    ausgibt (if objekte_mit_gewicht:).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_std_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_standardabweichung_g == 0.0
+    d = st.as_dict()
+    assert d["gewicht_standardabweichung_g"] == 0.0
+    c.close()
+
+
+def test_gewicht_standardabweichung_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Gewicht-Eintrag kollabiert die Streuung auf 0.0.
+
+    Keine Dispersion moeglich; spiegelt _mohs_/_dichte_standardabweichung
+    Single-Point-Kollaps auf die Massen-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_std_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 42.5), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_gewicht == 1
+    assert st.gewicht_standardabweichung_g == 0.0
+    c.close()
+
+
+def test_gewicht_standardabweichung_uniform(tmp_path):
+    """Bei identischen Gewichten ist die Streuung 0.0.
+
+    Kern-Eigenschaft der Populations-Std (E[(x-mean)^2] = 0 wenn alle Werte
+    identisch); spiegelt test_mohs_standardabweichung_uniform auf die Massen-
+    Achse. Fuenf Stuecke mit 100 g → sigma 0.0.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_std_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 100.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_standardabweichung_g == 0.0
+    c.close()
+
+
+def test_gewicht_standardabweichung_reagiert_auf_ausreisser(tmp_path):
+    """Standardabweichung reagiert stark auf Gewicht-Ausreisser (Komplement zum Median).
+
+    Komplementaer zu test_gewicht_min_einzelobjekt_gleich_max: bei 9x kleinen
+    Splittern (1 g) + 1x schwerer Handstueck (100 g) bleibt der Median klein,
+    die Streuung wird deutlich groesser. Ø = (9*1 + 100)/10 = 10.9,
+    Var = (9*(1-10.9)^2 + (100-10.9)^2)/10 = (9*98.01 + 7938.81)/10 =
+    (882.09 + 7938.81)/10 = 8820.9/10 = 882.09 → σ ≈ 29.7.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_std_ausreisser.sqlite3")
+    splitter = [("OBJ_%04d" % i, 1.0) for i in range(1, 10)]
+    splitter.append(("OBJ_0010", 100.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        splitter,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_standardabweichung_g == pytest.approx(29.7, abs=1e-1)
+    # Median bleibt bei 1.0 (5. Element von [1,1,1,1,1,1,1,1,1,100])
+    assert st.gewicht_median_g == 1.0
+    c.close()
+
+
 def test_quoten_auf_migrierter_db_plausibel(conn):
     st = compute_statistics(conn)
     # 546 Objekte, einige mit Bildern → Quote zwischen 0 und 100, Rundung 1 Stelle

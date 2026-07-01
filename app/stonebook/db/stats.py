@@ -168,6 +168,7 @@ class Statistik:
     gewicht_median_g: float = 0.0
     gewicht_min_g: float = 0.0
     gewicht_max_g: float = 0.0
+    gewicht_standardabweichung_g: float = 0.0
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
     objekte_mit_mohs: int = 0
@@ -1363,6 +1364,8 @@ class Statistik:
             "gewicht_median_g": round(self.gewicht_median_g, 2),
             "gewicht_min_g": round(self.gewicht_min_g, 2),
             "gewicht_max_g": round(self.gewicht_max_g, 2),
+            "gewicht_standardabweichung_g": round(
+                self.gewicht_standardabweichung_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
             "objekte_mit_mohs": self.objekte_mit_mohs,
@@ -3527,6 +3530,29 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         n = len(gewichte)
         st.gewicht_median_g = (gewichte[n // 2] if n % 2
                                else (gewichte[n // 2 - 1] + gewichte[n // 2]) / 2)
+        # Gewicht-Standardabweichung: Dispersions-Achse zur zentralen-Tendenz-
+        # Achse (Durchschnitt/Median). Spiegelt mohs_kollektion_standardabweichung
+        # und dichte_kollektion_standardabweichung auf die Massen-Achse: waehrend
+        # Durchschnitt und Median das "typische" Stueck beziffern, beziffert die
+        # Standardabweichung die Streuung der Massen um den Durchschnitt - eine
+        # gleichfoermige Mineralkorn-Sammlung mit Gewichten in engem Cluster
+        # zeigt hier ~1 g, eine gemischte Sammlung aus Splittern bis Handstuecken
+        # hunderte Gramm. Vervollstaendigt damit das Gewicht-Kennzahlen-Quintett
+        # (summe/min/max/durchschnitt/median) um die Dispersions-Achse. Reuse
+        # der bereits geladenen und sortierten gewichte-Liste (kein zweiter
+        # SQL-Round-Trip); Populations-Variante (Divisor n statt n-1), spiegelt
+        # die _mohs_/_dichte_standardabweichung-Konvention (Sammlung als
+        # vollstaendige Grundgesamtheit). Numerisch stabile Formel via
+        # (x - mean)^2 statt E[X^2] - E[X]^2, weil Gewichte in Gramm bis in
+        # den 10^5-Bereich reichen koennen (kg-schwere Handstuecke) und die
+        # Katastrophal-Kancellations-Version (E[X^2] - E[X]^2) bei grossen
+        # Werten mit kleiner Varianz Rundungsfehler erzeugt (10^10 - 10^10 =
+        # Muell im Bit-Rest). Bei einem einzelnen Gewicht-Eintrag kollabiert
+        # die Streuung auf 0.0 (keine Dispersion moeglich, spiegelt _mohs_/
+        # _dichte_standardabweichung Single-Point-Kollaps).
+        mean = st.gewicht_durchschnitt_g
+        st.gewicht_standardabweichung_g = (
+            sum((g - mean) ** 2 for g in gewichte) / n) ** 0.5
 
     wert_sql = wert_pro_objekt_sql()
     row = conn.execute(

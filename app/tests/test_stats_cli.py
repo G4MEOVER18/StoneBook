@@ -179,12 +179,19 @@ def test_text_ausgabe_zeigt_durchschnitt_und_median_wert_gewicht(tmp_path, capsy
     assert "Median Gewicht (g):" in out
     assert "Minimales Gewicht:" in out
     assert "Maximales Gewicht:" in out
+    assert "σ Gewicht (g):" in out
     # Median Wert = mittlerer von [100, 200, 600] = 200, Min = 100
     assert "200" in out
     assert "100" in out
     # Max Gewicht = 200, Min Gewicht = 10
     assert "200.0" in out
     assert "10.0" in out
+    # Reihenfolge: Median vor Min vor Max vor σ (Zentrums-Block, dann Extrema,
+    # dann Streuung).
+    assert (out.index("Median Gewicht (g):")
+            < out.index("Minimales Gewicht:")
+            < out.index("Maximales Gewicht:")
+            < out.index("σ Gewicht (g):"))
 
 
 def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
@@ -207,6 +214,7 @@ def test_text_ausgabe_ohne_werte_keine_durchschnitt_zeilen(tmp_path, capsys):
     assert "Median Gewicht" not in out
     assert "Minimales Gewicht" not in out
     assert "Maximales Gewicht" not in out
+    assert "σ Gewicht" not in out
 
 
 def test_text_ausgabe_zeigt_coverage_quoten(tmp_path, capsys):
