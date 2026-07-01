@@ -4042,7 +4042,8 @@ def test_text_ausgabe_ohne_mohs_keine_spanne_zeile(tmp_path, capsys):
 
     Spiegelt test_text_ausgabe_ohne_funddatum_keine_spanne_zeile: leere Pflege
     laesst die Zeile entfallen, damit der Bericht keine nichtssagenden Nullen
-    enthaelt.
+    enthaelt. Der Mohs-Durchschnitt fehlt bei leerer Pflege ebenfalls (kein
+    nichtssagendes "Ø Mohs: 0.0").
     """
     from stonebook.db.database import open_db
     db_file = tmp_path / "mohs_leer.sqlite3"
@@ -4057,6 +4058,37 @@ def test_text_ausgabe_ohne_mohs_keine_spanne_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Mohs-Spanne:" not in out
+    assert "Ø Mohs:" not in out
+
+
+def test_text_ausgabe_zeigt_mohs_durchschnitt(tmp_path, capsys):
+    """Mohs-Durchschnitt erscheint direkt unter der Mohs-Spanne.
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_spanne auf die zentrale-Tendenz-
+    Achse: waehrend die Spanne die Bandbreite beziffert, beziffert der
+    Durchschnitt die typische Haerte. Reihenfolge: Spanne (Extent) vor
+    Durchschnitt (Zentrum), spiegelt die Werte-/Gewicht-Layout-Konvention.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mohs_avg.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.0, 8.0),  # Mittelpunkt 7.0
+            ("OBJ_0002", 3.0, 5.0),  # Mittelpunkt 4.0
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Ø Mohs:" in out
+    # (7.0 + 4.0) / 2 = 5.5
+    assert "5.5" in out
+    # Spanne-Zeile erscheint vor Durchschnitt-Zeile
+    assert out.index("Mohs-Spanne:") < out.index("Ø Mohs:")
 
 
 def test_text_ausgabe_zeigt_dichte_spanne(tmp_path, capsys):

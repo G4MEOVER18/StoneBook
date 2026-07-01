@@ -206,6 +206,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"Mohs-Spanne:           "
             f"{st.mohs_kollektion_min:.1f} .. {st.mohs_kollektion_max:.1f}")
+    if st.mohs_kollektion_durchschnitt is not None:
+        # Mohs-Durchschnitt: zentrale-Tendenz-Achse zur Mohs-Spannen-Achse.
+        # Waehrend die Spanne die Bandbreite beziffert ("weichstes bis
+        # haertestes Stueck"), beziffert der Durchschnitt die typische Haerte
+        # der Sammlung - spiegelt gewicht_durchschnitt_g/wert_durchschnitt_chf
+        # auf die physikalische Haerte-Achse. Steht direkt unter der Mohs-
+        # Spanne (Extent -> Zentrum), spiegelt die Werte-/Gewicht-Reihenfolge
+        # (Summe/Ø/Median). Nur ausgeben, wenn ueberhaupt Mohs-Pflege
+        # vorliegt - sonst nichtssagende 0.0-Zeile.
+        lines.append(
+            f"Ø Mohs:                {st.mohs_kollektion_durchschnitt:.1f}")
     if st.dichte_kollektion_min is not None and st.dichte_kollektion_max is not None:
         # Dichte-Spanne ueber die ganze Sammlung: kleinste/groesste Dichte
         # in g/cm3 im dokumentierten Bestand. Spiegelt die Mohs-Spanne auf

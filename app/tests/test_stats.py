@@ -2013,6 +2013,79 @@ def test_mohs_spanne_einzelner_eintrag(tmp_path):
     c.close()
 
 
+def test_mohs_durchschnitt_aus_seed_db(tmp_path):
+    """kollektion_durchschnitt = arithmetischer Mittelwert der Mohs-Mittelpunkte.
+
+    Spiegelt test_mohs_spanne_aus_seed_db (Extent-Sicht) auf die zentrale-
+    Tendenz-Sicht: waehrend die Spanne die Bandbreite beziffert, beziffert
+    der Durchschnitt die "typische" Haerte des dokumentierten Bestands. Pro
+    Objekt der Mittelpunkt des dokumentierten Bereichs (min UND max: (a+b)/2;
+    Single-Point-Pflege: der eine Wert), gemittelt ueber alle Objekte mit
+    mindestens einem gesetzten Bereichsfeld. Eintraege ohne jegliche Mohs-
+    Pflege bleiben aus dem Durchschnitt.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_avg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 6.0, 8.0),     # Mittelpunkt 7.0
+            ("OBJ_0002", 3.0, 5.0),     # Mittelpunkt 4.0
+            ("OBJ_0003", 7.0, None),    # Point-only min → 7.0
+            ("OBJ_0004", None, 2.0),    # Point-only max → 2.0
+            ("OBJ_0005", None, None),   # ignoriert (keine Pflege)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # (7.0 + 4.0 + 7.0 + 2.0) / 4 = 5.0
+    assert st.mohs_kollektion_durchschnitt == 5.0
+    d = st.as_dict()
+    assert d["mohs_kollektion_durchschnitt"] == 5.0
+    c.close()
+
+
+def test_mohs_durchschnitt_leer(tmp_path):
+    """Ohne dokumentierte Mohs-Haerte bleibt der Durchschnitt None.
+
+    Spiegelt test_mohs_spanne_leer: bei einem Bestand ohne jegliche Mohs-
+    Pflege bleibt der Durchschnitt None - die CLI-Zeile entfaellt damit
+    (kein nichtssagendes 0.0).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_avg_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_durchschnitt is None
+    d = st.as_dict()
+    assert d["mohs_kollektion_durchschnitt"] is None
+    c.close()
+
+
+def test_mohs_durchschnitt_einzelpunkt(tmp_path):
+    """Ein Point-only-Eintrag → Durchschnitt kollabiert auf diesen Wert."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_avg_single.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        ("OBJ_0001", 5.5, None),
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_durchschnitt == 5.5
+    c.close()
+
+
 def test_dichte_spanne_aus_seed_db(tmp_path):
     """kollektion_min/max = MIN/MAX der Dichte (g/cm3) ueber die Sammlung.
 

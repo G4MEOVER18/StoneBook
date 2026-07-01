@@ -92,6 +92,7 @@ class Statistik:
     koordinaten_diameter_km: float | None = None
     mohs_kollektion_min: float | None = None
     mohs_kollektion_max: float | None = None
+    mohs_kollektion_durchschnitt: float | None = None
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
     wert_summe_chf: float = 0.0
@@ -1145,6 +1146,10 @@ class Statistik:
                 round(self.mohs_kollektion_max, 1)
                 if self.mohs_kollektion_max is not None else None
             ),
+            "mohs_kollektion_durchschnitt": (
+                round(self.mohs_kollektion_durchschnitt, 1)
+                if self.mohs_kollektion_durchschnitt is not None else None
+            ),
             "dichte_kollektion_min": (
                 round(self.dichte_kollektion_min, 2)
                 if self.dichte_kollektion_min is not None else None
@@ -1788,6 +1793,36 @@ def _mohs_spanne(conn: sqlite3.Connection) -> tuple[float | None, float | None]:
     lo = float(row["lo"]) if row["lo"] is not None else None
     hi = float(row["hi"]) if row["hi"] is not None else None
     return (lo, hi)
+
+
+def _mohs_durchschnitt(conn: sqlite3.Connection) -> float | None:
+    """Liefert den arithmetischen Mittelwert der Mohs-Haerte-Mittelpunkte.
+
+    Spiegelt :func:`_mohs_spanne` (Extent-Sicht: kleinster/groesster Wert) auf
+    die zentrale-Tendenz-Sicht: waehrend die Spanne die Bandbreite der Sammlung
+    beziffert ("vom weichsten Talk-Stueck zum haertesten Korund-Stueck"),
+    beziffert der Durchschnitt die "typische" Haerte des dokumentierten
+    Bestands. Ergaenzt damit die Mohs-Kennzahlen-Achse (min/max) um die
+    zentrale-Tendenz-Achse, spiegelt das gewicht_min_g/gewicht_max_g/
+    gewicht_durchschnitt_g-Trio auf die Mohs-Haerte.
+
+    Pro Objekt wird der Mittelpunkt des dokumentierten Bereichs verwendet:
+    bei zwei Werten (min UND max) der arithmetische Mittelwert, bei
+    Single-Point-Pflege (nur min ODER nur max) der eine Wert. Reuse der
+    has_mohs-/objekte_mit_mohs-Konvention (ein Objekt zaehlt, sobald eines
+    der beiden Bereichsfelder gesetzt ist); Eintraege ohne jegliche Haerte-
+    Pflege bleiben aus dem Durchschnitt. Bei leerer DB / ohne jegliche
+    Mohs-Pflege bleibt der Durchschnitt None - spiegelt das _mohs_spanne-
+    Verhalten und macht die CLI-Zeile bei nicht-gepflegter Sammlung
+    optional (analog zur Spanne-Zeile).
+    """
+    row = conn.execute(
+        "SELECT AVG((COALESCE(Mohs_Haerte_min, Mohs_Haerte_max) + "
+        "COALESCE(Mohs_Haerte_max, Mohs_Haerte_min)) / 2.0) AS avg "
+        "FROM objects "
+        "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL"
+    ).fetchone()
+    return float(row["avg"]) if row["avg"] is not None else None
 
 
 def _dichte_spanne(conn: sqlite3.Connection) -> tuple[float | None, float | None]:
@@ -3188,6 +3223,11 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Mohs-Pflege bleiben beide Grenzen None, spiegelt das _funddatum_spanne-
     # Verhalten.
     st.mohs_kollektion_min, st.mohs_kollektion_max = _mohs_spanne(conn)
+    # Mohs-Durchschnitt: zentrale-Tendenz-Achse zur Spannen-Achse; pro Objekt
+    # der Mittelpunkt von Mohs_Haerte_min/max (bei Single-Point-Pflege der eine
+    # Wert), gemittelt ueber alle Objekte mit mindestens einem gesetzten
+    # Bereichsfeld. Spiegelt gewicht_durchschnitt_g auf die Haerte-Achse.
+    st.mohs_kollektion_durchschnitt = _mohs_durchschnitt(conn)
     # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
     # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
     # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen
