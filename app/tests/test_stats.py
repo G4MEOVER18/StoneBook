@@ -2192,6 +2192,126 @@ def test_mohs_median_ausreisser_robust(tmp_path):
     c.close()
 
 
+def test_mohs_standardabweichung_aus_seed_db(tmp_path):
+    """kollektion_standardabweichung = Populations-Std ueber die Mittelpunkte.
+
+    Ergaenzt Ø/Median (zentrale Tendenz) um die Dispersions-Achse. Vier
+    Mittelpunkte 3.0/3.0/7.0/7.0 → Ø=5.0, Varianz = ((3-5)^2 + (3-5)^2 +
+    (7-5)^2 + (7-5)^2)/4 = 16/4 = 4.0 → σ = 2.0. Population-Divisor n
+    (nicht n-1), weil die Sammlung als vollstaendige Grundgesamtheit gilt.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_std.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.0, 3.0),
+            ("OBJ_0002", 2.0, 4.0),   # Mittelpunkt 3.0
+            ("OBJ_0003", 7.0, None),  # Point-only min → 7.0
+            ("OBJ_0004", None, 7.0),  # Point-only max → 7.0
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_durchschnitt == 5.0
+    assert st.mohs_kollektion_standardabweichung == pytest.approx(2.0, abs=1e-9)
+    d = st.as_dict()
+    assert d["mohs_kollektion_standardabweichung"] == 2.0
+    c.close()
+
+
+def test_mohs_standardabweichung_leer(tmp_path):
+    """Ohne Mohs-Pflege bleibt die Standardabweichung None."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_std_leer.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", None, None), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_standardabweichung is None
+    d = st.as_dict()
+    assert d["mohs_kollektion_standardabweichung"] is None
+    c.close()
+
+
+def test_mohs_standardabweichung_einzelpunkt(tmp_path):
+    """Bei einem einzelnen Eintrag kollabiert die Streuung auf 0.0.
+
+    Keine Dispersion moeglich; spiegelt _mohs_spanne (Single-Point kollabiert
+    auf Punkt) auf die Dispersions-Achse. Der max(...,0.0)-Guard faengt
+    Floating-Point-Artefakte ab (E[X^2]=E[X]^2 kann durch Rundung auf -1e-16
+    fallen und sqrt liefert NaN).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_std_1.sqlite3")
+    c.execute(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        ("OBJ_0001", 7.0, 7.0),
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_standardabweichung == 0.0
+    c.close()
+
+
+def test_mohs_standardabweichung_uniform(tmp_path):
+    """Bei identischen Mittelpunkten ist die Streuung 0.0.
+
+    Kern-Eigenschaft der Populations-Std: E[X^2] = E[X]^2 wenn alle Werte
+    identisch sind → σ = 0. Zehn Quarz-Stuecke mit Mohs 7 haben keine
+    Dispersion.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_std_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_%04d" % i, 7.0, 7.0) for i in range(1, 11)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_standardabweichung == 0.0
+    c.close()
+
+
+def test_mohs_standardabweichung_reagiert_auf_ausreisser(tmp_path):
+    """Standardabweichung reagiert stark auf Ausreisser (im Gegensatz zum Median).
+
+    Komplementaer zu test_mohs_median_ausreisser_robust: waehrend der Median
+    bei 9x Mohs 3.0 + 1x Diamant 10.0 unbeeinflusst bei 3.0 bleibt, zieht
+    der Diamant die Standardabweichung deutlich nach oben. Kern-Eigenschaft
+    der Dispersions-Achse zur Median-Achse - beide sind komplementaere
+    Sichten auf die Verteilung.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "mohs_std_ausreisser.sqlite3")
+    calcite = [("OBJ_%04d" % i, 3.0, 3.0) for i in range(1, 10)]
+    calcite.append(("OBJ_0010", 10.0, 10.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        calcite,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Ø = (9*3 + 10) / 10 = 3.7, Var = (9*(3-3.7)^2 + (10-3.7)^2)/10
+    # = (9*0.49 + 39.69) / 10 = 44.1/10 = 4.41 → σ = 2.1
+    assert st.mohs_kollektion_standardabweichung == pytest.approx(2.1, abs=1e-9)
+    # Median bleibt bei 3.0 (siehe test_mohs_median_ausreisser_robust)
+    assert st.mohs_kollektion_median == 3.0
+    c.close()
+
+
 def test_dichte_spanne_aus_seed_db(tmp_path):
     """kollektion_min/max = MIN/MAX der Dichte (g/cm3) ueber die Sammlung.
 

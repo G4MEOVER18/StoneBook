@@ -94,6 +94,7 @@ class Statistik:
     mohs_kollektion_max: float | None = None
     mohs_kollektion_durchschnitt: float | None = None
     mohs_kollektion_median: float | None = None
+    mohs_kollektion_standardabweichung: float | None = None
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
     dichte_kollektion_durchschnitt: float | None = None
@@ -1153,6 +1154,10 @@ class Statistik:
                 round(self.mohs_kollektion_median, 1)
                 if self.mohs_kollektion_median is not None else None
             ),
+            "mohs_kollektion_standardabweichung": (
+                round(self.mohs_kollektion_standardabweichung, 2)
+                if self.mohs_kollektion_standardabweichung is not None else None
+            ),
             "mohs_kollektion_durchschnitt": (
                 round(self.mohs_kollektion_durchschnitt, 1)
                 if self.mohs_kollektion_durchschnitt is not None else None
@@ -1878,6 +1883,54 @@ def _mohs_median(conn: sqlite3.Connection) -> float | None:
     n = len(mittelpunkte)
     return (mittelpunkte[n // 2] if n % 2
             else (mittelpunkte[n // 2 - 1] + mittelpunkte[n // 2]) / 2)
+
+
+def _mohs_standardabweichung(conn: sqlite3.Connection) -> float | None:
+    """Liefert die Populations-Standardabweichung der Mohs-Haerte-Mittelpunkte.
+
+    Spiegelt :func:`_mohs_durchschnitt` (zentrale Tendenz) und :func:`_mohs_median`
+    (robuste zentrale Tendenz) auf die Dispersions-Achse: waehrend Durchschnitt
+    und Median das "typische" Stueck beziffern, beziffert die Standardabweichung
+    die "Streuung" der Sammlung um den Durchschnitt - eine Sammlung mit Mohs-
+    Durchschnitt 6.0 und Standardabweichung 0.5 (reine Quarz-Familie 5.5..6.5)
+    ist mineralogisch anders zusammengesetzt als eine mit demselben Durchschnitt
+    6.0 und Standardabweichung 3.0 (Talk + Diamant gemischt 1..10). Ergaenzt
+    damit das Mohs-Kennzahlen-Quartett (min/max/durchschnitt/median) um die
+    Dispersions-Achse und macht die Verteilungs-Form ueber die Bandbreite
+    hinaus sichtbar - die Spanne allein sagt nichts ueber die Konzentration
+    der Stuecke innerhalb der Grenzen (Mohs 1..10 mit gleichmaessig verteilten
+    Zwischenwerten vs. Mohs 1..10 mit polarisierten Extremen sehen in der
+    Spanne identisch aus, in der Standardabweichung erst nicht).
+
+    Pro Objekt wird der Mittelpunkt des dokumentierten Bereichs verwendet
+    (bei zwei Werten: (min+max)/2; bei Single-Point-Pflege: der eine Wert -
+    spiegelt die _mohs_durchschnitt-/_mohs_median-Konvention via COALESCE).
+    Reuse der has_mohs-/objekte_mit_mohs-Konvention (ein Objekt zaehlt,
+    sobald eines der beiden Bereichsfelder gesetzt ist). Berechnung nach der
+    Populations-Formel sqrt(E[X^2] - E[X]^2) mit AVG-basiertem E[X] und
+    AVG(mid*mid)-basiertem E[X^2] in einer einzigen SQL-Round-Trip; bewusst
+    die Populations-Variante (Divisor n statt n-1), weil die Sammlung als
+    vollstaendige Grundgesamtheit betrachtet wird (nicht als Stichprobe einer
+    groesseren mineralogischen Population). Bei einem einzelnen Mohs-Eintrag
+    kollabiert die Streuung auf 0.0 (keine Dispersion moeglich); bei
+    identischen Mittelpunkten ebenfalls 0.0 (E[X^2] = E[X]^2). Bei leerer DB
+    / ohne jegliche Mohs-Pflege bleibt None (spiegelt das _mohs_durchschnitt-/
+    _mohs_median-Verhalten und macht die CLI-Zeile bei nicht-gepflegter
+    Sammlung optional). Der max(...,0.0)-Guard faengt negative Floating-
+    Point-Artefakte ab (E[X^2] - E[X]^2 kann bei identischen Werten durch
+    Rundungsfehler auf -1e-16 fallen, sqrt wuerde NaN liefern).
+    """
+    row = conn.execute(
+        "SELECT AVG(mid) AS mean, AVG(mid * mid) AS mean_sq "
+        "FROM (SELECT (COALESCE(Mohs_Haerte_min, Mohs_Haerte_max) + "
+        "COALESCE(Mohs_Haerte_max, Mohs_Haerte_min)) / 2.0 AS mid "
+        "FROM objects "
+        "WHERE Mohs_Haerte_min IS NOT NULL OR Mohs_Haerte_max IS NOT NULL)"
+    ).fetchone()
+    if row["mean"] is None:
+        return None
+    var = float(row["mean_sq"]) - float(row["mean"]) ** 2
+    return (max(var, 0.0)) ** 0.5
 
 
 def _dichte_durchschnitt(conn: sqlite3.Connection) -> float | None:
@@ -3359,6 +3412,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # wert_median_chf auf die physikalische Haerte-Achse und vervollstaendigt
     # das Mohs-Kennzahlen-Trio (min/max/durchschnitt) um die Median-Achse.
     st.mohs_kollektion_median = _mohs_median(conn)
+    # Mohs-Standardabweichung: Dispersions-Achse zur zentralen-Tendenz-Achse
+    # (Durchschnitt/Median). Waehrend Durchschnitt und Median das "typische"
+    # Stueck beziffern, beziffert die Standardabweichung die Streuung der
+    # Sammlung um den Durchschnitt - eine Sammlung mit Durchschnitt 6.0 und
+    # Standardabweichung 0.5 (reine Quarz-Familie 5.5..6.5) ist mineralogisch
+    # anders als eine mit Durchschnitt 6.0 und Standardabweichung 3.0 (Talk
+    # + Diamant gemischt). Vervollstaendigt damit das Mohs-Kennzahlen-
+    # Quartett (min/max/durchschnitt/median) um die Dispersions-Achse.
+    st.mohs_kollektion_standardabweichung = _mohs_standardabweichung(conn)
     # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
     # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
     # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen

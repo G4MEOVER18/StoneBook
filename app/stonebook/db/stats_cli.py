@@ -227,6 +227,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # folge (Ø + Median als paarweise zentrale Tendenz).
         lines.append(
             f"Median Mohs:           {st.mohs_kollektion_median:.1f}")
+    if st.mohs_kollektion_standardabweichung is not None:
+        # Mohs-Standardabweichung: Dispersions-Achse zur zentralen-Tendenz-
+        # Achse (Durchschnitt/Median). Waehrend Durchschnitt und Median das
+        # "typische" Stueck beziffern, beziffert die Standardabweichung die
+        # Streuung der Sammlung um den Durchschnitt - eine reine Quarz-Familie
+        # 5.5..6.5 zeigt hier ~0.3, eine gemischte Talk+Diamant-Sammlung
+        # ~4.5. Steht direkt unter Median Mohs (Zentrum -> Streuung),
+        # spiegelt das Kennzahlen-Layout Extent -> Zentrum -> Dispersion.
+        # 2 Nachkommastellen, weil bei enger Streuung die erste Stelle
+        # (0.3, 0.5) auf Rundungsfehler-Niveau der Populations-Formel liegen
+        # kann und die zweite den Verteilungs-Kontrast lesbar macht.
+        lines.append(
+            f"σ Mohs:                "
+            f"{st.mohs_kollektion_standardabweichung:.2f}")
     if st.dichte_kollektion_min is not None and st.dichte_kollektion_max is not None:
         # Dichte-Spanne ueber die ganze Sammlung: kleinste/groesste Dichte
         # in g/cm3 im dokumentierten Bestand. Spiegelt die Mohs-Spanne auf

@@ -4060,6 +4060,7 @@ def test_text_ausgabe_ohne_mohs_keine_spanne_zeile(tmp_path, capsys):
     assert "Mohs-Spanne:" not in out
     assert "Ø Mohs:" not in out
     assert "Median Mohs:" not in out
+    assert "σ Mohs:" not in out
 
 
 def test_text_ausgabe_zeigt_mohs_median(tmp_path, capsys):
@@ -4094,6 +4095,37 @@ def test_text_ausgabe_zeigt_mohs_median(tmp_path, capsys):
     assert out.index("Ø Mohs:") < out.index("Median Mohs:")
     # Median Mohs = 7.0 (mittleres Element)
     assert "7.0" in out
+
+
+def test_text_ausgabe_zeigt_mohs_standardabweichung(tmp_path, capsys):
+    """σ-Mohs-Zeile erscheint direkt unter Median Mohs (Dispersion nach Zentrum).
+
+    Spiegelt test_text_ausgabe_zeigt_mohs_median auf die Dispersions-Achse:
+    vier Mittelpunkte 3.0/3.0/7.0/7.0 → Ø=5.0, σ=2.0. Reihenfolge:
+    Spanne (Extent) vor Ø (Zentrum) vor Median (robust) vor σ (Streuung).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "mohs_std.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.0, 3.0),
+            ("OBJ_0002", 2.0, 4.0),   # Mittelpunkt 3.0
+            ("OBJ_0003", 7.0, None),  # 7.0
+            ("OBJ_0004", None, 7.0),  # 7.0
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Mohs:" in out
+    # Reihenfolge: Median Mohs vor σ Mohs (Zentrum -> Streuung)
+    assert out.index("Median Mohs:") < out.index("σ Mohs:")
+    # σ Mohs = 2.00 (Populations-Std)
+    assert "2.00" in out
 
 
 def test_text_ausgabe_zeigt_mohs_durchschnitt(tmp_path, capsys):
