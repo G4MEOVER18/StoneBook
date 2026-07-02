@@ -9007,3 +9007,132 @@ def test_wert_spanweite_konsistent_mit_min_max(tmp_path):
     st = compute_statistics(c)
     assert st.wert_spanweite_chf == st.wert_max_chf - st.wert_min_chf
     c.close()
+
+
+def test_gewicht_spanweite_aus_seed_db(tmp_path):
+    """gewicht_spanweite_g = gewicht_max_g - gewicht_min_g in Gramm.
+
+    Vier Gewichte 10/20/30/40 -> min=10, max=40, Spannweite=30 g.
+    Spiegelt test_wert_spanweite_aus_seed_db (gleicher Aufbau) auf die
+    Massen-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 10.0),
+            ("OBJ_0002", 20.0),
+            ("OBJ_0003", 30.0),
+            ("OBJ_0004", 40.0),
+            ("OBJ_0005", None),
+            ("OBJ_0006", 0.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_min_g == 10.0
+    assert st.gewicht_max_g == 40.0
+    assert st.gewicht_spanweite_g == pytest.approx(30.0, abs=1e-9)
+    d = st.as_dict()
+    assert d["gewicht_spanweite_g"] == pytest.approx(30.0, abs=1e-9)
+    c.close()
+
+
+def test_gewicht_spanweite_leer(tmp_path):
+    """Ohne Gewicht-Pflege bleibt die Spannweite 0.0 (dataclass-Default).
+
+    Spiegelt test_wert_spanweite_leer und die uebrigen Gewicht-Kennzahlen
+    (min/max/median/durchschnitt/sigma) = 0.0 bei leerer DB.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_span_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_spanweite_g == 0.0
+    d = st.as_dict()
+    assert d["gewicht_spanweite_g"] == 0.0
+    c.close()
+
+
+def test_gewicht_spanweite_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Gewicht-Eintrag kollabiert die Spannweite auf 0.0.
+
+    min == max = Einzelgewicht -> Spannweite = 0 g. Spiegelt
+    test_wert_spanweite_einzelobjekt und die sigma-Kollaps-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_span_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 250.0), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_gewicht == 1
+    assert st.gewicht_spanweite_g == 0.0
+    c.close()
+
+
+def test_gewicht_spanweite_uniform(tmp_path):
+    """Bei identischen Gewichten ist die Spannweite 0.0 (voellige Homogenitaet).
+
+    Reine Mineralkorn-Serie mit exakt 5 g pro Korn: min == max = 5 ->
+    Spannweite = 0 g. Spiegelt test_wert_spanweite_uniform und die
+    Gewicht-sigma-/CV-Uniform-Kollaps-Semantik.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_span_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 5.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_spanweite_g == 0.0
+    c.close()
+
+
+def test_gewicht_spanweite_reagiert_auf_ausreisser(tmp_path):
+    """Spannweite reagiert auf Extremwerte, nicht auf die Dichte dazwischen.
+
+    Zehn Mineralkoerner a 5 g plus ein Handstueck 5000 g: min=5, max=5000,
+    Spannweite=4995 - trotz kleinem sigma. Spiegelt
+    test_wert_spanweite_reagiert_auf_ausreisser auf die Massen-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_span_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 5.0) for i in range(1, 11)]
+    rows.append(("OBJ_0011", 5000.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_min_g == 5.0
+    assert st.gewicht_max_g == 5000.0
+    assert st.gewicht_spanweite_g == pytest.approx(4995.0, abs=1e-9)
+    c.close()
+
+
+def test_gewicht_spanweite_konsistent_mit_min_max(tmp_path):
+    """Invariante: gewicht_spanweite_g == gewicht_max_g - gewicht_min_g.
+
+    Spiegelt test_wert_spanweite_konsistent_mit_min_max: die Spannweite ist
+    definitorisch max - min und muss numerisch konsistent bleiben, damit
+    Dashboard-/Report-Konsumenten sich auf die Identitaet verlassen koennen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_span_konsistent.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 1.23),
+            ("OBJ_0002", 456.78),
+            ("OBJ_0003", 9.01),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_spanweite_g == st.gewicht_max_g - st.gewicht_min_g
+    c.close()

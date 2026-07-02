@@ -177,6 +177,7 @@ class Statistik:
     gewicht_max_g: float = 0.0
     gewicht_standardabweichung_g: float = 0.0
     gewicht_variationskoeffizient_prozent: float | None = None
+    gewicht_spanweite_g: float = 0.0
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
     objekte_mit_mohs: int = 0
@@ -1403,6 +1404,7 @@ class Statistik:
                 if self.gewicht_variationskoeffizient_prozent is not None
                 else None
             ),
+            "gewicht_spanweite_g": round(self.gewicht_spanweite_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
             "objekte_mit_mohs": self.objekte_mit_mohs,
@@ -3897,6 +3899,46 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         if mean > 0:
             st.gewicht_variationskoeffizient_prozent = (
                 st.gewicht_standardabweichung_g / mean * 100.0)
+        # gewicht_spanweite_g: Spannweite (Range) = gewicht_max_g - gewicht_min_g
+        # als Original-Einheiten-Dispersions-Achse auf der Massen-Achse,
+        # symmetrisches Pendant zu wert_spanweite_chf auf der Wert-Achse.
+        # Vervollstaendigt damit das Gewicht-Kennzahlen-Septett (summe/min/max/
+        # durchschnitt/median/sigma/CV) um die Original-Einheiten-Bandbreiten-
+        # Achse und stellt Symmetrie zum bereits eingefuehrten Wert-Septett her.
+        # Waehrend gewicht_standardabweichung_g die durchschnittliche Streuung
+        # um den Mittelwert in Gramm beziffert (reagiert auf die Verteilungs-
+        # form) und gewicht_variationskoeffizient_prozent dieselbe Streuung
+        # dimensionslos normiert (skalen-unabhaengiger Vergleich mit Wert/
+        # Mohs/Dichte-CV), beziffert die Spannweite die volle beobachtete
+        # Bandbreite - die Distanz zwischen leichtestem und schwerstem
+        # dokumentiertem Stueck in Gramm ("zwischen 5 g und 2500 g"), die
+        # naheliegendste Formulierung der Massen-Bandbreite ohne Statistik-
+        # Vokabular. Ist zwar trivial aus min/max ableitbar, aber explizit
+        # ausgegeben, damit Dashboard- und Bericht-Konsumenten die Bandbreite
+        # ohne zweiten Rechenschritt zur Hand haben (spiegelt die durchschnitt/
+        # median-Konvention: ebenfalls aus den gewichte-Rohdaten ableitbar,
+        # aber vorberechnet exponiert). Complement zu sigma: sigma reagiert
+        # auf die Verteilungsform (breite Streuung um den Mittel = grosses
+        # sigma), die Spannweite reagiert nur auf die Extremwerte und
+        # ignoriert die Dichte dazwischen - eine Sammlung mit einem einzelnen
+        # schweren Ausreisser (10 Mineralkoerner a 5 g + 1 Handstueck 5000 g)
+        # hat eine grosse Spannweite (4995 g) trotz kleinem sigma (~1500 g);
+        # umgekehrt hat eine gleichmaessig ueber 10..1000 g verteilte Sammlung
+        # ein mittleres sigma und eine mittlere Spannweite. Reuse: greift die
+        # bereits gesetzten gewicht_max_g und gewicht_min_g ab (kein
+        # zusaetzlicher SQL-Round-Trip, keine zweite Listen-Iteration -
+        # spiegelt die wert_spanweite_chf-Ableitung aus wert_max_chf/min).
+        # Bei einem einzelnen Gewicht-Eintrag oder uniformen Gewichten
+        # kollabiert die Spannweite auf 0.0 (min == max, spiegelt die sigma-
+        # Uniform-Kollaps-Semantik und wert_spanweite_chf-Konvention). Bei
+        # leerer DB / ohne jegliche Gewicht-Pflege bleibt 0.0 (dataclass-
+        # Default, spiegelt die uebrigen Gewicht-Kennzahlen min/max/median/
+        # durchschnitt/sigma = 0.0 bei leerer DB - anders als CV, das None
+        # bleibt, weil max - min bei leerer DB semantisch 0.0 ist (leere
+        # Bandbreite = keine Spanne), waehrend CV mathematisch undefined ist
+        # (Division durch mean = 0)). as_dict-Round auf 2 Nachkommastellen
+        # (Zenti-Gramm-Aufloesung, spiegelt gewicht_max_g und wert_spanweite_chf).
+        st.gewicht_spanweite_g = st.gewicht_max_g - st.gewicht_min_g
 
     wert_sql = wert_pro_objekt_sql()
     row = conn.execute(
