@@ -5,6 +5,7 @@ Beispiele:
     python -m stonebook.export.backup_cli list    --backup-dir backups/
     python -m stonebook.export.backup_cli stats   --backup-dir backups/
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
+    python -m stonebook.export.backup_cli prune-gfs --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli compare <alt> <neu>
@@ -29,8 +30,8 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           import_json, inspect_backup,
                                           latest_backup, list_backups,
                                           prune_backups_by_age,
-                                          prune_old_backups, validate_backup,
-                                          write_rotated_backup)
+                                          prune_backups_gfs, prune_old_backups,
+                                          validate_backup, write_rotated_backup)
 
 
 def _cmd_write(args: argparse.Namespace) -> int:
@@ -87,6 +88,23 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     info = backup_directory_stats(args.backup_dir)
     json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")
+    return 0
+
+
+def _cmd_prune_gfs(args: argparse.Namespace) -> int:
+    """Loescht Backups per Grandfather-Father-Son (Newest-per-Bucket).
+
+    Spiegelt :func:`_cmd_prune` (Count-Achse) und :func:`_cmd_prune_age`
+    (Zeit-Achse) auf die Bucket-Achse: behaelt das jeweils neueste Backup
+    pro Kalendertag/-woche/-monat der letzten daily/weekly/monthly Perioden.
+    Erlaubt lange Retention (12 Monate zurueck) bei begrenztem
+    Festplatten-Verbrauch (max. daily+weekly+monthly Backups).
+    """
+    deleted = prune_backups_gfs(
+        args.backup_dir,
+        daily=args.daily, weekly=args.weekly, monthly=args.monthly)
+    for p in deleted:
+        print(p)
     return 0
 
 
@@ -290,6 +308,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--max-age-days", type=int, required=True,
                     help="Hoechst-Alter in Tagen; aeltere Backups werden geloescht.")
     sp.set_defaults(func=_cmd_prune_age)
+
+    sp = sub.add_parser(
+        "prune-gfs",
+        help="Grandfather-Father-Son-Rotation: neuestes Backup pro Tag/"
+             "Woche/Monat der letzten N Perioden behalten (Bucket-Achse).")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.add_argument("--daily", type=int, default=7,
+                    help="Anzahl Kalendertage (Default 7).")
+    sp.add_argument("--weekly", type=int, default=4,
+                    help="Anzahl ISO-Kalenderwochen (Default 4).")
+    sp.add_argument("--monthly", type=int, default=12,
+                    help="Anzahl Kalendermonate (Default 12).")
+    sp.set_defaults(func=_cmd_prune_gfs)
 
     sp = sub.add_parser("inspect", help="Backup-Inhalt anzeigen (counts + meta).")
     sp.add_argument("path", type=Path)

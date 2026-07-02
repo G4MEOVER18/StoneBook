@@ -13,8 +13,9 @@ from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           largest_backup, latest_backup,
                                           list_backups, oldest_backup,
                                           prune_backups_by_age,
-                                          prune_old_backups, read_backup_meta,
-                                          smallest_backup, write_rotated_backup)
+                                          prune_backups_gfs, prune_old_backups,
+                                          read_backup_meta, smallest_backup,
+                                          write_rotated_backup)
 from stonebook.migration.migrate import migrate
 
 REPO = Path(__file__).resolve().parents[2]
@@ -1221,3 +1222,239 @@ def test_backup_directory_stats_einzelnes_backup(tmp_path):
     info = backup_directory_stats(backups_dir)
     assert info["count"] == 1
     assert info["oldest_stamp"] == info["newest_stamp"] == "2024-06-13T14:30:45"
+def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
+    """Legt eine leere Backup-Pseudo-Datei mit dem gewuenschten Namensstempel ab.
+
+    Fuer die GFS-Tests reicht der reine Dateiname (die Pruning-Logik guckt
+    nur auf den Filenamen-Stempel); wir brauchen keinen echten JSON-Inhalt.
+    Spart die 500ms/Backup, die ein echter :func:`write_rotated_backup`
+    kostet, wenn wir hunderte Backups pro Test erzeugen muessen.
+    """
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    p = backup_dir / f"stonebook_backup_{stamp.strftime('%Y%m%d_%H%M%S')}.json.gz"
+    p.write_bytes(b"")
+    return p
+
+
+def test_prune_backups_gfs_taegliches_bucket(tmp_path):
+    """GFS mit daily=3: neuestes Backup pro Tag der letzten 3 Kalendertage.
+
+    Layout: fuenf Tage in Folge, jeweils 2 Backups pro Tag (jeweils vor
+    dem now-Zeitpunkt, damit die Safety-Regel fuer Zukunfts-Stempel nicht
+    interferiert). Erwartung: von den letzten 3 Tagen bleibt je das
+    neueste (spaetere Backup pro Tag), alle 2 Tage vorher weg.
+    Weekly/Monthly auf 0 stellen, um den daily-Layer isoliert zu pruefen.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 23, 59, 59)
+    # Tag -4..0, je 2 Backups (03:00, 15:00) - beide vor 23:59:59
+    for days_back in range(4, -1, -1):
+        day = now - datetime.timedelta(days=days_back)
+        _pseudo_backup(backup_dir, day.replace(hour=3, minute=0, second=0))
+        _pseudo_backup(backup_dir, day.replace(hour=15, minute=0, second=0))
+    deleted = prune_backups_gfs(
+        backup_dir, daily=3, weekly=0, monthly=0, now=now)
+    remaining = {p.name for p in list_backups(backup_dir)}
+    # Von Tag 0 (now), Tag -1, Tag -2: je das 15:00-Backup bleibt.
+    for days_back in range(3):
+        day = now - datetime.timedelta(days=days_back)
+        expected = f"stonebook_backup_{day.strftime('%Y%m%d')}_150000.json.gz"
+        assert expected in remaining
+        # Und das 03:00 desselben Tages wurde geloescht (nicht das neueste).
+        older_same_day = f"stonebook_backup_{day.strftime('%Y%m%d')}_030000.json.gz"
+        assert older_same_day not in remaining
+    # Tag -3 und -4 komplett weg
+    assert len(remaining) == 3
+    assert len(deleted) == 7
+
+
+def test_prune_backups_gfs_woechentliches_bucket(tmp_path):
+    """GFS mit weekly=2: neuestes Backup pro Woche der letzten 2 ISO-Wochen.
+
+    Verwendet ein Layout, das den Weekly-Layer isoliert testet
+    (daily=0 und monthly=0, damit ausschliesslich Weekly zaehlt).
+    """
+    backup_dir = tmp_path / "b"
+    # Donnerstag, ISO-Woche 24/2024
+    now = datetime.datetime(2024, 6, 13, 12, 0, 0)
+    # 5 Wochen zurueck, je ein Backup pro Woche (Mittwochs 10:00)
+    for weeks_back in range(5):
+        stamp = now - datetime.timedelta(weeks=weeks_back, days=1)
+        _pseudo_backup(backup_dir, stamp)
+    deleted = prune_backups_gfs(
+        backup_dir, daily=0, weekly=2, monthly=0, now=now)
+    remaining = list_backups(backup_dir)
+    # 2 Wochen behalten (aktuelle + eine zurueck)
+    assert len(remaining) == 2
+    assert len(deleted) == 3
+
+
+def test_prune_backups_gfs_monatliches_bucket(tmp_path):
+    """GFS mit monthly=3: neuestes Backup pro Monat der letzten 3 Kalendermonate.
+
+    Weekly/Daily auf 0, damit der Monatslayer isoliert testet.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    # Sechs Monate zurueck, je zwei Backups pro Monat
+    all_paths = []
+    for months_back in range(6):
+        year, month = now.year, now.month - months_back
+        while month <= 0:
+            month += 12
+            year -= 1
+        for hour in (2, 22):
+            all_paths.append(_pseudo_backup(
+                backup_dir,
+                datetime.datetime(year, month, 5, hour, 0, 0)))
+    deleted = prune_backups_gfs(
+        backup_dir, daily=0, weekly=0, monthly=3, now=now)
+    remaining = list_backups(backup_dir)
+    # 3 Monate x 1 Backup = 3 uebrig
+    assert len(remaining) == 3
+    # Jeweils das spaetere (22:00) bleibt
+    for months_back in range(3):
+        year, month = now.year, now.month - months_back
+        while month <= 0:
+            month += 12
+            year -= 1
+        expected = f"stonebook_backup_{year:04d}{month:02d}05_220000.json.gz"
+        assert expected in {p.name for p in remaining}
+    assert len(deleted) == 9
+
+
+def test_prune_backups_gfs_kombiniert_alle_drei_ebenen(tmp_path):
+    """GFS mit daily+weekly+monthly kombiniert: Verduennung mit der Zeit.
+
+    Layout: taegliche Backups fuer ein ganzes Jahr rueckwaerts. Erwartung:
+    die letzten 7 Tage granular pro Tag (7 Backups), die vorherigen 4
+    Wochen granular pro Woche (davon 1 Woche schon von Daily gedeckt =
+    Ueberlapp; ~3 Wochen zusaetzlich) und die vorherigen 12 Monate
+    granular pro Monat (davon 1 Monat schon von Daily/Weekly abgedeckt).
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    # 365 taegliche Backups
+    for days_back in range(365):
+        stamp = now - datetime.timedelta(days=days_back)
+        _pseudo_backup(backup_dir, stamp)
+    deleted = prune_backups_gfs(
+        backup_dir, daily=7, weekly=4, monthly=12, now=now)
+    remaining = list_backups(backup_dir)
+    # Absolute Obergrenze: 7 + 4 + 12 = 23; wegen Ueberlapps deutlich weniger
+    assert len(remaining) <= 23
+    # Wir muessen mindestens die 7 juengsten Tage haben
+    for days_back in range(7):
+        stamp = now - datetime.timedelta(days=days_back)
+        expected = f"stonebook_backup_{stamp.strftime('%Y%m%d')}_100000.json.gz"
+        assert expected in {p.name for p in remaining}
+    # Deutliche Reduktion (von 365 auf < 25)
+    assert 15 <= len(remaining) <= 23
+    assert len(deleted) == 365 - len(remaining)
+
+
+def test_prune_backups_gfs_leerer_ordner_ist_no_op(tmp_path):
+    """Leerer Backup-Ordner: nichts zu tun, keine Fehler.
+
+    Spiegelt :func:`test_prune_backups_by_age_nichts_zu_tun` fuer den
+    Leer-Fall.
+    """
+    backup_dir = tmp_path / "leer"
+    backup_dir.mkdir()
+    deleted = prune_backups_gfs(backup_dir, daily=7, weekly=4, monthly=12)
+    assert deleted == []
+
+
+def test_prune_backups_gfs_negative_werte_raises(tmp_path):
+    """Negative Argumente sind sinnlos und werden abgelehnt.
+
+    Spiegelt :func:`test_prune_backups_by_age_negativer_wert_raises` auf
+    alle drei Bucket-Achsen.
+    """
+    with pytest.raises(ValueError):
+        prune_backups_gfs(tmp_path, daily=-1)
+    with pytest.raises(ValueError):
+        prune_backups_gfs(tmp_path, weekly=-1)
+    with pytest.raises(ValueError):
+        prune_backups_gfs(tmp_path, monthly=-1)
+
+
+def test_prune_backups_gfs_alle_null_loescht_alles_vor_now(tmp_path):
+    """daily=weekly=monthly=0 loescht alle Backups mit Stempel < now.
+
+    Spiegelt :func:`test_prune_backups_by_age_null_loescht_alles_vor_now`:
+    geeignet als Cleanup-Befehl vor einem Voll-Reset, ohne neuere
+    (== now-Stempel) Backups zu beruehren.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    _pseudo_backup(backup_dir, now - datetime.timedelta(days=1))
+    _pseudo_backup(backup_dir, now)  # == now
+    deleted = prune_backups_gfs(
+        backup_dir, daily=0, weekly=0, monthly=0, now=now)
+    assert len(deleted) == 1
+    remaining = list_backups(backup_dir)
+    assert len(remaining) == 1
+    assert now.strftime("%Y%m%d_%H%M%S") in remaining[0].name
+
+
+def test_prune_backups_gfs_zukunfts_stempel_bleiben(tmp_path):
+    """Backups mit Stempel > now (paralleler Writer, Clock-Skew) bleiben.
+
+    Spiegelt das Verhalten von :func:`prune_backups_by_age` fuer
+    Zukunfts-Stempel: dort bleibt ein Backup mit ``stamp >= cutoff``
+    erhalten - hier bleibt es strikt bei ``stamp > now`` erhalten,
+    unabhaengig von daily/weekly/monthly.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    future = _pseudo_backup(
+        backup_dir, now + datetime.timedelta(hours=1))
+    _pseudo_backup(backup_dir, now - datetime.timedelta(days=365))
+    deleted = prune_backups_gfs(
+        backup_dir, daily=1, weekly=0, monthly=0, now=now)
+    remaining_names = {p.name for p in list_backups(backup_dir)}
+    assert future.name in remaining_names
+    assert len(deleted) == 1
+
+
+def test_prune_backups_gfs_ignoriert_fremde_dateien(tmp_path):
+    """Dateien ausserhalb des Backup-Namensschemas bleiben unberuehrt.
+
+    Spiegelt :func:`test_prune_backups_by_age_ignoriert_fremde_dateien`:
+    README/andere Backups im gleichen Ordner werden nicht angefasst.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    _pseudo_backup(backup_dir, now - datetime.timedelta(days=365))
+    fremd = backup_dir / "notes.md"
+    fremd.write_text("nicht angetastet", encoding="utf-8")
+    fremdes_archiv = backup_dir / "andere_backup_20100101_000000.json.gz"
+    fremdes_archiv.write_bytes(b"")
+    deleted = prune_backups_gfs(
+        backup_dir, daily=1, weekly=0, monthly=0, now=now)
+    assert len(deleted) == 1
+    assert fremd.exists()
+    assert fremdes_archiv.exists()
+
+
+def test_prune_backups_gfs_isoweek_grenze_ueber_jahreswechsel(tmp_path):
+    """ISO-Wochen ueber die Jahresgrenze werden korrekt behandelt.
+
+    ISO-Woche 1/2025 startet am 30.12.2024 (Montag der Woche, in der der
+    erste Donnerstag von 2025 liegt). Ein Backup vom 31.12.2024 gehoert
+    ISO-woechentlich zu 2025/1, obwohl der Kalendertag noch 2024 ist.
+    weekly=1, now=05.01.2025 -> nur die aktuelle ISO-Woche 2025/1 zaehlt,
+    das Backup vom 31.12.2024 bleibt, ein Backup vom 22.12.2024
+    (ISO-Woche 51/2024) faellt aus dem Fenster.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2025, 1, 5, 10, 0, 0)  # Sonntag, ISO 1/2025
+    survivor = _pseudo_backup(backup_dir, datetime.datetime(2024, 12, 31, 9, 0, 0))
+    outsider = _pseudo_backup(backup_dir, datetime.datetime(2024, 12, 22, 9, 0, 0))
+    deleted = prune_backups_gfs(
+        backup_dir, daily=0, weekly=1, monthly=0, now=now)
+    remaining = {p.name for p in list_backups(backup_dir)}
+    assert survivor.name in remaining
+    assert outsider.name not in remaining
+    assert outsider in deleted

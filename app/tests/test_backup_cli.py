@@ -127,6 +127,54 @@ def test_prune_age_loescht_alte_backups(tmp_path, capsys):
     assert jung.exists() is True
 
 
+def test_prune_gfs_taegliche_woechentliche_monatliche_verduennung(tmp_path, capsys):
+    """prune-gfs Subcommand: neuestes Backup pro Tag/Woche/Monat behalten.
+
+    Spiegelt :func:`test_prune_loescht_alte_backups` (Count) und
+    :func:`test_prune_age_loescht_alte_backups` (Zeit) auf die Bucket-Achse.
+    Layout: heute + 100 Tage rueckwaerts (je eine Datei), --daily 3
+    --weekly 0 --monthly 0 laesst nur die drei jungsten Dateien uebrig.
+    """
+    import datetime as dt
+    backup_dir = tmp_path / "gfs"
+    backup_dir.mkdir()
+    today = dt.date.today()
+    for days_back in range(100):
+        stamp = today - dt.timedelta(days=days_back)
+        p = (backup_dir /
+             f"stonebook_backup_{stamp.strftime('%Y%m%d')}_120000.json.gz")
+        p.write_bytes(b"")
+    exit_code = main(["prune-gfs", "--backup-dir", str(backup_dir),
+                      "--daily", "3", "--weekly", "0", "--monthly", "0"])
+    assert exit_code == 0
+    remaining = sorted(backup_dir.iterdir())
+    assert len(remaining) == 3
+    # Die drei juengsten Kalendertage
+    for days_back in range(3):
+        stamp = today - dt.timedelta(days=days_back)
+        expected = f"stonebook_backup_{stamp.strftime('%Y%m%d')}_120000.json.gz"
+        assert (backup_dir / expected).exists()
+
+
+def test_prune_gfs_ignoriert_fremde_dateien(tmp_path, capsys):
+    """prune-gfs Subcommand: Dateien ausserhalb des Namensschemas bleiben.
+
+    Spiegelt :func:`test_prune_age_ignoriert_fremde_dateien`.
+    """
+    import datetime as dt
+    backup_dir = tmp_path / "gfsf"
+    backup_dir.mkdir()
+    alt = backup_dir / "stonebook_backup_19700101_000000.json.gz"
+    alt.write_bytes(b"")
+    fremd = backup_dir / "notes.md"
+    fremd.write_text("nicht angetastet", encoding="utf-8")
+    exit_code = main(["prune-gfs", "--backup-dir", str(backup_dir),
+                      "--daily", "0", "--weekly", "0", "--monthly", "0"])
+    assert exit_code == 0
+    assert alt.exists() is False
+    assert fremd.exists() is True
+
+
 def test_prune_age_ignoriert_fremde_dateien(tmp_path, capsys):
     """prune-age Subcommand: Dateien ausserhalb des Namensschemas bleiben.
 

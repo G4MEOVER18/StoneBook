@@ -798,6 +798,160 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     }
 
 
+def prune_backups_gfs(backup_dir: Path, *,
+                     daily: int = 7, weekly: int = 4, monthly: int = 12,
+                     now: datetime.datetime | None = None) -> list[Path]:
+    """Grandfather-Father-Son-Rotation: Newest-per-Bucket-Retention.
+
+    Spiegelt :func:`prune_old_backups` (Count-Achse) und
+    :func:`prune_backups_by_age` (Alter-Achse) auf die Bucket-Achse:
+    waehrend die Count-Variante die N neuesten Backups behaelt (unabhaengig
+    von deren Zeit-Verteilung: 10 Backups aus einem Tag zaehlen als 10) und
+    die Age-Variante alle Backups juenger als K Tage (unabhaengig von deren
+    Anzahl: bei taeglicher Schreibe 30 Backups pro 30 Tage), behaelt die
+    GFS-Variante das jeweils *neueste* Backup pro Zeit-Bucket. Damit
+    entsteht eine natuerliche Verduennung mit der Zeit - die letzten Tage
+    granular pro Tag, die vergangenen Wochen granular pro Woche, die noch
+    aelteren Monate granular pro Monat -, das in Produktionssystemen
+    etablierte Standard-Rotations-Muster ("Grossvater-Vater-Sohn"). Erlaubt
+    damit lange Retention (12 Monate zurueck) bei begrenztem Festplatten-
+    Verbrauch (hoechstens ``daily+weekly+monthly`` = 23 Backups statt 365
+    bei taeglicher Schreibe).
+
+    Buckets werden relativ zu ``now`` gebildet:
+
+    - ``daily=N``: die letzten N Kalendertage (inkl. dem ``now``-Tag),
+      pro Tag das neueste Backup dieses Tages.
+    - ``weekly=M``: die letzten M ISO-Kalenderwochen (inkl. ``now``-Woche),
+      pro Woche das neueste Backup dieser Woche.
+    - ``monthly=K``: die letzten K Kalendermonate (inkl. ``now``-Monat),
+      pro Monat das neueste Backup dieses Monats.
+
+    Die drei Behalt-Mengen ueberlappen sich frei; ein Backup, das zugleich
+    das neueste des Tages, der Woche und des Monats ist, zaehlt nur einmal.
+    Ein einzelnes Argument darf ``0`` sein: dann entfaellt der jeweilige
+    Bucket-Layer komplett (``daily=0, weekly=4, monthly=0`` behaelt nur die
+    neueste Version pro Woche); alle drei ``0`` loescht alle Backups mit
+    Stempel strikt vor ``now`` (Cleanup-Befehl vor Voll-Reset). Ein
+    negativer Wert wirft ``ValueError`` (spiegelt :func:`prune_old_backups`
+    mit ``keep < 1`` und :func:`prune_backups_by_age` mit
+    ``max_age_days < 0``).
+
+    Beruehrt ausschliesslich Dateien, die zum
+    :func:`write_rotated_backup`-Schema passen
+    (``stonebook_backup_*.json[.gz]``); alle anderen Dateien im Ordner
+    bleiben unangetastet (spiegelt :func:`prune_old_backups` /
+    :func:`prune_backups_by_age`). Der Vergleich basiert auf dem
+    Dateinamen-Stempel (nicht ``mtime``/``ctime``), damit vom NAS
+    kopierte/verschobene Backups ihr originales Alter behalten.
+
+    Backups mit Stempel strikt nach ``now`` bleiben unangetastet
+    (parallel schreibender Job, Uhr-Skew) - spiegelt implizit das
+    Verhalten von :func:`prune_backups_by_age` fuer Zukunfts-Stempel
+    (``stamp >= cutoff`` deckt dort ebenfalls Zukunfts-Stempel ab).
+
+    ``now`` ist injizierbar fuer Tests/Replay (spiegelt
+    :func:`prune_backups_by_age`). Nicht-loeschbare Dateien (Lock,
+    Parallel-Loeschung) werden uebersprungen statt zu crashen (spiegelt
+    :func:`prune_old_backups`). Liefert die geloeschten Pfade zurueck.
+    """
+    if daily < 0 or weekly < 0 or monthly < 0:
+        raise ValueError("daily/weekly/monthly muss >= 0 sein")
+    now = now or datetime.datetime.now()
+    stamped: list[tuple[Path, datetime.datetime]] = []
+    for p in list_backups(backup_dir):
+        stamp = _parse_backup_stamp(p)
+        if stamp is not None:
+            stamped.append((p, stamp))
+    # Sortierung: neuestes zuerst - "first seen per bucket" ist damit das
+    # neueste des jeweiligen Buckets.
+    stamped.sort(key=lambda x: x[1], reverse=True)
+
+    keep: set[Path] = set()
+    # Stempel >= now bleiben unangetastet (paralleler Writer, Clock-Skew,
+    # gleichzeitige Schreibe) - spiegelt :func:`prune_backups_by_age`, wo
+    # ``stamp >= cutoff`` (mit ``cutoff = now - max_age_days``) ebenfalls
+    # "behalten" bedeutet und deren max_age_days=0-Verhalten das Behalten
+    # der == now-Stempel garantiert.
+    for p, stamp in stamped:
+        if stamp >= now:
+            keep.add(p)
+
+    now_date = now.date()
+    now_year_iso, now_week_iso, _ = now.isocalendar()
+
+    def _add_newest_per_bucket(in_window, bucket_of) -> None:
+        seen: dict = {}
+        for p, stamp in stamped:
+            if stamp >= now:
+                continue
+            if not in_window(stamp):
+                continue
+            k = bucket_of(stamp)
+            if k in seen:
+                continue
+            seen[k] = p
+        keep.update(seen.values())
+
+    if daily > 0:
+        daily_cutoff = now_date - datetime.timedelta(days=daily - 1)
+        _add_newest_per_bucket(
+            lambda s: daily_cutoff <= s.date() <= now_date,
+            lambda s: s.date(),
+        )
+
+    if weekly > 0:
+        # ISO-Kalenderwochen: (year, week)-Tupel identifiziert eine Woche
+        # eindeutig ueber Jahresgrenzen hinweg (Silvester-Woche kann in
+        # unterschiedliche ISO-Jahre gehoeren). Die Rueckrechnung ueber
+        # date.fromisocalendar+timedelta(weeks) liefert das ISO-Jahr-und
+        # -Wochen-Tupel der Cutoff-Woche.
+        now_week_monday = datetime.date.fromisocalendar(
+            now_year_iso, now_week_iso, 1)
+        cutoff_monday = now_week_monday - datetime.timedelta(weeks=weekly - 1)
+        cutoff_year_iso, cutoff_week_iso, _ = cutoff_monday.isocalendar()
+        cutoff_week_key = (cutoff_year_iso, cutoff_week_iso)
+        now_week_key = (now_year_iso, now_week_iso)
+
+        def _week_in_window(s: datetime.datetime) -> bool:
+            sy, sw, _ = s.isocalendar()
+            return cutoff_week_key <= (sy, sw) <= now_week_key
+
+        _add_newest_per_bucket(
+            _week_in_window,
+            lambda s: s.isocalendar()[:2],
+        )
+
+    if monthly > 0:
+        # Monats-Rueckrechnung: (year, month) als Bucket-Schluessel,
+        # (K - 1) Monate zurueck fuer den Cutoff. Kein date.replace-Trick,
+        # weil das mit dem Monats-Tag interferieren kann - reine
+        # (year, month)-Arithmetik ist eindeutig.
+        total_month = now.year * 12 + (now.month - 1) - (monthly - 1)
+        cutoff_year, cutoff_month0 = divmod(total_month, 12)
+        cutoff_month_key = (cutoff_year, cutoff_month0 + 1)
+        now_month_key = (now.year, now.month)
+
+        def _month_in_window(s: datetime.datetime) -> bool:
+            return cutoff_month_key <= (s.year, s.month) <= now_month_key
+
+        _add_newest_per_bucket(
+            _month_in_window,
+            lambda s: (s.year, s.month),
+        )
+
+    deleted: list[Path] = []
+    for p, _stamp in stamped:
+        if p in keep:
+            continue
+        try:
+            p.unlink()
+            deleted.append(p)
+        except OSError:
+            pass
+    return deleted
+
+
 def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
                          keep: int = 10, compress: bool = True,
                          now: datetime.datetime | None = None) -> Path:
