@@ -8315,3 +8315,98 @@ def test_mohs_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
     assert st.mohs_kollektion_variationskoeffizient_prozent == pytest.approx(
         expected_cv, abs=1e-4)
     c.close()
+
+
+def test_dichte_variationskoeffizient_aus_seed_db(tmp_path):
+    """CV Dichte = sigma / mean * 100 in Prozent auf der Dichte-Achse.
+
+    Vervollstaendigt das CV-Quartett Wert / Gewicht / Mohs / Dichte.
+    Vier Dichte-Mittelpunkte 2.0/3.0/4.0/5.0 g/cm3 → Ø=3.5,
+    Varianz=((2-3.5)^2 + (3-3.5)^2 + (4-3.5)^2 + (5-3.5)^2)/4 =
+    (2.25+0.25+0.25+2.25)/4 = 5/4 = 1.25 → sigma = sqrt(1.25) ≈ 1.118.
+    CV = 1.118 / 3.5 * 100 ≈ 31.94 %.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.0, 2.0),
+            ("OBJ_0002", 3.0, 3.0),
+            ("OBJ_0003", 4.0, 4.0),
+            ("OBJ_0004", 5.0, 5.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_durchschnitt == pytest.approx(3.5, abs=1e-9)
+    expected_cv = (1.25 ** 0.5) / 3.5 * 100.0
+    assert st.dichte_kollektion_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-6)
+    d = st.as_dict()
+    assert d["dichte_kollektion_variationskoeffizient_prozent"] == pytest.approx(
+        31.94, abs=1e-2)
+    c.close()
+
+
+def test_dichte_variationskoeffizient_leer(tmp_path):
+    """Ohne Dichte-Pflege bleibt der CV None (dataclass-Default).
+
+    Spiegelt die dichte_kollektion_standardabweichung- / _durchschnitt-
+    None-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_cv_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_variationskoeffizient_prozent is None
+    d = st.as_dict()
+    assert d["dichte_kollektion_variationskoeffizient_prozent"] is None
+    c.close()
+
+
+def test_dichte_variationskoeffizient_uniform(tmp_path):
+    """Bei identischer Dichte ist der CV 0.0 (voellige Homogenitaet).
+
+    Reine Quarz-Sammlung mit fuenf Stuecken Dichte 2.65 g/cm3 →
+    sigma 0.0 → CV 0.0 %. Vervollstaendigt die Uniform-Kollaps-
+    Konvention aus dem CV-Quartett.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_cv_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_variationskoeffizient_prozent == pytest.approx(
+        0.0, abs=1e-9)
+    c.close()
+
+
+def test_dichte_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
+    """CV Dichte reagiert auf Dichte-Ausreisser (Erbe von sigma).
+
+    Neun Quarz-Stuecke (Dichte 2.65) + ein Galenit-Ausreisser (7.5).
+    Ø = (9*2.65 + 7.5)/10 = (23.85 + 7.5)/10 = 3.135.
+    Varianz = (9*(2.65-3.135)^2 + (7.5-3.135)^2)/10
+            = (9*0.235225 + 19.053225)/10
+            = (2.117025 + 19.053225)/10 = 21.17025/10 = 2.117025
+    → sigma = sqrt(2.117025) ≈ 1.4550...
+    CV ≈ 1.4550 / 3.135 * 100 ≈ 46.4 %.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_cv_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 7.5, 7.5))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    expected_cv = (2.117025 ** 0.5) / 3.135 * 100.0
+    assert st.dichte_kollektion_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-2)
+    c.close()

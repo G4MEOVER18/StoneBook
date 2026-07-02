@@ -103,6 +103,7 @@ class Statistik:
     dichte_kollektion_durchschnitt: float | None = None
     dichte_kollektion_median: float | None = None
     dichte_kollektion_standardabweichung: float | None = None
+    dichte_kollektion_variationskoeffizient_prozent: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_min_chf: float = 0.0
@@ -1196,6 +1197,12 @@ class Statistik:
             "dichte_kollektion_standardabweichung": (
                 round(self.dichte_kollektion_standardabweichung, 3)
                 if self.dichte_kollektion_standardabweichung is not None else None
+            ),
+            "dichte_kollektion_variationskoeffizient_prozent": (
+                round(
+                    self.dichte_kollektion_variationskoeffizient_prozent, 2)
+                if self.dichte_kollektion_variationskoeffizient_prozent
+                is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -3609,6 +3616,32 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Durchschnitt - eine reine Quarz-Familie (Dichte 2.65..2.67) zeigt hier
     # ~0.01, eine gemischte Sammlung mit Bims bis Galenit ~2.0.
     st.dichte_kollektion_standardabweichung = _dichte_standardabweichung(conn)
+    # dichte_kollektion_variationskoeffizient_prozent: dimensionslose
+    # Dispersions-Achse als Ergaenzung zu dichte_kollektion_standard-
+    # abweichung. Vervollstaendigt das CV-Quartett Wert / Gewicht /
+    # Mohs / Dichte und macht die Dichte-Streuung skalen-unabhaengig
+    # vergleichbar mit den drei Symmetrie-Partnern - eine reine Quarz-
+    # Familie mit Dichte 2.65..2.67 zeigt hier ~0.3%, eine gemischte
+    # Bims-bis-Galenit-Sammlung dagegen 30..60%. Direkter Vergleich der
+    # Sammlungs-Homogenitaet zwischen den vier orthogonalen Sichten
+    # (Preis / Masse / Haerte / Dichte) wird durch die einheitliche
+    # dimensionslose Prozent-Skala erst moeglich. Reuse: greift den
+    # bereits berechneten dichte_kollektion_durchschnitt und
+    # dichte_kollektion_standardabweichung ab (kein zusaetzlicher SQL-
+    # Round-Trip). Guarded gegen mean == 0 und mean None (Dichte-Werte
+    # sind physikalisch > 0, aber die Guard schuetzt gegen numerische
+    # Randfaelle und den None-Fall bei fehlender Dichte-Pflege). Bei
+    # leerer DB / ohne jegliche Dichte-Pflege bleibt None (dataclass-
+    # Default), spiegelt die dichte_kollektion_standardabweichung- /
+    # _durchschnitt-None-Konvention (mean-basierte Groessen mit None
+    # im Undefined-Fall) und stellt Symmetrie zu mohs_kollektion_
+    # variationskoeffizient_prozent her.
+    if (st.dichte_kollektion_standardabweichung is not None
+            and st.dichte_kollektion_durchschnitt is not None
+            and st.dichte_kollektion_durchschnitt > 0):
+        st.dichte_kollektion_variationskoeffizient_prozent = (
+            st.dichte_kollektion_standardabweichung
+            / st.dichte_kollektion_durchschnitt * 100.0)
     if gewichte:
         st.gewicht_min_g = gewichte[0]
         st.gewicht_max_g = gewichte[-1]

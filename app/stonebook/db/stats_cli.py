@@ -386,6 +386,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"σ Dichte:              "
             f"{st.dichte_kollektion_standardabweichung:.3f} g/cm3")
+    if st.dichte_kollektion_variationskoeffizient_prozent is not None:
+        # CV Dichte (%): dimensionsloser Variationskoeffizient (sigma/mean
+        # * 100) auf der Massendichte-Achse. Vervollstaendigt das CV-
+        # Quartett Wert / Gewicht / Mohs / Dichte und macht die Dichte-
+        # Streuung skalen-unabhaengig vergleichbar mit den drei Symmetrie-
+        # Partnern. Reine Quarz-Familie (Dichte 2.65..2.67) zeigt hier
+        # ~0.3%, gemischte Bims-bis-Galenit-Sammlung 30..60%. Direkt
+        # unter der sigma-Zeile, damit der Dispersions-Block (sigma + CV)
+        # als geschlossene Einheit am Ende des Dichte-Blocks sichtbar
+        # bleibt (spiegelt CV Wert / CV Gewicht / CV Mohs-Position in
+        # den jeweiligen Bloecken).
+        lines.append(
+            f"CV Dichte (%):         "
+            f"{st.dichte_kollektion_variationskoeffizient_prozent:.1f}")
     if st.durchschnitt_confidence_prozent is not None:
         lines.append(
             f"Ø Confidence:          {st.durchschnitt_confidence_prozent:.1f} %")

@@ -5659,3 +5659,87 @@ def test_json_ausgabe_zeigt_variationskoeffizient_mohs(tmp_path, capsys):
     main(["--db", str(db_file2), "--json"])
     payload2 = json.loads(capsys.readouterr().out)
     assert payload2["mohs_kollektion_variationskoeffizient_prozent"] is None
+
+
+def test_text_ausgabe_zeigt_variationskoeffizient_dichte(tmp_path, capsys):
+    """CV Dichte (%) steht direkt unter sigma Dichte.
+
+    Vier Dichte-Werte 2/3/4/5 → sigma≈1.118, mean=3.5, CV≈31.9 %.
+    Verifiziert die Reihenfolge sigma → CV, damit der Dispersions-Block
+    als geschlossene Einheit am Ende des Dichte-Blocks steht (spiegelt
+    CV Wert / CV Gewicht / CV Mohs).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_dichte.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.0, 2.0),
+            ("OBJ_0002", 3.0, 3.0),
+            ("OBJ_0003", 4.0, 4.0),
+            ("OBJ_0004", 5.0, 5.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Dichte:" in out
+    assert "CV Dichte (%):" in out
+    assert out.index("σ Dichte:") < out.index("CV Dichte (%):")
+    assert "31.9" in out
+
+
+def test_text_ausgabe_ohne_dichte_keine_variationskoeffizient_zeile(
+        tmp_path, capsys):
+    """Ohne Dichte-Pflege erscheint die CV-Dichte-Zeile nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_d_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "CV Dichte" not in out
+
+
+def test_json_ausgabe_zeigt_variationskoeffizient_dichte(tmp_path, capsys):
+    """--json enthaelt dichte_kollektion_variationskoeffizient_prozent."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_d_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.0, 2.0),
+            ("OBJ_0002", 3.0, 3.0),
+            ("OBJ_0003", 4.0, 4.0),
+            ("OBJ_0004", 5.0, 5.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "dichte_kollektion_variationskoeffizient_prozent" in payload
+    assert isinstance(
+        payload["dichte_kollektion_variationskoeffizient_prozent"], float)
+    assert payload["dichte_kollektion_variationskoeffizient_prozent"] == pytest.approx(
+        31.94, abs=1e-2)
+
+    db_file2 = tmp_path / "cv_d_json_leer.sqlite3"
+    c2 = open_db(db_file2)
+    c2.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)", [("OBJ_0001",)])
+    c2.commit()
+    c2.close()
+    main(["--db", str(db_file2), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert payload2["dichte_kollektion_variationskoeffizient_prozent"] is None
