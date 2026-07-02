@@ -8410,3 +8410,97 @@ def test_dichte_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
     assert st.dichte_kollektion_variationskoeffizient_prozent == pytest.approx(
         expected_cv, abs=1e-2)
     c.close()
+
+
+def test_confidence_min_prozent_aus_seed_db(tmp_path):
+    """confidence_min_prozent = kleinster gueltiger Confidence-Score.
+
+    Fuenf Stuecke mit Confidence 30/55/70/85/95 - min = 30. Spiegelt
+    das wert_min_chf / gewicht_min_g-Randlage-Konzept auf die
+    Confidence-Achse (Untergrenze der zentralen-Tendenz-Achse
+    durchschnitt_/median_confidence_prozent).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_min.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 30),
+            ("OBJ_0002", 55),
+            ("OBJ_0003", 70),
+            ("OBJ_0004", 85),
+            ("OBJ_0005", 95),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_min_prozent == 30
+    assert st.as_dict()["confidence_min_prozent"] == 30
+    c.close()
+
+
+def test_confidence_min_prozent_leer(tmp_path):
+    """Ohne Confidence-Pflege bleibt der Min-Wert None (dataclass-Default).
+
+    Spiegelt die median_/durchschnitt_confidence_prozent-None-Konvention:
+    score-basierte Groessen mit None statt 0 im Undefined-Fall, damit
+    Downstream-Konsumenten den Undefined-Zustand transparent unterscheiden
+    koennen (kein Kollaps auf 0, was faelschlich "perfekte Unsicherheit"
+    suggerieren wuerde).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_min_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.confidence_min_prozent is None
+    assert st.as_dict()["confidence_min_prozent"] is None
+    c.close()
+
+
+def test_confidence_min_prozent_ignoriert_out_of_range(tmp_path):
+    """Out-of-Range-Werte (<0 / >100) zaehlen nicht ins Minimum.
+
+    Spiegelt die median_/durchschnitt_confidence_prozent- und
+    objekte_mit_confidence-Konvention: die Extrem-Kennzahl darf nicht
+    durch einen Integrity-Verstoss verzerrt werden. Ein Eintrag mit
+    Confidence -50 sollte nicht als "kleinster Confidence-Wert der
+    Sammlung" gezaehlt werden - das Integrity-Modul meldet solche
+    Datensaetze separat.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_min_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", -50),   # out-of-range, ignoriert
+            ("OBJ_0002", 40),
+            ("OBJ_0003", 200),   # out-of-range, ignoriert
+            ("OBJ_0004", 90),
+            ("OBJ_0005", None),  # NULL, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Kleinster gueltiger Wert: 40 (nicht -50)
+    assert st.confidence_min_prozent == 40
+    c.close()
+
+
+def test_confidence_min_prozent_einzelobjekt(tmp_path):
+    """Bei genau einem Confidence-Eintrag ist Min == Median == Durchschnitt.
+
+    Kern-Konsequenz der Extremum-Definition ueber die sortierte
+    conf_werte-Liste: bei n=1 kollabieren alle drei zentralen Kennzahlen
+    (min/median/durchschnitt) auf denselben Wert.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_min_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 77), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_min_prozent == 77
+    assert st.median_confidence_prozent == 77.0
+    assert st.durchschnitt_confidence_prozent == 77.0
+    c.close()

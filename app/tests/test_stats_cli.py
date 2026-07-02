@@ -80,6 +80,43 @@ def test_text_ausgabe_ohne_confidence_keine_median_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Median Confidence:" not in out
+    # Symmetrie: die Min-Zeile ist an dieselbe Bedingung gekoppelt und darf
+    # ebenfalls nicht erscheinen, wenn keine gueltigen Confidence-Werte
+    # vorliegen. Spiegelt die None-Konvention der score-basierten Groessen.
+    assert "Min Confidence:" not in out
+
+
+def test_text_ausgabe_zeigt_min_confidence(tmp_path, capsys):
+    """Min-Confidence-Zeile erscheint direkt unter der Median-Zeile.
+
+    Dokumentiert das zentrale-Tendenz-plus-Randlage-Trio (Ø / Median / Min)
+    im CLI-Layout als geschlossenen Block. Fuenf Confidence-Werte
+    30/55/70/85/95 → Min = 30. Reihenfolge im Output: Ø ... Median ... Min.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "min_conf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 30),
+            ("OBJ_0002", 55),
+            ("OBJ_0003", 70),
+            ("OBJ_0004", 85),
+            ("OBJ_0005", 95),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Min Confidence:" in out
+    # Ganzer int-Wert (kein Nachkomma), spiegelt die Scale-Konvention (1..100
+    # in ganzen Schritten).
+    assert "Min Confidence:" in out and " 30 %" in out
+    # Reihenfolge: die Min-Zeile steht unter Median (und Median unter Ø).
+    assert out.index("Ø Confidence:") < out.index("Median Confidence:")
+    assert out.index("Median Confidence:") < out.index("Min Confidence:")
 
 
 def test_text_ausgabe_zeigt_top_wert_und_gewicht(tmp_path, capsys):

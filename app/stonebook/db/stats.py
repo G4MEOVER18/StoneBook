@@ -186,6 +186,7 @@ class Statistik:
     objekte_mit_confidence: int = 0
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
+    confidence_min_prozent: int | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
@@ -1410,6 +1411,7 @@ class Statistik:
                 round(self.median_confidence_prozent, 1)
                 if self.median_confidence_prozent is not None else None
             ),
+            "confidence_min_prozent": self.confidence_min_prozent,
             "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
@@ -3466,6 +3468,31 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             conf_werte[n // 2] if n % 2
             else (conf_werte[n // 2 - 1] + conf_werte[n // 2]) / 2
         )
+        # confidence_min_prozent: kleinster Confidence-Wert der Sammlung als
+        # symmetrisches Pendant zu wert_min_chf / gewicht_min_g auf die
+        # quantitative Sicherheits-Achse. Waehrend die Wert-/Gewicht-Extrema
+        # die monetaere/physikalische Untergrenze beziffern (billigstes bzw.
+        # leichtestes Stueck), beziffert die Confidence-Untergrenze die
+        # "unsicherste Bestimmung" - jenes Stueck der Sammlung, bei dem der
+        # Sammler den kleinsten Sicherheitsgrad vergeben hat. Ergaenzt damit
+        # das durchschnitt_/median_confidence_prozent-Paar (zentrale Tendenz)
+        # um die untere Randlage-Kennzahl; komplementaer zu
+        # confidence_buckets (Bucket-Verteilung), das die untere Region
+        # nur grob als "0-24"-Bucket bemasst, ohne den konkreten Minimums-
+        # Wert zu benennen. Reuse der bereits sortierten conf_werte-Liste
+        # (ORDER BY c aufsteigend) - conf_werte[0] ist der kleinste gueltige
+        # Confidence-Wert, spiegelt den werte[0]- und gewichte[0]-Zugriff
+        # exakt. Out-of-Range-Werte (<0 / >100) zaehlen nicht (sie sind
+        # bereits in der conf_werte-Query per BETWEEN 0 AND 100 gefiltert),
+        # damit die Extrem-Kennzahl nicht durch einen Integrity-Verstoss
+        # verzerrt wird - spiegelt die median_confidence-/objekte_mit_
+        # confidence-Konvention. Bei leerer DB / ohne jegliche Confidence-
+        # Pflege bleibt None (dataclass-Default), spiegelt die
+        # median_/durchschnitt_confidence_prozent-None-Konvention (score-
+        # basierte Groessen mit None statt 0 im Undefined-Fall), damit
+        # Downstream-Konsumenten (as_dict / CLI-Zeile / Dashboard) den
+        # Undefined-Zustand transparent unterscheiden koennen.
+        st.confidence_min_prozent = conf_werte[0]
     st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(

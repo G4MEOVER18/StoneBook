@@ -407,6 +407,19 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Median liegt direkt unter Mittel; Reihenfolge spiegelt das Werte-/Gewicht-Layout.
         lines.append(
             f"Median Confidence:     {st.median_confidence_prozent:.1f} %")
+    if st.confidence_min_prozent is not None:
+        # Min-Confidence spiegelt wert_min_chf / gewicht_min_g auf die
+        # Confidence-Achse: die "unsicherste Bestimmung" der Sammlung. Direkt
+        # unter der Median-Zeile, damit das zentrale-Tendenz-plus-Randlage-
+        # Trio (Ø / Median / Min) als geschlossener Block sichtbar bleibt -
+        # spiegelt die Anordnung der Wert-/Gewicht-Bloecke (max/durchschnitt/
+        # median). Integer-Formatierung ohne Nachkomma, weil Confidence_Prozent
+        # im Feldwoerterbuch als scale (1..100 in ganzen Schritten) definiert
+        # ist und die conf_werte-Query bereits int() casted - im Gegensatz
+        # zum Median, der bei gerader Anzahl das arithmetische Mittel zweier
+        # ints als .0-Float liefert.
+        lines.append(
+            f"Min Confidence:        {st.confidence_min_prozent} %")
     # Coverage-Quoten beantworten "Wie viel meiner Sammlung ist dokumentiert?"
     # Nur ausgeben, wenn ueberhaupt Objekte vorhanden sind (sonst sind alle
     # Quoten None und die Zeilen waeren nichtssagend).
