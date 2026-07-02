@@ -9274,3 +9274,139 @@ def test_mohs_spanweite_konsistent_mit_min_max(tmp_path):
     assert st.mohs_kollektion_spanweite == (
         st.mohs_kollektion_max - st.mohs_kollektion_min)
     c.close()
+
+
+def test_dichte_spanweite_aus_seed_db(tmp_path):
+    """dichte_kollektion_spanweite = dichte_kollektion_max - _min in g/cm3.
+
+    Vier Dichte-Mittelpunkte 2.0/3.0/4.0/5.0 -> min=2.0, max=5.0,
+    Spannweite=3.0 g/cm3. Spiegelt test_mohs_spanweite_aus_seed_db auf
+    die Dichte-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 2.0, 2.0),
+            ("OBJ_0002", 3.0, 3.0),
+            ("OBJ_0003", 4.0, 4.0),
+            ("OBJ_0004", 5.0, 5.0),
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_min == 2.0
+    assert st.dichte_kollektion_max == 5.0
+    assert st.dichte_kollektion_spanweite == pytest.approx(3.0, abs=1e-9)
+    d = st.as_dict()
+    assert d["dichte_kollektion_spanweite"] == pytest.approx(3.0, abs=1e-9)
+    c.close()
+
+
+def test_dichte_spanweite_leer(tmp_path):
+    """Ohne Dichte-Pflege bleibt die Spannweite None (dataclass-Default).
+
+    Spiegelt mohs_kollektion_spanweite: Bereichsgroessen bleiben im
+    Undefined-Fall None statt 0.0 (anders als wert_/gewicht_spanweite die
+    0.0 liefern - Konvention der Dichte-Bereichsgroessen).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_span_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_spanweite is None
+    d = st.as_dict()
+    assert d["dichte_kollektion_spanweite"] is None
+    c.close()
+
+
+def test_dichte_spanweite_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Dichte-Eintrag kollabiert die Spannweite auf 0.0.
+
+    min == max = Einzel-Dichte -> Spannweite = 0.0. Spiegelt
+    test_mohs_spanweite_einzelobjekt und die sigma-Kollaps-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_span_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", 2.65, 2.65), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_dichte == 1
+    assert st.dichte_kollektion_spanweite == 0.0
+    c.close()
+
+
+def test_dichte_spanweite_uniform(tmp_path):
+    """Bei identischen Dichten ist die Spannweite 0.0 (Homogenitaet).
+
+    Reine Quarz-Familie mit fuenf Stuecken 2.65 g/cm3 -> min == max = 2.65 ->
+    Spannweite = 0.0. Spiegelt test_mohs_spanweite_uniform und die
+    Dichte-sigma-/CV-Uniform-Kollaps-Semantik.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_span_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_spanweite == 0.0
+    c.close()
+
+
+def test_dichte_spanweite_reagiert_auf_ausreisser(tmp_path):
+    """Spannweite reagiert auf Extremwerte, nicht auf die Dichte dazwischen.
+
+    Neun Quarz-Stuecke (2.65 g/cm3) + ein Galenit-Stueck (7.5 g/cm3):
+    min=2.65, max=7.5, Spannweite=4.85 - trotz kleinem sigma. Spiegelt
+    test_mohs_spanweite_reagiert_auf_ausreisser auf die Dichte-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_span_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 2.65, 2.65) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 7.5, 7.5))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)", rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_min == 2.65
+    assert st.dichte_kollektion_max == 7.5
+    assert st.dichte_kollektion_spanweite == pytest.approx(4.85, abs=1e-9)
+    c.close()
+
+
+def test_dichte_spanweite_konsistent_mit_min_max(tmp_path):
+    """Invariante: dichte_kollektion_spanweite == max - min immer.
+
+    Spiegelt test_mohs_spanweite_konsistent_mit_min_max: die Spannweite
+    ist definitorisch max - min und muss numerisch konsistent bleiben,
+    damit Dashboard-/Report-Konsumenten sich auf die Identitaet verlassen
+    koennen. Reuse-Pfad greift die bereits gesetzten dichte_kollektion_max
+    und dichte_kollektion_min ab.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "d_span_konsistent.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 1.05, 1.15),
+            ("OBJ_0002", 2.55, 2.75),
+            ("OBJ_0003", 7.45, 7.55),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.dichte_kollektion_spanweite == (
+        st.dichte_kollektion_max - st.dichte_kollektion_min)
+    c.close()

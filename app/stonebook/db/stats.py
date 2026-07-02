@@ -105,6 +105,7 @@ class Statistik:
     dichte_kollektion_median: float | None = None
     dichte_kollektion_standardabweichung: float | None = None
     dichte_kollektion_variationskoeffizient_prozent: float | None = None
+    dichte_kollektion_spanweite: float | None = None
     wert_summe_chf: float = 0.0
     wert_roh_summe_chf: float = 0.0
     wert_min_chf: float = 0.0
@@ -1214,6 +1215,10 @@ class Statistik:
                     self.dichte_kollektion_variationskoeffizient_prozent, 2)
                 if self.dichte_kollektion_variationskoeffizient_prozent
                 is not None else None
+            ),
+            "dichte_kollektion_spanweite": (
+                round(self.dichte_kollektion_spanweite, 2)
+                if self.dichte_kollektion_spanweite is not None else None
             ),
             "wert_summe_chf": round(self.wert_summe_chf, 2),
             "wert_roh_summe_chf": round(self.wert_roh_summe_chf, 2),
@@ -3863,6 +3868,39 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         st.dichte_kollektion_variationskoeffizient_prozent = (
             st.dichte_kollektion_standardabweichung
             / st.dichte_kollektion_durchschnitt * 100.0)
+    # dichte_kollektion_spanweite: Spannweite (Range) = max - min in g/cm3
+    # als Original-Einheiten-Dispersions-Achse neben sigma und CV.
+    # Spiegelt mohs_kollektion_spanweite (Haerte-Achse) auf die zweite
+    # zentrale physikalische Pruef-Achse und vervollstaendigt damit den
+    # Dichte-Kennzahlen-Block (min/max/durchschnitt/median/sigma/CV) um
+    # die Original-Einheiten-Bandbreiten-Achse. Waehrend sigma die
+    # durchschnittliche Streuung in g/cm3 beziffert und der CV dieselbe
+    # Streuung dimensionslos normiert, beziffert die Spannweite die volle
+    # beobachtete Massendichte-Bandbreite - die Distanz zwischen dem
+    # leichtesten und dem schwersten Stueck ("zwischen 1.0 g/cm3 Bims und
+    # 7.5 g/cm3 Galenit"). Complement zu sigma: sigma reagiert auf die
+    # Verteilungsform (breite Streuung um den Mittel = grosses sigma),
+    # die Spannweite reagiert nur auf die Extremwerte und ignoriert die
+    # Dichte dazwischen - eine reine Quarz-Familie (2.65..2.67 g/cm3) hat
+    # winzige Spannweite (0.02) und winziges sigma (~0.01); eine gemischte
+    # Bims-bis-Galenit-Sammlung hat grosse Spannweite (6.5) und grosses
+    # sigma (~2). Reuse-Pfad: greift die bereits gesetzten dichte_kollektion_
+    # max und dichte_kollektion_min ab (kein zusaetzlicher SQL-Round-Trip,
+    # spiegelt die mohs_kollektion_spanweite-Ableitung aus max/min). Bei
+    # einem einzelnen Dichte-Eintrag oder uniformen Werten kollabiert die
+    # Spannweite auf 0.0 (min == max, spiegelt die sigma-Uniform-Kollaps-
+    # Semantik und mohs_kollektion_spanweite-Konvention). Bei leerer DB /
+    # ohne jegliche Dichte-Pflege bleibt None (dataclass-Default), spiegelt
+    # die dichte_kollektion_min/max/durchschnitt/median/sigma-None-Konvention -
+    # Bereichsgroessen bleiben im Undefined-Fall None statt 0.0 (spiegelt
+    # mohs_kollektion_spanweite, anders als wert_/gewicht_spanweite die
+    # 0.0 bei leerer DB liefern). as_dict-Round auf 2 Nachkommastellen
+    # (Zenti-g/cm3-Aufloesung, spiegelt dichte_kollektion_min/max/
+    # durchschnitt/median).
+    if (st.dichte_kollektion_min is not None
+            and st.dichte_kollektion_max is not None):
+        st.dichte_kollektion_spanweite = (
+            st.dichte_kollektion_max - st.dichte_kollektion_min)
     if gewichte:
         st.gewicht_min_g = gewichte[0]
         st.gewicht_max_g = gewichte[-1]
