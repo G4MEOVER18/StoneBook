@@ -49,6 +49,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Konvention: Zeile immer ausgeben, damit der Header-Block deterministisch
         # bleibt und das Kennzahlen-Trio in jedem Bericht an derselben Stelle steht).
         f"Kategorien-Arten:      {st.kategorien_total}",
+        # Varietaeten: Diversitaets-Zaehler auf der mineralogischen Sub-
+        # Klassifizierungs-Achse (Bergkristall/Amethyst/Rauchquarz innerhalb
+        # Quarz; Malachit-Stalaktit als Habitus-Auspraegung innerhalb Malachit).
+        # Steht direkt unter Kategorien-Arten, weil Varietaet die feinere
+        # Auspraegung innerhalb der Mineral-Familie ist - Mineral-Arten zaehlt
+        # "welche Familie?", Varietaeten "welche Auspraegung in der Familie?".
+        # Vervollstaendigt das Diversitaets-Quartett Mineral-Arten / Fundorte /
+        # Kategorien-Arten / Varietaeten. Bei leerer DB / ohne jegliche
+        # Varietaet-Pflege bleibt 0 (spiegelt die uebrigen Diversitaets-Zaehler:
+        # Zeile immer ausgeben, damit der Header-Block deterministisch bleibt).
+        f"Varietaeten:           {st.varietaeten_total}",
         "",
         f"Wert (Summe, CHF):     {st.wert_summe_chf:,.0f}",
         f"  davon Roh:           {st.wert_roh_summe_chf:,.0f}",

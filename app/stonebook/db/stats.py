@@ -53,6 +53,7 @@ class Statistik:
     mineral_arten_total: int = 0
     fundorte_total: int = 0
     kategorien_total: int = 0
+    varietaeten_total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_mineral: dict[str, int] = field(default_factory=dict)
     by_varietaet: dict[str, int] = field(default_factory=dict)
@@ -1091,6 +1092,7 @@ class Statistik:
             "mineral_arten_total": self.mineral_arten_total,
             "fundorte_total": self.fundorte_total,
             "kategorien_total": self.kategorien_total,
+            "varietaeten_total": self.varietaeten_total,
             "by_status": dict(self.by_status),
             "by_mineral": dict(self.by_mineral),
             "by_varietaet": dict(self.by_varietaet),
@@ -2684,6 +2686,27 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Konvention). Bei leerer DB / ohne jegliche Kategorie-Pflege bleibt 0
     # (dataclass-Default, spiegelt die uebrigen Diversitaets-Kennzahlen).
     st.kategorien_total = _count_distinct(conn, "Kategorie")
+    # varietaeten_total: Anzahl distinct dokumentierter Mineral-Varietaeten
+    # (Bergkristall/Amethyst/Rauchquarz/... innerhalb der Familie Quarz;
+    # Malachit-Stalaktit als Habitus-Auspraegung innerhalb Malachit) als
+    # Diversitaets-Zaehler auf der mineralogischen Sub-Klassifizierungs-
+    # Achse. Spiegelt mineral_arten_total (Familien-Achse), fundorte_total
+    # (geografische Achse) und kategorien_total (Inventar-Klassifizierungs-
+    # Achse) und macht die Diversitaets-Sicht "wie viele Varietaeten pflege
+    # ich?" als eigene Skalarkennzahl verfuegbar - Downstream-Konsumenten
+    # (Dashboards, JSON-Export, XLSX-Bericht) muessen nicht ueber
+    # len(by_varietaet) abstrahieren und behalten die Kennzahl konsistent,
+    # falls by_varietaet spaeter ein Top-N-Limit bekommt (spiegelt die
+    # mineral_arten_total-Rolle: by_mineral hat top_mineral=10-Default,
+    # mineral_arten_total dagegen die volle Zaehlung).
+    # NULL und Whitespace-only werden ignoriert (spiegelt _count_distinct-
+    # Konvention und die has_varietaet-Filter-Konvention). Bei leerer DB /
+    # ohne jegliche Varietaet-Pflege bleibt 0 (dataclass-Default, spiegelt
+    # die uebrigen Diversitaets-Kennzahlen). Komplementaer zu
+    # objekte_mit_varietaet (Coverage-Sicht: wie viele Stuecke ueberhaupt)
+    # und quote_mit_varietaet_prozent (Coverage-Quote): hier die Streuung-
+    # Sicht ueber die dokumentierten Auspraegungen.
+    st.varietaeten_total = _count_distinct(conn, "Varietaet")
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)

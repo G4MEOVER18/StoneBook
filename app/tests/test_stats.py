@@ -4606,6 +4606,12 @@ def test_mineral_arten_total_leer(tmp_path):
     # Dashboard-Downstream-Konsumenten nicht zwischen 0 und None differenzieren
     # muessen (spiegelt mineral_arten_total / fundorte_total).
     assert st.kategorien_total == 0
+    # varietaeten_total: analog zur Inventar-Klassifizierungs-Achse
+    # (kategorien_total) hier die mineralogische Sub-Klassifizierungs-Achse
+    # (Bergkristall/Amethyst/Rauchquarz innerhalb Quarz). Bei leerer DB bleibt
+    # der Zaehler bei 0 (dataclass-Default, spiegelt mineral_arten_total /
+    # fundorte_total / kategorien_total).
+    assert st.varietaeten_total == 0
 
 
 def test_kategorien_total_zaehlt_distinct(tmp_path):
@@ -4639,6 +4645,47 @@ def test_kategorien_total_zaehlt_distinct(tmp_path):
     # deren Anzahl exakt, macht die Zaehlung aber ohne Umweg ueber die
     # Dict-Laenge verfuegbar (spiegelt mineral_arten_total-Rolle).
     assert len(st.by_kategorie) == st.kategorien_total
+    c.close()
+
+
+def test_varietaeten_total_zaehlt_distinct(tmp_path):
+    """varietaeten_total spiegelt mineral_arten_total auf die Varietaet-Achse.
+
+    Zaehlt distinct dokumentierte Mineral-Varietaeten (Bergkristall/Amethyst/
+    Rauchquarz innerhalb der Familie Quarz), unabhaengig von Top-N-Limits
+    in by_varietaet und ohne NULL/leere Zeichen. Downstream-Konsumenten
+    (Dashboards, JSON-Export) lesen den Skalar direkt statt len(by_varietaet)
+    zu berechnen. Spiegelt kategorien_total: dieselbe Distinct-Semantik,
+    andere Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vdiv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Varietaet) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Quarz", "Bergkristall"),
+            ("OBJ_0002", "Quarz", "Bergkristall"),  # Duplikat, zaehlt nur 1x
+            ("OBJ_0003", "Quarz", "Amethyst"),
+            ("OBJ_0004", "Quarz", "Rauchquarz"),
+            ("OBJ_0005", "Calcit", ""),             # leere Varietaet -> ignoriert
+            ("OBJ_0006", "Calcit", "   "),          # Whitespace-only -> ignoriert
+            ("OBJ_0007", "Calcit", None),           # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.varietaeten_total == 3   # Bergkristall, Amethyst, Rauchquarz
+    d = st.as_dict()
+    assert d["varietaeten_total"] == 3
+    # by_varietaet enthaelt die drei Varietaeten - varietaeten_total spiegelt
+    # deren Anzahl exakt, macht die Zaehlung aber ohne Umweg ueber die
+    # Dict-Laenge verfuegbar (spiegelt mineral_arten_total-Rolle).
+    assert len(st.by_varietaet) == st.varietaeten_total
+    # Diversitaets-Achsen sind orthogonal: hier eine Mineral-Familie (Quarz)
+    # mit drei dokumentierten Varietaeten - mineral_arten_total unterscheidet
+    # nur zwischen Quarz und Calcit (2), varietaeten_total zaehlt die feineren
+    # Auspraegungen (3). Die zwei Kennzahlen antworten auf verschiedene Fragen.
+    assert st.mineral_arten_total == 2
     c.close()
 
 

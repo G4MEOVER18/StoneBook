@@ -32,6 +32,12 @@ def test_text_ausgabe(migrated_db, capsys):
     assert "Fundorte:" in out
     assert "Kategorien-Arten:" in out
     assert out.index("Fundorte:") < out.index("Kategorien-Arten:")
+    # Varietaeten: viertes Diversitaets-Trio-Mitglied auf der mineralogischen
+    # Sub-Klassifizierungs-Achse (Bergkristall/Amethyst/Rauchquarz innerhalb
+    # Quarz). Steht direkt unter Kategorien-Arten - so bleiben die vier
+    # Diversitaets-Zeilen als Block im Header sichtbar.
+    assert "Varietaeten:" in out
+    assert out.index("Kategorien-Arten:") < out.index("Varietaeten:")
 
 
 def test_text_ausgabe_zeigt_confidence_buckets(migrated_db, capsys):
