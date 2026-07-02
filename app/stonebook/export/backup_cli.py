@@ -3,6 +3,8 @@
 Beispiele:
     python -m stonebook.export.backup_cli write   --backup-dir backups/
     python -m stonebook.export.backup_cli list    --backup-dir backups/
+    python -m stonebook.export.backup_cli latest  --backup-dir backups/
+    python -m stonebook.export.backup_cli oldest  --backup-dir backups/
     python -m stonebook.export.backup_cli stats   --backup-dir backups/
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli prune-gfs --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
@@ -29,7 +31,7 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           diff_backup_to_db_object_fields,
                                           import_json, inspect_backup,
                                           latest_backup, list_backups,
-                                          prune_backups_by_age,
+                                          oldest_backup, prune_backups_by_age,
                                           prune_backups_gfs, prune_old_backups,
                                           validate_backup, write_rotated_backup)
 
@@ -53,6 +55,58 @@ def _cmd_write(args: argparse.Namespace) -> int:
 def _cmd_list(args: argparse.Namespace) -> int:
     for p in list_backups(args.backup_dir):
         print(p)
+    return 0
+
+
+def _cmd_latest(args: argparse.Namespace) -> int:
+    """Gibt den Pfad zum juengsten Backup im Ordner aus (Filename-Stempel).
+
+    Spiegelt :func:`_cmd_list` (alle Backups) auf den Ein-Datei-Fall:
+    waehrend ``list`` alle Backup-Pfade aufsteigend druckt, druckt
+    ``latest`` genau den Pfad zum juengsten Backup - das gleiche Backup,
+    das :func:`_cmd_restore_latest` fuer den Auto-Restore auswaehlt. Der
+    Nutzen liegt in Skript-Ketten und Cron-Reportern, die den Pfad ohne
+    ``list ... | tail -n 1``-Umweg brauchen (``latest=$(python -m ... latest
+    --backup-dir X)``); geeignet als Anker fuer ``inspect``/``validate``/
+    ``compare-db`` auf das juengste Backup, ohne dass der Caller das
+    Filename-Sortierverhalten selbst nachbauen muss. Leerer Ordner /
+    nicht existierender Ordner liefern Exit 2 mit klarer Meldung auf
+    stderr (spiegelt :func:`_cmd_restore_latest`), sodass die Shell-
+    Kette bei fehlendem Backup nicht mit einem leeren String weiter-
+    laeuft und still das falsche Ziel-Objekt erwischt.
+    """
+    latest = latest_backup(args.backup_dir)
+    if latest is None:
+        print(f"Kein Backup im Ordner: {args.backup_dir}", file=sys.stderr)
+        return 2
+    print(latest)
+    return 0
+
+
+def _cmd_oldest(args: argparse.Namespace) -> int:
+    """Gibt den Pfad zum aeltesten Backup im Ordner aus (Filename-Stempel).
+
+    Spiegelt :func:`_cmd_latest` auf den Gegen-Endpunkt der Backup-Halde:
+    waehrend ``latest`` das juengste Backup liefert (typisch fuer Restore-
+    Dialoge und "letztes Backup ist X Stunden alt"-Reporter), beantwortet
+    ``oldest`` die naheliegende komplementaere Wartungs-Frage "wie weit
+    reicht meine Halde zurueck?" in einem Schritt (statt ``list ... |
+    head -n 1``). Geeignet als Anker fuer Prune-Preview ("was ist das
+    aelteste Backup, das ``prune-age --max-age-days 30`` loeschen wuerde?"),
+    als Sanity-Check nach Rotations-Jobs ("ist mein aeltestes Backup
+    juenger als das erwartete Cutoff?") und als Startpunkt fuer historische
+    Diff-Analysen (``compare $(oldest) $(latest)`` zeigt, wie sich die
+    Sammlung ueber die ganze Halden-Zeitspanne entwickelt hat). Leerer
+    Ordner / nicht existierender Ordner liefern Exit 2 mit klarer Meldung
+    auf stderr, spiegelt :func:`_cmd_latest` exakt - der Aufrufer
+    unterscheidet ohne Sonderbehandlung zwischen "leere Halde" und
+    "erfolgreiche Ausgabe".
+    """
+    oldest = oldest_backup(args.backup_dir)
+    if oldest is None:
+        print(f"Kein Backup im Ordner: {args.backup_dir}", file=sys.stderr)
+        return 2
+    print(oldest)
     return 0
 
 
@@ -287,6 +341,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("list", help="Vorhandene Backups auflisten.")
     sp.add_argument("--backup-dir", type=Path, required=True)
     sp.set_defaults(func=_cmd_list)
+
+    sp = sub.add_parser(
+        "latest",
+        help="Pfad zum juengsten Backup drucken (Filename-Stempel); "
+             "Exit 2 bei leerer/fehlender Halde.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.set_defaults(func=_cmd_latest)
+
+    sp = sub.add_parser(
+        "oldest",
+        help="Pfad zum aeltesten Backup drucken (Filename-Stempel); "
+             "Exit 2 bei leerer/fehlender Halde.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.set_defaults(func=_cmd_oldest)
 
     sp = sub.add_parser(
         "stats",

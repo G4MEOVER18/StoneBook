@@ -333,3 +333,117 @@ def test_restore_latest_fordert_force_bei_existierender_db(migrated_db, tmp_path
     assert exit_code == 0
     counts = json.loads(capsys.readouterr().out)
     assert counts["objects"] == 546
+
+
+def test_latest_druckt_juengsten_backup_pfad(tmp_path, capsys):
+    """latest Subcommand: druckt den Pfad zum juengsten Backup nach Filename-Stempel.
+
+    Spiegelt :func:`test_write_list_und_restore_round_trip` (list) auf den
+    Ein-Datei-Fall: waehrend ``list`` alle Backup-Pfade aufsteigend druckt,
+    druckt ``latest`` genau den Pfad zum juengsten Backup. Ordner mit
+    mehreren Backups zeigt den mit dem juengsten Filename-Stempel; die
+    Auswahl basiert auf dem Dateinamen (nicht mtime/ctime), damit vom NAS
+    kopierte Backups ihr originales Alter behalten - spiegelt
+    :func:`prune_backups_by_age`- und :func:`latest_backup`-Konvention.
+    """
+    backup_dir = tmp_path / "lt"
+    backup_dir.mkdir()
+    # Drei Pseudo-Backups mit unterschiedlichem Zeitstempel.
+    paths = []
+    for stamp in ("20240101_000000", "20240102_000000", "20240103_000000"):
+        p = backup_dir / f"stonebook_backup_{stamp}.json.gz"
+        p.write_bytes(b"")
+        paths.append(p)
+    exit_code = main(["latest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = Path(capsys.readouterr().out.strip())
+    # Das juengste (2024-01-03) ist der neueste Filename-Stempel.
+    assert out == paths[2]
+
+
+def test_latest_leerer_ordner_exit_2(tmp_path, capsys):
+    """latest Subcommand: leerer/fehlender Ordner -> Exit 2 mit Fehlerhinweis.
+
+    Spiegelt :func:`test_restore_latest_leerer_ordner_exit_2` auf die
+    read-only Auto-Auswahl-Achse: ohne verfuegbares Backup ist ``latest``
+    semantisch undefiniert, der Aufrufer soll den Fehler ohne stille
+    Zeichenkette abfangen koennen (sonst laeuft die Shell-Kette bei
+    fehlendem Backup mit leerem Pfad weiter und erwischt still das
+    falsche Ziel).
+    """
+    exit_code = main(["latest", "--backup-dir", str(tmp_path / "nichts")])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "Kein Backup" in err
+
+
+def test_latest_ignoriert_fremde_dateien(tmp_path, capsys):
+    """latest Subcommand: fremde Dateien im Ordner werden nicht als Backup betrachtet.
+
+    Spiegelt :func:`test_prune_ignoriert_fremde_dateien` auf die
+    read-only Achse: die Auto-Auswahl folgt exakt dem Filename-Schema
+    von :func:`write_rotated_backup`, sodass eine README oder ein
+    fremder Export im Backup-Ordner nicht faelschlich als "juengstes
+    Backup" gedruckt wird.
+    """
+    backup_dir = tmp_path / "mix"
+    backup_dir.mkdir()
+    (backup_dir / "stonebook_backup_20240101_000000.json.gz").write_bytes(b"")
+    (backup_dir / "README.md").write_bytes(b"Backup-Ordner\n")
+    (backup_dir / "export.csv").write_bytes(b"id,name\n")
+    (backup_dir / "stonebook_backup_20240102_000000.json.gz").write_bytes(b"")
+    exit_code = main(["latest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("stonebook_backup_20240102_000000.json.gz")
+
+
+def test_oldest_druckt_aeltesten_backup_pfad(tmp_path, capsys):
+    """oldest Subcommand: druckt den Pfad zum aeltesten Backup nach Filename-Stempel.
+
+    Spiegelt :func:`test_latest_druckt_juengsten_backup_pfad` auf den
+    Gegen-Endpunkt der Backup-Halde. Ordner mit mehreren Backups zeigt
+    den mit dem aeltesten Filename-Stempel; damit hat der Aufrufer einen
+    direkten Anker fuer Prune-Preview und historische Diff-Analysen
+    (``compare $(oldest) $(latest)``).
+    """
+    backup_dir = tmp_path / "ol"
+    backup_dir.mkdir()
+    paths = []
+    for stamp in ("20240101_000000", "20240102_000000", "20240103_000000"):
+        p = backup_dir / f"stonebook_backup_{stamp}.json.gz"
+        p.write_bytes(b"")
+        paths.append(p)
+    exit_code = main(["oldest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = Path(capsys.readouterr().out.strip())
+    # Das aelteste (2024-01-01) ist der frueheste Filename-Stempel.
+    assert out == paths[0]
+
+
+def test_oldest_leerer_ordner_exit_2(tmp_path, capsys):
+    """oldest Subcommand: leerer/fehlender Ordner -> Exit 2 mit Fehlerhinweis.
+
+    Spiegelt :func:`test_latest_leerer_ordner_exit_2` auf den Gegen-Endpunkt.
+    """
+    exit_code = main(["oldest", "--backup-dir", str(tmp_path / "nichts")])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "Kein Backup" in err
+
+
+def test_oldest_ignoriert_fremde_dateien(tmp_path, capsys):
+    """oldest Subcommand: fremde Dateien im Ordner werden nicht als Backup betrachtet.
+
+    Spiegelt :func:`test_latest_ignoriert_fremde_dateien` auf den
+    Gegen-Endpunkt.
+    """
+    backup_dir = tmp_path / "mix"
+    backup_dir.mkdir()
+    (backup_dir / "stonebook_backup_20240101_000000.json.gz").write_bytes(b"")
+    (backup_dir / "README.md").write_bytes(b"Backup-Ordner\n")
+    (backup_dir / "stonebook_backup_20240102_000000.json.gz").write_bytes(b"")
+    exit_code = main(["oldest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("stonebook_backup_20240101_000000.json.gz")
