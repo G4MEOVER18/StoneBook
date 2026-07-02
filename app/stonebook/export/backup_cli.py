@@ -5,6 +5,8 @@ Beispiele:
     python -m stonebook.export.backup_cli list    --backup-dir backups/
     python -m stonebook.export.backup_cli latest  --backup-dir backups/
     python -m stonebook.export.backup_cli oldest  --backup-dir backups/
+    python -m stonebook.export.backup_cli largest --backup-dir backups/
+    python -m stonebook.export.backup_cli smallest --backup-dir backups/
     python -m stonebook.export.backup_cli stats   --backup-dir backups/
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli prune-gfs --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
@@ -30,10 +32,12 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           diff_backup_object_fields,
                                           diff_backup_to_db_object_fields,
                                           import_json, inspect_backup,
-                                          latest_backup, list_backups,
-                                          oldest_backup, prune_backups_by_age,
+                                          largest_backup, latest_backup,
+                                          list_backups, oldest_backup,
+                                          prune_backups_by_age,
                                           prune_backups_gfs, prune_old_backups,
-                                          validate_backup, write_rotated_backup)
+                                          smallest_backup, validate_backup,
+                                          write_rotated_backup)
 
 
 def _cmd_write(args: argparse.Namespace) -> int:
@@ -107,6 +111,55 @@ def _cmd_oldest(args: argparse.Namespace) -> int:
         print(f"Kein Backup im Ordner: {args.backup_dir}", file=sys.stderr)
         return 2
     print(oldest)
+    return 0
+
+
+def _cmd_largest(args: argparse.Namespace) -> int:
+    """Gibt den Pfad zum groessten Backup im Ordner aus (Bytes auf Platte).
+
+    Spiegelt :func:`_cmd_latest` / :func:`_cmd_oldest` (Zeit-Achse ueber den
+    Filename-Stempel) auf die Volume-Achse (Bytes auf Platte). Waehrend
+    ``latest`` das juengste Backup als Restore-Anker liefert, beantwortet
+    ``largest`` die naheliegende Wartungs-Frage "welches Backup belegt am
+    meisten Platz?" in einem Schritt, ohne dass der Aufrufer die
+    Sortierung selbst nachbauen muss. Geeignet als Anker fuer Anomalie-
+    Detektion ("ist das juengste Backup groesser als sonst?"), als
+    Kandidat fuer die erste Prune-Entscheidung im Speicher-Report und als
+    Referenz fuer Kompressions-Vergleiche (``.json`` vs. ``.json.gz``
+    desselben Zeitraums). Leerer Ordner / nicht existierender Ordner
+    liefern Exit 2 mit klarer Meldung auf stderr (spiegelt :func:`_cmd_latest`),
+    sodass die Shell-Kette bei fehlendem Backup nicht mit einem leeren
+    String weiterlaeuft.
+    """
+    largest = largest_backup(args.backup_dir)
+    if largest is None:
+        print(f"Kein Backup im Ordner: {args.backup_dir}", file=sys.stderr)
+        return 2
+    print(largest)
+    return 0
+
+
+def _cmd_smallest(args: argparse.Namespace) -> int:
+    """Gibt den Pfad zum kleinsten Backup im Ordner aus (Bytes auf Platte).
+
+    Spiegelt :func:`_cmd_largest` auf den Gegen-Endpunkt der Volume-Achse,
+    exakt wie :func:`_cmd_oldest` das Gegenstueck zu :func:`_cmd_latest`
+    auf der Zeit-Achse bildet. Waehrend ``largest`` das groesste Backup
+    als Anomalie-Kandidat ("ploetzlich viel Wachstum?") liefert,
+    beantwortet ``smallest`` die Kehrfrage "welches Backup ist am
+    schlanksten - potentiell abgebrochene Schreibe, fehlerhaft komprimiert,
+    oder aus einer sehr fruehen Phase mit kleinerer Sammlung?" in einem
+    Schritt. Geeignet als Verdachts-Anker fuer Backup-Integritaets-Checks
+    (auffaellig kleine Dateien via ``validate`` gegenchecken) und als
+    Referenz fuer die Baseline-Groesse einer frisch-migrierten DB. Leerer
+    Ordner / nicht existierender Ordner liefern Exit 2, spiegelt
+    :func:`_cmd_largest` exakt.
+    """
+    smallest = smallest_backup(args.backup_dir)
+    if smallest is None:
+        print(f"Kein Backup im Ordner: {args.backup_dir}", file=sys.stderr)
+        return 2
+    print(smallest)
     return 0
 
 
@@ -355,6 +408,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
              "Exit 2 bei leerer/fehlender Halde.")
     sp.add_argument("--backup-dir", type=Path, required=True)
     sp.set_defaults(func=_cmd_oldest)
+
+    sp = sub.add_parser(
+        "largest",
+        help="Pfad zum groessten Backup drucken (Bytes auf Platte); "
+             "Exit 2 bei leerer/fehlender Halde.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.set_defaults(func=_cmd_largest)
+
+    sp = sub.add_parser(
+        "smallest",
+        help="Pfad zum kleinsten Backup drucken (Bytes auf Platte); "
+             "Exit 2 bei leerer/fehlender Halde.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.set_defaults(func=_cmd_smallest)
 
     sp = sub.add_parser(
         "stats",

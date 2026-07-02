@@ -447,3 +447,112 @@ def test_oldest_ignoriert_fremde_dateien(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out.strip()
     assert out.endswith("stonebook_backup_20240101_000000.json.gz")
+
+
+def test_largest_druckt_groessten_backup_pfad(tmp_path, capsys):
+    """largest Subcommand: druckt den Pfad zum groessten Backup (Bytes auf Platte).
+
+    Spiegelt :func:`test_latest_druckt_juengsten_backup_pfad` auf die
+    Volume-Achse: waehrend ``latest`` das juengste Backup nach Filename-
+    Stempel liefert, liefert ``largest`` das groesste Backup nach
+    ``st_size``. Drei Backups mit unterschiedlichen Groessen; das mit
+    dem hoechsten Byte-Count wird gedruckt.
+    """
+    backup_dir = tmp_path / "lg"
+    backup_dir.mkdir()
+    # Drei Backups mit unterschiedlicher Groesse (Byte-Count spielt hier
+    # die Rolle des Sortier-Schluessels, nicht der Filename-Stempel).
+    (backup_dir / "stonebook_backup_20240101_000000.json.gz").write_bytes(b"x" * 100)
+    (backup_dir / "stonebook_backup_20240102_000000.json.gz").write_bytes(b"x" * 500)
+    (backup_dir / "stonebook_backup_20240103_000000.json.gz").write_bytes(b"x" * 200)
+    exit_code = main(["largest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = Path(capsys.readouterr().out.strip())
+    # Groesstes Backup (500 Bytes) ist das vom 2024-01-02, nicht das juengste.
+    assert out.name == "stonebook_backup_20240102_000000.json.gz"
+
+
+def test_largest_leerer_ordner_exit_2(tmp_path, capsys):
+    """largest Subcommand: leerer/fehlender Ordner -> Exit 2 mit Fehlerhinweis.
+
+    Spiegelt :func:`test_latest_leerer_ordner_exit_2` auf die Volume-Achse.
+    """
+    exit_code = main(["largest", "--backup-dir", str(tmp_path / "nichts")])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "Kein Backup" in err
+
+
+def test_largest_ignoriert_fremde_dateien(tmp_path, capsys):
+    """largest Subcommand: fremde Dateien im Ordner werden nicht betrachtet.
+
+    Auch wenn eine fremde Datei groesser ist als jedes echte Backup,
+    liefert ``largest`` immer nur einen Pfad, der zum
+    :func:`write_rotated_backup`-Schema passt - spiegelt
+    :func:`test_latest_ignoriert_fremde_dateien` auf die Volume-Achse.
+    """
+    backup_dir = tmp_path / "mix"
+    backup_dir.mkdir()
+    (backup_dir / "stonebook_backup_20240101_000000.json.gz").write_bytes(b"x" * 100)
+    (backup_dir / "stonebook_backup_20240102_000000.json.gz").write_bytes(b"x" * 200)
+    # Fremde Datei mit viel mehr Bytes darf nicht als "groesstes Backup"
+    # ausgegeben werden - der Ordner-Filter ueber _BACKUP_RE greift schon
+    # in list_backups.
+    (backup_dir / "haufen_daten.bin").write_bytes(b"x" * 100_000)
+    exit_code = main(["largest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("stonebook_backup_20240102_000000.json.gz")
+
+
+def test_smallest_druckt_kleinsten_backup_pfad(tmp_path, capsys):
+    """smallest Subcommand: druckt den Pfad zum kleinsten Backup (Bytes auf Platte).
+
+    Spiegelt :func:`test_largest_druckt_groessten_backup_pfad` auf den
+    Gegen-Endpunkt der Volume-Achse - geeignet als Verdachts-Anker fuer
+    abgebrochene Schreiben oder Backups aus fruehen Sammlungs-Phasen.
+    """
+    backup_dir = tmp_path / "sm"
+    backup_dir.mkdir()
+    (backup_dir / "stonebook_backup_20240101_000000.json.gz").write_bytes(b"x" * 100)
+    (backup_dir / "stonebook_backup_20240102_000000.json.gz").write_bytes(b"x" * 500)
+    (backup_dir / "stonebook_backup_20240103_000000.json.gz").write_bytes(b"x" * 200)
+    exit_code = main(["smallest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = Path(capsys.readouterr().out.strip())
+    # Kleinstes Backup (100 Bytes) ist das vom 2024-01-01, nicht das aelteste
+    # zufaellig - hier stimmt beides zusammen, aber der Sortier-Schluessel
+    # ist Byte-Count.
+    assert out.name == "stonebook_backup_20240101_000000.json.gz"
+
+
+def test_smallest_leerer_ordner_exit_2(tmp_path, capsys):
+    """smallest Subcommand: leerer/fehlender Ordner -> Exit 2 mit Fehlerhinweis.
+
+    Spiegelt :func:`test_largest_leerer_ordner_exit_2`.
+    """
+    exit_code = main(["smallest", "--backup-dir", str(tmp_path / "nichts")])
+    assert exit_code == 2
+    err = capsys.readouterr().err
+    assert "Kein Backup" in err
+
+
+def test_smallest_ignoriert_fremde_dateien(tmp_path, capsys):
+    """smallest Subcommand: fremde Dateien im Ordner werden nicht betrachtet.
+
+    Auch wenn eine fremde Datei kleiner ist (z.B. leere README) als jedes
+    echte Backup, liefert ``smallest`` immer nur einen Pfad, der zum
+    :func:`write_rotated_backup`-Schema passt - spiegelt
+    :func:`test_largest_ignoriert_fremde_dateien` auf den Gegen-Endpunkt.
+    """
+    backup_dir = tmp_path / "mix"
+    backup_dir.mkdir()
+    (backup_dir / "stonebook_backup_20240101_000000.json.gz").write_bytes(b"x" * 500)
+    (backup_dir / "stonebook_backup_20240102_000000.json.gz").write_bytes(b"x" * 200)
+    # Fremde Datei mit weniger Bytes darf nicht als "kleinstes Backup"
+    # ausgegeben werden.
+    (backup_dir / "leere_notiz.txt").write_bytes(b"")
+    exit_code = main(["smallest", "--backup-dir", str(backup_dir)])
+    assert exit_code == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("stonebook_backup_20240102_000000.json.gz")
