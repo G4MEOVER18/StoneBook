@@ -8726,3 +8726,149 @@ def test_confidence_standardabweichung_prozent_bei_uniformen_werten_ist_null(tmp
     assert st.durchschnitt_confidence_prozent == 85.0
     assert st.confidence_standardabweichung_prozent == 0.0
     c.close()
+
+
+def test_confidence_variationskoeffizient_aus_bekannten_werten(tmp_path):
+    """CV Confidence = sigma / mean * 100 in Prozent auf der Sicherheits-Achse.
+
+    Spiegelt test_wert_variationskoeffizient_aus_seed_db /
+    test_gewicht_variationskoeffizient_aus_seed_db /
+    test_mohs_variationskoeffizient_aus_seed_db /
+    test_dichte_variationskoeffizient_aus_seed_db auf die Confidence-Achse.
+    Fuenf Confidence-Werte 20/40/60/80/100 → Ø=60, Varianz=800, sigma=
+    sqrt(800) ≈ 28.28. CV = 28.28 / 60 * 100 ≈ 47.14 %. Reuse der
+    bekannten Verteilung aus dem sigma-Test, damit die CV-Rechnung direkt
+    auf denselben Werten nachvollziehbar bleibt.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 20),
+            ("OBJ_0002", 40),
+            ("OBJ_0003", 60),
+            ("OBJ_0004", 80),
+            ("OBJ_0005", 100),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    expected_cv = (800.0 ** 0.5) / 60.0 * 100.0
+    assert st.confidence_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-6)
+    # as_dict rundet auf 2 Nachkommastellen (spiegelt wert/gewicht/mohs/
+    # dichte-CV-Serialisierung).
+    assert st.as_dict()["confidence_variationskoeffizient_prozent"] == round(
+        expected_cv, 2)
+    c.close()
+
+
+def test_confidence_variationskoeffizient_leer(tmp_path):
+    """Ohne Confidence-Pflege bleibt der CV None (dataclass-Default).
+
+    Spiegelt die confidence_standardabweichung_/durchschnitt_/median_/min_/
+    max_prozent-None-Konvention: score-basierte Groessen mit None statt 0.0
+    im Undefined-Fall, damit Downstream-Konsumenten den Undefined-Zustand
+    transparent unterscheiden koennen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_cv_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.confidence_variationskoeffizient_prozent is None
+    assert st.as_dict()["confidence_variationskoeffizient_prozent"] is None
+    c.close()
+
+
+def test_confidence_variationskoeffizient_bei_uniformen_werten_ist_null(tmp_path):
+    """Bei uniformen Confidence-Scores kollabiert CV auf 0.0 (sigma=0).
+
+    Spiegelt die Uniform-Kollaps-Semantik der CV-Wert / CV-Gewicht /
+    CV-Mohs / CV-Dichte: alle Abweichungen zum Mittel sind 0, damit ist
+    sigma 0 und CV = 0 / mean * 100 = 0.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_cv_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 85), ("OBJ_0002", 85), ("OBJ_0003", 85)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_variationskoeffizient_prozent == pytest.approx(
+        0.0, abs=1e-9)
+    c.close()
+
+
+def test_confidence_variationskoeffizient_bei_einem_eintrag_ist_null(tmp_path):
+    """Bei genau einem Confidence-Eintrag ist sigma 0.0 und damit CV 0.0.
+
+    Single-Point-Kollaps analog CV Wert / CV Gewicht / CV Mohs / CV Dichte.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_cv_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 77), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_variationskoeffizient_prozent == pytest.approx(
+        0.0, abs=1e-9)
+    c.close()
+
+
+def test_confidence_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
+    """CV Confidence reagiert auf Bestimmungs-Sicherheits-Ausreisser.
+
+    Neun Referenz-Bestimmungen (Confidence 90) + ein tentativer
+    Feldbestimmung-Ausreisser (Confidence 20). Ø = (9*90 + 20)/10 = 83.
+    Varianz = (9*(90-83)^2 + (20-83)^2)/10 = (9*49 + 3969)/10 =
+    (441 + 3969)/10 = 441 → sigma = sqrt(441) = 21. CV = 21 / 83 * 100
+    ≈ 25.30 %. Zeigt die Bestimmungs-Sicherheits-Heterogenitaet an einer
+    skalen-unabhaengigen Kennzahl direkt vergleichbar mit CV Wert / CV
+    Gewicht / CV Mohs / CV Dichte.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_cv_ausreisser.sqlite3")
+    rows = [(f"OBJ_{i:04d}", 90) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 20))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    expected_cv = 21.0 / 83.0 * 100.0
+    assert st.confidence_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-6)
+    c.close()
+
+
+def test_confidence_variationskoeffizient_ignoriert_out_of_range(tmp_path):
+    """Out-of-Range-Confidence-Werte (<0 / >100) fliessen weder in mean noch sigma.
+
+    Spiegelt die confidence_standardabweichung_prozent-Konvention (strikter
+    lokaler Mittelwert ueber BETWEEN 0 AND 100). Der reine 60/70/80-Cluster
+    ergibt lokal Ø=70, Varianz=200/3, sigma=sqrt(200/3), CV=sigma/70*100.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_cv_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 60),
+            ("OBJ_0002", 70),
+            ("OBJ_0003", 80),
+            ("OBJ_0004", 200),
+            ("OBJ_0005", -50),
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    expected_sigma = (200.0 / 3.0) ** 0.5
+    expected_cv = expected_sigma / 70.0 * 100.0
+    assert st.confidence_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-9)
+    c.close()

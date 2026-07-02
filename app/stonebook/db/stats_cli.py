@@ -449,6 +449,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"σ Confidence:          "
             f"{st.confidence_standardabweichung_prozent:.1f} %")
+    if st.confidence_variationskoeffizient_prozent is not None:
+        # CV Confidence (%): dimensionsloser Variationskoeffizient
+        # (sigma/mean * 100) auf der Bestimmungs-Sicherheits-Achse.
+        # Spiegelt CV Wert / CV Gewicht / CV Mohs / CV Dichte auf die
+        # Confidence-Achse und vervollstaendigt damit das CV-Quintett
+        # auf allen fuenf zentralen Kennzahlen-Achsen der Sammlung -
+        # dimensionslos vergleichbar zwischen Waehrung, Masse, Haerte,
+        # Dichte und Sicherheits-Score. Direkt unter der sigma-Zeile,
+        # damit der Dispersions-Block (sigma + CV) als geschlossene
+        # Einheit am Ende des Confidence-Blocks sichtbar bleibt
+        # (spiegelt CV Wert (%) / CV Gewicht (%) / CV Mohs (%) /
+        # CV Dichte (%)-Position in den jeweiligen Bloecken).
+        lines.append(
+            f"CV Confidence (%):     "
+            f"{st.confidence_variationskoeffizient_prozent:.1f}")
     # Coverage-Quoten beantworten "Wie viel meiner Sammlung ist dokumentiert?"
     # Nur ausgeben, wenn ueberhaupt Objekte vorhanden sind (sonst sind alle
     # Quoten None und die Zeilen waeren nichtssagend).

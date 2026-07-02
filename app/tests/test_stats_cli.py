@@ -5798,3 +5798,92 @@ def test_json_ausgabe_zeigt_variationskoeffizient_dichte(tmp_path, capsys):
     main(["--db", str(db_file2), "--json"])
     payload2 = json.loads(capsys.readouterr().out)
     assert payload2["dichte_kollektion_variationskoeffizient_prozent"] is None
+
+
+def test_text_ausgabe_zeigt_variationskoeffizient_confidence(tmp_path, capsys):
+    """CV Confidence (%) steht direkt unter sigma Confidence.
+
+    Fuenf Confidence-Werte 20/40/60/80/100 → Ø=60, sigma≈28.28, CV≈47.1 %.
+    Verifiziert die Reihenfolge sigma → CV, damit der Dispersions-Block
+    (sigma + CV) als geschlossene Einheit am Ende des Confidence-Blocks
+    sichtbar bleibt (spiegelt CV Wert / CV Gewicht / CV Mohs / CV Dichte).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_conf.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 20),
+            ("OBJ_0002", 40),
+            ("OBJ_0003", 60),
+            ("OBJ_0004", 80),
+            ("OBJ_0005", 100),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Confidence:" in out
+    assert "CV Confidence (%):" in out
+    assert out.index("σ Confidence:") < out.index("CV Confidence (%):")
+    # CV ≈ 47.1 (eine Nachkommastelle im CLI-Format).
+    assert "47.1" in out
+
+
+def test_text_ausgabe_ohne_confidence_keine_variationskoeffizient_zeile(
+        tmp_path, capsys):
+    """Ohne Confidence-Pflege erscheint die CV-Confidence-Zeile nicht.
+
+    Spiegelt die sigma-Confidence-Zeile-Absenz-Konvention (is not None).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_c_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "CV Confidence" not in out
+
+
+def test_json_ausgabe_zeigt_variationskoeffizient_confidence(tmp_path, capsys):
+    """--json enthaelt confidence_variationskoeffizient_prozent."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_c_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 20),
+            ("OBJ_0002", 40),
+            ("OBJ_0003", 60),
+            ("OBJ_0004", 80),
+            ("OBJ_0005", 100),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "confidence_variationskoeffizient_prozent" in payload
+    assert isinstance(
+        payload["confidence_variationskoeffizient_prozent"], float)
+    expected_cv = (800.0 ** 0.5) / 60.0 * 100.0
+    assert payload["confidence_variationskoeffizient_prozent"] == pytest.approx(
+        round(expected_cv, 2), abs=1e-2)
+
+    db_file2 = tmp_path / "cv_c_json_leer.sqlite3"
+    c2 = open_db(db_file2)
+    c2.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)", [("OBJ_0001",)])
+    c2.commit()
+    c2.close()
+    main(["--db", str(db_file2), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert payload2["confidence_variationskoeffizient_prozent"] is None

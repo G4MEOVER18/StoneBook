@@ -189,6 +189,7 @@ class Statistik:
     confidence_min_prozent: int | None = None
     confidence_max_prozent: int | None = None
     confidence_standardabweichung_prozent: float | None = None
+    confidence_variationskoeffizient_prozent: float | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
@@ -1418,6 +1419,11 @@ class Statistik:
             "confidence_standardabweichung_prozent": (
                 round(self.confidence_standardabweichung_prozent, 2)
                 if self.confidence_standardabweichung_prozent is not None else None
+            ),
+            "confidence_variationskoeffizient_prozent": (
+                round(self.confidence_variationskoeffizient_prozent, 2)
+                if self.confidence_variationskoeffizient_prozent is not None
+                else None
             ),
             "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
@@ -3595,6 +3601,53 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         st.confidence_standardabweichung_prozent = (
             sum((c - conf_mean) ** 2 for c in conf_werte) / len(conf_werte)
         ) ** 0.5
+        # confidence_variationskoeffizient_prozent: dimensionsloser
+        # Variationskoeffizient (sigma/mean * 100) als Ergaenzung zu
+        # confidence_standardabweichung_prozent. Vervollstaendigt damit
+        # das CV-Quintett wert_/gewicht_/mohs_kollektion_/dichte_kollektion_
+        # variationskoeffizient_prozent auf allen fuenf zentralen
+        # Kennzahlen-Achsen der Sammlung, strukturidentisch zum bereits
+        # etablierten sigma-Quintett Wert/Gewicht/Mohs/Dichte/Confidence.
+        # Waehrend sigma die Streuung in Original-Einheiten (Prozentpunkten
+        # auf der Confidence-Skala) beziffert, normiert der CV sigma auf
+        # den Confidence-Durchschnitt und macht die Bestimmungs-Sicherheits-
+        # Streuung skalen-unabhaengig direkt mit CV Wert / CV Gewicht /
+        # CV Mohs / CV Dichte vergleichbar - fuenf dimensionslos-normierte
+        # Homogenitaets-Sichten auf einer einheitlichen Prozent-Skala,
+        # sodass eine Sammlung als "wertlich heterogen (CV 200%), Massen
+        # moderat (CV 80%), Haerte-homogen (CV 5%), Dichte-homogen (CV 2%),
+        # Bestimmungs-Sicherheit gleichfoermig (CV 4%)" charakterisierbar
+        # wird. Reuse-Pfad: greift den bereits berechneten conf_mean
+        # (BETWEEN 0 AND 100-gefiltert) und die frisch geschriebene
+        # confidence_standardabweichung_prozent ab - kein zusaetzlicher
+        # SQL-Round-Trip, keine zweite Listen-Iteration ueber conf_werte.
+        # Der lokale conf_mean wird bewusst verwendet (nicht das SQL-AVG-
+        # basierte durchschnitt_confidence_prozent), spiegelt die
+        # confidence_standardabweichung_prozent-Konvention: bei einem
+        # out-of-range-Verstoss (Confidence 200) wuerde AVG den Mittelwert
+        # nach oben verzerren, waehrend conf_mean strikt auf 0..100
+        # normiert bleibt - CV muss konsistent zum sigma-Anker rechnen,
+        # sonst waere die Division sinnlos. Guarded gegen conf_mean == 0
+        # (bei ausschliesslich 0er-Confidence-Werten - erlaubt vom
+        # BETWEEN 0 AND 100-Filter, aber semantisch "unbewertet" und
+        # damit kein sinnvoller CV-Anker). Bei einem einzelnen Confidence-
+        # Eintrag oder uniformen Werten kollabiert sigma auf 0.0 und
+        # damit CV auf 0.0 (spiegelt die _wert/_gewicht/_mohs/_dichte-
+        # Uniform-Kollaps-Semantik). Bei leerer DB / ohne jegliche
+        # Confidence-Pflege bleibt None (dataclass-Default), spiegelt die
+        # confidence_standardabweichung_prozent-/median_/durchschnitt_/
+        # min_/max_-None-Konvention (score-basierte Groessen mit None
+        # statt 0 im Undefined-Fall) und stellt Symmetrie zu
+        # mohs_kollektion_/dichte_kollektion_variationskoeffizient_prozent
+        # her (mean-basierte Groessen mit None im Undefined-Fall) - im
+        # Gegensatz zu wert_/gewicht_variationskoeffizient_prozent, die
+        # analog dazu bei mean == 0 None bleiben, aber bei fehlender Pflege
+        # ebenfalls None (nicht 0.0) sind. Als Percent-Groesse serialisiert
+        # mit round(x, 2) in as_dict, spiegelt das wert_/gewicht_/mohs_/
+        # dichte_variationskoeffizient_prozent-Serialisierungs-Format.
+        if conf_mean > 0:
+            st.confidence_variationskoeffizient_prozent = (
+                st.confidence_standardabweichung_prozent / conf_mean * 100.0)
     st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(
