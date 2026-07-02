@@ -8071,3 +8071,151 @@ def test_wert_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
     assert st.wert_variationskoeffizient_prozent == pytest.approx(
         expected_cv, abs=1e-9)
     c.close()
+
+
+def test_gewicht_variationskoeffizient_aus_seed_db(tmp_path):
+    """CV Gewicht = sigma / mean * 100 in Prozent auf der Massen-Achse.
+
+    Spiegelt test_wert_variationskoeffizient_aus_seed_db auf die Gewicht-
+    Achse. Aus test_gewicht_standardabweichung_aus_seed_db (gleicher
+    Seed): 10/20/30/40 → Ø=25, sigma=sqrt(125)≈11.180.
+    CV = 11.180 / 25 * 100 ≈ 44.72 % (identisch zum Wert-CV bei gleichen
+    proportionalen Werten, weil CV skalen-invariant ist).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 10.0),
+            ("OBJ_0002", 20.0),
+            ("OBJ_0003", 30.0),
+            ("OBJ_0004", 40.0),
+            ("OBJ_0005", None),
+            ("OBJ_0006", 0.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_durchschnitt_g == 25.0
+    expected_cv = (125.0 ** 0.5) / 25.0 * 100.0
+    assert st.gewicht_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-9)
+    d = st.as_dict()
+    assert d["gewicht_variationskoeffizient_prozent"] == pytest.approx(
+        44.72, abs=1e-2)
+    c.close()
+
+
+def test_gewicht_variationskoeffizient_leer(tmp_path):
+    """Ohne Gewicht-Pflege bleibt der CV None (dataclass-Default).
+
+    Spiegelt die wert_variationskoeffizient_prozent-None-Konvention:
+    CV ist mathematisch undefined bei mean = 0, anders als sigma (0.0
+    bei leerer DB). None macht den Undefined-Zustand fuer Downstream-
+    Konsumenten (as_dict / CLI / Dashboard) transparent unterscheidbar.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_cv_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_variationskoeffizient_prozent is None
+    d = st.as_dict()
+    assert d["gewicht_variationskoeffizient_prozent"] is None
+    c.close()
+
+
+def test_gewicht_variationskoeffizient_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Gewicht-Eintrag kollabiert der CV auf 0.0.
+
+    sigma = 0 bei nur einem Datenpunkt → CV = 0/mean * 100 = 0.0.
+    Spiegelt test_wert_variationskoeffizient_einzelobjekt auf die
+    Massen-Achse. CV ist definiert (nicht None), weil mean > 0 (der
+    Einzel-Gewicht-Wert selbst).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_cv_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 42.5), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_gewicht == 1
+    assert st.gewicht_variationskoeffizient_prozent == 0.0
+    c.close()
+
+
+def test_gewicht_variationskoeffizient_uniform(tmp_path):
+    """Bei identischen Gewichten ist der CV 0.0 (voellige Homogenitaet).
+
+    Kern-Eigenschaft der skalen-unabhaengigen Dispersions-Achse:
+    fuenf Stuecke a 100 g → sigma 0.0 → CV 0.0 %. Spiegelt
+    test_wert_variationskoeffizient_uniform auf die Massen-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_cv_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 100.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gewicht_variationskoeffizient_prozent == 0.0
+    c.close()
+
+
+def test_gewicht_variationskoeffizient_skalen_invariant(tmp_path):
+    """CV Gewicht ist skalen-invariant: eine 10-fache Umskalierung aendert CV nicht.
+
+    Kern-Eigenschaft des Variationskoeffizienten (sigma/mean skaliert
+    mit demselben Faktor wie die Werte). Zwei Sammlungen 1/2/3/4 g und
+    10/20/30/40 g haben unterschiedliche sigma und unterschiedliche
+    mean, aber identische CVs.
+    """
+    from stonebook.db.database import open_db
+    c1 = open_db(tmp_path / "g_cv_klein.sqlite3")
+    c1.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 1.0), ("OBJ_0002", 2.0),
+         ("OBJ_0003", 3.0), ("OBJ_0004", 4.0)],
+    )
+    c1.commit()
+    cv_klein = compute_statistics(c1).gewicht_variationskoeffizient_prozent
+    c1.close()
+
+    c2 = open_db(tmp_path / "g_cv_gross.sqlite3")
+    c2.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 20.0),
+         ("OBJ_0003", 30.0), ("OBJ_0004", 40.0)],
+    )
+    c2.commit()
+    cv_gross = compute_statistics(c2).gewicht_variationskoeffizient_prozent
+    c2.close()
+
+    assert cv_klein is not None and cv_gross is not None
+    assert cv_klein == pytest.approx(cv_gross, abs=1e-9)
+
+
+def test_gewicht_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
+    """CV Gewicht reagiert auf Massen-Ausreisser (Erbe von sigma).
+
+    Aus test_gewicht_standardabweichung_reagiert_auf_ausreisser: neun
+    Splitter (1 g) + ein Handstueck (100 g). Ø = 10.9, sigma ≈ 29.7.
+    CV = 29.7 / 10.9 * 100 ≈ 272 %. Zeigt die hochgradig heterogene
+    Massen-Verteilung an einer einzigen dimensionslosen Kennzahl,
+    komplementaer zu Median (bleibt bei 1.0 g).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "g_cv_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 1.0) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 100.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    # sigma ≈ sqrt(882.09), mean = 10.9
+    expected_cv = (882.09 ** 0.5) / 10.9 * 100.0
+    assert st.gewicht_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-6)
+    c.close()

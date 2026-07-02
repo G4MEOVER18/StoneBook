@@ -5486,3 +5486,88 @@ def test_json_ausgabe_zeigt_variationskoeffizient_wert(tmp_path, capsys):
     main(["--db", str(db_file2), "--json"])
     payload2 = json.loads(capsys.readouterr().out)
     assert payload2["wert_variationskoeffizient_prozent"] is None
+
+
+def test_text_ausgabe_zeigt_variationskoeffizient_gewicht(tmp_path, capsys):
+    """CV Gewicht (%) steht direkt unter sigma Gewicht (g).
+
+    Vier Gewichte 10/20/30/40 → sigma≈11.180, mean=25, CV≈44.7 %.
+    Verifiziert die Reihenfolge sigma → CV, damit der Dispersions-Block
+    aus sigma (Original-Einheit g) und CV (dimensionslos in Prozent)
+    als geschlossene Einheit am Ende des Gewicht-Blocks steht (spiegelt
+    die CV Wert (%)-Position im Wert-Block).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_gewicht.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 20.0),
+         ("OBJ_0003", 30.0), ("OBJ_0004", 40.0)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Gewicht (g):" in out
+    assert "CV Gewicht (%):" in out
+    assert out.index("σ Gewicht (g):") < out.index("CV Gewicht (%):")
+    # CV ≈ 44.7 - eine Nachkommastelle im CLI-Format.
+    assert "44.7" in out
+
+
+def test_text_ausgabe_ohne_gewicht_keine_variationskoeffizient_zeile(
+        tmp_path, capsys):
+    """Ohne Gewicht-Pflege erscheint die CV-Gewicht-Zeile nicht.
+
+    Spiegelt die sigma-Gewicht-Zeile-Absenz-Konvention (if
+    objekte_mit_gewicht:) und haelt den Bericht bei leerer Sammlung
+    frei von Undefined-Zeilen.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_g_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "CV Gewicht" not in out
+
+
+def test_json_ausgabe_zeigt_variationskoeffizient_gewicht(tmp_path, capsys):
+    """--json enthaelt gewicht_variationskoeffizient_prozent als Float / None.
+
+    Bei gepflegter Sammlung: Float in Prozent. Bei leerer Sammlung: None
+    (spiegelt die dataclass-Default-Konvention und macht den Undefined-
+    Zustand fuer Downstream-Konsumenten transparent unterscheidbar).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_g_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 20.0),
+         ("OBJ_0003", 30.0), ("OBJ_0004", 40.0)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "gewicht_variationskoeffizient_prozent" in payload
+    assert isinstance(payload["gewicht_variationskoeffizient_prozent"], float)
+    assert payload["gewicht_variationskoeffizient_prozent"] == pytest.approx(
+        44.72, abs=1e-2)
+
+    db_file2 = tmp_path / "cv_g_json_leer.sqlite3"
+    c2 = open_db(db_file2)
+    c2.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)", [("OBJ_0001",)])
+    c2.commit()
+    c2.close()
+    main(["--db", str(db_file2), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert payload2["gewicht_variationskoeffizient_prozent"] is None

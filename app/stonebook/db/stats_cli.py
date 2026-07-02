@@ -115,6 +115,22 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # zusammen bleibt und die Dispersions-Zeile abschliesst.
         lines.append(
             f"  σ Gewicht (g):       {st.gewicht_standardabweichung_g:,.1f}")
+        # CV Gewicht (%): dimensionsloser Variationskoeffizient (sigma/mean *
+        # 100) auf der Massen-Achse. Spiegelt CV Wert (%) auf die Gewicht-
+        # Achse - waehrend sigma die Streuung in Original-Einheiten g
+        # beziffert, normiert der CV sigma auf den Durchschnitt und macht
+        # die Massen-Streuung skalen-unabhaengig vergleichbar. Mineralkorn-
+        # Sammlung mit Ø 5 g und sigma 0.5 vs. Handstueck-Sammlung mit Ø
+        # 500 g und sigma 50 haben identische relative Streuung (beide CV
+        # 10%), obwohl die Absolutwerte um Faktor 100 auseinanderliegen.
+        # Direkt unter der sigma-Zeile, damit der Dispersions-Block
+        # (sigma + CV) als geschlossene Einheit am Ende des Gewicht-
+        # Blocks sichtbar bleibt (spiegelt die CV Wert (%)-Position im
+        # Wert-Block).
+        if st.gewicht_variationskoeffizient_prozent is not None:
+            lines.append(
+                f"  CV Gewicht (%):      "
+                f"{st.gewicht_variationskoeffizient_prozent:,.1f}")
     if st.funddatum_frueheste or st.funddatum_spaeteste:
         # Spanne nur anzeigen, wenn ueberhaupt ein gueltiges Funddatum vorliegt.
         # Beide Grenzen werden gemeinsam ausgewiesen; identische Werte

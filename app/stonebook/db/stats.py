@@ -173,6 +173,7 @@ class Statistik:
     gewicht_min_g: float = 0.0
     gewicht_max_g: float = 0.0
     gewicht_standardabweichung_g: float = 0.0
+    gewicht_variationskoeffizient_prozent: float | None = None
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
     objekte_mit_mohs: int = 0
@@ -1378,6 +1379,11 @@ class Statistik:
             "gewicht_max_g": round(self.gewicht_max_g, 2),
             "gewicht_standardabweichung_g": round(
                 self.gewicht_standardabweichung_g, 2),
+            "gewicht_variationskoeffizient_prozent": (
+                round(self.gewicht_variationskoeffizient_prozent, 2)
+                if self.gewicht_variationskoeffizient_prozent is not None
+                else None
+            ),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
             "objekte_mit_mohs": self.objekte_mit_mohs,
@@ -3599,6 +3605,47 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         mean = st.gewicht_durchschnitt_g
         st.gewicht_standardabweichung_g = (
             sum((g - mean) ** 2 for g in gewichte) / n) ** 0.5
+        # gewicht_variationskoeffizient_prozent: dimensionslose Dispersions-
+        # Achse als Ergaenzung zu gewicht_standardabweichung_g. Spiegelt
+        # wert_variationskoeffizient_prozent auf die Massen-Achse: waehrend
+        # sigma die Streuung in Original-Einheiten g beziffert, normiert der
+        # CV sigma auf den Durchschnitt und macht die Massen-Streuung
+        # skalen-unabhaengig vergleichbar - eine Mineralkorn-Sammlung mit
+        # Ø 5 g und sigma 0.5 (CV 10%) hat dieselbe relative Streuung wie
+        # eine Handstueck-Sammlung mit Ø 500 g und sigma 50 (CV 10%), obwohl
+        # die Absolutwerte um Faktor 100 auseinanderliegen. Beantwortet
+        # damit die praeparations- und transport-relevante Frage "wie
+        # homogen ist meine Sammlung gewichtsmaessig, unabhaengig vom
+        # Groessen-Niveau?" - reine Mineralkorn-Klasse zeigt ~10%,
+        # gemischte Splitter-bis-Handstueck-Sammlung dagegen mehrere
+        # hundert Prozent. Ergaenzt damit das Gewicht-Kennzahlen-Sextett
+        # (summe/min/max/durchschnitt/median/sigma) um die dimensionslose
+        # Dispersions-Achse und macht die Gewicht-Streuung strukturell
+        # vergleichbar mit der Wert-/Mohs-/Dichte-Streuung, deren Original-
+        # Einheiten (CHF, Mohs-Punkt, g/cm3) sich sonst nicht miteinander
+        # vergleichen lassen. Reuse-Pfad: greift den bereits berechneten
+        # mean (gewicht_durchschnitt_g) und gewicht_standardabweichung_g ab
+        # (kein zweiter SQL-Round-Trip, keine zweite Listen-Iteration
+        # ueber gewichte). Ausgabe in Prozent (sigma/mean * 100),
+        # spiegelt die wert_variationskoeffizient_prozent-Konvention.
+        # Bei einem einzelnen Gewicht-Eintrag oder uniformen Gewichten
+        # kollabiert sigma auf 0.0 und damit CV auf 0.0 (spiegelt die
+        # gewicht_standardabweichung_g-Single-Point-/Uniform-Kollaps-
+        # Semantik). Guarded gegen mean == 0.0 (ist im gewichte-Zweig
+        # nie der Fall, weil das SELECT-Statement Gewicht_g > 0 filtert
+        # bzw. NULL/0-Eintraege ignoriert werden, aber die Guard schuetzt
+        # fuer den Fall spaeterer Filter-Aenderungen). Bei leerer DB /
+        # ohne jegliche Gewicht-Pflege bleibt None (dataclass-Default),
+        # damit as_dict und die CLI-Zeile den Undefined-Zustand
+        # transparent unterscheiden koennen - anders als sigma (0.0 bei
+        # leerer DB) ist CV mathematisch undefined bei mean == 0, nicht
+        # 0.0. Spiegelt die wert_variationskoeffizient_prozent- /
+        # mohs_kollektion_standardabweichung- / dichte_kollektion_
+        # standardabweichung-None-Konvention (mean-basierte Groessen mit
+        # None statt 0.0 im Undefined-Fall).
+        if mean > 0:
+            st.gewicht_variationskoeffizient_prozent = (
+                st.gewicht_standardabweichung_g / mean * 100.0)
 
     wert_sql = wert_pro_objekt_sql()
     row = conn.execute(
