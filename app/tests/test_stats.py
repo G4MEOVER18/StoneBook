@@ -9410,3 +9410,165 @@ def test_dichte_spanweite_konsistent_mit_min_max(tmp_path):
     assert st.dichte_kollektion_spanweite == (
         st.dichte_kollektion_max - st.dichte_kollektion_min)
     c.close()
+
+
+def test_confidence_spanweite_aus_seed_db(tmp_path):
+    """confidence_spanweite_prozent = confidence_max - confidence_min.
+
+    Vier Confidence 40/60/80/95 -> min=40, max=95, Spannweite=55.
+    Spiegelt test_dichte_spanweite_aus_seed_db auf die Confidence-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 40),
+            ("OBJ_0002", 60),
+            ("OBJ_0003", 80),
+            ("OBJ_0004", 95),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_min_prozent == 40
+    assert st.confidence_max_prozent == 95
+    assert st.confidence_spanweite_prozent == 55
+    d = st.as_dict()
+    assert d["confidence_spanweite_prozent"] == 55
+    c.close()
+
+
+def test_confidence_spanweite_leer(tmp_path):
+    """Ohne Confidence-Pflege bleibt die Spannweite None (dataclass-Default).
+
+    Spiegelt mohs_/dichte_kollektion_spanweite: score-basierte Groessen
+    bleiben im Undefined-Fall None statt 0 (anders als wert_/gewicht_
+    spanweite die 0.0 liefern) - stellt Symmetrie zu confidence_min_/max_/
+    sigma/CV her.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.confidence_spanweite_prozent is None
+    d = st.as_dict()
+    assert d["confidence_spanweite_prozent"] is None
+    c.close()
+
+
+def test_confidence_spanweite_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Confidence-Eintrag kollabiert die Spannweite auf 0.
+
+    min == max = Einzel-Confidence -> Spannweite = 0. Spiegelt
+    test_dichte_spanweite_einzelobjekt und die sigma-Kollaps-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 75), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_confidence == 1
+    assert st.confidence_spanweite_prozent == 0
+    c.close()
+
+
+def test_confidence_spanweite_uniform(tmp_path):
+    """Bei identischen Confidence-Werten ist die Spannweite 0 (Homogenitaet).
+
+    Fuenf Objekte mit Confidence 80 -> min == max = 80 -> Spannweite = 0.
+    Spiegelt test_dichte_spanweite_uniform und die confidence-sigma-/CV-
+    Uniform-Kollaps-Semantik.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 80) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_spanweite_prozent == 0
+    c.close()
+
+
+def test_confidence_spanweite_reagiert_auf_ausreisser(tmp_path):
+    """Spannweite reagiert auf Extremwerte, nicht auf die Dichte dazwischen.
+
+    Neun Sichere-KI-Bestimmungen (Confidence 90) + eine unsichere (20):
+    min=20, max=90, Spannweite=70 - trotz kleinem sigma. Spiegelt
+    test_dichte_spanweite_reagiert_auf_ausreisser auf die Confidence-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 90) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 20))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_min_prozent == 20
+    assert st.confidence_max_prozent == 90
+    assert st.confidence_spanweite_prozent == 70
+    c.close()
+
+
+def test_confidence_spanweite_ignoriert_out_of_range(tmp_path):
+    """Out-of-Range-Confidence (<0 / >100) fliesst nicht in die Spannweite.
+
+    Spiegelt die confidence_min_/max_/sigma/CV-Konvention: die Spannweite
+    darf nicht durch einen Integrity-Verstoss verzerrt werden (ein
+    Datensatz mit Confidence -50 wuerde die Spannweite kuenstlich auf
+    140 aufblasen, ein Confidence 200 auf 190). Das Integrity-Modul meldet
+    solche Datensaetze separat; die Spannweite bleibt strikt auf 0..100.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", -50),   # out-of-range, ignoriert
+            ("OBJ_0002", 40),
+            ("OBJ_0003", 90),
+            ("OBJ_0004", 200),   # out-of-range, ignoriert
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_min_prozent == 40
+    assert st.confidence_max_prozent == 90
+    assert st.confidence_spanweite_prozent == 50
+    c.close()
+
+
+def test_confidence_spanweite_konsistent_mit_min_max(tmp_path):
+    """Invariante: confidence_spanweite_prozent == max - min immer.
+
+    Spiegelt test_dichte_spanweite_konsistent_mit_min_max: die Spannweite
+    ist definitorisch max - min und muss numerisch konsistent bleiben,
+    damit Dashboard-/Report-Konsumenten sich auf die Identitaet verlassen
+    koennen. Reuse-Pfad greift die bereits gesetzten confidence_max_prozent
+    und confidence_min_prozent ab.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "c_span_konsistent.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 12),
+            ("OBJ_0002", 47),
+            ("OBJ_0003", 78),
+            ("OBJ_0004", 99),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_spanweite_prozent == (
+        st.confidence_max_prozent - st.confidence_min_prozent)
+    c.close()

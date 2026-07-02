@@ -194,6 +194,7 @@ class Statistik:
     confidence_max_prozent: int | None = None
     confidence_standardabweichung_prozent: float | None = None
     confidence_variationskoeffizient_prozent: float | None = None
+    confidence_spanweite_prozent: int | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
@@ -1439,6 +1440,7 @@ class Statistik:
                 if self.confidence_variationskoeffizient_prozent is not None
                 else None
             ),
+            "confidence_spanweite_prozent": self.confidence_spanweite_prozent,
             "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
@@ -3662,6 +3664,48 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         if conf_mean > 0:
             st.confidence_variationskoeffizient_prozent = (
                 st.confidence_standardabweichung_prozent / conf_mean * 100.0)
+        # confidence_spanweite_prozent: Spannweite (Range = max - min) in
+        # Prozentpunkten auf der Bestimmungs-Sicherheits-Achse als
+        # Original-Einheiten-Dispersions-Achse neben sigma und CV.
+        # Vervollstaendigt damit das Spannweiten-Quintett wert_/gewicht_/
+        # mohs_kollektion_/dichte_kollektion_/confidence_spanweite - alle
+        # fuenf zentralen quantitativen Achsen der Sammlung (Preis /
+        # Masse / Haerte / Dichte / Bestimmungs-Sicherheit) haben damit
+        # die drei Dispersions-Sichten sigma / CV / Spannweite. Waehrend
+        # confidence_standardabweichung_prozent die durchschnittliche
+        # Streuung um den Mittelwert in Prozentpunkten beziffert (reagiert
+        # auf die Verteilungsform) und confidence_variationskoeffizient_
+        # prozent dieselbe Streuung dimensionslos-normiert liefert
+        # (skalen-unabhaengig), beziffert die Spannweite die volle
+        # beobachtete Sicherheits-Bandbreite - die Distanz zwischen der
+        # unsichersten und der sichersten KI-Bestimmung ("zwischen 20% und
+        # 95%"). Die naheliegendste Formulierung der Confidence-Bandbreite
+        # ohne Statistik-Vokabular (jeder Sammler versteht "zwischen
+        # Confidence X und Y" direkt). Complement zu sigma: sigma reagiert
+        # auf die Verteilungsform (breite Streuung um den Mittel = grosses
+        # sigma), die Spannweite reagiert nur auf die Extremwerte und
+        # ignoriert die Dichte dazwischen - eine gleichmaessig gepflegte
+        # Sammlung (Confidence 80..90) hat kleine Spannweite (10) und
+        # kleines sigma (~3); eine gemischte Sammlung (5x Confidence 20 +
+        # 5x Confidence 95) hat grosse Spannweite (75) und grosses sigma
+        # (~37). Reuse-Pfad: greift die bereits gesetzten confidence_max_
+        # prozent und confidence_min_prozent ab (kein zusaetzlicher
+        # SQL-Round-Trip, keine zweite Listen-Iteration ueber conf_werte,
+        # spiegelt die mohs_/dichte_kollektion_spanweite-Ableitung aus
+        # max/min). Als int-Groesse (Confidence-Skala ist int-Prozent, kein
+        # float-Nachkomma) - spiegelt confidence_min_prozent/max_prozent
+        # (beide int); Differenz zweier int bleibt int, keine Rundung
+        # noetig. Bei einem einzelnen Confidence-Eintrag oder uniformen
+        # Werten kollabiert die Spannweite auf 0 (min == max, spiegelt die
+        # sigma-Uniform-Kollaps-Semantik und mohs_/dichte_kollektion_
+        # spanweite-Konvention). Bei leerer DB / ohne jegliche Confidence-
+        # Pflege bleibt None (dataclass-Default), spiegelt die
+        # confidence_min_/max_/durchschnitt_/median_/sigma-None-Konvention -
+        # score-basierte Groessen bleiben im Undefined-Fall None statt 0.
+        if (st.confidence_min_prozent is not None
+                and st.confidence_max_prozent is not None):
+            st.confidence_spanweite_prozent = (
+                st.confidence_max_prozent - st.confidence_min_prozent)
     st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(
