@@ -98,6 +98,7 @@ class Statistik:
     mohs_kollektion_median: float | None = None
     mohs_kollektion_standardabweichung: float | None = None
     mohs_kollektion_variationskoeffizient_prozent: float | None = None
+    mohs_kollektion_spanweite: float | None = None
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
     dichte_kollektion_durchschnitt: float | None = None
@@ -1179,6 +1180,10 @@ class Statistik:
                 round(self.mohs_kollektion_variationskoeffizient_prozent, 2)
                 if self.mohs_kollektion_variationskoeffizient_prozent is not None
                 else None
+            ),
+            "mohs_kollektion_spanweite": (
+                round(self.mohs_kollektion_spanweite, 1)
+                if self.mohs_kollektion_spanweite is not None else None
             ),
             "mohs_kollektion_durchschnitt": (
                 round(self.mohs_kollektion_durchschnitt, 1)
@@ -3750,6 +3755,36 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         st.mohs_kollektion_variationskoeffizient_prozent = (
             st.mohs_kollektion_standardabweichung
             / st.mohs_kollektion_durchschnitt * 100.0)
+    # mohs_kollektion_spanweite: Spannweite (Range) = max - min in Mohs-
+    # Punkten als Original-Einheiten-Dispersions-Achse neben sigma und CV.
+    # Spiegelt wert_spanweite_chf / gewicht_spanweite_g auf die Haerte-
+    # Achse und vervollstaendigt damit den Mohs-Kennzahlen-Block
+    # (min/max/durchschnitt/median/sigma/CV) um die Original-Einheiten-
+    # Bandbreiten-Achse. Waehrend sigma die durchschnittliche Streuung
+    # um den Mittelwert beziffert und der CV dieselbe Streuung dimensions-
+    # los normiert, beziffert die Spannweite die volle beobachtete Haerte-
+    # Bandbreite - die Distanz zwischen dem weichsten und dem haertesten
+    # dokumentierten Stueck in Mohs-Punkten ("zwischen Mohs 2 und Mohs 7").
+    # Complement zu sigma: sigma reagiert auf die Verteilungsform (breite
+    # Streuung um den Mittel = grosses sigma), die Spannweite reagiert
+    # nur auf die Extremwerte und ignoriert die Dichte dazwischen -
+    # eine reine Quarz-Familie (5.5..6.5) hat kleine Spannweite (1.0) und
+    # kleines sigma (~0.3); eine Talk+Diamant-Mischung hat grosse
+    # Spannweite (9.0) und grosses sigma (~4). Reuse: greift die bereits
+    # gesetzten mohs_kollektion_max und mohs_kollektion_min ab (kein
+    # zusaetzlicher SQL-Round-Trip). Bei leerer DB / ohne jegliche Mohs-
+    # Pflege bleibt None (dataclass-Default), spiegelt die mohs_kollektion_
+    # min/max-None-Konvention (Bereichs-Groessen mit None statt 0.0 im
+    # Undefined-Fall, anders als wert_/gewicht_spanweite die 0.0 bei
+    # leerer DB liefern, weil deren min/max ebenfalls 0.0 sind). Bei einem
+    # einzelnen Mohs-Eintrag oder uniformen Werten kollabiert die Spann-
+    # weite auf 0.0 (min == max, spiegelt die sigma-Uniform-Kollaps-
+    # Semantik). as_dict-Round auf 1 Nachkommastelle (spiegelt
+    # mohs_kollektion_min/max/durchschnitt/median).
+    if (st.mohs_kollektion_min is not None
+            and st.mohs_kollektion_max is not None):
+        st.mohs_kollektion_spanweite = (
+            st.mohs_kollektion_max - st.mohs_kollektion_min)
     # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
     # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
     # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen

@@ -9136,3 +9136,141 @@ def test_gewicht_spanweite_konsistent_mit_min_max(tmp_path):
     st = compute_statistics(c)
     assert st.gewicht_spanweite_g == st.gewicht_max_g - st.gewicht_min_g
     c.close()
+
+
+def test_mohs_spanweite_aus_seed_db(tmp_path):
+    """mohs_kollektion_spanweite = mohs_kollektion_max - mohs_kollektion_min.
+
+    Vier Mohs-Mittelpunkte 3.0/4.0/5.0/6.0 -> min=3.0, max=6.0,
+    Spannweite=3.0. Spiegelt test_gewicht_spanweite_aus_seed_db (gleicher
+    Aufbau) auf die Haerte-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.0, 3.0),
+            ("OBJ_0002", 4.0, 4.0),
+            ("OBJ_0003", 5.0, 5.0),
+            ("OBJ_0004", 6.0, 6.0),
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_min == 3.0
+    assert st.mohs_kollektion_max == 6.0
+    assert st.mohs_kollektion_spanweite == pytest.approx(3.0, abs=1e-9)
+    d = st.as_dict()
+    assert d["mohs_kollektion_spanweite"] == pytest.approx(3.0, abs=1e-9)
+    c.close()
+
+
+def test_mohs_spanweite_leer(tmp_path):
+    """Ohne Mohs-Pflege bleibt die Spannweite None (dataclass-Default).
+
+    Anders als wert_/gewicht_spanweite (die auf 0.0 kollabieren, weil deren
+    min/max ebenfalls 0.0 sind), spiegelt mohs_kollektion_spanweite die
+    None-Konvention der uebrigen Mohs-Bereichsgroessen (min/max/median/
+    durchschnitt/sigma/CV = None bei leerer DB) - Bereichsgroessen bleiben
+    im Undefined-Fall None statt 0.0.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_span_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_spanweite is None
+    d = st.as_dict()
+    assert d["mohs_kollektion_spanweite"] is None
+    c.close()
+
+
+def test_mohs_spanweite_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Mohs-Eintrag kollabiert die Spannweite auf 0.0.
+
+    min == max = Einzel-Mohs -> Spannweite = 0.0. Spiegelt
+    test_gewicht_spanweite_einzelobjekt und die sigma-Kollaps-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_span_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_0001", 7.0, 7.0), ("OBJ_0002", None, None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_mohs == 1
+    assert st.mohs_kollektion_spanweite == 0.0
+    c.close()
+
+
+def test_mohs_spanweite_uniform(tmp_path):
+    """Bei identischen Mohs-Punkten ist die Spannweite 0.0 (Homogenitaet).
+
+    Reine Quarz-Sammlung mit fuenf Stuecken Mohs 7.0 -> min == max = 7.0 ->
+    Spannweite = 0.0. Spiegelt test_gewicht_spanweite_uniform und die
+    Mohs-sigma-/CV-Uniform-Kollaps-Semantik.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_span_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_%04d" % i, 7.0, 7.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_spanweite == 0.0
+    c.close()
+
+
+def test_mohs_spanweite_reagiert_auf_ausreisser(tmp_path):
+    """Spannweite reagiert auf Extremwerte, nicht auf die Dichte dazwischen.
+
+    Neun Calcit-Stuecke (Mohs 3.0) + ein Diamant (Mohs 10.0): min=3.0,
+    max=10.0, Spannweite=7.0 - trotz kleinem sigma. Spiegelt
+    test_gewicht_spanweite_reagiert_auf_ausreisser auf die Haerte-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_span_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 3.0, 3.0) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 10.0, 10.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)", rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_min == 3.0
+    assert st.mohs_kollektion_max == 10.0
+    assert st.mohs_kollektion_spanweite == pytest.approx(7.0, abs=1e-9)
+    c.close()
+
+
+def test_mohs_spanweite_konsistent_mit_min_max(tmp_path):
+    """Invariante: mohs_kollektion_spanweite == max - min immer.
+
+    Spiegelt test_gewicht_spanweite_konsistent_mit_min_max: die Spannweite
+    ist definitorisch max - min und muss numerisch konsistent bleiben,
+    damit Dashboard-/Report-Konsumenten sich auf die Identitaet verlassen
+    koennen. Reuse-Pfad greift die bereits gesetzten mohs_kollektion_max
+    und mohs_kollektion_min ab.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_span_konsistent.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 1.5, 2.5),
+            ("OBJ_0002", 6.0, 7.0),
+            ("OBJ_0003", 8.5, 9.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_spanweite == (
+        st.mohs_kollektion_max - st.mohs_kollektion_min)
+    c.close()
