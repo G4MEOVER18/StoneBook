@@ -83,6 +83,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Median/Min), spiegelt die Gewicht-Reihenfolge.
         lines.append(
             f"  σ Wert (CHF):        {st.wert_standardabweichung_chf:,.0f}")
+        # CV Wert (%): dimensionsloser Variationskoeffizient (sigma/mean *
+        # 100). Ergaenzt sigma um die skalen-unabhaengige Streuungs-Sicht -
+        # eine 500-CHF-Sammlung mit sigma 50 und eine 5000-CHF-Sammlung mit
+        # sigma 500 haben identische relative Streuung (beide CV 10%),
+        # obwohl die Absolutwerte weit auseinanderliegen. Beantwortet damit
+        # "wie homogen ist meine Sammlung wertlich, unabhaengig vom Preis-
+        # Niveau?" - Feldspat-Klasse ~10%, gemischte Sammlung mit
+        # Investment-Bergkristallen mehrere hundert Prozent. Direkt unter
+        # der sigma-Zeile, damit der Dispersions-Block (sigma + CV) als
+        # geschlossene Einheit sichtbar bleibt. Guard is not None: bei
+        # objekte_mit_wert > 0 immer definiert (wert_sql > 0 sichert
+        # mean > 0), aber die None-Pruefung entkoppelt die CLI von der
+        # Compute-Guard und laesst sich auch auf leere Sammlungen (Default
+        # None) sauber uebertragen, falls das Bericht-Rendering spaeter
+        # ausserhalb des objekte_mit_wert-Zweigs aufgerufen wird.
+        if st.wert_variationskoeffizient_prozent is not None:
+            lines.append(
+                f"  CV Wert (%):         "
+                f"{st.wert_variationskoeffizient_prozent:,.1f}")
     if st.objekte_mit_gewicht:
         lines.append(f"  Ø Gewicht (g):       {st.gewicht_durchschnitt_g:,.1f}")
         lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")

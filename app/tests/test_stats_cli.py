@@ -5403,3 +5403,86 @@ def test_json_ausgabe_enthaelt_koordinaten_diameter(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert isinstance(payload["koordinaten_diameter_km"], float)
     assert payload["koordinaten_diameter_km"] > 0.0
+
+
+def test_text_ausgabe_zeigt_variationskoeffizient_wert(tmp_path, capsys):
+    """CV Wert (%) steht direkt unter sigma Wert (CHF), Dispersions-Block bleibt geschlossen.
+
+    Vier Werte 100/200/300/400 → sigma≈111.803, mean=250, CV≈44.7 %.
+    Verifiziert die Reihenfolge sigma → CV, damit der Dispersions-Block
+    aus sigma (Original-Einheit CHF) und CV (dimensionslos in Prozent)
+    als geschlossene Einheit am Ende des Wert-Blocks steht.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_wert.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 100.0), ("OBJ_0002", 200.0),
+         ("OBJ_0003", 300.0), ("OBJ_0004", 400.0)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Wert (CHF):" in out
+    assert "CV Wert (%):" in out
+    assert out.index("σ Wert (CHF):") < out.index("CV Wert (%):")
+    # CV ≈ 44.7 - eine Nachkommastelle im CLI-Format.
+    assert "44.7" in out
+
+
+def test_text_ausgabe_ohne_werte_keine_variationskoeffizient_zeile(
+        tmp_path, capsys):
+    """Ohne Wert-Pflege erscheint die CV-Zeile nicht (dataclass-Default None).
+
+    Spiegelt die sigma-Zeile-Absenz-Konvention und haelt den Bericht bei
+    leerer Sammlung frei von Undefined-Zeilen.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "CV Wert" not in out
+
+
+def test_json_ausgabe_zeigt_variationskoeffizient_wert(tmp_path, capsys):
+    """--json enthaelt wert_variationskoeffizient_prozent als Float / None.
+
+    Bei gepflegter Sammlung: Float in Prozent. Bei leerer Sammlung: None
+    (spiegelt die dataclass-Default-Konvention und macht den Undefined-
+    Zustand fuer Downstream-Konsumenten transparent unterscheidbar).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 100.0), ("OBJ_0002", 200.0),
+         ("OBJ_0003", 300.0), ("OBJ_0004", 400.0)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "wert_variationskoeffizient_prozent" in payload
+    assert isinstance(payload["wert_variationskoeffizient_prozent"], float)
+    assert payload["wert_variationskoeffizient_prozent"] == pytest.approx(
+        44.72, abs=1e-2)
+
+    db_file2 = tmp_path / "cv_json_leer.sqlite3"
+    c2 = open_db(db_file2)
+    c2.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)", [("OBJ_0001",)])
+    c2.commit()
+    c2.close()
+    main(["--db", str(db_file2), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert payload2["wert_variationskoeffizient_prozent"] is None

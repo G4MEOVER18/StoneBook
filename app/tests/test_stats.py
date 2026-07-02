@@ -7921,3 +7921,153 @@ def test_koordinaten_diameter_km_einseitig_geclusterte_sammlung(tmp_path):
     # Geometrische Invariante: radius_max <= diameter immer.
     assert st.koordinaten_radius_max_km <= st.koordinaten_diameter_km
     c.close()
+
+
+def test_wert_variationskoeffizient_aus_seed_db(tmp_path):
+    """CV = sigma / mean * 100 in Prozent, dimensionslose Dispersions-Achse.
+
+    Vier Werte 100/200/300/400 → Ø=250, sigma=sqrt(12500)≈111.803.
+    CV = 111.803 / 250 * 100 ≈ 44.72 %. Spiegelt
+    test_wert_standardabweichung_aus_seed_db (gleicher Seed) auf die
+    dimensionslose Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 100.0),
+            ("OBJ_0002", 200.0),
+            ("OBJ_0003", 300.0),
+            ("OBJ_0004", 400.0),
+            ("OBJ_0005", None),
+            ("OBJ_0006", 0.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_durchschnitt_chf == 250.0
+    expected_cv = (12500.0 ** 0.5) / 250.0 * 100.0
+    assert st.wert_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-9)
+    d = st.as_dict()
+    assert d["wert_variationskoeffizient_prozent"] == pytest.approx(
+        44.72, abs=1e-2)
+    c.close()
+
+
+def test_wert_variationskoeffizient_leer(tmp_path):
+    """Ohne Wert-Pflege bleibt der CV None (dataclass-Default).
+
+    CV ist mathematisch undefined bei mean = 0 (Division durch Null),
+    anders als sigma (0.0 bei leerer DB). Die None-Konvention macht den
+    Undefined-Zustand fuer Downstream-Konsumenten (as_dict / CLI-Zeile /
+    Dashboard) transparent unterscheidbar. Spiegelt die mohs_kollektion_
+    / dichte_kollektion_-None-Konvention (mean-basierte Groessen mit
+    None statt 0.0 im Undefined-Fall).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_cv_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_variationskoeffizient_prozent is None
+    d = st.as_dict()
+    assert d["wert_variationskoeffizient_prozent"] is None
+    c.close()
+
+
+def test_wert_variationskoeffizient_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Wert-Eintrag kollabiert der CV auf 0.0.
+
+    sigma = 0 bei nur einem Datenpunkt → CV = 0/mean * 100 = 0.0. Die
+    Sammlung hat 100% Homogenitaet (weil nur ein Stueck vorhanden ist).
+    CV ist definiert (nicht None), weil mean > 0 (der Einzelwert selbst).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_cv_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 500.0), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 1
+    assert st.wert_variationskoeffizient_prozent == 0.0
+    c.close()
+
+
+def test_wert_variationskoeffizient_uniform(tmp_path):
+    """Bei identischen Werten ist der CV 0.0 (voellige Homogenitaet).
+
+    Reine Feldspat-Sammlung ohne Preisdispersion: fuenf Stuecke CHF 50 →
+    sigma = 0.0 → CV = 0.0 %. Kern-Eigenschaft der skalen-unabhaengigen
+    Dispersions-Achse: nicht der Preis-Level, sondern die relative
+    Streuung ist massgeblich.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_cv_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 50.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_variationskoeffizient_prozent == 0.0
+    c.close()
+
+
+def test_wert_variationskoeffizient_skalen_invariant(tmp_path):
+    """CV ist skalen-invariant: eine 10-fache Aufwertung aendert CV nicht.
+
+    Kern-Eigenschaft des Variationskoeffizienten (sigma/mean skaliert
+    mit demselben Faktor wie die Werte). Zwei Sammlungen 10/20/30/40 und
+    100/200/300/400 haben unterschiedliche sigma (1x vs. 10x) und
+    unterschiedliche mean (1x vs. 10x), aber identische CVs.
+    """
+    from stonebook.db.database import open_db
+    c1 = open_db(tmp_path / "w_cv_klein.sqlite3")
+    c1.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 10.0), ("OBJ_0002", 20.0),
+         ("OBJ_0003", 30.0), ("OBJ_0004", 40.0)],
+    )
+    c1.commit()
+    cv_klein = compute_statistics(c1).wert_variationskoeffizient_prozent
+    c1.close()
+
+    c2 = open_db(tmp_path / "w_cv_gross.sqlite3")
+    c2.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 100.0), ("OBJ_0002", 200.0),
+         ("OBJ_0003", 300.0), ("OBJ_0004", 400.0)],
+    )
+    c2.commit()
+    cv_gross = compute_statistics(c2).wert_variationskoeffizient_prozent
+    c2.close()
+
+    assert cv_klein is not None and cv_gross is not None
+    assert cv_klein == pytest.approx(cv_gross, abs=1e-9)
+
+
+def test_wert_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
+    """CV reagiert auf Wert-Ausreisser (Erbe von sigma).
+
+    Neun gleichmaessige Feldspat-Stuecke (CHF 50) plus ein Investment-
+    Bergkristall (CHF 5000). Aus test_wert_standardabweichung_reagiert_
+    auf_ausreisser: Ø = 545, sigma = 1485.0 exakt. CV = 1485/545 * 100
+    ≈ 272.48 %. Zeigt die versicherungsrelevante Charakterisierung
+    "eine hoch-heterogene Sammlung mit dominierender Einzel-Position"
+    an einer einzigen dimensionslosen Kennzahl (im Kontrast zur
+    Feldspat-Klasse mit CV 0%).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_cv_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 50.0) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 5000.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    expected_cv = 1485.0 / 545.0 * 100.0
+    assert st.wert_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-9)
+    c.close()

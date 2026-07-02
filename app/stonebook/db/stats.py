@@ -109,6 +109,7 @@ class Statistik:
     wert_durchschnitt_chf: float = 0.0
     wert_median_chf: float = 0.0
     wert_standardabweichung_chf: float = 0.0
+    wert_variationskoeffizient_prozent: float | None = None
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
@@ -1197,6 +1198,10 @@ class Statistik:
             "wert_median_chf": round(self.wert_median_chf, 2),
             "wert_standardabweichung_chf": round(
                 self.wert_standardabweichung_chf, 2),
+            "wert_variationskoeffizient_prozent": (
+                round(self.wert_variationskoeffizient_prozent, 2)
+                if self.wert_variationskoeffizient_prozent is not None else None
+            ),
             "objekte_mit_wert": self.objekte_mit_wert,
             "top_wert_objekte": [
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
@@ -3667,6 +3672,46 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         wert_mean = st.wert_durchschnitt_chf
         st.wert_standardabweichung_chf = (
             sum((w - wert_mean) ** 2 for w in werte) / n) ** 0.5
+        # wert_variationskoeffizient_prozent: dimensionslose Dispersions-
+        # Achse als Ergaenzung zu wert_standardabweichung_chf. Waehrend die
+        # Standardabweichung die Streuung in Original-Einheiten (CHF)
+        # beziffert, normiert der Variationskoeffizient sigma auf den
+        # Durchschnitt und macht die Streuung damit skalen-unabhaengig
+        # vergleichbar - eine 500-CHF-Sammlung mit sigma 50 (CV 10%) hat
+        # dieselbe relative Streuung wie eine 5000-CHF-Sammlung mit sigma
+        # 500 (CV 10%), obwohl die Absolutwerte um Faktor 10 auseinander-
+        # liegen. Beantwortet damit die versicherungs- und portfolio-
+        # relevante Frage "wie homogen ist meine Sammlung wertlich, un-
+        # abhaengig vom Preis-Niveau?" - eine reine Feldspat-Klasse mit
+        # engem Preis-Cluster zeigt hier ~10%, eine gemischte Sammlung
+        # mit einzelnen Investment-Bergkristallen dagegen mehrere hundert
+        # Prozent. Ergaenzt damit das Wert-Kennzahlen-Sextett (summe/min/
+        # max/durchschnitt/median/sigma) um die dimensionslose
+        # Dispersions-Achse und macht die Wert-Streuung strukturell
+        # vergleichbar mit der Gewicht-/Mohs-/Dichte-Streuung, deren
+        # Original-Einheiten (g, Mohs-Punkt, g/cm3) sich sonst nicht
+        # miteinander vergleichen lassen. Reuse: greift den bereits
+        # berechneten wert_mean und wert_standardabweichung_chf ab (kein
+        # zweiter SQL-Round-Trip, keine zweite Listen-Iteration). Ausgabe
+        # in Prozent (sigma/mean * 100), weil das die uebliche und
+        # intuitivere Darstellung des Variationskoeffizienten ist (statt
+        # der dimensionslosen Rohzahl sigma/mean). Bei einem einzelnen
+        # Wert-Eintrag oder uniformen Werten kollabiert sigma auf 0.0 und
+        # damit CV auf 0.0 (spiegelt wert_standardabweichung_chf-Single-
+        # Point-/Uniform-Kollaps). Guarded gegen mean == 0.0 (ist im
+        # objekte_mit_wert-Zweig nie der Fall, weil der wert_sql > 0
+        # Filter greift, aber die Guard schuetzt fuer den Fall spaeterer
+        # Filter-Aenderungen). Bei leerer DB / ohne jegliche Wert-Pflege
+        # bleibt None (dataclass-Default), damit as_dict und CLI-Zeile
+        # den Undefined-Zustand transparent unterscheiden koennen -
+        # anders als sigma (0.0 bei leerer DB) ist CV mathematisch
+        # undefined bei mean == 0, nicht 0.0. Spiegelt damit die
+        # mohs_kollektion_standardabweichung / dichte_kollektion_
+        # standardabweichung-None-Konvention (mean-basierte Groessen mit
+        # None statt 0.0 im Undefined-Fall).
+        if wert_mean > 0:
+            st.wert_variationskoeffizient_prozent = (
+                st.wert_standardabweichung_chf / wert_mean * 100.0)
     st.top_wert_objekte = [
         (r["obj_id"], r["Name"] or "", float(r["w"]))
         for r in conn.execute(
