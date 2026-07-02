@@ -8219,3 +8219,99 @@ def test_gewicht_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
     assert st.gewicht_variationskoeffizient_prozent == pytest.approx(
         expected_cv, abs=1e-6)
     c.close()
+
+
+def test_mohs_variationskoeffizient_aus_seed_db(tmp_path):
+    """CV Mohs = sigma / mean * 100 in Prozent auf der Haerte-Achse.
+
+    Spiegelt test_wert_variationskoeffizient_aus_seed_db und
+    test_gewicht_variationskoeffizient_aus_seed_db auf die Mohs-Achse.
+    Vier Mohs-Mittelpunkte 3/4/5/6 → Ø=4.5, Varianz=((3-4.5)^2 +
+    (4-4.5)^2 + (5-4.5)^2 + (6-4.5)^2)/4 = (2.25+0.25+0.25+2.25)/4 =
+    5/4 = 1.25 → sigma = sqrt(1.25) ≈ 1.118. CV = 1.118 / 4.5 * 100
+    ≈ 24.85 %.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.0, 3.0),
+            ("OBJ_0002", 4.0, 4.0),
+            ("OBJ_0003", 5.0, 5.0),
+            ("OBJ_0004", 6.0, 6.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_durchschnitt == pytest.approx(4.5, abs=1e-9)
+    expected_cv = (1.25 ** 0.5) / 4.5 * 100.0
+    assert st.mohs_kollektion_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-6)
+    d = st.as_dict()
+    assert d["mohs_kollektion_variationskoeffizient_prozent"] == pytest.approx(
+        24.85, abs=1e-2)
+    c.close()
+
+
+def test_mohs_variationskoeffizient_leer(tmp_path):
+    """Ohne Mohs-Pflege bleibt der CV None (dataclass-Default).
+
+    Spiegelt die mohs_kollektion_standardabweichung- / _durchschnitt-
+    None-Konvention: mean-basierte Groessen sind bei mean-Undefined
+    ebenfalls None, nicht 0.0.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_cv_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_variationskoeffizient_prozent is None
+    d = st.as_dict()
+    assert d["mohs_kollektion_variationskoeffizient_prozent"] is None
+    c.close()
+
+
+def test_mohs_variationskoeffizient_uniform(tmp_path):
+    """Bei identischer Mohs-Haerte ist der CV 0.0 (voellige Homogenitaet).
+
+    Reine Quarz-Sammlung mit fuenf Stuecken Mohs 7.0 → sigma 0.0 →
+    CV 0.0 %. Spiegelt test_wert_variationskoeffizient_uniform /
+    test_gewicht_variationskoeffizient_uniform.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_cv_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [("OBJ_%04d" % i, 7.0, 7.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.mohs_kollektion_variationskoeffizient_prozent == pytest.approx(
+        0.0, abs=1e-9)
+    c.close()
+
+
+def test_mohs_variationskoeffizient_reagiert_auf_ausreisser(tmp_path):
+    """CV Mohs reagiert auf Haerte-Ausreisser (Erbe von sigma).
+
+    Neun Quarz-Stuecke (Mohs 7.0) + ein Talk-Ausreisser (Mohs 1.0).
+    Ø = (9*7 + 1)/10 = 6.4. Varianz = (9*(7-6.4)^2 + (1-6.4)^2)/10 =
+    (9*0.36 + 29.16)/10 = (3.24 + 29.16)/10 = 3.24 → sigma = sqrt(3.24)
+    = 1.8. CV = 1.8 / 6.4 * 100 = 28.125 %. Zeigt die mineralogische
+    Heterogenitaet an einer skalen-unabhaengigen Kennzahl direkt
+    vergleichbar mit CV Wert und CV Gewicht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "m_cv_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 7.0, 7.0) for i in range(1, 10)]
+    rows.append(("OBJ_0010", 1.0, 1.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)", rows)
+    c.commit()
+    st = compute_statistics(c)
+    expected_cv = 1.8 / 6.4 * 100.0
+    assert st.mohs_kollektion_variationskoeffizient_prozent == pytest.approx(
+        expected_cv, abs=1e-4)
+    c.close()

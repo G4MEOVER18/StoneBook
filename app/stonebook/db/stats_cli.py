@@ -314,6 +314,22 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines.append(
             f"σ Mohs:                "
             f"{st.mohs_kollektion_standardabweichung:.2f}")
+    if st.mohs_kollektion_variationskoeffizient_prozent is not None:
+        # CV Mohs (%): dimensionsloser Variationskoeffizient (sigma/mean *
+        # 100) auf der Haerte-Achse. Spiegelt CV Wert (%) / CV Gewicht (%)
+        # auf die Mohs-Achse - waehrend sigma die Streuung in Original-
+        # Einheiten (Mohs-Punkte) beziffert, normiert der CV sigma auf
+        # den Durchschnitt und macht die Haerte-Streuung skalen-
+        # unabhaengig vergleichbar. Eine reine Quarz-Familie (Ø 6.0,
+        # sigma 0.5) zeigt hier ~8%, eine Talk+Diamant-Sammlung dagegen
+        # 40..70%, direkt vergleichbar mit CV Wert und CV Gewicht.
+        # Direkt unter der sigma-Zeile, damit der Dispersions-Block
+        # (sigma + CV) als geschlossene Einheit am Ende des Mohs-Blocks
+        # sichtbar bleibt (spiegelt die CV Wert (%) / CV Gewicht (%)-
+        # Position in den Wert-/Gewicht-Bloecken).
+        lines.append(
+            f"CV Mohs (%):           "
+            f"{st.mohs_kollektion_variationskoeffizient_prozent:.1f}")
     if st.dichte_kollektion_min is not None and st.dichte_kollektion_max is not None:
         # Dichte-Spanne ueber die ganze Sammlung: kleinste/groesste Dichte
         # in g/cm3 im dokumentierten Bestand. Spiegelt die Mohs-Spanne auf

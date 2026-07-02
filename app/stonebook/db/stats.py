@@ -97,6 +97,7 @@ class Statistik:
     mohs_kollektion_durchschnitt: float | None = None
     mohs_kollektion_median: float | None = None
     mohs_kollektion_standardabweichung: float | None = None
+    mohs_kollektion_variationskoeffizient_prozent: float | None = None
     dichte_kollektion_min: float | None = None
     dichte_kollektion_max: float | None = None
     dichte_kollektion_durchschnitt: float | None = None
@@ -1166,6 +1167,11 @@ class Statistik:
             "mohs_kollektion_standardabweichung": (
                 round(self.mohs_kollektion_standardabweichung, 2)
                 if self.mohs_kollektion_standardabweichung is not None else None
+            ),
+            "mohs_kollektion_variationskoeffizient_prozent": (
+                round(self.mohs_kollektion_variationskoeffizient_prozent, 2)
+                if self.mohs_kollektion_variationskoeffizient_prozent is not None
+                else None
             ),
             "mohs_kollektion_durchschnitt": (
                 round(self.mohs_kollektion_durchschnitt, 1)
@@ -3523,6 +3529,34 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # + Diamant gemischt). Vervollstaendigt damit das Mohs-Kennzahlen-
     # Quartett (min/max/durchschnitt/median) um die Dispersions-Achse.
     st.mohs_kollektion_standardabweichung = _mohs_standardabweichung(conn)
+    # mohs_kollektion_variationskoeffizient_prozent: dimensionslose
+    # Dispersions-Achse als Ergaenzung zu mohs_kollektion_standardabweichung.
+    # Spiegelt wert_variationskoeffizient_prozent / gewicht_variations-
+    # koeffizient_prozent auf die Haerte-Achse: waehrend sigma die
+    # Streuung in Original-Einheiten (Mohs-Punkte) beziffert, normiert
+    # der CV sigma auf den Durchschnitt und macht die Haerte-Streuung
+    # skalen-unabhaengig vergleichbar. Eine reine Quarz-Familie (Ø 6.0,
+    # sigma 0.5, CV ~8%) unterscheidet sich mineralogisch stark von
+    # einer Talk+Diamant-Sammlung (Ø 5.5, sigma 3.5, CV ~64%) - beide
+    # koennen aehnlichen Durchschnitt haben, aber der CV macht die
+    # Heterogenitaet skalen-unabhaengig ablesbar. Damit ist der Mohs-
+    # Kennzahlen-Block strukturidentisch zum Wert-/Gewicht-Block
+    # (min/max/durchschnitt/median/sigma + CV). Reuse: greift den
+    # bereits berechneten mohs_kollektion_durchschnitt und
+    # mohs_kollektion_standardabweichung ab (kein zusaetzlicher SQL-
+    # Round-Trip). Guarded gegen mean == 0.0 (Mohs-Punkte sind
+    # strukturell > 0, aber die Guard schuetzt gegen numerische
+    # Randfaelle bei extrem kleinen Werten). Bei leerer DB / ohne
+    # jegliche Mohs-Pflege bleibt None (dataclass-Default), spiegelt
+    # die mohs_kollektion_standardabweichung- / _durchschnitt-None-
+    # Konvention (mean-basierte Groessen mit None statt 0.0 im
+    # Undefined-Fall).
+    if (st.mohs_kollektion_standardabweichung is not None
+            and st.mohs_kollektion_durchschnitt is not None
+            and st.mohs_kollektion_durchschnitt > 0):
+        st.mohs_kollektion_variationskoeffizient_prozent = (
+            st.mohs_kollektion_standardabweichung
+            / st.mohs_kollektion_durchschnitt * 100.0)
     # objekte_mit_dichte: Anzahl Objekte mit mindestens einem dokumentierten
     # Dichte-Bereichsfeld (min ODER max). Spiegelt objekte_mit_mohs exakt auf
     # die Dichte-Achse: beide sind physikalische Bereichsfelder, beide zaehlen

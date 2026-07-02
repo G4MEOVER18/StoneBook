@@ -5571,3 +5571,91 @@ def test_json_ausgabe_zeigt_variationskoeffizient_gewicht(tmp_path, capsys):
     main(["--db", str(db_file2), "--json"])
     payload2 = json.loads(capsys.readouterr().out)
     assert payload2["gewicht_variationskoeffizient_prozent"] is None
+
+
+def test_text_ausgabe_zeigt_variationskoeffizient_mohs(tmp_path, capsys):
+    """CV Mohs (%) steht direkt unter sigma Mohs.
+
+    Vier Mohs-Werte 3/4/5/6 → sigma≈1.118, mean=4.5, CV≈24.8 %.
+    Verifiziert die Reihenfolge sigma → CV, damit der Dispersions-Block
+    (sigma + CV) als geschlossene Einheit am Ende des Mohs-Blocks
+    sichtbar bleibt (spiegelt CV Wert (%) / CV Gewicht (%)).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_mohs.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.0, 3.0),
+            ("OBJ_0002", 4.0, 4.0),
+            ("OBJ_0003", 5.0, 5.0),
+            ("OBJ_0004", 6.0, 6.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "σ Mohs:" in out
+    assert "CV Mohs (%):" in out
+    assert out.index("σ Mohs:") < out.index("CV Mohs (%):")
+    # CV ≈ 24.8 (eine Nachkommastelle im CLI-Format)
+    assert "24.8" in out
+
+
+def test_text_ausgabe_ohne_mohs_keine_variationskoeffizient_zeile(
+        tmp_path, capsys):
+    """Ohne Mohs-Pflege erscheint die CV-Mohs-Zeile nicht.
+
+    Spiegelt die sigma-Mohs-Zeile-Absenz-Konvention (is not None).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_m_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "CV Mohs" not in out
+
+
+def test_json_ausgabe_zeigt_variationskoeffizient_mohs(tmp_path, capsys):
+    """--json enthaelt mohs_kollektion_variationskoeffizient_prozent."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "cv_m_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 3.0, 3.0),
+            ("OBJ_0002", 4.0, 4.0),
+            ("OBJ_0003", 5.0, 5.0),
+            ("OBJ_0004", 6.0, 6.0),
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "mohs_kollektion_variationskoeffizient_prozent" in payload
+    assert isinstance(
+        payload["mohs_kollektion_variationskoeffizient_prozent"], float)
+    assert payload["mohs_kollektion_variationskoeffizient_prozent"] == pytest.approx(
+        24.85, abs=1e-2)
+
+    db_file2 = tmp_path / "cv_m_json_leer.sqlite3"
+    c2 = open_db(db_file2)
+    c2.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)", [("OBJ_0001",)])
+    c2.commit()
+    c2.close()
+    main(["--db", str(db_file2), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert payload2["mohs_kollektion_variationskoeffizient_prozent"] is None
