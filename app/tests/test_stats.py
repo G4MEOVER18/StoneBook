@@ -8872,3 +8872,138 @@ def test_confidence_variationskoeffizient_ignoriert_out_of_range(tmp_path):
     assert st.confidence_variationskoeffizient_prozent == pytest.approx(
         expected_cv, abs=1e-9)
     c.close()
+
+
+def test_wert_spanweite_aus_seed_db(tmp_path):
+    """Spannweite = max - min in Original-Einheiten CHF.
+
+    Vier Werte 100/200/300/400 -> min=100, max=400, Spannweite=300 CHF.
+    Spiegelt test_wert_variationskoeffizient_aus_seed_db (gleicher Seed)
+    auf die Original-Einheiten-Bandbreiten-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 100.0),
+            ("OBJ_0002", 200.0),
+            ("OBJ_0003", 300.0),
+            ("OBJ_0004", 400.0),
+            ("OBJ_0005", None),
+            ("OBJ_0006", 0.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_min_chf == 100.0
+    assert st.wert_max_chf == 400.0
+    assert st.wert_spanweite_chf == pytest.approx(300.0, abs=1e-9)
+    d = st.as_dict()
+    assert d["wert_spanweite_chf"] == pytest.approx(300.0, abs=1e-9)
+    c.close()
+
+
+def test_wert_spanweite_leer(tmp_path):
+    """Ohne Wert-Pflege bleibt die Spannweite 0.0 (dataclass-Default).
+
+    Spiegelt die uebrigen Wert-Kennzahlen min/max/median/durchschnitt/
+    sigma = 0.0 bei leerer DB - anders als CV, das None bleibt: max-min
+    ist bei leerer DB semantisch 0.0 (leere Bandbreite = keine Spanne),
+    waehrend CV mathematisch undefined ist (Division durch mean = 0).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_span_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_spanweite_chf == 0.0
+    d = st.as_dict()
+    assert d["wert_spanweite_chf"] == 0.0
+    c.close()
+
+
+def test_wert_spanweite_einzelobjekt(tmp_path):
+    """Bei einem einzelnen Wert-Eintrag kollabiert die Spannweite auf 0.0.
+
+    min == max = Einzelwert selbst -> Spannweite = 0 CHF. Spiegelt die
+    sigma-Uniform-Kollaps-Semantik: nur ein Datenpunkt hat keine Streuung
+    und keine Bandbreite.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_span_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 500.0), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_wert == 1
+    assert st.wert_spanweite_chf == 0.0
+    c.close()
+
+
+def test_wert_spanweite_uniform(tmp_path):
+    """Bei identischen Werten ist die Spannweite 0.0 (voellige Homogenitaet).
+
+    Reine Feldspat-Sammlung ohne Preisdispersion: fuenf Stuecke CHF 50 ->
+    min == max = 50 -> Spannweite = 0 CHF. Spiegelt die sigma-/CV-
+    Uniform-Kollaps-Semantik.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_span_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_%04d" % i, 50.0) for i in range(1, 6)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_spanweite_chf == 0.0
+    c.close()
+
+
+def test_wert_spanweite_reagiert_auf_ausreisser(tmp_path):
+    """Die Spannweite reagiert auf einzelne Extremwerte, nicht auf die
+    Dichte dazwischen.
+
+    Zehn Stuecke CHF 50 daneben ein einzelner Bergkristall CHF 5000:
+    min=50, max=5000, Spannweite=4950 - trotz kleinem sigma (mean ~500,
+    sigma ~1500). Kernunterschied zur Standardabweichung: sigma reagiert
+    auf die Verteilungsform, die Spannweite auf die Extremwerte.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_span_ausreisser.sqlite3")
+    rows = [("OBJ_%04d" % i, 50.0) for i in range(1, 11)]
+    rows.append(("OBJ_0011", 5000.0))
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        rows,
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_min_chf == 50.0
+    assert st.wert_max_chf == 5000.0
+    assert st.wert_spanweite_chf == pytest.approx(4950.0, abs=1e-9)
+    c.close()
+
+
+def test_wert_spanweite_konsistent_mit_min_max(tmp_path):
+    """Invariante: spanweite == max - min immer, exakt (float-Subtraktion).
+
+    Spiegelt die "reuse der bereits berechneten min/max"-Konvention -
+    die Spannweite ist definitorisch max - min und muss numerisch
+    konsistent sein, damit Dashboard-/Report-Konsumenten sich auf die
+    Identitaet verlassen koennen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "w_span_konsistent.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 12.34),
+            ("OBJ_0002", 567.89),
+            ("OBJ_0003", 90.12),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_spanweite_chf == st.wert_max_chf - st.wert_min_chf
+    c.close()

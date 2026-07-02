@@ -5887,3 +5887,86 @@ def test_json_ausgabe_zeigt_variationskoeffizient_confidence(tmp_path, capsys):
     main(["--db", str(db_file2), "--json"])
     payload2 = json.loads(capsys.readouterr().out)
     assert payload2["confidence_variationskoeffizient_prozent"] is None
+
+
+def test_text_ausgabe_zeigt_spanweite_wert(tmp_path, capsys):
+    """Spannweite (CHF) steht direkt unter CV Wert (%), Dispersions-Block bleibt geschlossen.
+
+    Vier Werte 100/200/300/400 -> min=100, max=400, Spannweite=300 CHF.
+    Verifiziert die Reihenfolge sigma -> CV -> Spannweite, damit der
+    Dispersions-Block aus sigma (Original-Einheit CHF, Streuung um den
+    Mittelwert), CV (dimensionslos in Prozent, skalen-unabhaengig) und
+    Spannweite (Original-Einheit CHF, Bandbreite) als geschlossene
+    Einheit am Ende des Wert-Blocks steht.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "span_wert.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 100.0), ("OBJ_0002", 200.0),
+         ("OBJ_0003", 300.0), ("OBJ_0004", 400.0)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Spannweite (CHF):" in out
+    assert out.index("CV Wert (%):") < out.index("Spannweite (CHF):")
+    # Spannweite = 300 CHF - keine Nachkommastelle im CLI-Format.
+    assert "300" in out.split("Spannweite (CHF):")[1].splitlines()[0]
+
+
+def test_text_ausgabe_ohne_werte_keine_spanweite_zeile(tmp_path, capsys):
+    """Ohne Wert-Pflege erscheint die Spannweite-Zeile nicht.
+
+    Spiegelt die CV-/sigma-Zeile-Absenz-Konvention: der Wert-Block wird
+    komplett uebersprungen, wenn objekte_mit_wert = 0.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "span_leer.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Spannweite (CHF)" not in out
+
+
+def test_json_ausgabe_zeigt_spanweite_wert(tmp_path, capsys):
+    """--json enthaelt wert_spanweite_chf als Float (0.0 bei leerer Sammlung).
+
+    Bei gepflegter Sammlung: Float in CHF. Bei leerer Sammlung: 0.0
+    (spiegelt die dataclass-Default-Konvention der uebrigen Wert-
+    Kennzahlen min/max/median/durchschnitt/sigma - anders als CV, das
+    None bleibt: max-min ist bei leerer DB semantisch 0.0).
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "span_json.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh) VALUES (?, ?)",
+        [("OBJ_0001", 100.0), ("OBJ_0002", 200.0),
+         ("OBJ_0003", 300.0), ("OBJ_0004", 400.0)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file), "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert "wert_spanweite_chf" in payload
+    assert isinstance(payload["wert_spanweite_chf"], float)
+    assert payload["wert_spanweite_chf"] == pytest.approx(300.0, abs=1e-9)
+
+    db_file2 = tmp_path / "span_json_leer.sqlite3"
+    c2 = open_db(db_file2)
+    c2.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)", [("OBJ_0001",)])
+    c2.commit()
+    c2.close()
+    main(["--db", str(db_file2), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert payload2["wert_spanweite_chf"] == 0.0

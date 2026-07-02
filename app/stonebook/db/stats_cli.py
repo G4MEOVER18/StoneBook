@@ -102,6 +102,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
             lines.append(
                 f"  CV Wert (%):         "
                 f"{st.wert_variationskoeffizient_prozent:,.1f}")
+        # Spannweite Wert (CHF): Original-Einheiten-Bandbreite = max - min.
+        # Erlaubt die intuitivste Sicht auf die Sammlungs-Streuung -
+        # "zwischen CHF X und CHF Y" beziffert die Distanz zwischen dem
+        # billigsten und teuersten dokumentierten Stueck in CHF, ohne
+        # Statistik-Vokabular. Complement zu sigma (durchschnittliche
+        # Streuung um den Mittel, reagiert auf die Verteilungsform) und
+        # CV (dimensionslos, skalen-unabhaengig): die Spannweite reagiert
+        # nur auf die Extremwerte und ignoriert die Dichte dazwischen -
+        # ein einzelner Investment-Bergkristall daneben Feldspat-Cluster
+        # laesst die Spannweite explodieren bei moderatem sigma. Direkt
+        # unter der CV-Zeile, damit der Dispersions-Block (sigma + CV +
+        # Spannweite) als geschlossene Einheit am Ende des Wert-Blocks
+        # sichtbar bleibt.
+        lines.append(
+            f"  Spannweite (CHF):    {st.wert_spanweite_chf:,.0f}")
     if st.objekte_mit_gewicht:
         lines.append(f"  Ø Gewicht (g):       {st.gewicht_durchschnitt_g:,.1f}")
         lines.append(f"  Median Gewicht (g):  {st.gewicht_median_g:,.1f}")

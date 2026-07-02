@@ -112,6 +112,7 @@ class Statistik:
     wert_median_chf: float = 0.0
     wert_standardabweichung_chf: float = 0.0
     wert_variationskoeffizient_prozent: float | None = None
+    wert_spanweite_chf: float = 0.0
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
@@ -1220,6 +1221,7 @@ class Statistik:
                 round(self.wert_variationskoeffizient_prozent, 2)
                 if self.wert_variationskoeffizient_prozent is not None else None
             ),
+            "wert_spanweite_chf": round(self.wert_spanweite_chf, 2),
             "objekte_mit_wert": self.objekte_mit_wert,
             "top_wert_objekte": [
                 (oid, name, round(w, 2)) for oid, name, w in self.top_wert_objekte
@@ -4008,6 +4010,41 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         if wert_mean > 0:
             st.wert_variationskoeffizient_prozent = (
                 st.wert_standardabweichung_chf / wert_mean * 100.0)
+        # wert_spanweite_chf: Spannweite (Range) = wert_max_chf - wert_min_chf
+        # als Original-Einheiten-Dispersions-Achse zwischen sigma (Standard-
+        # abweichung um den Durchschnitt) und CV (dimensionslose Streuung).
+        # Waehrend sigma die durchschnittliche Streuung um den Mittelwert
+        # beziffert und Median/Ø den typischen Objekt-Wert benennen, be-
+        # ziffert die Spannweite die volle beobachtete Bandbreite - die
+        # Distanz zwischen billigstem und teuerstem dokumentierten Stueck
+        # in CHF. Ist die einfachste und intuitivste Dispersions-Kennzahl
+        # (jeder Sammler versteht "zwischen CHF 10 und CHF 5000" ohne
+        # Statistik-Vokabular) und ergaenzt damit das Wert-Kennzahlen-
+        # Sextett (summe/min/max/durchschnitt/median/sigma/CV) um die
+        # Original-Einheiten-Bandbreiten-Achse. Ist zwar trivial aus min/
+        # max ableitbar, aber explizit ausgegeben, damit Dashboard- und
+        # Bericht-Konsumenten die Bandbreite ohne zweiten Rechenschritt
+        # zur Hand haben (spiegelt die durchschnitt/median-Konvention:
+        # ebenfalls aus den werte-Rohdaten ableitbar, aber vorberechnet
+        # exponiert). Complement zu sigma: sigma reagiert auf die Vertei-
+        # lungsform (breite Streuung um den Mittel = grosses sigma), die
+        # Spannweite reagiert nur auf die Extremwerte und ignoriert die
+        # Dichte dazwischen - eine Sammlung mit einem einzelnen wertvollen
+        # Ausreisser (10 Stuecke a CHF 50 + 1 x CHF 5000) hat eine grosse
+        # Spannweite (4950 CHF) trotz kleinem sigma (~1500 CHF); umgekehrt
+        # hat eine gleichmaessig ueber CHF 100..1000 verteilte Sammlung ein
+        # mittleres sigma und eine mittlere Spannweite. Reuse: greift die
+        # bereits gesetzten wert_max_chf und wert_min_chf ab (kein
+        # zusaetzlicher SQL-Round-Trip, keine zweite Listen-Iteration).
+        # Bei einem einzelnen Wert-Eintrag oder uniformen Werten kollabiert
+        # die Spannweite auf 0.0 (min == max, spiegelt die sigma-Uniform-
+        # Kollaps-Semantik). Bei leerer DB / ohne jegliche Wert-Pflege
+        # bleibt 0.0 (dataclass-Default, spiegelt die uebrigen Wert-
+        # Kennzahlen min/max/median/durchschnitt/sigma = 0.0 bei leerer DB
+        # - anders als CV, das None bleibt, weil max - min bei leerer DB
+        # semantisch 0.0 ist (leere Bandbreite = keine Spanne), waehrend
+        # CV mathematisch undefined ist (Division durch mean = 0)).
+        st.wert_spanweite_chf = st.wert_max_chf - st.wert_min_chf
     st.top_wert_objekte = [
         (r["obj_id"], r["Name"] or "", float(r["w"]))
         for r in conn.execute(
