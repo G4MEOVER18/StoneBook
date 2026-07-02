@@ -80,10 +80,12 @@ def test_text_ausgabe_ohne_confidence_keine_median_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Median Confidence:" not in out
-    # Symmetrie: die Min-Zeile ist an dieselbe Bedingung gekoppelt und darf
-    # ebenfalls nicht erscheinen, wenn keine gueltigen Confidence-Werte
-    # vorliegen. Spiegelt die None-Konvention der score-basierten Groessen.
+    # Symmetrie: die Min-/Max-Zeilen sind an dieselbe Bedingung gekoppelt
+    # und duerfen ebenfalls nicht erscheinen, wenn keine gueltigen
+    # Confidence-Werte vorliegen. Spiegelt die None-Konvention der score-
+    # basierten Groessen.
     assert "Min Confidence:" not in out
+    assert "Max Confidence:" not in out
 
 
 def test_text_ausgabe_zeigt_min_confidence(tmp_path, capsys):
@@ -117,6 +119,11 @@ def test_text_ausgabe_zeigt_min_confidence(tmp_path, capsys):
     # Reihenfolge: die Min-Zeile steht unter Median (und Median unter Ø).
     assert out.index("Ø Confidence:") < out.index("Median Confidence:")
     assert out.index("Median Confidence:") < out.index("Min Confidence:")
+    # Max-Zeile steht direkt unter Min - das Randlage-Paar bleibt als
+    # geschlossener Block unter dem zentrale-Tendenz-Paar (Ø / Median).
+    assert "Max Confidence:" in out
+    assert "Max Confidence:" in out and " 95 %" in out
+    assert out.index("Min Confidence:") < out.index("Max Confidence:")
 
 
 def test_text_ausgabe_zeigt_top_wert_und_gewicht(tmp_path, capsys):

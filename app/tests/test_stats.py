@@ -8504,3 +8504,100 @@ def test_confidence_min_prozent_einzelobjekt(tmp_path):
     assert st.median_confidence_prozent == 77.0
     assert st.durchschnitt_confidence_prozent == 77.0
     c.close()
+
+
+def test_confidence_max_prozent_aus_seed_db(tmp_path):
+    """confidence_max_prozent = groesster gueltiger Confidence-Score.
+
+    Fuenf Stuecke mit Confidence 30/55/70/85/95 - max = 95. Spiegelt
+    das wert_max_chf / gewicht_max_g-Randlage-Konzept auf die
+    Confidence-Achse (Obergrenze der zentralen-Tendenz-Achse
+    durchschnitt_/median_confidence_prozent) und ergaenzt damit das
+    Extremum-Paar (min + max) symmetrisch zur Wert-/Gewicht-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_max.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 30),
+            ("OBJ_0002", 55),
+            ("OBJ_0003", 70),
+            ("OBJ_0004", 85),
+            ("OBJ_0005", 95),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_max_prozent == 95
+    assert st.confidence_min_prozent == 30
+    assert st.as_dict()["confidence_max_prozent"] == 95
+    c.close()
+
+
+def test_confidence_max_prozent_leer(tmp_path):
+    """Ohne Confidence-Pflege bleibt der Max-Wert None (dataclass-Default).
+
+    Spiegelt die confidence_min_prozent- und median_/durchschnitt_
+    confidence_prozent-None-Konvention: score-basierte Groessen mit None
+    statt 0 im Undefined-Fall - im Gegensatz zu wert_max_chf /
+    gewicht_max_g (Waehrungs-/Massen-Groessen mit 0.0 als Default), weil
+    Confidence "unbewertet" nicht mit "0 % Sicherheit" verwechselt
+    werden darf.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_max_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.confidence_max_prozent is None
+    assert st.as_dict()["confidence_max_prozent"] is None
+    c.close()
+
+
+def test_confidence_max_prozent_ignoriert_out_of_range(tmp_path):
+    """Out-of-Range-Werte (<0 / >100) zaehlen nicht ins Maximum.
+
+    Spiegelt die confidence_min_prozent- und median_confidence_prozent-
+    Konvention: die Extrem-Kennzahl darf nicht durch einen Integrity-
+    Verstoss (z.B. Confidence 200) verzerrt werden. Der groesste gueltige
+    Wert unter 90 und 200 ist 90, nicht 200 - das Integrity-Modul meldet
+    den 200er-Datensatz separat.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_max_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 40),
+            ("OBJ_0002", 90),
+            ("OBJ_0003", 200),   # out-of-range, ignoriert
+            ("OBJ_0004", -50),   # out-of-range, ignoriert
+            ("OBJ_0005", None),  # NULL, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Groesster gueltiger Wert: 90 (nicht 200)
+    assert st.confidence_max_prozent == 90
+    c.close()
+
+
+def test_confidence_max_prozent_bei_einem_eintrag_gleich_min(tmp_path):
+    """Bei genau einem Confidence-Eintrag ist Min == Max == Median == Ø.
+
+    Extremum-Kollaps analog zu wert_min_chf / wert_max_chf beim einzigen
+    Datenpunkt: alle vier Kennzahlen (min/max/median/durchschnitt)
+    zeigen denselben Einzelwert.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_max_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 77), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_max_prozent == 77
+    assert st.confidence_min_prozent == 77
+    assert st.median_confidence_prozent == 77.0
+    assert st.durchschnitt_confidence_prozent == 77.0
+    c.close()

@@ -420,6 +420,18 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # ints als .0-Float liefert.
         lines.append(
             f"Min Confidence:        {st.confidence_min_prozent} %")
+    if st.confidence_max_prozent is not None:
+        # Max-Confidence spiegelt wert_max_chf / gewicht_max_g auf die
+        # Confidence-Achse: die "sicherste Bestimmung" der Sammlung. Direkt
+        # unter der Min-Zeile, damit das Randlage-Paar (Min + Max) als
+        # geschlossener Block unter dem zentrale-Tendenz-Paar (Ø / Median)
+        # sichtbar bleibt - spiegelt die Extremum-Anordnung der Wert-/
+        # Gewicht-Bloecke, in denen min und max ebenfalls als Randlage-
+        # Paar zusammenstehen. Integer-Formatierung ohne Nachkomma
+        # (spiegelt die Min-Zeile und die scale-Konvention der conf_werte-
+        # Query mit int()-Cast).
+        lines.append(
+            f"Max Confidence:        {st.confidence_max_prozent} %")
     # Coverage-Quoten beantworten "Wie viel meiner Sammlung ist dokumentiert?"
     # Nur ausgeben, wenn ueberhaupt Objekte vorhanden sind (sonst sind alle
     # Quoten None und die Zeilen waeren nichtssagend).

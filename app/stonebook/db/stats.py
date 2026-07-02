@@ -187,6 +187,7 @@ class Statistik:
     durchschnitt_confidence_prozent: float | None = None
     median_confidence_prozent: float | None = None
     confidence_min_prozent: int | None = None
+    confidence_max_prozent: int | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
@@ -1412,6 +1413,7 @@ class Statistik:
                 if self.median_confidence_prozent is not None else None
             ),
             "confidence_min_prozent": self.confidence_min_prozent,
+            "confidence_max_prozent": self.confidence_max_prozent,
             "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
@@ -3493,6 +3495,41 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # Downstream-Konsumenten (as_dict / CLI-Zeile / Dashboard) den
         # Undefined-Zustand transparent unterscheiden koennen.
         st.confidence_min_prozent = conf_werte[0]
+        # confidence_max_prozent: groesster Confidence-Wert der Sammlung
+        # als symmetrisches Pendant zu confidence_min_prozent auf die
+        # Obergrenzen-Achse und zu wert_max_chf / gewicht_max_g auf die
+        # Confidence-Achse. Waehrend die Wert-/Gewicht-Extrema die
+        # monetaere/physikalische Obergrenze beziffern (teuerstes bzw.
+        # schwerstes Stueck), beziffert die Confidence-Obergrenze die
+        # "sicherste Bestimmung" der Sammlung - jenes Stueck, bei dem der
+        # Sammler den hoechsten Sicherheitsgrad vergeben hat. Vervollstaendigt
+        # damit das confidence_min_prozent / durchschnitt_/median_confidence_
+        # prozent-Trio um die obere Randlage-Kennzahl und schliesst so die
+        # Extremum-Achse (min + max), spiegelt das Wert-/Gewicht-Extrema-
+        # Paar (wert_min_chf / wert_max_chf, gewicht_min_g / gewicht_max_g).
+        # Komplementaer zu confidence_buckets (Bucket-Verteilung), das die
+        # obere Region nur grob als "75-100"-Bucket bemasst, ohne den
+        # konkreten Maximums-Wert zu benennen - hier die Punkt-Sicht auf
+        # die Obergrenze. Reuse-Pfad: greift den bereits sortierten
+        # conf_werte-Buffer ab (ORDER BY c aufsteigend) - conf_werte[-1]
+        # ist der groesste gueltige Confidence-Wert, spiegelt das Muster
+        # wert_max_chf = werte[-1] / gewicht_max_g = gewichte[-1] (dort
+        # zwar per SQL MAX() vorgezogen, semantisch aber identisch). Out-
+        # of-Range-Werte (<0 / >100) zaehlen nicht (bereits per BETWEEN
+        # 0 AND 100 in der conf_werte-Query gefiltert), damit die Extrem-
+        # Kennzahl nicht durch einen Integrity-Verstoss (z.B. Confidence
+        # 150) verzerrt wird - spiegelt die confidence_min_prozent- /
+        # median_confidence-Konvention. Bei leerer DB / ohne jegliche
+        # Confidence-Pflege bleibt None (dataclass-Default), spiegelt die
+        # confidence_min_prozent- / median_/durchschnitt_confidence_prozent-
+        # None-Konvention (score-basierte Groessen mit None statt 0 im
+        # Undefined-Fall) - im Gegensatz zu wert_max_chf / gewicht_max_g,
+        # die auf 0.0 defaulten (Waehrungs-/Massen-Groessen haben 0 als
+        # natuerlichen Null-Zustand, Confidence hingegen ist "unbewertet"
+        # anders als "0 % Sicherheit"). Damit Downstream-Konsumenten
+        # (as_dict / CLI-Zeile / Dashboard) den Undefined-Zustand
+        # transparent unterscheiden koennen.
+        st.confidence_max_prozent = conf_werte[-1]
     st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(
