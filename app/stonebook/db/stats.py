@@ -54,6 +54,7 @@ class Statistik:
     fundorte_total: int = 0
     kategorien_total: int = 0
     varietaeten_total: int = 0
+    gesteinsarten_total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_mineral: dict[str, int] = field(default_factory=dict)
     by_varietaet: dict[str, int] = field(default_factory=dict)
@@ -1106,6 +1107,7 @@ class Statistik:
             "fundorte_total": self.fundorte_total,
             "kategorien_total": self.kategorien_total,
             "varietaeten_total": self.varietaeten_total,
+            "gesteinsarten_total": self.gesteinsarten_total,
             "by_status": dict(self.by_status),
             "by_mineral": dict(self.by_mineral),
             "by_varietaet": dict(self.by_varietaet),
@@ -2762,6 +2764,43 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # und quote_mit_varietaet_prozent (Coverage-Quote): hier die Streuung-
     # Sicht ueber die dokumentierten Auspraegungen.
     st.varietaeten_total = _count_distinct(conn, "Varietaet")
+    # gesteinsarten_total: Anzahl distinct dokumentierter Gesteinsarten
+    # (Granit / Gneis / Kalkstein / Sandstein / Basalt / ...) als
+    # Diversitaets-Zaehler auf der petrologischen Klassifizierungs-Achse.
+    # Vervollstaendigt das Diversitaets-Quintett mineral_arten_total /
+    # fundorte_total / kategorien_total / varietaeten_total /
+    # gesteinsarten_total - die fuenf zentralen "wie breit ist meine
+    # Sammlung?"-Achsen liegen jetzt einheitlich als eigenstaendige
+    # Skalarkennzahlen vor. Waehrend mineral_arten_total die mineralogische
+    # Familien-Achse zaehlt ("welche Mineral-Familien?", Quarz/Calcit/Achat),
+    # varietaeten_total die Sub-Klassifizierung darunter ("welche Auspraegung
+    # in der Familie?", Bergkristall/Amethyst innerhalb Quarz), kategorien_total
+    # die Inventar-Objekt-Typ-Achse ("welche Objekt-Typen?", Handstueck/
+    # Kristall/Duennschliff) und fundorte_total die geografische Streuung
+    # ("aus wie vielen Fundorten?"), deckt gesteinsarten_total die
+    # petrologische Gesteins-Klassifizierungs-Achse ab ("in welchen
+    # Gesteins-Einbettungen?", Granit als Wirt-Gestein fuer Quarz, Basalt
+    # als Wirt-Gestein fuer Olivin/Zeolithe, Kalkstein als Wirt-Gestein
+    # fuer Calcit-Adern). Die fuenf Diversitaets-Kennzahlen antworten auf
+    # verschiedene Fragen und sind zueinander orthogonal: eine Sammlung mit
+    # drei Quarz-Varietaeten aus einem einzigen Granit-Aufschluss hat
+    # mineral_arten_total=1, varietaeten_total=3 und gesteinsarten_total=1.
+    # Reuse-Pfad greift den bestehenden _count_distinct-Helper ab (spiegelt
+    # mineral_arten_total / fundorte_total / kategorien_total /
+    # varietaeten_total exakt: SELECT COUNT(DISTINCT ...) mit NULL- und
+    # Whitespace-only-Filter), sodass jede Aenderung an der Distinct-
+    # Konvention automatisch alle fuenf Diversitaets-Zaehler konsistent
+    # haelt. Downstream-Konsumenten (Dashboards, JSON-Export, XLSX-Bericht)
+    # muessen nicht ueber len(by_gesteinsart) abstrahieren und behalten die
+    # Kennzahl konsistent, falls by_gesteinsart spaeter ein Top-N-Limit
+    # bekommt (spiegelt die mineral_arten_total-Rolle: by_mineral hat
+    # top_mineral=10-Default, mineral_arten_total dagegen die volle
+    # Zaehlung). Komplementaer zu objekte_mit_gesteinsart (Coverage-Sicht:
+    # wie viele Stuecke ueberhaupt) und quote_mit_gesteinsart_prozent
+    # (Coverage-Quote): hier die Streuung-Sicht ueber die dokumentierten
+    # Gesteinsarten. Bei leerer DB / ohne jegliche Gesteinsart-Pflege bleibt
+    # 0 (dataclass-Default, spiegelt die uebrigen Diversitaets-Kennzahlen).
+    st.gesteinsarten_total = _count_distinct(conn, "Gesteinsart")
 
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)

@@ -4612,6 +4612,11 @@ def test_mineral_arten_total_leer(tmp_path):
     # der Zaehler bei 0 (dataclass-Default, spiegelt mineral_arten_total /
     # fundorte_total / kategorien_total).
     assert st.varietaeten_total == 0
+    # gesteinsarten_total: petrologische Klassifizierungs-Achse (Granit/Gneis/
+    # Kalkstein/...) als fuenfter Diversitaets-Zaehler. Bei leerer DB bleibt
+    # der Zaehler bei 0 (dataclass-Default, spiegelt mineral_arten_total /
+    # fundorte_total / kategorien_total / varietaeten_total).
+    assert st.gesteinsarten_total == 0
 
 
 def test_kategorien_total_zaehlt_distinct(tmp_path):
@@ -4686,6 +4691,50 @@ def test_varietaeten_total_zaehlt_distinct(tmp_path):
     # nur zwischen Quarz und Calcit (2), varietaeten_total zaehlt die feineren
     # Auspraegungen (3). Die zwei Kennzahlen antworten auf verschiedene Fragen.
     assert st.mineral_arten_total == 2
+    c.close()
+
+
+def test_gesteinsarten_total_zaehlt_distinct(tmp_path):
+    """gesteinsarten_total spiegelt mineral_arten_total auf die Gesteinsart-Achse.
+
+    Zaehlt distinct dokumentierte Gesteinsarten (Granit/Gneis/Kalkstein/...),
+    unabhaengig von Top-N-Limits in by_gesteinsart und ohne NULL/leere Zeichen.
+    Downstream-Konsumenten (Dashboards, JSON-Export) lesen den Skalar direkt
+    statt len(by_gesteinsart) zu berechnen. Spiegelt varietaeten_total /
+    kategorien_total: dieselbe Distinct-Semantik, andere Achse (petrologische
+    Wirt-/Einbettungs-Sicht neben mineralogischer Familien- und Sub-Klassi-
+    fizierungs-Achse).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gdiv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mineral_Primaer, Gesteinsart) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "Quarz", "Granit"),
+            ("OBJ_0002", "Quarz", "Granit"),      # Duplikat, zaehlt nur 1x
+            ("OBJ_0003", "Quarz", "Sandstein"),
+            ("OBJ_0004", "Calcit", "Kalkstein"),
+            ("OBJ_0005", "Calcit", ""),           # leere Gesteinsart -> ignoriert
+            ("OBJ_0006", "Calcit", "   "),        # Whitespace-only -> ignoriert
+            ("OBJ_0007", "Achat", None),          # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.gesteinsarten_total == 3   # Granit, Sandstein, Kalkstein
+    d = st.as_dict()
+    assert d["gesteinsarten_total"] == 3
+    # by_gesteinsart enthaelt die drei Gesteinsarten - gesteinsarten_total
+    # spiegelt deren Anzahl exakt, macht die Zaehlung aber ohne Umweg ueber
+    # die Dict-Laenge verfuegbar (spiegelt mineral_arten_total-Rolle).
+    assert len(st.by_gesteinsart) == st.gesteinsarten_total
+    # Diversitaets-Achsen sind orthogonal: hier drei Mineral-Familien (Quarz/
+    # Calcit/Achat) in drei Gesteinsarten (Granit/Sandstein/Kalkstein) -
+    # mineral_arten_total zaehlt die Familien (3), gesteinsarten_total die
+    # Wirt-Einbettungen (3). Die zwei Kennzahlen antworten auf verschiedene
+    # Fragen: "welche mineralogische Familie?" vs. "in welcher Gesteins-
+    # Einbettung?".
+    assert st.mineral_arten_total == 3
     c.close()
 
 

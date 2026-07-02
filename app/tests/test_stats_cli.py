@@ -38,6 +38,14 @@ def test_text_ausgabe(migrated_db, capsys):
     # Diversitaets-Zeilen als Block im Header sichtbar.
     assert "Varietaeten:" in out
     assert out.index("Kategorien-Arten:") < out.index("Varietaeten:")
+    # Gesteinsarten: fuenftes Diversitaets-Quintett-Mitglied auf der
+    # petrologischen Klassifizierungs-Achse (Granit/Gneis/Kalkstein/
+    # Sandstein/Basalt/...). Steht direkt unter Varietaeten und
+    # vervollstaendigt das Diversitaets-Quintett Mineral-Arten / Fundorte /
+    # Kategorien-Arten / Varietaeten / Gesteinsarten - so bleiben die fuenf
+    # Diversitaets-Zeilen als Block im Header sichtbar.
+    assert "Gesteinsarten:" in out
+    assert out.index("Varietaeten:") < out.index("Gesteinsarten:")
 
 
 def test_text_ausgabe_zeigt_confidence_buckets(migrated_db, capsys):

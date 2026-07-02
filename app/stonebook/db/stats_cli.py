@@ -55,11 +55,26 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Steht direkt unter Kategorien-Arten, weil Varietaet die feinere
         # Auspraegung innerhalb der Mineral-Familie ist - Mineral-Arten zaehlt
         # "welche Familie?", Varietaeten "welche Auspraegung in der Familie?".
-        # Vervollstaendigt das Diversitaets-Quartett Mineral-Arten / Fundorte /
-        # Kategorien-Arten / Varietaeten. Bei leerer DB / ohne jegliche
-        # Varietaet-Pflege bleibt 0 (spiegelt die uebrigen Diversitaets-Zaehler:
-        # Zeile immer ausgeben, damit der Header-Block deterministisch bleibt).
+        # Teil des Diversitaets-Quintetts Mineral-Arten / Fundorte /
+        # Kategorien-Arten / Varietaeten / Gesteinsarten. Bei leerer DB /
+        # ohne jegliche Varietaet-Pflege bleibt 0 (spiegelt die uebrigen
+        # Diversitaets-Zaehler: Zeile immer ausgeben, damit der Header-Block
+        # deterministisch bleibt).
         f"Varietaeten:           {st.varietaeten_total}",
+        # Gesteinsarten: Diversitaets-Zaehler auf der petrologischen
+        # Klassifizierungs-Achse (Granit/Gneis/Kalkstein/Sandstein/Basalt/...).
+        # Vervollstaendigt das Diversitaets-Quintett Mineral-Arten / Fundorte /
+        # Kategorien-Arten / Varietaeten / Gesteinsarten. Steht direkt unter
+        # Varietaeten, weil Gesteinsart die Wirt-/Einbettungs-Sicht neben der
+        # mineralogischen Familien- und Sub-Klassifizierungs-Achse ist -
+        # "in welcher Gesteins-Einbettung liegt das Stueck?" komplementaer zu
+        # "welche mineralogische Familie/Auspraegung?" (Quarz-Kristall aus
+        # Granit vs. Quarz-Adern in Sandstein). Bei leerer DB / ohne jegliche
+        # Gesteinsart-Pflege bleibt 0 (spiegelt die uebrigen Diversitaets-
+        # Zaehler: Zeile immer ausgeben, damit der Header-Block deterministisch
+        # bleibt und das Kennzahlen-Quintett in jedem Bericht an derselben
+        # Stelle steht).
+        f"Gesteinsarten:         {st.gesteinsarten_total}",
         "",
         f"Wert (Summe, CHF):     {st.wert_summe_chf:,.0f}",
         f"  davon Roh:           {st.wert_roh_summe_chf:,.0f}",
