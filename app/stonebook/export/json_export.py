@@ -536,6 +536,115 @@ def oldest_backup(backup_dir: Path) -> Path | None:
     return backups[0] if backups else None
 
 
+def _backup_size(path: Path) -> int | None:
+    """Liest die Dateigroesse eines Backups oder ``None`` bei OS-Fehler.
+
+    Kapselt den ``st_size``-Zugriff genau wie :func:`backup_directory_stats`
+    es intern macht: Race gegen paralleles Loeschen (Cron-Prune vs. Report)
+    darf den Aufrufer nicht crashen, sondern soll die Datei stille
+    ueberspringen. Wird von :func:`largest_backup` / :func:`smallest_backup`
+    geteilt, damit beide Extrema-Reporter dasselbe Fehler-Verhalten haben
+    wie der Aggregat-Reporter.
+    """
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def largest_backup(backup_dir: Path) -> Path | None:
+    """Liefert das groesste Backup aus dem Ordner (Bytes auf Platte), oder ``None``.
+
+    Spiegelt :func:`latest_backup` / :func:`oldest_backup` (Zeit-Achse
+    ueber den Filename-Stempel) auf die Volume-Achse (Bytes auf Platte).
+    Waehrend ``latest_backup`` das juengste Backup als Restore-Anker
+    liefert, beantwortet ``largest_backup`` die naheliegende Wartungs-
+    Frage "welches Backup belegt am meisten Platz?" in einem Schritt,
+    ohne dass der Caller ``max(list_backups(dir), key=st_size)`` neu
+    formulieren muss. Geeignet als Anker fuer Anomalie-Detektion
+    ("ist das juengste Backup groesser als sonst? -> mehr Objekte,
+    oder Wachstum durch neue Bilder-Metadaten?"), als Startpunkt fuer
+    Kompressions-Vergleiche (``.json`` vs. ``.json.gz`` desselben
+    Zeitraums) und als Auswahl im Speicher-Report ("welche Datei
+    beim naechsten Prune zuerst freigeben?").
+
+    Beruehrt ausschliesslich Dateien, die zum :func:`write_rotated_backup`-
+    Schema passen - fremde Dateien im Ordner bleiben unbetrachtet,
+    spiegelt exakt das Filtern von :func:`latest_backup` /
+    :func:`oldest_backup` / :func:`list_backups` ueber ``_BACKUP_RE``.
+    Die Sortierung basiert auf ``st_size`` (nicht auf dem Filename-
+    Stempel wie bei den Zeit-Extrema), damit umbenannte oder verschobene
+    Backups mit korrektem Byte-Count erfasst werden. Bei gleichem
+    ``st_size`` gewinnt der lexikographisch groessere Filename (das
+    juengere Backup) - deterministisches Verhalten fuer Test-Fixtures
+    und Cron-Reporter, spiegelt die Zweitsortierung-Konvention der
+    Zeit-Extrema (deterministische Wahl bei Gleichstand).
+
+    Dateien, deren ``st_size``-Aufruf mit OSError faellt (Race gegen
+    paralleles Loeschen, Lock, defekter Mount), werden uebersprungen
+    statt zu crashen (spiegelt :func:`backup_directory_stats` /
+    :func:`prune_old_backups`). Leerer Ordner / nur fremde Dateien /
+    nicht existierender Ordner / alle Dateien unlesbar liefern
+    ``None`` (spiegelt das ``latest_backup``/``oldest_backup``-
+    Verhalten bei fehlendem Ordner: keine Datei statt Crash), sodass
+    ``largest_backup`` ohne Sonderbehandlung vor der ersten Backup-
+    Schreibe aufrufbar bleibt und der Caller mit einem einfachen
+    ``if largest is None``-Guard "noch kein Backup vorhanden"
+    abfangen kann.
+    """
+    sized = [(p, _backup_size(p)) for p in list_backups(backup_dir)]
+    sized = [(p, size) for p, size in sized if size is not None]
+    if not sized:
+        return None
+    return max(sized, key=lambda ps: (ps[1], ps[0].name))[0]
+
+
+def smallest_backup(backup_dir: Path) -> Path | None:
+    """Liefert das kleinste Backup aus dem Ordner (Bytes auf Platte), oder ``None``.
+
+    Spiegelt :func:`largest_backup` auf den Gegen-Endpunkt der Volume-
+    Achse, exakt wie :func:`oldest_backup` das Gegenstueck zu
+    :func:`latest_backup` auf der Zeit-Achse bildet. Waehrend
+    ``largest_backup`` das groesste Backup als Anomalie-Kandidat
+    ("plotzlich viel Wachstum?") liefert, beantwortet
+    ``smallest_backup`` die Kehrfrage "welches Backup ist am
+    schlanksten - potentiell abgebrochene Schreibe, fehlerhaft
+    komprimiert, oder aus einer sehr fruehen Phase mit kleinerer
+    Sammlung?" in einem Schritt. Geeignet als Verdachts-Anker fuer
+    Backup-Integritaets-Checks (auffaellig kleine Dateien via
+    :func:`validate_backup` gegenchecken), als Referenz fuer die
+    Baseline-Grosse einer frisch-migrierten DB und als Ergaenzung zu
+    :func:`largest_backup` bei Speicher-Reports (der Range
+    ``largest - smallest`` beziffert die Varianz der Backup-Groessen
+    ueber die Halden-Zeitspanne).
+
+    Beruehrt ausschliesslich Dateien, die zum :func:`write_rotated_backup`-
+    Schema passen - fremde Dateien im Ordner bleiben unbetrachtet
+    (spiegelt :func:`largest_backup`). Die Sortierung basiert auf
+    ``st_size`` (nicht auf dem Filename-Stempel), damit umbenannte
+    oder verschobene Backups mit korrektem Byte-Count erfasst werden.
+    Bei gleichem ``st_size`` gewinnt der lexikographisch kleinere
+    Filename (das aeltere Backup) - deterministisches Verhalten fuer
+    Test-Fixtures und Cron-Reporter, spiegelt die Zweitsortierung-
+    Konvention der Zeit-Extrema (deterministische Wahl bei Gleichstand,
+    hier gewinnt das aeltere Backup als Konsistenz zu
+    :func:`oldest_backup`).
+
+    Dateien, deren ``st_size``-Aufruf mit OSError faellt, werden
+    uebersprungen statt zu crashen (spiegelt :func:`largest_backup`).
+    Leerer Ordner / nur fremde Dateien / nicht existierender Ordner /
+    alle Dateien unlesbar liefern ``None`` (spiegelt
+    :func:`largest_backup` / :func:`latest_backup` / :func:`oldest_backup`),
+    sodass ``smallest_backup`` ohne Sonderbehandlung vor der ersten
+    Backup-Schreibe aufrufbar bleibt.
+    """
+    sized = [(p, _backup_size(p)) for p in list_backups(backup_dir)]
+    sized = [(p, size) for p, size in sized if size is not None]
+    if not sized:
+        return None
+    return min(sized, key=lambda ps: (ps[1], ps[0].name))[0]
+
+
 def prune_old_backups(backup_dir: Path, keep: int) -> list[Path]:
     """Loescht aelteste Backups im Verzeichnis bis nur noch ``keep`` uebrig sind.
 

@@ -10,10 +10,11 @@ from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           backup_directory_stats, export_json,
                                           import_json, inspect_backup,
-                                          latest_backup, list_backups,
-                                          oldest_backup, prune_backups_by_age,
+                                          largest_backup, latest_backup,
+                                          list_backups, oldest_backup,
+                                          prune_backups_by_age,
                                           prune_old_backups, read_backup_meta,
-                                          write_rotated_backup)
+                                          smallest_backup, write_rotated_backup)
 from stonebook.migration.migrate import migrate
 
 REPO = Path(__file__).resolve().parents[2]
@@ -798,6 +799,165 @@ def test_oldest_backup_ignoriert_fremde_dateien(tmp_path):
     assert oldest is not None
     assert "20240613_100000" in oldest.name
     assert oldest != fremd
+    db.close()
+
+
+def test_largest_und_smallest_backup_leerer_ordner(tmp_path):
+    """largest/smallest_backup liefern None bei fehlendem/leerem/fremd-nur Ordner.
+
+    Spiegelt :func:`test_latest_backup_leerer_ordner` und
+    :func:`test_oldest_backup_leerer_ordner` auf die Volume-Achse (Bytes):
+    beide Ein-Datei-Wrapper der Grosse-Achse muessen dieselben Grenzfaelle
+    abfangen wie die Zeit-Achsen-Wrapper (fehlender Ordner → keine Datei;
+    leerer Ordner → keine Datei; Ordner mit nur fremden Dateien → keine
+    passende Datei), damit Anomalie-Detektoren und Speicher-Reports ohne
+    Sonderbehandlung "noch kein Backup vorhanden" ueber ``if None``-Guard
+    abfangen koennen.
+    """
+    for fn in (largest_backup, smallest_backup):
+        assert fn(tmp_path / "nichtda") is None
+        leer = tmp_path / f"leer_{fn.__name__}"
+        leer.mkdir()
+        assert fn(leer) is None
+        (leer / "README.txt").write_text("keine Backup", encoding="utf-8")
+        (leer / "andere_backup_20240101_000000.json.gz").write_bytes(b"x" * 999)
+        assert fn(leer) is None
+
+
+def test_largest_backup_liefert_groesste_datei(tmp_path):
+    """largest_backup waehlt die Datei mit dem groessten ``st_size``.
+
+    Spiegelt :func:`test_latest_backup_liefert_juengsten_stempel` auf die
+    Volume-Achse: waehrend die Zeit-Achse den Filename-Stempel als
+    Auswahl-Kriterium nimmt, greift die Volume-Achse auf ``st_size``
+    zu. Die drei geschriebenen Backups tragen alle denselben Byte-Count,
+    daher wird der mittlere gezielt vergroessert (``.write_bytes`` mit
+    Padding), damit der Groessen-Vergleich eindeutig funktioniert und
+    nicht auf die deterministische Zweitsortierung (Filename)
+    zurueckfaellt.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamps = ("20240613_100000", "20240613_110000", "20240613_120000")
+    for stamp in stamps:
+        write_rotated_backup(
+            db, backups_dir, keep=99,
+            now=datetime.datetime.strptime(stamp, "%Y%m%d_%H%M%S"))
+    files = list_backups(backups_dir)
+    # Mittleres Backup gezielt vergroessern (Padding ans Ende, .gz bleibt lesbar
+    # als "kaputt", aber der st_size-Vergleich prueft nur die Roh-Bytes).
+    middle = files[1]
+    middle.write_bytes(middle.read_bytes() + b"\x00" * 50_000)
+    largest = largest_backup(backups_dir)
+    assert largest == middle
+    db.close()
+
+
+def test_smallest_backup_liefert_kleinste_datei(tmp_path):
+    """smallest_backup waehlt die Datei mit dem kleinsten ``st_size``.
+
+    Spiegelt :func:`test_largest_backup_liefert_groesste_datei` auf den
+    Gegen-Endpunkt der Volume-Achse. Konstruktion analog: alle drei
+    Backups tragen initial denselben Byte-Count, das mittlere wird
+    gezielt verkleinert (auf Null-Bytes ueberschrieben), damit der
+    Groessen-Vergleich eindeutig auf ``st_size`` und nicht auf die
+    Filename-Zweitsortierung faellt.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamps = ("20240613_100000", "20240613_110000", "20240613_120000")
+    for stamp in stamps:
+        write_rotated_backup(
+            db, backups_dir, keep=99,
+            now=datetime.datetime.strptime(stamp, "%Y%m%d_%H%M%S"))
+    files = list_backups(backups_dir)
+    # Mittleres Backup gezielt verkleinern
+    files[1].write_bytes(b"")
+    smallest = smallest_backup(backups_dir)
+    assert smallest == files[1]
+    db.close()
+
+
+def test_largest_und_smallest_backup_ignorieren_fremde_dateien(tmp_path):
+    """Fremde Dateien im Ordner werden von beiden Extrema-Reportern ignoriert.
+
+    Spiegelt :func:`test_latest_backup_ignoriert_fremde_dateien` und
+    :func:`test_oldest_backup_ignoriert_fremde_dateien` auf die Volume-
+    Achse: fremde Dateien im Backup-Ordner (README, andere Backup-
+    Schemata) sind vom ``_BACKUP_RE``-Filter ausgeschlossen, auch wenn
+    sie deutlich groesser oder kleiner sind als das echte Backup - sonst
+    wuerden Anomalie-Reports auf Ordner-Artefakte statt echte Backups
+    zeigen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    write_rotated_backup(
+        db, backups_dir, keep=99,
+        now=datetime.datetime(2024, 6, 13, 10, 0, 0))
+    only_backup = list_backups(backups_dir)[0]
+    # Fremde Dateien mit extremen Groessen
+    (backups_dir / "README.txt").write_bytes(b"x" * 10_000_000)
+    (backups_dir / "andere_backup_20240101_000000.json.gz").write_bytes(b"")
+    # Beide Extrema-Reporter zeigen ausschliesslich auf das echte Backup
+    assert largest_backup(backups_dir) == only_backup
+    assert smallest_backup(backups_dir) == only_backup
+    db.close()
+
+
+def test_largest_und_smallest_backup_bei_einzelbackup_identisch(tmp_path):
+    """Ein einzelnes Backup ist gleichzeitig groesstes und kleinstes.
+
+    Spiegelt :func:`test_oldest_und_latest_bei_einzelbackup_identisch`
+    auf die Volume-Achse: bei count=1 fallen alle vier Ein-Datei-Wrapper
+    (latest, oldest, largest, smallest) auf dieselbe Datei zusammen -
+    Sanity-Check fuer Halden-Reporter, die die Ein-Datei-Grenzfall nicht
+    als Sonderfall behandeln muessen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    write_rotated_backup(
+        db, backups_dir, keep=99,
+        now=datetime.datetime(2024, 6, 13, 10, 0, 0))
+    only_backup = list_backups(backups_dir)[0]
+    assert largest_backup(backups_dir) == only_backup
+    assert smallest_backup(backups_dir) == only_backup
+    assert largest_backup(backups_dir) == smallest_backup(backups_dir)
+    db.close()
+
+
+def test_largest_und_smallest_gleiche_groesse_deterministische_wahl(tmp_path):
+    """Bei gleichem ``st_size`` gewinnt eine deterministische Filename-Wahl.
+
+    Bei zwei Backups mit identischen Bytes ist die Extrema-Auswahl ohne
+    Zweitsortierung nichtdeterministisch (dict-Reihenfolge, Filesystem-
+    Traversal-Order). Der Wrapper faellt auf den Filename zurueck:
+    largest bevorzugt den lexikographisch groesseren (juengeren) Namen,
+    smallest den lexikographisch kleineren (aelteren). Damit sind
+    Anomalie-Reports und Test-Fixtures reproduzierbar.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamps = ("20240613_100000", "20240613_120000")
+    for stamp in stamps:
+        write_rotated_backup(
+            db, backups_dir, keep=99,
+            now=datetime.datetime.strptime(stamp, "%Y%m%d_%H%M%S"))
+    files = list_backups(backups_dir)
+    assert files[0].stat().st_size == files[1].stat().st_size
+    # largest waehlt den juengeren (lex-groesseren) Filename bei Gleichstand
+    assert largest_backup(backups_dir) == files[1]
+    # smallest waehlt den aelteren (lex-kleineren) Filename bei Gleichstand
+    assert smallest_backup(backups_dir) == files[0]
     db.close()
 
 
