@@ -8601,3 +8601,128 @@ def test_confidence_max_prozent_bei_einem_eintrag_gleich_min(tmp_path):
     assert st.median_confidence_prozent == 77.0
     assert st.durchschnitt_confidence_prozent == 77.0
     c.close()
+
+
+def test_confidence_standardabweichung_prozent_aus_bekannten_werten(tmp_path):
+    """σ Confidence = Populations-Standardabweichung ueber gueltige Scores.
+
+    Fuenf Confidence-Werte 20/40/60/80/100 mit Ø 60 - die Abweichungen zum
+    Mittel sind ±40, ±20, 0 (0, 20, 20, 40, 40 in Absolut), Varianz
+    (1600+400+0+400+1600)/5 = 800, sigma = sqrt(800) ≈ 28.2843. Spiegelt
+    die wert_standardabweichung_chf / gewicht_standardabweichung_g /
+    mohs_kollektion_standardabweichung / dichte_kollektion_standardabweichung-
+    Semantik (Populations-Variante mit Divisor n).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_sigma.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 20),
+            ("OBJ_0002", 40),
+            ("OBJ_0003", 60),
+            ("OBJ_0004", 80),
+            ("OBJ_0005", 100),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.durchschnitt_confidence_prozent == 60.0
+    assert st.confidence_standardabweichung_prozent == pytest.approx(
+        800.0 ** 0.5, abs=1e-9)
+    # as_dict rundet auf 2 Nachkommastellen (spiegelt wert/gewicht-sigma-
+    # Serialisierung).
+    assert st.as_dict()["confidence_standardabweichung_prozent"] == round(
+        800.0 ** 0.5, 2)
+    c.close()
+
+
+def test_confidence_standardabweichung_prozent_leer(tmp_path):
+    """Ohne Confidence-Pflege bleibt sigma None (dataclass-Default).
+
+    Spiegelt die durchschnitt_/median_/confidence_min_/confidence_max_-
+    prozent-None-Konvention: score-basierte Groessen mit None statt 0 im
+    Undefined-Fall, damit Downstream-Konsumenten den Undefined-Zustand
+    transparent unterscheiden koennen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_sigma_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.confidence_standardabweichung_prozent is None
+    assert st.as_dict()["confidence_standardabweichung_prozent"] is None
+    c.close()
+
+
+def test_confidence_standardabweichung_prozent_ignoriert_out_of_range(tmp_path):
+    """Out-of-Range-Werte (<0 / >100) zaehlen nicht in die Streuung.
+
+    Spiegelt die confidence_min_/max_/median_prozent-Konvention: die
+    Populations-Streuung darf nicht durch einen Integrity-Verstoss (z.B.
+    Confidence 200) verzerrt werden. Der reine 60/70/80-Cluster ergibt
+    lokal Ø 70 und sigma sqrt(((60-70)^2+(70-70)^2+(80-70)^2)/3) =
+    sqrt(200/3). Der SQL-basierte durchschnitt_confidence_prozent nimmt
+    dagegen alle non-NULL-Werte (72.0), aber sigma verwendet den strikten
+    lokalen Mittelwert - andernfalls waere die (x-mean)^2-Summe ueber
+    einer Range-gefilterten Menge mit einem Mittelwert einer nicht-
+    gefilterten Menge inkonsistent (dokumentiert im stats.py-Kommentar).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_sigma_oor.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 60),
+            ("OBJ_0002", 70),
+            ("OBJ_0003", 80),
+            ("OBJ_0004", 200),   # out-of-range, ignoriert
+            ("OBJ_0005", -50),   # out-of-range, ignoriert
+            ("OBJ_0006", None),  # NULL, ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_standardabweichung_prozent == pytest.approx(
+        (200.0 / 3.0) ** 0.5, abs=1e-9)
+    c.close()
+
+
+def test_confidence_standardabweichung_prozent_bei_einem_eintrag_ist_null(tmp_path):
+    """Bei genau einem Confidence-Eintrag kollabiert sigma auf 0.0.
+
+    Single-Point-Kollaps analog zu wert_/gewicht_/mohs_/dichte_
+    standardabweichung: ohne Dispersion (nur ein Datenpunkt) ist die
+    Streuung mathematisch 0.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_sigma_1.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [("OBJ_0001", 77), ("OBJ_0002", None)],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.confidence_standardabweichung_prozent == 0.0
+    c.close()
+
+
+def test_confidence_standardabweichung_prozent_bei_uniformen_werten_ist_null(tmp_path):
+    """Bei uniformen Confidence-Scores (alle gleich) kollabiert sigma auf 0.0.
+
+    Uniform-Kollaps analog zu den vier anderen sigma-Groessen: alle
+    Abweichungen zum Mittel sind 0, damit ist die Varianz und sigma 0.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "conf_sigma_uniform.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Confidence_Prozent) VALUES (?, ?)",
+        [
+            ("OBJ_0001", 85),
+            ("OBJ_0002", 85),
+            ("OBJ_0003", 85),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.durchschnitt_confidence_prozent == 85.0
+    assert st.confidence_standardabweichung_prozent == 0.0
+    c.close()

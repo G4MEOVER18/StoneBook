@@ -432,6 +432,23 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # Query mit int()-Cast).
         lines.append(
             f"Max Confidence:        {st.confidence_max_prozent} %")
+    if st.confidence_standardabweichung_prozent is not None:
+        # σ Confidence: Populations-Standardabweichung der Confidence-Scores
+        # als Dispersions-Achse zur zentralen-Tendenz-Achse (Ø/Median).
+        # Spiegelt σ Wert / σ Gewicht / σ Mohs / σ Dichte auf die
+        # quantitative Sicherheits-Achse und vervollstaendigt damit das
+        # sigma-Quintett auf allen fuenf zentralen Kennzahlen-Achsen der
+        # Sammlung. Direkt unter der Max-Zeile, damit der Dispersions-Block
+        # unter dem Extremum-Paar (Min + Max) sichtbar bleibt - spiegelt die
+        # sigma-Position der Wert-/Gewicht-/Mohs-/Dichte-Bloecke, wo σ
+        # ebenfalls hinter dem Extremum-Paar (min + max) steht. 1 Nachkomma
+        # (~0.1 %-Aufloesung), weil Confidence als scale (1..100) in ganzen
+        # Schritten definiert ist und sigma damit typisch im 5..25-Bereich
+        # liegt - 1 dp reicht fuer die Verteilungs-Kontrast-Lesbarkeit und
+        # spiegelt die Ø/Median-Formatierung (float mit 1 dp).
+        lines.append(
+            f"σ Confidence:          "
+            f"{st.confidence_standardabweichung_prozent:.1f} %")
     # Coverage-Quoten beantworten "Wie viel meiner Sammlung ist dokumentiert?"
     # Nur ausgeben, wenn ueberhaupt Objekte vorhanden sind (sonst sind alle
     # Quoten None und die Zeilen waeren nichtssagend).

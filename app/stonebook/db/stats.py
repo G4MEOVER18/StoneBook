@@ -188,6 +188,7 @@ class Statistik:
     median_confidence_prozent: float | None = None
     confidence_min_prozent: int | None = None
     confidence_max_prozent: int | None = None
+    confidence_standardabweichung_prozent: float | None = None
     confidence_buckets: dict[str, int] = field(default_factory=dict)
 
     def _quote(self, n: int) -> float | None:
@@ -1414,6 +1415,10 @@ class Statistik:
             ),
             "confidence_min_prozent": self.confidence_min_prozent,
             "confidence_max_prozent": self.confidence_max_prozent,
+            "confidence_standardabweichung_prozent": (
+                round(self.confidence_standardabweichung_prozent, 2)
+                if self.confidence_standardabweichung_prozent is not None else None
+            ),
             "confidence_buckets": dict(self.confidence_buckets),
             "quote_mit_bildern_prozent": _round_or_none(self.quote_mit_bildern_prozent),
             "quote_mit_funddatum_prozent": _round_or_none(self.quote_mit_funddatum_prozent),
@@ -3530,6 +3535,66 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # (as_dict / CLI-Zeile / Dashboard) den Undefined-Zustand
         # transparent unterscheiden koennen.
         st.confidence_max_prozent = conf_werte[-1]
+        # confidence_standardabweichung_prozent: Populations-Standardabweichung
+        # der Confidence-Scores als Dispersions-Achse zur zentralen-Tendenz-
+        # Achse (durchschnitt_/median_confidence_prozent). Spiegelt
+        # wert_standardabweichung_chf / gewicht_standardabweichung_g /
+        # mohs_kollektion_standardabweichung / dichte_kollektion_
+        # standardabweichung auf die quantitative Sicherheits-Achse und
+        # vervollstaendigt damit das σ-Quintett Wert/Gewicht/Mohs/Dichte/
+        # Confidence: waehrend die Original-Einheiten (CHF, g, Mohs-Punkt,
+        # g/cm3, Prozent) die vier physikalisch/monetaeren Achsen und die
+        # score-Achse jeweils in ihren nativen Skalen abbilden, macht sigma
+        # die Streuung der einzelnen Kennzahlen um den jeweiligen Durchschnitt
+        # in der Sammlung ablesbar. Beantwortet damit die Frage "wie
+        # heterogen ist meine Bestimmungs-Sicherheit?" - eine strikt
+        # gepflegte Sammlung mit ausschliesslich Referenz-Bestimmungen und
+        # Confidence 90..100 zeigt hier ~3-4 Prozent, eine gemischte
+        # Sammlung aus sicheren Referenzen und tentativen Feldbestimmungen
+        # (Confidence 20..100) mehrere 20er Prozent. Ergaenzt damit das
+        # Confidence-Kennzahlen-Sextett (durchschnitt/median/min/max/buckets/
+        # objekte_mit_confidence) um die Populations-Dispersions-Achse und
+        # stellt es strukturidentisch zu den vier anderen quantitativen
+        # Achsen der Sammlung. Reuse der bereits geladenen und sortierten
+        # conf_werte-Liste (ORDER BY c aufsteigend, existierender Median-/
+        # Min-/Max-Berechnungs-Pfad); Populations-Variante (Divisor n statt
+        # n-1), spiegelt die _mohs_/_dichte_/_wert_/_gewicht_standardab-
+        # weichung-Konvention (Sammlung als vollstaendige Grundgesamtheit,
+        # nicht als Stichprobe einer groesseren Population). Numerisch
+        # stabile Formel via (x - mean)^2 statt E[X^2] - E[X]^2, spiegelt
+        # die Konvention der vier anderen sigma-Groessen. Bei einem
+        # einzelnen Confidence-Eintrag oder uniformen Werten kollabiert
+        # die Streuung auf 0.0 (keine Dispersion moeglich, spiegelt
+        # _wert/_gewicht/_mohs/_dichte_standardabweichung-Single-Point-/
+        # Uniform-Kollaps-Semantik). Bei leerer DB / ohne jegliche
+        # Confidence-Pflege bleibt None (dataclass-Default), spiegelt die
+        # median_/durchschnitt_/confidence_min_/confidence_max_prozent-
+        # None-Konvention (score-basierte Groessen mit None statt 0 im
+        # Undefined-Fall) und stellt Symmetrie zu mohs_kollektion_/dichte_
+        # kollektion_standardabweichung her - im Gegensatz zu wert_/
+        # gewicht_standardabweichung, die auf 0.0 defaulten (Waehrungs-/
+        # Massen-Groessen haben 0 als natuerlichen Null-Zustand, Confidence
+        # hingegen ist "unbewertet" anders als "0 % Sicherheit"). Als
+        # Percent-Groesse serialisiert mit round(x, 2) in as_dict, spiegelt
+        # das wert_/gewicht_/mohs_/dichte_standardabweichung-Serialisierungs-
+        # Format (numerische Kennzahl mit 2 Nachkommastellen).
+        #
+        # Der lokale Mittelwert wird ueber conf_werte (BETWEEN 0 AND 100)
+        # neu berechnet, NICHT ueber durchschnitt_confidence_prozent (SQL
+        # AVG() ohne Range-Filter): AVG rechnet alle non-null-Werte
+        # ein - inklusive out-of-range - waehrend die conf_werte-basierte
+        # Streuung strikt nur gueltige Werte verwenden darf. Ohne diesen
+        # lokalen Recompute wuerde bei einer Sammlung mit einem 200er-
+        # Confidence-Verstoss der Mittelwert nach oben verzerrt, die
+        # (c - mean)^2-Summe dann aber ueber die gefilterte 0..100-Menge
+        # laufen - Ergebnis waere ein inkonsistenter sigma-Wert, der weder
+        # zur median-/min-/max-Achse noch zum AVG-basierten Ø passt.
+        # Spiegelt die BETWEEN 0 AND 100-Filter-Konvention der conf_werte-
+        # Query auf den Mittelwert-Anker der Streuungs-Formel.
+        conf_mean = sum(conf_werte) / len(conf_werte)
+        st.confidence_standardabweichung_prozent = (
+            sum((c - conf_mean) ** 2 for c in conf_werte) / len(conf_werte)
+        ) ** 0.5
     st.confidence_buckets = _confidence_buckets(conn)
 
     gewichte = [float(r["g"]) for r in conn.execute(

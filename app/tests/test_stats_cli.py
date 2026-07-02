@@ -86,6 +86,9 @@ def test_text_ausgabe_ohne_confidence_keine_median_zeile(tmp_path, capsys):
     # basierten Groessen.
     assert "Min Confidence:" not in out
     assert "Max Confidence:" not in out
+    # σ-Zeile ist an dieselbe Bedingung gekoppelt: ohne Confidence-Pflege
+    # bleibt sigma None (spiegelt Min/Max/Median-Konvention).
+    assert "σ Confidence:" not in out
 
 
 def test_text_ausgabe_zeigt_min_confidence(tmp_path, capsys):
@@ -124,6 +127,14 @@ def test_text_ausgabe_zeigt_min_confidence(tmp_path, capsys):
     assert "Max Confidence:" in out
     assert "Max Confidence:" in out and " 95 %" in out
     assert out.index("Min Confidence:") < out.index("Max Confidence:")
+    # σ-Zeile direkt unter Max: der Dispersions-Block liegt unter dem
+    # Extremum-Paar (Min + Max), spiegelt die sigma-Position der Wert-/
+    # Gewicht-/Mohs-/Dichte-Bloecke. Vollstaendigt damit das sigma-Quintett
+    # in der CLI-Ausgabe (σ Wert / σ Gewicht / σ Mohs / σ Dichte / σ
+    # Confidence). Bei 30/55/70/85/95 ist Ø = 67, Varianz = 526, sigma ≈
+    # 22.9 - dp-1-Format spiegelt Ø/Median.
+    assert "σ Confidence:" in out
+    assert out.index("Max Confidence:") < out.index("σ Confidence:")
 
 
 def test_text_ausgabe_zeigt_top_wert_und_gewicht(tmp_path, capsys):
