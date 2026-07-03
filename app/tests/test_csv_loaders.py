@@ -906,6 +906,156 @@ def test_find_rows_with_invalid_numeric_field_scale_und_int_felder(tmp_path):
     ]
 
 
+def test_find_rows_with_invalid_numeric_fields_bulk_standard(tmp_path):
+    """Bulk-Scanner buendelt alle numerischen Spalten in einem Aufruf.
+
+    Symmetrie-Vervollstaendigung zur singularen Variante: waehrend die
+    Einzel-Spalte-Version einen konkreten Feldnamen erwartet, laeuft die
+    Plural-Version selbstaendig ueber alle im File vorhandenen numerischen
+    Spalten und emittiert (Zeile, Spalte, Roh-Wert)-Tripel. Vorbedingung
+    fuer die ImportReport-Wiring, die ohne feste Spalten-Liste auskommen
+    muss. Reihenfolge = Zeile-primaer, Spalte-sekundaer in Header-Reihenfolge.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "bulk.csv"
+    csv_path.write_text(
+        "ID,Gewicht_g,Wert_CHF_roh,Mineral_Primaer\n"
+        "OBJ_0001,42.5,500,Quarz\n"
+        "OBJ_0002,sehr schwer,teuer,Calcit\n"     # zwei Silent-Drops in Zeile 2
+        "OBJ_0003,150,ca. 750,Amethyst\n"          # Zeile 3 sauber
+        "OBJ_0004,,unbekannt,Turmalin\n"           # leer/Marker - kein Report
+        "OBJ_0005,mittel,,Diopsid\n",              # nur Gewicht kaputt
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_fields(csv_path) == [
+        (2, "Gewicht_g", "sehr schwer"),
+        (2, "Wert_CHF_roh", "teuer"),
+        (5, "Gewicht_g", "mittel"),
+    ]
+
+
+def test_find_rows_with_invalid_numeric_fields_ohne_numerische_spalten(tmp_path):
+    """Fehlen numerische Spalten komplett -> [] statt ValueError.
+
+    Spiegelt die Kein-Datenverlust-Regel der Einzel-Version: wenn das File
+    keine numerischen Felder enthaelt, kann es dort auch keinen Silent-Drop
+    geben - der Report darf nicht kuenstlich ValueError werfen.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "kein_num.csv"
+    csv_path.write_text(
+        "ID,Mineral_Primaer,Fundort\nOBJ_0001,Quarz,Davos\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_fields(csv_path) == []
+
+
+def test_find_rows_with_invalid_numeric_fields_ignoriert_no_data_marker(tmp_path):
+    """Explizite "keine Angabe"-Marker werden auch im Bulk-Scan uebersprungen.
+
+    Marker-Menge muss zwischen singular und plural konsistent sein - Wenn
+    der User in einer Spalte ``k.a.`` schreibt, ist das explizite
+    ``kein Wert verfuegbar``, kein Silent-Drop. Ein Regress hier wuerde die
+    Report-Ausgabe mit Rauschmeldungen fluten.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "marker_bulk.csv"
+    csv_path.write_text(
+        "ID,Gewicht_g,Wert_CHF_roh,Confidence_Prozent\n"
+        "OBJ_0001,k.a.,n/a,unbekannt\n"
+        "OBJ_0002,?,-,K.A.\n"
+        "OBJ_0003,,   ,\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_fields(csv_path) == []
+
+
+def test_find_rows_with_invalid_numeric_fields_scale_und_int_felder(tmp_path):
+    """Bulk-Scan deckt alle NUMERIC_TYPES ab (float / int / scale).
+
+    Analog zur singularen Variante: Confidence_Prozent (int),
+    Seltenheit_global_1_10 (scale), Gewicht_g (float) sind alle numerisch
+    konvertiert und teilen die Silent-Drop-Semantik. Ohne diesen Test
+    koennte eine spaetere Domain-Verengung des Bulk-Scanners (nur float)
+    die Scale-/Int-Coverage still abschneiden.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "types.csv"
+    csv_path.write_text(
+        "ID,Confidence_Prozent,Seltenheit_global_1_10,Gewicht_g\n"
+        "OBJ_0001,hoch,mittel,leicht\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_fields(csv_path) == [
+        (1, "Confidence_Prozent", "hoch"),
+        (1, "Seltenheit_global_1_10", "mittel"),
+        (1, "Gewicht_g", "leicht"),
+    ]
+
+
+def test_find_rows_with_invalid_numeric_fields_akzeptiert_obj_id_spalte(tmp_path):
+    """JSON-/DB-Format nutzt ``obj_id`` statt ``ID``.
+
+    Bulk-Scan-Konsistenz mit der ID-Alias-Regel der uebrigen Silent-Drop-
+    Detektoren: ein Reexport aus dem DB-Backup-JSON (Header ``obj_id``) muss
+    genauso verarbeitet werden wie ein CSV-Export (Header ``ID``).
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "objid_bulk.csv"
+    csv_path.write_text(
+        "obj_id,Wert_CHF_roh\nOBJ_0001,42.5\nOBJ_0002,teuer\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_fields(csv_path) == [
+        (2, "Wert_CHF_roh", "teuer"),
+    ]
+
+
+def test_find_rows_with_invalid_numeric_fields_raises_bei_fehlender_id_spalte(tmp_path):
+    """CSV mit Zeilen aber ohne ID/obj_id-Header wirft ValueError.
+
+    Format-Regel-Konsistenz: alle Pre-Scanner
+    (find_duplicate_ids/find_rows_without_id/find_rows_with_invalid_funddatum/
+    find_rows_with_invalid_numeric_field und jetzt auch die Bulk-Variante)
+    lehnen v1/v2-Historik-CSVs sichtbar ab, statt stille "0 Funde" zu melden.
+    """
+    import pytest
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "fremd_bulk.csv"
+    csv_path.write_text(
+        "Name,Mineralart,Fundort\nFoo,Quarz,Davos\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ID-Spalte"):
+        find_rows_with_invalid_numeric_fields(csv_path)
+
+
+def test_find_rows_with_invalid_numeric_fields_leere_csv(tmp_path):
+    """Leere CSV (nur Header) -> [] ohne Fehler.
+
+    Spiegelt find_rows_with_invalid_funddatum_leere_csv: ohne Zeilen kann
+    es keinen Datenverlust geben, unabhaengig vom Header-Format. Auch dann
+    keine ValueError, wenn der Header keine ID-Spalte hat - konsistent mit
+    dem "Zeilen == 0"-Kurzschluss der uebrigen Silent-Drop-Detektoren.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_fields,
+    )
+    csv_path = tmp_path / "leer_bulk.csv"
+    csv_path.write_text("Name,Mineralart\n", encoding="utf-8")
+    assert find_rows_with_invalid_numeric_fields(csv_path) == []
+
+
 def test_load_standard_raises_bei_fehlender_id_spalte(tmp_path):
     """CSV ohne ID/obj_id-Spalte ist kein gueltiger Standard-Import - klarer Fehler."""
     import pytest

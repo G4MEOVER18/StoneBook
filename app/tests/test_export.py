@@ -617,6 +617,81 @@ def test_csv_import_ohne_funddatum_luecken_setzt_leere_liste(tmp_path):
     db.close()
 
 
+def test_csv_import_meldet_ungueltige_numerische_werte(tmp_path):
+    """import_csv setzt rep.numeric_invalid fuer nicht parsbare Zahl-Zellen.
+
+    Symmetrie-Vervollstaendigung zum funddatum_invalid-Pfad auf der
+    numerischen Achse: waehrend die Datum-Variante genau eine Spalte pflegt,
+    scannt die numerische Variante alle float/int/scale-Felder in einem
+    Zug und emittiert (Zeile, Spalte, Roh-Wert)-Tripel. Ohne diesen Report
+    wuerde der User Tippfehler in Gewicht_g/Wert_CHF_roh (``sehr schwer``,
+    ``teuer``) unbemerkt in Silent-Drops verlieren - _convert_standard
+    uebergibt (True, None), is_empty(None) filtert das Feld raus, der Roh-
+    Text ist weg.
+    """
+    db = open_db(tmp_path / "nu.sqlite3")
+    src = tmp_path / "nu.csv"
+    src.write_text(
+        "ID,Gewicht_g,Wert_CHF_roh,Mineral_Primaer\n"
+        "OBJ_0001,42.5,500,Quarz\n"
+        "OBJ_0002,sehr schwer,teuer,Calcit\n"     # zwei Silent-Drops in Zeile 2
+        "OBJ_0003,150,ca. 750,Amethyst\n"
+        "OBJ_0004,mittel,,Ohne\n",                # nur Gewicht kaputt
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    # Reihenfolge = Zeile-primaer, Spalte-sekundaer in Header-Reihenfolge -
+    # der User sieht pro Zeile alle Silent-Drops zusammenhaengend.
+    assert rep.numeric_invalid == [
+        (2, "Gewicht_g", "sehr schwer"),
+        (2, "Wert_CHF_roh", "teuer"),
+        (4, "Gewicht_g", "mittel"),
+    ]
+    # Alle Zeilen sind trotzdem angelegt (Feld-Level-Drop, keine Zeilen-Verwerfung).
+    assert set(rep.angelegt) == {
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"}
+    # DB: gueltige Werte gepflegt, kaputte als NULL.
+    def _num(obj_id, col):
+        return db.execute(
+            f"SELECT {col} FROM objects WHERE obj_id=?", (obj_id,)
+        ).fetchone()[col]
+    assert _num("OBJ_0001", "Gewicht_g") == 42.5
+    assert _num("OBJ_0001", "Wert_CHF_roh") == 500
+    assert _num("OBJ_0002", "Gewicht_g") is None
+    assert _num("OBJ_0002", "Wert_CHF_roh") is None
+    assert _num("OBJ_0003", "Wert_CHF_roh") == 750  # "ca. 750" -> 750
+    assert _num("OBJ_0004", "Gewicht_g") is None
+    # as_dict serialisiert Tupel als Listen (fuer --json CLI-Weg, JSON kennt keine Tupel).
+    assert rep.as_dict()["numeric_invalid"] == [
+        [2, "Gewicht_g", "sehr schwer"],
+        [2, "Wert_CHF_roh", "teuer"],
+        [4, "Gewicht_g", "mittel"],
+    ]
+    db.close()
+
+
+def test_csv_import_ohne_numerische_luecken_setzt_leere_liste(tmp_path):
+    """Ohne kaputte Zahl-Werte bleibt rep.numeric_invalid == [] (default_factory-Vertrag).
+
+    Spiegelt die Symmetrie zu funddatum_invalid: ein CSV komplett ohne
+    numerische Spalten (oder mit ausschliesslich sauberen Werten) erzeugt
+    keinen False-Positive-Report. as_dict()["numeric_invalid"] == []
+    sichert den JSON-Vertrag fuer --json-CLI-Konsumenten.
+    """
+    db = open_db(tmp_path / "nu2.sqlite3")
+    src = tmp_path / "nu2.csv"
+    src.write_text(
+        "ID,Gewicht_g,Mineral_Primaer\n"
+        "OBJ_0001,42.5,Quarz\n"
+        "OBJ_0002,,Calcit\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    assert rep.numeric_invalid == []
+    assert rep.as_dict()["numeric_invalid"] == []
+    db.close()
+
+
 def test_csv_import_create_missing_false(tmp_path):
     src = tmp_path / "src.csv"
     src.write_text("ID,Mineral_Primaer\nOBJ_0999,Calcit\n", encoding="utf-8")

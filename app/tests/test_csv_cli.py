@@ -332,6 +332,63 @@ def test_import_ohne_funddatum_luecken_zeigt_keine_zeile(tmp_path, capsys):
     assert "Ungueltige Funddatum" not in out
 
 
+def test_import_meldet_ungueltige_numerische_werte_text_und_json(tmp_path, capsys):
+    """CLI-Text zeigt "Ungueltige numerische Werte: N" und --json enthaelt
+    "numeric_invalid".
+
+    Symmetrisch zur Datum-Meldung: Zeile erscheint nur, wenn Silent-Drops
+    vorkommen (kein "0"-Noise). Zeile + Spalte + Roh-Wert werden im Text
+    zusammengefasst, damit der User den Tippfehler direkt lokalisieren kann.
+    """
+    src = tmp_path / "nu.csv"
+    src.write_text(
+        "ID,Gewicht_g,Wert_CHF_roh,Mineral_Primaer\n"
+        "OBJ_0001,42.5,500,Quarz\n"
+        "OBJ_0002,sehr schwer,teuer,Calcit\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "nu.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Ungueltige numerische Werte: 2" in out
+    # Zeile + Spalte + Roh-Wert (repr) tauchen im Text auf.
+    assert "Zeile 2 Gewicht_g: 'sehr schwer'" in out
+    assert "Zeile 2 Wert_CHF_roh: 'teuer'" in out
+
+    src2 = tmp_path / "nu2.csv"
+    src2.write_text(
+        "ID,Gewicht_g,Mineral_Primaer\nOBJ_0001,kaputt,Quarz\n",
+        encoding="utf-8",
+    )
+    db2 = tmp_path / "nu2.sqlite3"
+    code = main(["import", str(src2), "--db", str(db2), "--json"])
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    # JSON serialisiert Tripel als Listen (JSON kennt keine Tupel).
+    assert report["numeric_invalid"] == [[1, "Gewicht_g", "kaputt"]]
+
+
+def test_import_ohne_numerische_luecken_zeigt_keine_zeile(tmp_path, capsys):
+    """Ohne kaputte Zahl-Werte erscheint die "Ungueltige numerische"-Zeile nicht.
+
+    Spiegelt die Kein-0-Noise-Regel von duplikate/zeilen_ohne_id/
+    funddatum_invalid: sauberer Import darf keine Silent-Drop-Meldung erzeugen.
+    """
+    src = tmp_path / "nuok.csv"
+    src.write_text(
+        "ID,Gewicht_g,Wert_CHF_roh,Mineral_Primaer\n"
+        "OBJ_0001,42.5,500,Quarz\n"
+        "OBJ_0002,,,Calcit\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "nuok.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Ungueltige numerische" not in out
+
+
 def test_export_import_roundtrip(migrated_db, tmp_path):
     """Export aus voller DB -> Import in frische DB liefert dieselben Felder."""
     out = tmp_path / "rt.csv"

@@ -518,6 +518,68 @@ def find_rows_with_invalid_numeric_field(
     return _find_rows_with_unparsable_value(path, column, _num)
 
 
+def find_rows_with_invalid_numeric_fields(
+    path: Path,
+) -> list[tuple[int, str, str]]:
+    """Bulk-Scanner ueber ALLE im File vorhandenen numerischen Standardfelder.
+
+    Buendelt :func:`find_rows_with_invalid_numeric_field` (pro Spalte) auf
+    die gesamte numerische Achse, damit :func:`stonebook.export.csv_export.import_csv`
+    ohne Kenntnis der konkreten Spaltenliste eine Gesamt-Silent-Drop-Bilanz
+    fuer :class:`~stonebook.export.csv_export.ImportReport` liefern kann.
+    Spiegelt :func:`find_rows_with_invalid_funddatum` (fixe Spalte, zeilen-
+    orientiertes Ergebnis) auf die Achse "beliebig viele numerische Spalten"
+    und schliesst damit die Symmetrie-Luecke im Silent-Drop-Report: Datum
+    ist bereits im Report wired, Numerik bisher nur per Einzel-Aufruf.
+
+    Rueckgabe: Liste von ``(Zeilennummer, Spaltenname, Roh-Wert)``. Sortier-
+    ordnung ist Zeile-primaer, Spalte-sekundaer in der Header-Reihenfolge des
+    Files - so bleibt die Reihenfolge deterministisch und ein CLI-Reporter
+    kann pro Zeile alle Silent-Drops zusammenhaengend anzeigen. Eine Zeile
+    kann mehrere Eintraege beitragen, wenn mehrere numerische Zellen
+    unparsbar sind (z.B. ``sehr schwer`` in ``Gewicht_g`` UND ``teuer`` in
+    ``Wert_CHF_roh`` in derselben Zeile - beide Silent-Drops werden separat
+    gemeldet, damit der Roh-Wert-Kontext pro Feld erhalten bleibt).
+
+    Nicht-numerische Spalten werden ignoriert (kein Silent-Drop moeglich:
+    ``str``/``text``/``enum``/``path`` akzeptieren jeden Freitext,
+    ``date`` hat :func:`find_rows_with_invalid_funddatum` als spezialisierten
+    Pfad). Explizite "keine Angabe"-Marker (``k.a.``, ``n/a``, ``unbekannt``,
+    ``?``, ``-``, ``—``, siehe
+    :data:`stonebook.migration.validators.DATE_NO_DATA_MARKERS`) zaehlen NICHT
+    als invalid - single source of truth mit
+    :func:`find_rows_with_invalid_funddatum`/:func:`find_rows_with_invalid_numeric_field`.
+    Whitespace-only-Werte zaehlen als leer und nicht als invalid.
+
+    Fehlen numerische Spalten komplett im File, wird ``[]`` zurueckgegeben.
+    Wirft ``ValueError`` wenn die CSV Zeilen enthaelt, aber weder ``ID`` noch
+    ``obj_id`` als Header - konsistent mit
+    :func:`find_duplicate_ids`/:func:`find_rows_without_id`/
+    :func:`find_rows_with_invalid_funddatum`/:func:`find_rows_with_invalid_numeric_field`.
+    """
+    rows = _read_csv_robust(path)
+    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+        raise ValueError(
+            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
+    if not rows:
+        return []
+    numeric_cols = [c for c in rows[0].keys() if c in _NUMERIC_STANDARD_COLS]
+    if not numeric_cols:
+        return []
+    invalid: list[tuple[int, str, str]] = []
+    for idx, row in enumerate(rows, start=1):
+        for col in numeric_cols:
+            raw = row.get(col)
+            if raw is None:
+                continue
+            stripped = str(raw).strip()
+            if not stripped or stripped.lower() in DATE_NO_DATA_MARKERS:
+                continue
+            if _num(stripped) is None:
+                invalid.append((idx, col, stripped))
+    return invalid
+
+
 def load_standard(path: Path) -> dict[str, dict]:
     """Liest eine CSV im aktuellen Export-Schema (ID + 43 Standardfelder + status + notizen).
 

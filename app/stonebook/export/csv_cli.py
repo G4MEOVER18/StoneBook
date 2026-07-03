@@ -115,6 +115,18 @@ def _cmd_import(args: argparse.Namespace) -> int:
                 f"Zeile {n}: {raw!r}" for n, raw in rep.funddatum_invalid)
             print(f"Ungueltige Funddatum-Werte: {len(rep.funddatum_invalid)} "
                   f"(Feld verworfen; {details})")
+        if rep.numeric_invalid:
+            # Silent-Drop-Pendant auf der numerischen Achse: alle
+            # float/int/scale-Felder buendeln in einem Report-Eintrag,
+            # damit der User Zeile + Spalte + Roh-Wert in einem Zug sieht
+            # (``Zeile 5 Gewicht_g: 'sehr schwer'``). Reihenfolge = Zeile-
+            # primaer, Spalte-sekundaer entlang der Header-Reihenfolge des
+            # Files - spiegelt find_rows_with_invalid_numeric_fields.
+            details = ", ".join(
+                f"Zeile {n} {col}: {raw!r}"
+                for n, col, raw in rep.numeric_invalid)
+            print(f"Ungueltige numerische Werte: {len(rep.numeric_invalid)} "
+                  f"(Feld verworfen; {details})")
     return 0
 
 

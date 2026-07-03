@@ -9,6 +9,7 @@ from stonebook.fields import FIELDS, is_empty
 from stonebook.migration.csv_loaders import (
     find_duplicate_ids,
     find_rows_with_invalid_funddatum,
+    find_rows_with_invalid_numeric_fields,
     find_rows_without_id,
     load_standard,
 )
@@ -71,6 +72,19 @@ class ImportReport:
     # zaehlen nicht als "invalid" - der User hat explizit gesagt "kein Datum",
     # da ist nichts verloren gegangen. Reihenfolge = Reihenfolge im File.
     funddatum_invalid: list[tuple[int, str]] = field(default_factory=list)
+    # (Zeilennummer, Spaltenname, Roh-Wert)-Tripel fuer alle numerischen
+    # Standardfelder, in denen ``_num`` das Zellen-Token nicht parsen konnte.
+    # ``_convert_standard`` uebergibt in diesem Fall ``(True, None)``, ``import_csv``
+    # filtert das Feld ueber ``is_empty(None)`` aus dem Update-Dict - der
+    # Roh-Text ist verloren, ohne dass der Report ihn sichtbar macht. Symmetrie-
+    # Vervollstaendigung zu ``funddatum_invalid`` auf der numerischen Achse:
+    # waehrend die Datum-Variante genau eine Spalte pflegt (Funddatum als
+    # einziges date-Feld im Feldwoerterbuch), pflegt diese Variante alle
+    # float/int/scale-Felder (Gewicht_g, Wert_CHF_*, Mohs_Haerte_*,
+    # Confidence_Prozent, Seltenheit_*_1_10, ...) in einer einzigen Liste,
+    # damit der Report mit einer festen Struktur auskommt. Reihenfolge = Zeile-
+    # primaer, Spalte-sekundaer in Header-Reihenfolge.
+    numeric_invalid: list[tuple[int, str, str]] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -85,6 +99,11 @@ class ImportReport:
             # spiegelt die Konvention der uebrigen Listen-Felder und macht
             # den CLI --json-Weg deterministisch.
             "funddatum_invalid": [list(t) for t in self.funddatum_invalid],
+            # (Zeile, Spalte, Roh-Wert)-Tripel analog zu funddatum_invalid,
+            # ebenfalls als Array-of-Arrays serialisiert (JSON kennt keine
+            # Tupel), damit CLI --json und externe Report-Konsumenten die
+            # Silent-Drop-Daten deterministisch als List-Struktur sehen.
+            "numeric_invalid": [list(t) for t in self.numeric_invalid],
         }
 
 
@@ -105,6 +124,7 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
     rep.duplikate = find_duplicate_ids(path)
     rep.zeilen_ohne_id = find_rows_without_id(path)
     rep.funddatum_invalid = find_rows_with_invalid_funddatum(path)
+    rep.numeric_invalid = find_rows_with_invalid_numeric_fields(path)
     for obj_id, fields_ in data.items():
         clean = {k: v for k, v in fields_.items() if not is_empty(v)}
         if objects.exists(obj_id):
