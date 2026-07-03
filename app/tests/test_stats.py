@@ -7942,6 +7942,126 @@ def test_koordinaten_radius_min_km_isotrope_verteilung(tmp_path):
     c.close()
 
 
+def test_koordinaten_radius_spanweite_km_aus_seed_db(tmp_path):
+    """Spannweite (Range = Max - Min) der Haversine-Distanzen vom Zentroid
+    als Original-Einheiten-Dispersions-Achse zur Schwerpunkts-Achse.
+
+    Spiegelt das wert_spanweite_chf / gewicht_spanweite_g /
+    mohs_kollektion_spanweite / dichte_kollektion_spanweite /
+    confidence_spanweite_prozent-Muster auf die geografische Achse.
+    """
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_span.sqlite3")
+    # Drei asymmetrisch verteilte Stuecke entlang derselben Laenge - identisch
+    # zum Seed aus test_koordinaten_radius_min_km_aus_seed_db, damit die
+    # Spannweite gegen dieselbe erwartete Distanz-Liste geprueft werden kann.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "45.0, 8.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 8.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_spanweite_km is not None
+    earth_radius_km = 6371.0
+    lat_c = (45.0 + 47.0 + 48.0) / 3
+    lon_c = 8.0
+    lat_c_rad = math.radians(lat_c)
+    lon_c_rad = math.radians(lon_c)
+    dists: list[float] = []
+    for lat, lon in [(45.0, 8.0), (47.0, 8.0), (48.0, 8.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    expected_span = max(dists) - min(dists)
+    assert st.koordinaten_radius_spanweite_km == pytest.approx(expected_span)
+    # Definitions-Invariante: Spannweite == Max - Min.
+    assert st.koordinaten_radius_spanweite_km == pytest.approx(
+        st.koordinaten_radius_max_km - st.koordinaten_radius_min_km)
+    # Nicht-Trivialitaet bei paarweise verschiedenen Distanzen: Spanne > 0.
+    assert st.koordinaten_radius_spanweite_km > 0.0
+    d = st.as_dict()
+    assert d["koordinaten_radius_spanweite_km"] == round(expected_span, 3)
+    c.close()
+
+
+def test_koordinaten_radius_spanweite_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_radius_spanweite_km ist None (kein Wertegrund
+    fuer eine Spanne) - spiegelt die koordinaten_radius_min/max/durchschnitt/
+    median-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_span.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_spanweite_km is None
+    assert st.as_dict()["koordinaten_radius_spanweite_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_spanweite_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert die Spannweite auf 0.0
+    (Min == Max == 0), spiegelt die Min/Max/Mittel/Median-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [("OBJ_0001", "47.3769, 8.5417")],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_spanweite_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_spanweite_km_isotrope_verteilung(tmp_path):
+    """Zwei geocoded Stuecke symmetrisch um den Schwerpunkt: alle Distanzen
+    vom Zentroid gleich, daher Min == Max und Spannweite kollabiert auf 0.0.
+    Isotrope Rand-Konfiguration (jeder Fund auf demselben Ring um den
+    Schwerpunkt) - Spanne == 0 macht die Ring-Charakteristik sichtbar."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "isotrop_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 8.0"),
+            ("OBJ_0002", "48.0, 8.0"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_spanweite_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_spanweite_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung ohne geocoded Stuecke: Spannweite None, obwohl
+    objekte_mit_fundort > 0. Spiegelt die Konvention der uebrigen
+    koordinaten_radius_-Achsen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_span.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_spanweite_km is None
+    assert st.as_dict()["koordinaten_radius_spanweite_km"] is None
+    c.close()
+
+
 def _haversine_km(lat1: float, lon1: float,
                   lat2: float, lon2: float) -> float:
     """Test-Helper: Haversine-Distanz zwischen zwei Punkten in km.

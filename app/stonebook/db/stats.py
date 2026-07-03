@@ -93,6 +93,7 @@ class Statistik:
     koordinaten_radius_min_km: float | None = None
     koordinaten_radius_durchschnitt_km: float | None = None
     koordinaten_radius_median_km: float | None = None
+    koordinaten_radius_spanweite_km: float | None = None
     koordinaten_diameter_km: float | None = None
     mohs_kollektion_min: float | None = None
     mohs_kollektion_max: float | None = None
@@ -1164,6 +1165,10 @@ class Statistik:
             "koordinaten_radius_median_km": (
                 round(self.koordinaten_radius_median_km, 3)
                 if self.koordinaten_radius_median_km is not None else None
+            ),
+            "koordinaten_radius_spanweite_km": (
+                round(self.koordinaten_radius_spanweite_km, 3)
+                if self.koordinaten_radius_spanweite_km is not None else None
             ),
             "koordinaten_diameter_km": (
                 round(self.koordinaten_diameter_km, 3)
@@ -3375,6 +3380,29 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # Nachkommastellen (~1 m Aufloesung in km, spiegelt die
         # Max/Mittel/Median-Serialisierung).
         st.koordinaten_radius_min_km = min(distances)
+        # koordinaten_radius_spanweite_km: Range = Max - Min der Haversine-
+        # Distanzen vom Zentroid, als Original-Einheiten-Dispersions-Achse
+        # zur Schwerpunkts-Achse. Beziffert, wie weit der naechste vom
+        # entferntesten Fund am Schwerpunkt vorbeigeht - eine grosse Spanne
+        # bedeutet, dass sich um den Schwerpunkt ein weiter Ring aufspannt
+        # (heterogene radiale Verteilung), eine kleine Spanne, dass alle
+        # geocoded Stuecke auf einem engen Ring um das Zentrum liegen
+        # (isotrope/ring-artige Verteilung). Bei genau einem geocoded-
+        # Stueck kollabiert die Spanne auf 0.0 (Min == Max == 0), spiegelt
+        # die Min/Max/Mittel/Median-Konvention; bei null geocoded-Stuecken
+        # bleibt sie None. Spiegelt das wert_spanweite_chf / gewicht_spanweite_g /
+        # mohs_kollektion_spanweite / dichte_kollektion_spanweite /
+        # confidence_spanweite_prozent-Muster auf die geografische Achse -
+        # ergaenzt das koordinaten_radius_min/max/durchschnitt/median-Quartett
+        # um die Dispersions-Achse in Original-Einheiten (km), waehrend
+        # standardabweichung / variationskoeffizient die typischen naechsten
+        # Achsen waeren. Reuse-Pfad: st.koordinaten_radius_max_km und
+        # st.koordinaten_radius_min_km wurden gerade oben aus derselben
+        # distances-Liste bestimmt, die Differenz erfordert keine weitere
+        # Haversine-Runde oder Koordinaten-Iteration. as_dict serialisiert
+        # auf 3 Nachkommastellen (spiegelt die Radius-Achsen-Serialisierung).
+        st.koordinaten_radius_spanweite_km = (
+            st.koordinaten_radius_max_km - st.koordinaten_radius_min_km)
         distances.sort()
         n = len(distances)
         st.koordinaten_radius_median_km = (
