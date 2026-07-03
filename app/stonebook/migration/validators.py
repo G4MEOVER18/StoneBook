@@ -15,6 +15,20 @@ _DATE_FORMATS = (
     "%Y:%m:%d",  # EXIF DateTime ohne Zeit-Suffix (stripped Camera-Stempel)
 )
 
+# Explizite "keine Angabe"-Marker, die parse_iso_date wie Leer behandelt (None).
+# Ausgelagert als Modul-Konstante, damit ein Consumer (:mod:`csv_loaders`,
+# :func:`find_rows_with_invalid_funddatum`) einen semantisch leeren Marker
+# ("k.a.", "n/a", "unbekannt") von einer echten Fehl-Eingabe ("Sommer 84",
+# "32.13.2024") unterscheiden kann, ohne die Marker-Menge zu duplizieren -
+# beide Faelle liefern parse_iso_date == None, aber nur die zweite ist ein
+# silent-data-loss-Fund, den der Import-Report sichtbar machen soll (der
+# User hat einen Wert getippt, der Parser konnte ihn nicht mappen). Die
+# Marker-Semantik ist "User sagt explizit: kein Datum", da ist nichts
+# verloren gegangen.
+DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
+    {"k.a.", "k. a.", "n/a", "na", "?", "-", "—", "unbekannt"}
+)
+
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 # Jahrzehnt-Notation ("1980er", "1980s", "1980er Jahre", "1980-er").
 # Konvention: Dekaden-Start = Jahr selbst (1980er → 1980-01-01). Reichweite-Annotation
@@ -752,7 +766,7 @@ def parse_iso_date(text) -> str | None:
     if text is None:
         return None
     s = str(text).strip()
-    if not s or s.lower() in {"k.a.", "k. a.", "n/a", "na", "?", "-", "—", "unbekannt"}:
+    if not s or s.lower() in DATE_NO_DATA_MARKERS:
         return None
     # Umschliessende Klammern/Anfuehrungszeichen abstreifen ("(2024)", '"2024-06-13"').
     # Strip + Rekursion; tiefere Schachtelung loest sich automatisch auf.

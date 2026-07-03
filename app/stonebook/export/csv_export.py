@@ -8,6 +8,7 @@ from stonebook.db.repository import ObjectRepo
 from stonebook.fields import FIELDS, is_empty
 from stonebook.migration.csv_loaders import (
     find_duplicate_ids,
+    find_rows_with_invalid_funddatum,
     find_rows_without_id,
     load_standard,
 )
@@ -60,6 +61,16 @@ class ImportReport:
     # war. load_standard verwirft solche Zeilen kommentarlos - symmetrisches
     # silent-data-loss-Pendant zu ``duplikate``.
     zeilen_ohne_id: list[int] = field(default_factory=list)
+    # (Zeilennummer, Roh-Wert)-Paare fuer Zeilen mit einer Funddatum-Spalte,
+    # deren Wert nicht als ISO-Datum geparst werden konnte (Tippfehler wie
+    # ``32.13.2024``, unstrukturierter Freitext wie ``Sommer 84``). Die Zeile
+    # selbst wird uebernommen, aber die Funddatum-Spalte fehlt danach im
+    # Objekt-Dict - silent drop im Feld-Level, spiegelt die zeilen-Level-
+    # Verluste in ``duplikate``/``zeilen_ohne_id``. Explizite "keine Angabe"-
+    # Marker (``k.a.``, ``n/a`` etc., siehe validators.DATE_NO_DATA_MARKERS)
+    # zaehlen nicht als "invalid" - der User hat explizit gesagt "kein Datum",
+    # da ist nichts verloren gegangen. Reihenfolge = Reihenfolge im File.
+    funddatum_invalid: list[tuple[int, str]] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -69,6 +80,11 @@ class ImportReport:
             "konflikte": {k: list(v) for k, v in self.konflikte.items()},
             "duplikate": list(self.duplikate),
             "zeilen_ohne_id": list(self.zeilen_ohne_id),
+            # Tupel als Liste serialisieren, damit JSON-Konsumenten die
+            # (Zeile, Roh-Wert)-Paare als [Zeile, Roh-Wert]-Arrays sehen -
+            # spiegelt die Konvention der uebrigen Listen-Felder und macht
+            # den CLI --json-Weg deterministisch.
+            "funddatum_invalid": [list(t) for t in self.funddatum_invalid],
         }
 
 
@@ -88,6 +104,7 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
     rep = ImportReport()
     rep.duplikate = find_duplicate_ids(path)
     rep.zeilen_ohne_id = find_rows_without_id(path)
+    rep.funddatum_invalid = find_rows_with_invalid_funddatum(path)
     for obj_id, fields_ in data.items():
         clean = {k: v for k, v in fields_.items() if not is_empty(v)}
         if objects.exists(obj_id):

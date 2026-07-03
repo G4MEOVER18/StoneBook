@@ -558,6 +558,65 @@ def test_csv_import_ohne_id_luecken_setzt_leere_liste(tmp_path):
     db.close()
 
 
+def test_csv_import_meldet_ungueltiges_funddatum(tmp_path):
+    """import_csv setzt rep.funddatum_invalid fuer nicht parsbare Funddatum-Zellen.
+
+    _convert_standard laesst die Zeile intakt, verwirft aber das Funddatum-Feld
+    silent (der Rest des Objekts bleibt erhalten, das Feld fehlt im dict). Der
+    Report weist den Feld-Level-Silent-Drop jetzt explizit als (Zeile, Roh-Wert)
+    aus, damit user-editierte CSVs mit Datums-Tippfehlern nicht als "alles OK"
+    durchgehen. Symmetrisch zu rep.duplikate und rep.zeilen_ohne_id, aber auf
+    der Feld-Achse statt der Zeilen-Achse.
+    """
+    db = open_db(tmp_path / "fd.sqlite3")
+    src = tmp_path / "fd.csv"
+    src.write_text(
+        "ID,Funddatum,Mineral_Primaer\n"
+        "OBJ_0001,2024-06-13,Quarz\n"
+        "OBJ_0002,32.13.2024,Calcit\n"
+        "OBJ_0003,Sommer 84,Amethyst\n"
+        "OBJ_0004,,Ohne\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    # Zeilen 2 und 3 hatten kaputte Werte; die Reihenfolge und der Roh-Wert
+    # bleiben im Report, damit der User direkt weiss, wo der Tippfehler steckt.
+    assert rep.funddatum_invalid == [(2, "32.13.2024"), (3, "Sommer 84")]
+    # Alle Zeilen sind trotzdem angelegt (Feld-Level-Drop, keine Zeilen-Verwerfung).
+    assert set(rep.angelegt) == {"OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"}
+    # DB: gueltige Datums-Werte gepflegt, kaputte als NULL.
+    def _funddatum(obj_id):
+        return db.execute(
+            "SELECT Funddatum FROM objects WHERE obj_id=?", (obj_id,)
+        ).fetchone()["Funddatum"]
+    assert _funddatum("OBJ_0001") == "2024-06-13"
+    assert _funddatum("OBJ_0002") is None
+    assert _funddatum("OBJ_0003") is None
+    # as_dict serialisiert Tupel als Listen (fuer --json CLI-Weg, JSON kennt keine Tupel).
+    assert rep.as_dict()["funddatum_invalid"] == [
+        [2, "32.13.2024"], [3, "Sommer 84"]]
+    db.close()
+
+
+def test_csv_import_ohne_funddatum_luecken_setzt_leere_liste(tmp_path):
+    """Ohne kaputte Datumswerte bleibt rep.funddatum_invalid == [] (default_factory-Vertrag).
+
+    Spiegelt die Symmetrie zu duplikate/zeilen_ohne_id und stellt sicher, dass
+    ein CSV komplett ohne Funddatum-Spalte (=> nichts zu pruefen) auch keinen
+    False-Positive-Report erzeugt.
+    """
+    db = open_db(tmp_path / "fd2.sqlite3")
+    src = tmp_path / "fd2.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    assert rep.funddatum_invalid == []
+    assert rep.as_dict()["funddatum_invalid"] == []
+    db.close()
+
+
 def test_csv_import_create_missing_false(tmp_path):
     src = tmp_path / "src.csv"
     src.write_text("ID,Mineral_Primaer\nOBJ_0999,Calcit\n", encoding="utf-8")

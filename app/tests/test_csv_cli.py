@@ -275,6 +275,63 @@ def test_import_ohne_id_luecken_zeigt_keine_zeile(tmp_path, capsys):
     assert "Zeilen ohne ID" not in out
 
 
+def test_import_meldet_ungueltiges_funddatum_text_und_json(tmp_path, capsys):
+    """CLI-Text zeigt "Ungueltige Funddatum-Werte: N" und --json enthaelt
+    "funddatum_invalid".
+
+    Symmetrisch zur Duplikat-/ID-Luecken-Meldung: Zeile erscheint nur, wenn
+    kaputte Werte vorkommen (kein "0"-Noise). Der Roh-Wert wird im Text
+    mit angegeben, damit der User den Tippfehler direkt sieht.
+    """
+    src = tmp_path / "fd.csv"
+    src.write_text(
+        "ID,Funddatum,Mineral_Primaer\n"
+        "OBJ_0001,2024-06-13,Quarz\n"
+        "OBJ_0002,32.13.2024,Calcit\n"
+        "OBJ_0003,Sommer 84,Amethyst\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "fd.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Ungueltige Funddatum-Werte: 2" in out
+    # Roh-Wert taucht im Text auf (repr fuer eindeutige Whitespace-Sichtbarkeit).
+    assert "'32.13.2024'" in out
+    assert "'Sommer 84'" in out
+
+    src2 = tmp_path / "fd2.csv"
+    src2.write_text(
+        "ID,Funddatum,Mineral_Primaer\nOBJ_0001,kaputt,Quarz\n",
+        encoding="utf-8",
+    )
+    db2 = tmp_path / "fd2.sqlite3"
+    code = main(["import", str(src2), "--db", str(db2), "--json"])
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    # JSON serialisiert Tupel als Listen (JSON kennt keine Tupel).
+    assert report["funddatum_invalid"] == [[1, "kaputt"]]
+
+
+def test_import_ohne_funddatum_luecken_zeigt_keine_zeile(tmp_path, capsys):
+    """Ohne kaputte Datumswerte erscheint die "Ungueltige Funddatum"-Zeile nicht.
+
+    Symmetrisch zu duplikate/zeilen_ohne_id: kein "0"-Noise fuer sauberen Import.
+    """
+    src = tmp_path / "fdok.csv"
+    src.write_text(
+        "ID,Funddatum,Mineral_Primaer\n"
+        "OBJ_0001,2024-06-13,Quarz\n"
+        "OBJ_0002,,Calcit\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "fdok.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Ungueltige Funddatum" not in out
+
+
 def test_export_import_roundtrip(migrated_db, tmp_path):
     """Export aus voller DB -> Import in frische DB liefert dieselben Felder."""
     out = tmp_path / "rt.csv"

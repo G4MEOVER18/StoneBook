@@ -584,6 +584,130 @@ def test_find_rows_without_id_akzeptiert_obj_id_spalte(tmp_path):
     assert find_rows_without_id(csv_path) == [2]
 
 
+def test_find_rows_with_invalid_funddatum_standard(tmp_path):
+    """Zeilen mit einem nicht parsbaren Funddatum werden gemeldet (Feld-Level-Silent-Drop).
+
+    _convert_standard uebernimmt Funddatum nur, wenn parse_iso_date den Wert
+    erfolgreich mappen kann - Tippfehler (32.13.2024, Monat 13) oder unstruk-
+    turierter Freitext ("Sommer 84" ohne Vollzahl-Jahr) werden kommentarlos
+    verworfen, die Zeile bleibt aber sonst intakt. Der Report liefert
+    (Zeilennummer, Roh-Wert)-Paare, damit der User den konkreten Tippfehler
+    ohne Zusatz-Recherche findet.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_funddatum,
+        load_standard,
+    )
+    csv_path = tmp_path / "funddatum.csv"
+    csv_path.write_text(
+        "ID,Funddatum,Mineral_Primaer\n"
+        "OBJ_0001,2024-06-13,Quarz\n"
+        "OBJ_0002,32.13.2024,Calcit\n"
+        "OBJ_0003,1985,Amethyst\n"
+        "OBJ_0004,Sommer 84,Turmalin\n"
+        "OBJ_0005,,Ohne\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_funddatum(csv_path) == [
+        (2, "32.13.2024"),
+        (4, "Sommer 84"),
+    ]
+    # load_standard behaelt die Zeilen, aber ohne das kaputte Funddatum-Feld.
+    data = load_standard(csv_path)
+    assert data["OBJ_0002"]["Mineral_Primaer"] == "Calcit"
+    assert "Funddatum" not in data["OBJ_0002"]
+    assert "Funddatum" not in data["OBJ_0004"]
+    # Gueltige Datums-Werte bleiben unangetastet.
+    assert data["OBJ_0001"]["Funddatum"] == "2024-06-13"
+    assert data["OBJ_0003"]["Funddatum"] == "1985-01-01"
+
+
+def test_find_rows_with_invalid_funddatum_ignoriert_leer_und_no_data_marker(tmp_path):
+    """Leere Werte und "keine Angabe"-Marker (k.a./n/a/unbekannt/? etc.) zaehlen
+    NICHT als invalid.
+
+    parse_iso_date behandelt die Marker semantisch als "User sagt: kein Datum"
+    (siehe DATE_NO_DATA_MARKERS). Da ist nichts verloren gegangen; die Zeile
+    darf nicht als silent-data-loss-Fund gemeldet werden, sonst wuerde der
+    Report bei ausdruecklich "no data"-Eingaben Rauschen erzeugen.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_funddatum
+    csv_path = tmp_path / "marker.csv"
+    csv_path.write_text(
+        "ID,Funddatum,Mineral_Primaer\n"
+        "OBJ_0001,,Leer\n"
+        "OBJ_0002,   ,Whitespace\n"
+        "OBJ_0003,k.a.,Marker DE\n"
+        "OBJ_0004,n/a,Marker EN\n"
+        "OBJ_0005,unbekannt,Wort-Marker\n"
+        "OBJ_0006,?,Fragezeichen\n"
+        "OBJ_0007,-,Bindestrich\n"
+        "OBJ_0008,K.A.,Marker mit Grossschreibung\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_funddatum(csv_path) == []
+
+
+def test_find_rows_with_invalid_funddatum_ohne_spalte_ist_leer(tmp_path):
+    """Fehlt die Funddatum-Spalte komplett, wird [] zurueckgegeben.
+
+    Kein Datenverlust moeglich, wenn das Feld gar nicht Teil der CSV ist -
+    der Report darf nicht faelschlich "0 Zeilen" statt "gar nicht anwendbar"
+    signalisieren, sondern liefert schlicht leere Liste.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_funddatum
+    csv_path = tmp_path / "kein_funddatum.csv"
+    csv_path.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_funddatum(csv_path) == []
+
+
+def test_find_rows_with_invalid_funddatum_akzeptiert_obj_id_spalte(tmp_path):
+    """JSON-/DB-Format nutzt ``obj_id`` statt ``ID`` - beide werden erkannt.
+
+    Spiegelt find_rows_without_id/find_duplicate_ids: das ID-Spalten-Aliasing
+    ist eine Symmetrie-Regel ueber alle Pre-Scanner, kein Extra-Feature dieses
+    einen Checks.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_funddatum
+    csv_path = tmp_path / "objid_datum.csv"
+    csv_path.write_text(
+        "obj_id,Funddatum\nOBJ_0001,2024-06-13\nOBJ_0002,kaputt\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_funddatum(csv_path) == [(2, "kaputt")]
+
+
+def test_find_rows_with_invalid_funddatum_raises_bei_fehlender_id_spalte(tmp_path):
+    """CSV mit Zeilen aber ohne ID/obj_id-Header wirft ValueError.
+
+    Spiegelt find_duplicate_ids/find_rows_without_id/load_standard: alle vier
+    stehen zur gleichen Format-Regel und lehnen v1/v2-Historik-CSVs sichtbar
+    ab, statt stille "0 Funde" zu melden.
+    """
+    import pytest
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_funddatum
+    csv_path = tmp_path / "fremd.csv"
+    csv_path.write_text(
+        "Name,Mineralart,Fundort\nFoo,Quarz,Davos\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ID-Spalte"):
+        find_rows_with_invalid_funddatum(csv_path)
+
+
+def test_find_rows_with_invalid_funddatum_leere_datei_ohne_id_spalte_ist_ok(tmp_path):
+    """Leere CSV (nur Header) ohne ID-Spalte loest keinen Fehler aus.
+
+    Spiegelt find_duplicate_ids/find_rows_without_id: ohne Zeilen kann es
+    keinen Datenverlust geben, unabhaengig vom Header-Format.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_funddatum
+    csv_path = tmp_path / "leerohne.csv"
+    csv_path.write_text("Name,Mineralart\n", encoding="utf-8")
+    assert find_rows_with_invalid_funddatum(csv_path) == []
+
+
 def test_load_standard_raises_bei_fehlender_id_spalte(tmp_path):
     """CSV ohne ID/obj_id-Spalte ist kein gueltiger Standard-Import - klarer Fehler."""
     import pytest

@@ -106,6 +106,15 @@ def _cmd_import(args: argparse.Namespace) -> int:
             # Datenzeilen (Header zaehlt nicht).
             print(f"Zeilen ohne ID: {len(rep.zeilen_ohne_id)} "
                   f"(verworfen; Zeilen {', '.join(map(str, rep.zeilen_ohne_id))})")
+        if rep.funddatum_invalid:
+            # Nicht parsbare Funddatum-Werte werden von _convert_standard
+            # silent gedroppt (die Zeile bleibt, das Feld fehlt) - hier
+            # explizit sichtbar machen mit Roh-Wert, damit der User den
+            # Tippfehler direkt findet. Symmetrisch zum ID-Silent-Drop-Hinweis.
+            details = ", ".join(
+                f"Zeile {n}: {raw!r}" for n, raw in rep.funddatum_invalid)
+            print(f"Ungueltige Funddatum-Werte: {len(rep.funddatum_invalid)} "
+                  f"(Feld verworfen; {details})")
     return 0
 
 

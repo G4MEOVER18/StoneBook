@@ -6,7 +6,7 @@ from pathlib import Path
 
 from stonebook.fields import DATA_FIELDS, NUMERIC_TYPES, FIELD_BY_NAME
 from stonebook.migration.id_utils import normalize_id
-from stonebook.migration.validators import parse_iso_date
+from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 
 _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 
@@ -376,6 +376,58 @@ def find_rows_without_id(path: Path) -> list[int]:
         if not obj_id:
             ohne_id.append(idx)
     return ohne_id
+
+
+def find_rows_with_invalid_funddatum(path: Path) -> list[tuple[int, str]]:
+    """Findet Zeilen mit einem nicht-leeren Funddatum-Wert, der nicht als
+    ISO-Datum geparst werden konnte (silent drop in :func:`load_standard`).
+
+    :func:`_convert_standard` uebernimmt Funddatum nur, wenn
+    :func:`parse_iso_date` den Wert erfolgreich in YYYY-MM-DD normalisieren
+    kann - andernfalls wird das Feld kommentarlos verworfen (der Rest der
+    Zeile bleibt erhalten, die Funddatum-Spalte fehlt im Objekt-Dict). Ein
+    typischer Datenverlust-Fall bei nutzer-editierten CSVs, wenn der User
+    einen Tippfehler eingibt (``32.13.2024``) oder ein vom Parser nicht
+    unterstuetztes Freitext-Format ("Sommer 84" ohne Jahres-Vollzahl,
+    "letzten Herbst"). Symmetrisches Blindfleck-Pendant zu
+    :func:`find_duplicate_ids` und :func:`find_rows_without_id`: alle drei
+    melden zeilen-basierte silent data loss, ohne die Semantik von
+    :func:`load_standard` selbst zu aendern.
+
+    Rueckgabe: Liste von ``(Zeilennummer, Roh-Wert)``, 1-basiert ueber die
+    Datenzeilen (Header zaehlt nicht, komplett leere Zeilen zaehlen nicht -
+    die filtert bereits :func:`_read_csv_robust`). Der Roh-Wert ist der
+    gestrippte Zellen-Inhalt, sodass CLI-Reporter und Logs die konkret
+    kaputte Eingabe direkt anzeigen koennen ("Zeile 5: 'Sommer 84' konnte
+    nicht geparst werden"). Reihenfolge = Reihenfolge im File.
+
+    Explizite "keine Angabe"-Marker (``k.a.``, ``n/a``, ``unbekannt``, ``?``
+    etc., siehe :data:`stonebook.migration.validators.DATE_NO_DATA_MARKERS`)
+    zaehlen nicht als "invalid" - der User hat explizit gesagt "kein Datum
+    verfuegbar", da ist nichts verloren gegangen. Fehlt die Funddatum-Spalte
+    komplett im File, wird ``[]`` zurueckgegeben (kein Datenverlust moeglich).
+    Whitespace-only-Werte zaehlen ebenfalls als leer und nicht als invalid.
+
+    Wirft ``ValueError`` analog zu :func:`find_duplicate_ids` /
+    :func:`find_rows_without_id` / :func:`load_standard`, wenn die CSV Zeilen
+    enthaelt, aber weder ``ID`` noch ``obj_id`` als Header - so faellt eine
+    falsch zugeordnete Datei (v1/v2-CSV) nicht stillschweigend leer durch.
+    """
+    rows = _read_csv_robust(path)
+    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+        raise ValueError(
+            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
+    invalid: list[tuple[int, str]] = []
+    for idx, row in enumerate(rows, start=1):
+        raw = row.get("Funddatum")
+        if raw is None:
+            continue
+        stripped = str(raw).strip()
+        if not stripped or stripped.lower() in DATE_NO_DATA_MARKERS:
+            continue
+        if parse_iso_date(stripped) is None:
+            invalid.append((idx, stripped))
+    return invalid
 
 
 def load_standard(path: Path) -> dict[str, dict]:
