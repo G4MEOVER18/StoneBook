@@ -90,6 +90,7 @@ class Statistik:
     koordinaten_bbox: tuple[float, float, float, float] | None = None
     koordinaten_zentrum: tuple[float, float] | None = None
     koordinaten_radius_max_km: float | None = None
+    koordinaten_radius_min_km: float | None = None
     koordinaten_radius_durchschnitt_km: float | None = None
     koordinaten_radius_median_km: float | None = None
     koordinaten_diameter_km: float | None = None
@@ -1151,6 +1152,10 @@ class Statistik:
             "koordinaten_radius_max_km": (
                 round(self.koordinaten_radius_max_km, 3)
                 if self.koordinaten_radius_max_km is not None else None
+            ),
+            "koordinaten_radius_min_km": (
+                round(self.koordinaten_radius_min_km, 3)
+                if self.koordinaten_radius_min_km is not None else None
             ),
             "koordinaten_radius_durchschnitt_km": (
                 round(self.koordinaten_radius_durchschnitt_km, 3)
@@ -3345,6 +3350,31 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                 2 * earth_radius_km * _math.asin(min(1.0, _math.sqrt(a))))
         st.koordinaten_radius_max_km = max(distances)
         st.koordinaten_radius_durchschnitt_km = sum(distances) / len(distances)
+        # koordinaten_radius_min_km: kleinste Haversine-Distanz vom Zentroid
+        # zu einem geocoded Stueck - Innen-Achse (naechster Fund am
+        # Schwerpunkt) als symmetrisches Pendant zur Aussen-Achse
+        # koordinaten_radius_max_km. Waehrend Max den kleinsten Radius
+        # angibt, der die gesamte geocoded-Sammlung um den Schwerpunkt
+        # herum umschliesst, gibt Min den groessten Radius an, der noch
+        # jeden geocoded Fund ausschliesst - die Kern-Leere um den
+        # Schwerpunkt. Bei um den Schwerpunkt gleichmaessig verteilten
+        # Stuecken liegt Min nahe Max (isotrope Ring-Verteilung), bei
+        # stark cluster-dominierten Sammlungen liegt Min nahe 0 (ein
+        # Stueck am Zentrum, alle uebrigen davon weg entfernt). Die
+        # Differenz Max - Min beziffert die Radial-Spannweite der
+        # Sammlung um den Schwerpunkt (Kern-Radius vs. Aussen-Radius).
+        # Spiegelt das mohs_kollektion_min/max, dichte_kollektion_min/max,
+        # wert_min/max_chf, gewicht_min/max_g, confidence_min/max_prozent-
+        # Muster auf die geografische Streuungs-Achse: min + max sind
+        # die beiden Rand-Extreme derselben Verteilung. Reuse-Pfad teilt
+        # dieselbe Haversine-Distanz-Liste mit Max/Mittel/Median (ein
+        # einziger Pass ueber die Koordinaten). Bei genau einem geocoded-
+        # Stueck kollabiert Min auf 0.0 (Distanz vom Punkt zu sich
+        # selbst), spiegelt die Max/Mittel/Median-Konvention. Bei null
+        # geocoded-Stuecken bleibt Min None. as_dict serialisiert auf 3
+        # Nachkommastellen (~1 m Aufloesung in km, spiegelt die
+        # Max/Mittel/Median-Serialisierung).
+        st.koordinaten_radius_min_km = min(distances)
         distances.sort()
         n = len(distances)
         st.koordinaten_radius_median_km = (

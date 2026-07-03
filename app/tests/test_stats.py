@@ -7782,6 +7782,166 @@ def test_koordinaten_radius_median_km_gerade_anzahl(tmp_path):
     c.close()
 
 
+def test_koordinaten_radius_min_km_aus_seed_db(tmp_path):
+    """Kleinste Haversine-Distanz vom Zentrum zu einem geocoded Stueck -
+    Innen-Achse (naechster Fund am Schwerpunkt) als symmetrisches Pendant
+    zur Aussen-Achse koordinaten_radius_max_km. Spiegelt das
+    mohs_kollektion_min/max, dichte_kollektion_min/max, wert_min/max_chf-
+    Paar-Muster auf die geografische Streuungs-Achse."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_min.sqlite3")
+    # Drei geocoded Stuecke entlang derselben Laenge, asymmetrisch zum
+    # Zentroid: (45,8), (47,8), (48,8). Zentroid = ((45+47+48)/3, 8) =
+    # (46.667, 8). Alle drei Distanzen unterscheiden sich - das nahe
+    # Stueck (47,8) ist am Zentroid am naechsten und definiert Min,
+    # das entfernte Stueck (45,8) definiert Max.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "45.0, 8.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 8.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_min_km is not None
+    earth_radius_km = 6371.0
+    lat_c = (45.0 + 47.0 + 48.0) / 3
+    lon_c = 8.0
+    lat_c_rad = math.radians(lat_c)
+    lon_c_rad = math.radians(lon_c)
+    dists: list[float] = []
+    for lat, lon in [(45.0, 8.0), (47.0, 8.0), (48.0, 8.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    expected_min = min(dists)
+    assert st.koordinaten_radius_min_km == pytest.approx(expected_min)
+    # Ordnungs-Invariante der vier Achsen: Min <= Mittel <= Max, wobei die
+    # Ungleichungen strikt sind, weil die drei Distanzen paarweise
+    # verschieden sind.
+    assert (st.koordinaten_radius_min_km
+            < st.koordinaten_radius_durchschnitt_km
+            < st.koordinaten_radius_max_km)
+    # Median liegt zwischen Min und Max (bei drei paarweise verschiedenen
+    # Werten ist der Median das mittlere sortierte Element).
+    assert (st.koordinaten_radius_min_km
+            < st.koordinaten_radius_median_km
+            < st.koordinaten_radius_max_km)
+    d = st.as_dict()
+    assert d["koordinaten_radius_min_km"] == round(expected_min, 3)
+    c.close()
+
+
+def test_koordinaten_radius_min_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_radius_min_km ist None (kein Wertegrund fuer
+    Min) - spiegelt die koordinaten_radius_max_km/durchschnitt_km/median_km/
+    zentrum/bbox-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_min.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_min_km is None
+    assert st.as_dict()["koordinaten_radius_min_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_min_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabieren Min, Max, Mittel und
+    Median alle auf 0.0 (Distanz vom Punkt zu sich selbst). Spiegelt die
+    Max-/Mittel-/Median-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_min.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_min_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_durchschnitt_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_median_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_max_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_min_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung mit nur Freitext-Fundorten (keine geocodeden Stuecke):
+    koordinaten_radius_min_km ist None, obwohl objekte_mit_fundort > 0.
+    Spiegelt die koordinaten_radius_max_km/durchschnitt_km/median_km-
+    Konvention bei leerer Geocoding-Subsammlung."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_min.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_min_km is None
+    assert st.as_dict()["koordinaten_radius_min_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_min_km_isotrope_verteilung(tmp_path):
+    """Zwei geocoded Stuecke symmetrisch um den Schwerpunkt: alle Distanzen
+    vom Zentroid sind gleich, daher Min == Max == Mittel == Median. Die
+    isotrope Rand-Konfiguration - jeder Fund liegt exakt auf dem gleichen
+    Ring um den Schwerpunkt herum."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "isotrop_min.sqlite3")
+    # Zwei Punkte symmetrisch entlang derselben Laenge um den Schwerpunkt
+    # (47,8): (46,8) und (48,8). Zentroid = (47,8), beide Distanzen exakt
+    # gleich (Haversine ist symmetrisch entlang der Laenge bei gleicher
+    # Distanz von der mittleren Breite).
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 8.0"),
+            ("OBJ_0002", "48.0, 8.0"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_min_km is not None
+    earth_radius_km = 6371.0
+    lat_c_rad = math.radians(47.0)
+    lon_c_rad = math.radians(8.0)
+    dists: list[float] = []
+    for lat, lon in [(46.0, 8.0), (48.0, 8.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    assert dists[0] == pytest.approx(dists[1])
+    assert st.koordinaten_radius_min_km == pytest.approx(dists[0])
+    # Kollaps aller vier Achsen bei isotroper Ring-Verteilung: Min = Max
+    # = Mittel = Median = der einzige vorkommende Distanz-Wert.
+    assert st.koordinaten_radius_min_km == pytest.approx(
+        st.koordinaten_radius_max_km)
+    assert st.koordinaten_radius_min_km == pytest.approx(
+        st.koordinaten_radius_durchschnitt_km)
+    assert st.koordinaten_radius_min_km == pytest.approx(
+        st.koordinaten_radius_median_km)
+    c.close()
+
+
 def _haversine_km(lat1: float, lon1: float,
                   lat2: float, lon2: float) -> float:
     """Test-Helper: Haversine-Distanz zwischen zwei Punkten in km.
