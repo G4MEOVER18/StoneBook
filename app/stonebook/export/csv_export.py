@@ -6,7 +6,11 @@ from pathlib import Path
 
 from stonebook.db.repository import ObjectRepo
 from stonebook.fields import FIELDS, is_empty
-from stonebook.migration.csv_loaders import find_duplicate_ids, load_standard
+from stonebook.migration.csv_loaders import (
+    find_duplicate_ids,
+    find_rows_without_id,
+    load_standard,
+)
 
 COLUMNS = [f.name for f in FIELDS]  # beginnt mit ID
 _IMPORT_EXTRA = {"status", "notizen"}
@@ -51,6 +55,11 @@ class ImportReport:
     # frueher-Zeilen-Verlust in nutzer-editierten CSVs unsichtbar. Deterministisch
     # in der Reihenfolge des zweiten Vorkommens (spiegelt find_duplicate_ids).
     duplikate: list[str] = field(default_factory=list)
+    # 1-basierte Zeilennummern (ueber Datenzeilen, ohne Header und ohne
+    # vollstaendig leere Zeilen), in denen die ID-Spalte leer oder unlesbar
+    # war. load_standard verwirft solche Zeilen kommentarlos - symmetrisches
+    # silent-data-loss-Pendant zu ``duplikate``.
+    zeilen_ohne_id: list[int] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -59,6 +68,7 @@ class ImportReport:
             "uebersprungen": list(self.uebersprungen),
             "konflikte": {k: list(v) for k, v in self.konflikte.items()},
             "duplikate": list(self.duplikate),
+            "zeilen_ohne_id": list(self.zeilen_ohne_id),
         }
 
 
@@ -77,6 +87,7 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
     objects = ObjectRepo(conn)
     rep = ImportReport()
     rep.duplikate = find_duplicate_ids(path)
+    rep.zeilen_ohne_id = find_rows_without_id(path)
     for obj_id, fields_ in data.items():
         clean = {k: v for k, v in fields_.items() if not is_empty(v)}
         if objects.exists(obj_id):

@@ -348,6 +348,36 @@ def find_duplicate_ids(path: Path) -> list[str]:
     return duplikate
 
 
+def find_rows_without_id(path: Path) -> list[int]:
+    """Findet Zeilennummern (1-basiert ueber die Datenzeilen), in denen die ID-Spalte
+    leer ist oder :func:`normalize_id` sie nicht auf eine gueltige obj_id abbilden kann.
+
+    :func:`load_standard` (und damit :func:`stonebook.export.csv_export.import_csv`)
+    verwirft solche Zeilen kommentarlos - ein user-editierter Tippfehler in der
+    ID-Zelle (leer, ``??`` oder ``TODO``) laesst die Zeile silent verschwinden,
+    obwohl die uebrigen Spalten voll gepflegt sein koennen. Symmetrisches
+    Blindfleck-Pendant zu :func:`find_duplicate_ids` (Doppel-Zeile-Silent-
+    Ueberschreibung): beide melden zeilen-basierte silent data loss, ohne die
+    Semantik von :func:`load_standard` selbst zu aendern.
+
+    Reihenfolge = Reihenfolge im File. Vollstaendig leere Zeilen zaehlen nicht
+    (die filtert bereits :func:`_read_csv_robust`); gemeldet werden nur Zeilen
+    mit Inhalt, aber ohne verwertbare ID. Wirft ``ValueError`` analog zu
+    :func:`find_duplicate_ids` / :func:`load_standard`, wenn die CSV Zeilen
+    enthaelt, aber weder ``ID`` noch ``obj_id`` als Header hat.
+    """
+    rows = _read_csv_robust(path)
+    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+        raise ValueError(
+            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
+    ohne_id: list[int] = []
+    for idx, row in enumerate(rows, start=1):
+        obj_id = normalize_id(row.get("ID") or row.get("obj_id"))
+        if not obj_id:
+            ohne_id.append(idx)
+    return ohne_id
+
+
 def load_standard(path: Path) -> dict[str, dict]:
     """Liest eine CSV im aktuellen Export-Schema (ID + 43 Standardfelder + status + notizen).
 

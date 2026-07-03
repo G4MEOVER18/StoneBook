@@ -99,6 +99,13 @@ def _cmd_import(args: argparse.Namespace) -> int:
             # diesen Hinweis waere der Datenverlust unsichtbar.
             print(f"Doppelte IDs in Quelle: {len(rep.duplikate)} "
                   f"(letzte Zeile gewinnt)")
+        if rep.zeilen_ohne_id:
+            # Zeilen ohne verwertbare ID werden von load_standard kommentarlos
+            # verworfen - hier explizit sichtbar machen, symmetrisch zum
+            # Duplikat-Hinweis. Zeilennummern sind 1-basiert ueber die
+            # Datenzeilen (Header zaehlt nicht).
+            print(f"Zeilen ohne ID: {len(rep.zeilen_ohne_id)} "
+                  f"(verworfen; Zeilen {', '.join(map(str, rep.zeilen_ohne_id))})")
     return 0
 
 

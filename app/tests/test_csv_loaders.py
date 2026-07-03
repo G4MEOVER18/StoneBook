@@ -523,6 +523,67 @@ def test_find_duplicate_ids_leere_datei_ohne_id_spalte_ist_ok(tmp_path):
     assert find_duplicate_ids(csv_path) == []
 
 
+def test_find_rows_without_id_standard(tmp_path):
+    """Zeilen mit leerer oder unlesbarer ID-Spalte werden gemeldet.
+
+    load_standard verwirft Zeilen ohne normalisierbare ID kommentarlos - ein
+    user-editierter Tippfehler (leer, ``??``, ``TODO``) laesst die Zeile silent
+    verschwinden, obwohl uebrige Spalten voll gepflegt sein koennen. Der Report
+    liefert 1-basierte Zeilennummern ueber die Datenzeilen (Header zaehlt nicht),
+    komplett leere Zeilen zaehlen nicht (die filtert der Reader).
+    """
+    from stonebook.migration.csv_loaders import find_rows_without_id, load_standard
+    csv_path = tmp_path / "ohne_id.csv"
+    csv_path.write_text(
+        "ID,Name\n"
+        "OBJ_0001,Erste\n"
+        ",Zeile ohne ID\n"
+        "OBJ_0002,Zweite\n"
+        "??,Kaputte ID\n"
+        "OBJ_0003,Dritte\n",
+        encoding="utf-8",
+    )
+    assert find_rows_without_id(csv_path) == [2, 4]
+    # load_standard behaelt nur die drei gueltigen IDs (dict-Semantik).
+    data = load_standard(csv_path)
+    assert set(data.keys()) == {"OBJ_0001", "OBJ_0002", "OBJ_0003"}
+
+
+def test_find_rows_without_id_leer_und_alles_ok(tmp_path):
+    """Leere CSV und CSV ohne unlesbare IDs liefern eine leere Liste."""
+    from stonebook.migration.csv_loaders import find_rows_without_id
+    leer = tmp_path / "leer.csv"
+    leer.write_text("ID,Name\n", encoding="utf-8")
+    assert find_rows_without_id(leer) == []
+    ok = tmp_path / "ok.csv"
+    ok.write_text(
+        "ID,Name\nOBJ_0001,A\nOBJ_0002,B\n",
+        encoding="utf-8",
+    )
+    assert find_rows_without_id(ok) == []
+
+
+def test_find_rows_without_id_raises_bei_fehlender_id_spalte(tmp_path):
+    """CSV mit Zeilen aber ohne ID/obj_id-Header wirft ValueError (spiegelt load_standard)."""
+    import pytest
+    from stonebook.migration.csv_loaders import find_rows_without_id
+    csv_path = tmp_path / "fremd.csv"
+    csv_path.write_text("Name,Mineralart\nFoo,Quarz\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ID-Spalte"):
+        find_rows_without_id(csv_path)
+
+
+def test_find_rows_without_id_akzeptiert_obj_id_spalte(tmp_path):
+    """JSON-/DB-Format nutzt ``obj_id`` statt ``ID`` - beide werden erkannt."""
+    from stonebook.migration.csv_loaders import find_rows_without_id
+    csv_path = tmp_path / "objid.csv"
+    csv_path.write_text(
+        "obj_id,Name\nOBJ_0001,Erste\n,Zeile ohne ID\n",
+        encoding="utf-8",
+    )
+    assert find_rows_without_id(csv_path) == [2]
+
+
 def test_load_standard_raises_bei_fehlender_id_spalte(tmp_path):
     """CSV ohne ID/obj_id-Spalte ist kein gueltiger Standard-Import - klarer Fehler."""
     import pytest

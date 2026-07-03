@@ -226,6 +226,55 @@ def test_import_ohne_duplikate_zeigt_keine_zeile(tmp_path, capsys):
     assert "Doppelte IDs" not in out
 
 
+def test_import_meldet_zeilen_ohne_id_text_und_json(tmp_path, capsys):
+    """CLI-Text zeigt "Zeilen ohne ID: N" und --json enthaelt "zeilen_ohne_id".
+
+    Symmetrisch zur Duplikat-Meldung: Zeile erscheint nur, wenn Zeilen ohne
+    verwertbare ID vorkommen (kein "Zeilen ohne ID: 0"-Noise).
+    """
+    src = tmp_path / "leer.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\n"
+        "OBJ_0001,Quarz\n"
+        ",Calcit\n"
+        "OBJ_0002,Amethyst\n"
+        "??,Turmalin\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "leer.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Zeilen ohne ID: 2" in out
+    # Zeilennummern (1-basiert ueber Datenzeilen) muessen im Text auftauchen.
+    assert "Zeilen 2, 4" in out
+
+    src2 = tmp_path / "leer2.csv"
+    src2.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\n,Calcit\n",
+        encoding="utf-8",
+    )
+    db2 = tmp_path / "leer2.sqlite3"
+    code = main(["import", str(src2), "--db", str(db2), "--json"])
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["zeilen_ohne_id"] == [2]
+
+
+def test_import_ohne_id_luecken_zeigt_keine_zeile(tmp_path, capsys):
+    """Ohne fehlende IDs erscheint die "Zeilen ohne ID"-Zeile nicht in der Text-Ausgabe."""
+    src = tmp_path / "ok2.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "ok2.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Zeilen ohne ID" not in out
+
+
 def test_export_import_roundtrip(migrated_db, tmp_path):
     """Export aus voller DB -> Import in frische DB liefert dieselben Felder."""
     out = tmp_path / "rt.csv"

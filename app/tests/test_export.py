@@ -517,6 +517,47 @@ def test_csv_import_ohne_duplikate_setzt_leere_liste(tmp_path):
     db.close()
 
 
+def test_csv_import_meldet_zeilen_ohne_id(tmp_path):
+    """import_csv setzt rep.zeilen_ohne_id fuer Zeilen mit leerer/unlesbarer ID.
+
+    load_standard verwirft solche Zeilen kommentarlos - der Report weist den
+    Verlust jetzt explizit aus, damit user-editierte CSVs mit ID-Tippfehler
+    nicht als "alles OK" durchgehen. Symmetrisch zu rep.duplikate.
+    """
+    db = open_db(tmp_path / "o.sqlite3")
+    src = tmp_path / "o.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\n"
+        "OBJ_0001,Quarz\n"
+        ",Calcit\n"
+        "OBJ_0002,Amethyst\n"
+        "??,Turmalin\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    # Zeilen 2 und 4 (1-basiert ueber Datenzeilen) hatten keine ID.
+    assert rep.zeilen_ohne_id == [2, 4]
+    # Die gueltigen Zeilen sind angelegt, die anderen silent verworfen.
+    assert set(rep.angelegt) == {"OBJ_0001", "OBJ_0002"}
+    # as_dict serialisiert das neue Feld mit (fuer --json CLI-Weg).
+    assert rep.as_dict()["zeilen_ohne_id"] == [2, 4]
+    db.close()
+
+
+def test_csv_import_ohne_id_luecken_setzt_leere_liste(tmp_path):
+    """Ohne fehlende IDs bleibt rep.zeilen_ohne_id == [] (default_factory-Vertrag)."""
+    db = open_db(tmp_path / "n2.sqlite3")
+    src = tmp_path / "n2.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    assert rep.zeilen_ohne_id == []
+    assert rep.as_dict()["zeilen_ohne_id"] == []
+    db.close()
+
+
 def test_csv_import_create_missing_false(tmp_path):
     src = tmp_path / "src.csv"
     src.write_text("ID,Mineral_Primaer\nOBJ_0999,Calcit\n", encoding="utf-8")
