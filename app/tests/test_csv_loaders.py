@@ -708,6 +708,204 @@ def test_find_rows_with_invalid_funddatum_leere_datei_ohne_id_spalte_ist_ok(tmp_
     assert find_rows_with_invalid_funddatum(csv_path) == []
 
 
+def test_find_rows_with_invalid_numeric_field_standard(tmp_path):
+    """Feld-Level-Silent-Drop-Pendant auf der numerischen Achse.
+
+    ``_num("sehr schwer")`` liefert None, ``_convert_standard`` uebergibt
+    ``(True, None)``, ``import_csv`` filtert das Feld via ``is_empty(None)``
+    aus dem Update-Dict - der Roh-Text ist verloren, ohne dass der Report
+    ihn sichtbar macht. Diese Funktion pre-scannt die CSV und liefert die
+    (Zeile, Roh-Wert)-Paare zur sichtbaren Meldung, damit der User den
+    konkreten Tippfehler direkt findet. Spiegelt den Standard-Pfad von
+    find_rows_with_invalid_funddatum auf die Gewicht-Achse.
+    """
+    from stonebook.migration.csv_loaders import (
+        find_rows_with_invalid_numeric_field,
+        load_standard,
+    )
+    csv_path = tmp_path / "gewicht.csv"
+    csv_path.write_text(
+        "ID,Gewicht_g,Mineral_Primaer\n"
+        "OBJ_0001,42.5,Quarz\n"
+        "OBJ_0002,sehr schwer,Calcit\n"
+        "OBJ_0003,150,Amethyst\n"
+        "OBJ_0004,teuer,Turmalin\n"
+        "OBJ_0005,,Ohne\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_field(csv_path, "Gewicht_g") == [
+        (2, "sehr schwer"),
+        (4, "teuer"),
+    ]
+    # load_standard behaelt die Zeilen, aber ohne das kaputte Gewicht_g-Feld
+    # (_num->None, is_empty(None)->True, das Feld verschwindet aus fields dict).
+    data = load_standard(csv_path)
+    assert data["OBJ_0002"]["Mineral_Primaer"] == "Calcit"
+    assert data["OBJ_0002"].get("Gewicht_g") is None
+    assert data["OBJ_0004"].get("Gewicht_g") is None
+    # Gueltige numerische Werte bleiben unangetastet.
+    assert data["OBJ_0001"]["Gewicht_g"] == 42.5
+    assert data["OBJ_0003"]["Gewicht_g"] == 150.0
+
+
+def test_find_rows_with_invalid_numeric_field_akzeptiert_einheiten(tmp_path):
+    """Werte mit Einheit (``42 g``, ``ca. 500 CHF``) sind NICHT invalid.
+
+    ``_num`` extrahiert das Zahl-Token, ``_convert_standard`` uebernimmt den
+    Wert - die Einheiten-Annotation geht verloren, ist aber semantisch
+    redundant (die Spalte kodiert die Einheit im Namen: ``Gewicht_g`` ist
+    immer g). Erst wenn kein Zahl-Token gefunden wird (``sehr schwer``),
+    ist der Wert-Anteil verloren und die Zeile wird gemeldet. Ohne diesen
+    Test wuerde eine spaetere Regex-Verschaerfung von ``_num`` (z.B. Einheit
+    zwingend abschneiden vor der Zahl-Extraktion) den Report mit Rauschen
+    fuellen.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "einheiten.csv"
+    csv_path.write_text(
+        "ID,Gewicht_g,Wert_CHF_roh\n"
+        "OBJ_0001,42 g,ca. 500 CHF\n"
+        "OBJ_0002,150 gram,750.00 CHF\n"
+        "OBJ_0003,ca. 42.5,1'500.00\n",  # Schweizer Tausender
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_field(
+        csv_path, "Gewicht_g") == []
+    assert find_rows_with_invalid_numeric_field(
+        csv_path, "Wert_CHF_roh") == []
+
+
+def test_find_rows_with_invalid_numeric_field_ignoriert_leer_und_no_data_marker(tmp_path):
+    """Leere Werte und "keine Angabe"-Marker zaehlen NICHT als invalid.
+
+    Spiegelt die Marker-Ignoranz von find_rows_with_invalid_funddatum: die
+    :data:`DATE_NO_DATA_MARKERS`-Menge ist single source of truth ueber alle
+    Feld-Achsen (Datum, numerisch). Wenn der User explizit ``k.a.`` in eine
+    Gewicht-Zelle schreibt, ist das "kein Wert verfuegbar" - da ist nichts
+    verloren gegangen, und der Report darf keine Rauschmeldung erzeugen.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "marker_num.csv"
+    csv_path.write_text(
+        "ID,Gewicht_g\n"
+        "OBJ_0001,\n"
+        "OBJ_0002,   \n"
+        "OBJ_0003,k.a.\n"
+        "OBJ_0004,n/a\n"
+        "OBJ_0005,unbekannt\n"
+        "OBJ_0006,?\n"
+        "OBJ_0007,-\n"
+        "OBJ_0008,K.A.\n",  # Grossschreibung
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_field(csv_path, "Gewicht_g") == []
+
+
+def test_find_rows_with_invalid_numeric_field_ohne_spalte_ist_leer(tmp_path):
+    """Fehlt die genannte Spalte komplett im File, wird ``[]`` zurueckgegeben.
+
+    Spiegelt find_rows_with_invalid_funddatum: kein Datenverlust moeglich,
+    wenn das Feld gar nicht Teil der CSV ist - der Report darf nicht
+    faelschlich "0 Zeilen" statt "gar nicht anwendbar" signalisieren.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "kein_gewicht.csv"
+    csv_path.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_field(csv_path, "Gewicht_g") == []
+
+
+def test_find_rows_with_invalid_numeric_field_akzeptiert_obj_id_spalte(tmp_path):
+    """JSON-/DB-Format nutzt ``obj_id`` statt ``ID`` - beide werden erkannt.
+
+    Spiegelt die ID-Spalten-Aliasing-Regel der uebrigen Pre-Scanner:
+    das Alias gilt fuer alle Silent-Drop-Detektoren einheitlich.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "objid_num.csv"
+    csv_path.write_text(
+        "obj_id,Wert_CHF_roh\nOBJ_0001,42.5\nOBJ_0002,teuer\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_field(
+        csv_path, "Wert_CHF_roh") == [(2, "teuer")]
+
+
+def test_find_rows_with_invalid_numeric_field_raises_bei_fehlender_id_spalte(tmp_path):
+    """CSV mit Zeilen aber ohne ID/obj_id-Header wirft ValueError.
+
+    Spiegelt find_duplicate_ids/find_rows_without_id/find_rows_with_invalid_funddatum/
+    load_standard: alle stehen zur gleichen Format-Regel und lehnen v1/v2-
+    Historik-CSVs sichtbar ab, statt stille "0 Funde" zu melden.
+    """
+    import pytest
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "fremd_num.csv"
+    csv_path.write_text(
+        "Name,Mineralart,Fundort\nFoo,Quarz,Davos\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ID-Spalte"):
+        find_rows_with_invalid_numeric_field(csv_path, "Gewicht_g")
+
+
+def test_find_rows_with_invalid_numeric_field_raises_bei_nicht_numerischem_feld(tmp_path):
+    """Nicht-numerische Felder werfen ValueError.
+
+    ``Fundort`` (str), ``Notizen`` (text), ``Kategorie`` (enum), ``Funddatum``
+    (date), ``Foto_Uebersicht`` (path) sind keine Silent-Drop-Kandidaten auf
+    der Zahl-Achse und wuerden vom Detektor irrefuehrende Ergebnisse liefern
+    ("jeder freitext-Wert waere invalid"). Fuer ``date`` gibt es
+    :func:`find_rows_with_invalid_funddatum` als spezialisierten Pfad; fuer
+    Text-Felder gilt jeder nicht-leere Wert als gueltig (kein Silent-Drop
+    moeglich). Ein Aufruf mit "Fundort" waere fast sicher ein Programmier-
+    Fehler und darf nicht stillschweigend leere Liste liefern.
+    """
+    import pytest
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "irrelevant.csv"
+    csv_path.write_text("ID,Fundort\nOBJ_0001,Davos\n", encoding="utf-8")
+    for col in ("Fundort", "Funddatum", "Mineral_Primaer", "Kategorie",
+                "Foto_Uebersicht"):
+        with pytest.raises(ValueError, match="Kein numerisches Standard-Feld"):
+            find_rows_with_invalid_numeric_field(csv_path, col)
+    # Erfundenes Feld wird ebenfalls abgewiesen (kein Regress zu einem
+    # "unbekanntes Feld wird toleriert"-Verhalten).
+    with pytest.raises(ValueError, match="Kein numerisches Standard-Feld"):
+        find_rows_with_invalid_numeric_field(csv_path, "Halluzination")
+
+
+def test_find_rows_with_invalid_numeric_field_scale_und_int_felder(tmp_path):
+    """Detektor deckt alle NUMERIC_TYPES ab (float, int, scale).
+
+    ``Confidence_Prozent`` (int) und ``Seltenheit_global_1_10`` (scale) sind
+    numerisch konvertiert und teilen die Silent-Drop-Semantik: ein Freitext
+    wie "hoch" oder "mittel" faellt via ``_int -> _num -> None`` durch, das
+    Feld wird nicht uebernommen. Ohne diesen Test koennte eine spaetere
+    Verschaerfung des Domain-Filters (z.B. nur ``float`` akzeptieren) die
+    Scale-/Int-Coverage still abschneiden.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_numeric_field
+    csv_path = tmp_path / "scale_int.csv"
+    csv_path.write_text(
+        "ID,Confidence_Prozent,Seltenheit_global_1_10\n"
+        "OBJ_0001,85,7\n"
+        "OBJ_0002,hoch,mittel\n"
+        "OBJ_0003,42,-\n"   # "-" ist no-data-marker, nicht invalid
+        "OBJ_0004,keine Angabe verfuegbar,unbekannt\n",  # nur Text ohne Zahl
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_numeric_field(
+        csv_path, "Confidence_Prozent") == [
+        (2, "hoch"),
+        (4, "keine Angabe verfuegbar"),
+    ]
+    assert find_rows_with_invalid_numeric_field(
+        csv_path, "Seltenheit_global_1_10") == [
+        (2, "mittel"),
+    ]
+
+
 def test_load_standard_raises_bei_fehlender_id_spalte(tmp_path):
     """CSV ohne ID/obj_id-Spalte ist kein gueltiger Standard-Import - klarer Fehler."""
     import pytest

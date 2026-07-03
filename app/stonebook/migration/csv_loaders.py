@@ -378,6 +378,41 @@ def find_rows_without_id(path: Path) -> list[int]:
     return ohne_id
 
 
+def _find_rows_with_unparsable_value(
+    path: Path, column: str, parser
+) -> list[tuple[int, str]]:
+    """Interner Helper fuer Feld-Level-Silent-Drop-Erkennung.
+
+    Iteriert die Datenzeilen der CSV, ueberspringt leere Werte und die
+    :data:`DATE_NO_DATA_MARKERS`, und liefert ``(Zeilennummer, Roh-Wert)``
+    fuer jede Zelle in ``column``, in der ``parser(stripped)`` None
+    zurueckgibt - der Feld-Level-Silent-Drop-Fund. Wird von
+    :func:`find_rows_with_invalid_funddatum` (Parser
+    :func:`parse_iso_date`) und :func:`find_rows_with_invalid_numeric_field`
+    (Parser :func:`_num`) geteilt, damit beide dieselbe Marker-Semantik,
+    Zeilennummerierung und ID-Spalten-Validierung nutzen und die
+    Blindfleck-Regel "keine Meldung fuer 'no data'-Marker" nicht in zwei
+    parallelen Implementierungen driften kann. Erwartet, dass der Caller
+    ``column`` bereits validiert hat (spezifische Fehlermeldung je Achse:
+    numerische vs. Datum-Achse haben unterschiedliche Erwartungswerte).
+    """
+    rows = _read_csv_robust(path)
+    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+        raise ValueError(
+            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
+    invalid: list[tuple[int, str]] = []
+    for idx, row in enumerate(rows, start=1):
+        raw = row.get(column)
+        if raw is None:
+            continue
+        stripped = str(raw).strip()
+        if not stripped or stripped.lower() in DATE_NO_DATA_MARKERS:
+            continue
+        if parser(stripped) is None:
+            invalid.append((idx, stripped))
+    return invalid
+
+
 def find_rows_with_invalid_funddatum(path: Path) -> list[tuple[int, str]]:
     """Findet Zeilen mit einem nicht-leeren Funddatum-Wert, der nicht als
     ISO-Datum geparst werden konnte (silent drop in :func:`load_standard`).
@@ -413,21 +448,74 @@ def find_rows_with_invalid_funddatum(path: Path) -> list[tuple[int, str]]:
     enthaelt, aber weder ``ID`` noch ``obj_id`` als Header - so faellt eine
     falsch zugeordnete Datei (v1/v2-CSV) nicht stillschweigend leer durch.
     """
-    rows = _read_csv_robust(path)
-    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+    return _find_rows_with_unparsable_value(path, "Funddatum", parse_iso_date)
+
+
+_NUMERIC_STANDARD_COLS = frozenset(
+    f.name for f in DATA_FIELDS if f.ftype in NUMERIC_TYPES
+)
+
+
+def find_rows_with_invalid_numeric_field(
+    path: Path, column: str,
+) -> list[tuple[int, str]]:
+    """Findet Zeilen mit einem nicht-leeren Wert in einem numerischen
+    Standardfeld, den :func:`_num` nicht als Zahl parsen konnte (silent
+    drop in :func:`load_standard`).
+
+    Feld-Level-Silent-Drop-Pendant zu :func:`find_rows_with_invalid_funddatum`
+    auf der numerischen Achse. Waehrend die Datum-Variante Tippfehler in
+    ``Funddatum`` (``32.13.2024``, ``Sommer 84``) erkennt, deckt diese
+    Variante Tippfehler in numerischen Feldern (``Gewicht_g``, ``Wert_CHF_roh``,
+    ``Mohs_Haerte_min``, ``Confidence_Prozent``, ...) ab: ein User-Freitext
+    wie ``sehr schwer`` in der Gewicht_g-Spalte laesst :func:`_num` auf
+    None fallen, ``_convert_standard`` uebergibt ``(True, None)``, in
+    :func:`stonebook.export.csv_export.import_csv` filtert ``is_empty(None)``
+    das Feld aus dem Update-Dict - die Zeile bleibt erhalten, aber der
+    Roh-Text ist verloren, ohne dass der Report ihn sichtbar macht.
+
+    Rueckgabe: Liste von ``(Zeilennummer, Roh-Wert)``, 1-basiert ueber die
+    Datenzeilen. Der Roh-Wert ist der gestrippte Zellen-Inhalt, sodass
+    CLI-Reporter die kaputte Eingabe direkt anzeigen koennen
+    ("Zeile 5: 'sehr schwer' im Feld Gewicht_g konnte nicht geparst werden").
+    Reihenfolge = Reihenfolge im File.
+
+    ``column`` muss ein numerisches Standardfeld sein (``float`` / ``int`` /
+    ``scale``, siehe :data:`stonebook.fields.NUMERIC_TYPES`); andere Felder
+    (``str`` / ``text`` / ``enum`` / ``date`` / ``path``) werfen
+    ``ValueError``, damit ein Aufruf mit ``"Funddatum"`` oder ``"Fundort"``
+    nicht stillschweigend "0 Funde" liefert (fuer ``date`` gibt es
+    :func:`find_rows_with_invalid_funddatum`; fuer Text-Felder gilt jeder
+    nicht-leere Wert als gueltig, dort gibt es keinen Silent-Drop).
+
+    Explizite "keine Angabe"-Marker (``k.a.``, ``n/a``, ``unbekannt``, ``?``,
+    ``-``, ``—``, siehe :data:`stonebook.migration.validators.DATE_NO_DATA_MARKERS`)
+    zaehlen NICHT als "invalid" - der User hat explizit gesagt "kein Wert
+    verfuegbar", da ist nichts verloren gegangen. Die Marker-Menge wird mit
+    :func:`find_rows_with_invalid_funddatum` geteilt (single source of truth
+    fuer "was ist ein leerer Marker?" ueber alle Feld-Achsen). Whitespace-
+    only-Werte zaehlen ebenfalls als leer und nicht als invalid.
+
+    Fehlt die genannte Spalte komplett im File, wird ``[]`` zurueckgegeben
+    (kein Datenverlust moeglich, spiegelt
+    :func:`find_rows_with_invalid_funddatum`). Wirft ``ValueError`` analog,
+    wenn die CSV Zeilen enthaelt, aber weder ``ID`` noch ``obj_id`` als
+    Header - so faellt eine falsch zugeordnete Datei sichtbar durch.
+
+    Werte, die eine Einheit enthalten (``42 g``, ``ca. 500 CHF``), gelten
+    NICHT als invalid - :func:`_num` extrahiert das Zahl-Token via
+    :func:`parse_range` und ``_convert_standard`` uebernimmt den Wert. Die
+    Einheiten-Annotation geht dabei verloren, ist aber semantisch redundant
+    (die Spalte kodiert die Einheit im Namen: ``Gewicht_g`` ist immer g,
+    ``Wert_CHF_roh`` ist immer CHF). Erst wenn kein Zahl-Token gefunden wird
+    (``sehr schwer``, ``teuer``, ``fast nichts``), ist der Wert-Anteil
+    verloren und die Zeile wird gemeldet.
+    """
+    if column not in _NUMERIC_STANDARD_COLS:
         raise ValueError(
-            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
-    invalid: list[tuple[int, str]] = []
-    for idx, row in enumerate(rows, start=1):
-        raw = row.get("Funddatum")
-        if raw is None:
-            continue
-        stripped = str(raw).strip()
-        if not stripped or stripped.lower() in DATE_NO_DATA_MARKERS:
-            continue
-        if parse_iso_date(stripped) is None:
-            invalid.append((idx, stripped))
-    return invalid
+            f"Kein numerisches Standard-Feld: {column!r} "
+            f"(erwartet: eines von {sorted(_NUMERIC_STANDARD_COLS)!r})")
+    return _find_rows_with_unparsable_value(path, column, _num)
 
 
 def load_standard(path: Path) -> dict[str, dict]:
