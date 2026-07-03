@@ -4131,3 +4131,144 @@ def test_list_objects_nearest_leere_db(tmp_path):
     repo2 = ObjectRepo(c2)
     assert repo2.list_objects_nearest(47.0, 8.0, 5) == []
     c2.close()
+
+
+def test_list_objects_farthest_liefert_weiteste_in_distanz_reihenfolge(tmp_path):
+    """list_objects_farthest liefert die N weitesten Stuecke absteigend nach Distanz.
+
+    K-Farthest-Neighbors-Pendant zu list_objects_nearest: waehrend die
+    K-NN-Variante die Naehe-Achse beantwortet ('welche sind die N
+    nahesten?'), beantwortet die K-FN-Variante die Ferne-Achse ('welche
+    sind die N weitesten?') - typisch das Souvenir-Ausreisser-Stueck.
+    Beide teilen die Reuse-Logik (parse_coordinates auf Fundort,
+    Eintraege ohne Koords uebergangen, Haversine-Distanz mit Erdradius
+    6371.0 km), unterscheiden sich nur in der Sortier-Richtung. Decken
+    muss: K-FN-Trefferzahl bei typischem limit, Sortierung nach Distanz
+    absteigend, Stuecke innerhalb der weitesten N (uebergangen),
+    Fundort ohne Koordinaten/leer/NULL (uebergangen), DMS-Notation
+    (durchgereicht).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "farthest.sqlite3")
+    # Mittelpunkt: Zuerich Hauptbahnhof (47.3779, 8.5403)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),         # Zuerich nahe, ~0.2 km
+            ("OBJ_0002", "47.5596, 7.5886"),         # Basel, ~73 km
+            ("OBJ_0003", "46.5197, 6.6323"),         # Lausanne, ~210 km
+            ("OBJ_0004", "Berner Oberland"),         # Ortsname, uebergangen
+            ("OBJ_0005", "47°22'37\"N 8°32'30\"E"),  # DMS Zuerich, ~0 km
+            ("OBJ_0006", ""),                        # leer
+            ("OBJ_0007", None),                      # NULL
+            ("OBJ_0008", "48.8566, 2.3522"),         # Paris, ~490 km
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # 3 weiteste Stuecke von Zuerich -> Paris + Lausanne + Basel
+    hits = repo.list_objects_farthest(47.3779, 8.5403, 3)
+    ids = [r[0] for r in hits]
+    assert ids == ["OBJ_0008", "OBJ_0003", "OBJ_0002"]
+    # Distanzen absteigend
+    distances = [r[3] for r in hits]
+    assert distances == sorted(distances, reverse=True)
+    # Lat/Lon werden durchgereicht
+    paris = next(r for r in hits if r[0] == "OBJ_0008")
+    assert paris[1] == pytest.approx(48.8566)
+    assert paris[2] == pytest.approx(2.3522)
+    assert paris[3] > 400.0
+    # 5 weiteste -> alle 5 geocoded-en Stuecke, Reihenfolge nach Distanz absteigend
+    weite = repo.list_objects_farthest(47.3779, 8.5403, 5)
+    assert [r[0] for r in weite] == [
+        "OBJ_0008", "OBJ_0003", "OBJ_0002", "OBJ_0001", "OBJ_0005",
+    ]
+    c.close()
+
+
+def test_list_objects_farthest_grenzwerte(tmp_path):
+    """limit <= 0 -> leer; limit > Anzahl -> alle verfuegbaren; Bindung deterministisch.
+
+    Spiegelt die Grenzwert-Konvention von list_objects_nearest
+    (semantisch leere K-Extrema-Anfrage liefert nichts, ueberschiessendes
+    limit liefert keine Polsterung). Bei Distanz-Bindung sortiert die
+    obj_id-Sekundaerschluessel-Konvention deterministisch aufsteigend
+    (spiegelt K-NN: zwei Stuecke aus exakt derselben fernen Lokalitaet
+    haben identische Distanz).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "farthest_edge.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0002", "48.0, 9.0"),  # gleiche Ferne wie OBJ_0001
+            ("OBJ_0001", "48.0, 9.0"),  # gleiche Ferne wie OBJ_0002
+            ("OBJ_0003", "47.5, 8.5"),  # naeher
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # limit == 0 -> leer
+    assert repo.list_objects_farthest(47.0, 8.0, 0) == []
+    # limit < 0 -> leer
+    assert repo.list_objects_farthest(47.0, 8.0, -5) == []
+    # limit > Anzahl geocoded -> alle 3, keine Polsterung
+    alle = repo.list_objects_farthest(47.0, 8.0, 99)
+    assert len(alle) == 3
+    # Weitester zuerst, dann die beiden gleich-weit (aufsteigend obj_id), dann der nahe
+    assert [r[0] for r in alle] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Distanz-Bindung: OBJ_0001 == OBJ_0002 an Distanz
+    assert alle[0][3] == pytest.approx(alle[1][3])
+    # OBJ_0003 ist naeher -> kleinere Distanz an letzter Stelle
+    assert alle[2][3] < alle[0][3]
+    c.close()
+
+
+def test_list_objects_farthest_leere_db(tmp_path):
+    """Leere DB -> leere Trefferliste, unabhaengig vom limit. Spiegelt K-NN."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "farthest_leer.sqlite3")
+    repo = ObjectRepo(c)
+    assert repo.list_objects_farthest(47.0, 8.0, 5) == []
+    assert repo.list_objects_farthest(47.0, 8.0, 1) == []
+    c.close()
+    # Auch DB mit ausschliesslich nicht-geocoded-en Eintraegen -> leere Liste
+    c2 = open_db(tmp_path / "farthest_keine_koords.sqlite3")
+    c2.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", ""),
+            ("OBJ_0003", None),
+        ],
+    )
+    c2.commit()
+    repo2 = ObjectRepo(c2)
+    assert repo2.list_objects_farthest(47.0, 8.0, 5) == []
+    c2.close()
+
+
+def test_list_objects_farthest_und_nearest_sind_gegenpole(tmp_path):
+    """Die N weitesten aus alle Ergebnissen == die N ersten von farthest,
+    die N nahesten == die N ersten von nearest - beide sind Sortierungs-
+    Gegenpole ueber derselben Trefferliste.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gegenpole.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "47.3769, 8.5417"),  # Zuerich nahe
+            ("OBJ_0002", "47.5596, 7.5886"),  # Basel
+            ("OBJ_0003", "46.5197, 6.6323"),  # Lausanne
+            ("OBJ_0004", "48.8566, 2.3522"),  # Paris
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    nearest_all = repo.list_objects_nearest(47.3779, 8.5403, 99)
+    farthest_all = repo.list_objects_farthest(47.3779, 8.5403, 99)
+    # Beide enthalten dieselbe Menge Objekte, nur in umgekehrter Reihenfolge
+    assert [r[0] for r in nearest_all] == list(reversed([r[0] for r in farthest_all]))
+    # Distanzen sind identisch (nur Sortier-Richtung unterscheidet sich)
+    assert sorted(r[3] for r in nearest_all) == sorted(r[3] for r in farthest_all)

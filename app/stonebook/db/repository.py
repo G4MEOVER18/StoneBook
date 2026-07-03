@@ -1453,11 +1453,37 @@ class ObjectRepo:
         sind semantisch leer); ``radius_km`` == 0 trifft nur Stuecke exakt
         am Mittelpunkt (selten relevant, aber konsistent zur Disk-Definition).
         """
+        if radius_km < 0:
+            return []
+        result = [r for r in self._list_objects_haversine(lat_center, lon_center)
+                  if r[3] <= radius_km]
+        result.sort(key=lambda r: (r[3], r[0]))
+        return result
+
+    def _list_objects_haversine(
+        self, lat_center: float, lon_center: float,
+    ) -> list[tuple[str, float, float, float]]:
+        """Interner Helper: liefert (obj_id, lat, lon, distance_km) fuer
+        alle Objekte mit per :func:`parse_coordinates` erkennbaren
+        Fundort-Koordinaten, unsortiert.
+
+        Gemeinsame Reuse-Basis fuer ``list_objects_nearest``
+        (aufsteigende K-NN-Auswahl) und ``list_objects_farthest``
+        (absteigende K-FN-Auswahl) - beide K-Extrema-Suchen teilen
+        exakt dieselbe Distanzberechnung (Haversine auf Erd-Sphaere
+        mit Radius 6371.0 km) und unterscheiden sich nur in der
+        Sortier-Richtung. Ohne diesen Helper wuerde jede Aenderung an
+        der Distanz-Konvention (Erdradius, Ausnahmen fuer Antipode-
+        Punkte, DMS-Toleranz) in zwei parallelen Copy-Paste-Kopien
+        gepflegt und koennte silent divergieren; die geteilte Basis
+        haelt beide Achsen strukturell konsistent.
+
+        Reihenfolge der Rueckgabe = ``obj_id`` (spiegelt die SELECT-
+        Reihenfolge); die Sortierung nach Distanz erfolgt im Caller.
+        """
         import math
         from stonebook.migration.validators import parse_coordinates
 
-        if radius_km < 0:
-            return []
         rows = self.conn.execute(
             "SELECT obj_id, Fundort FROM objects "
             "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
@@ -1479,9 +1505,7 @@ class ObjectRepo:
             a = (math.sin(dlat / 2) ** 2
                  + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
             distance_km = 2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a)))
-            if distance_km <= radius_km:
-                result.append((row["obj_id"], lat, lon, distance_km))
-        result.sort(key=lambda r: (r[3], r[0]))
+            result.append((row["obj_id"], lat, lon, distance_km))
         return result
 
     def list_objects_nearest(self, lat_center: float, lon_center: float,
@@ -1524,34 +1548,64 @@ class ObjectRepo:
         liefert alle verfuegbaren Stuecke (keine Polsterung mit
         Platzhaltern, keine Ausnahme).
         """
-        import math
-        from stonebook.migration.validators import parse_coordinates
-
         if limit <= 0:
             return []
-        rows = self.conn.execute(
-            "SELECT obj_id, Fundort FROM objects "
-            "WHERE Fundort IS NOT NULL AND TRIM(Fundort) != '' "
-            "ORDER BY obj_id"
-        ).fetchall()
-        earth_radius_km = 6371.0
-        lat_c_rad = math.radians(lat_center)
-        lon_c_rad = math.radians(lon_center)
-        candidates: list[tuple[str, float, float, float]] = []
-        for row in rows:
-            coords = parse_coordinates(row["Fundort"])
-            if coords is None:
-                continue
-            lat, lon = coords
-            lat_rad = math.radians(lat)
-            lon_rad = math.radians(lon)
-            dlat = lat_rad - lat_c_rad
-            dlon = lon_rad - lon_c_rad
-            a = (math.sin(dlat / 2) ** 2
-                 + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
-            distance_km = 2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a)))
-            candidates.append((row["obj_id"], lat, lon, distance_km))
+        candidates = self._list_objects_haversine(lat_center, lon_center)
         candidates.sort(key=lambda r: (r[3], r[0]))
+        return candidates[:limit]
+
+    def list_objects_farthest(self, lat_center: float, lon_center: float,
+                              limit: int
+                              ) -> list[tuple[str, float, float, float]]:
+        """Listet die ``limit`` Objekte mit Fundort-Koordinaten am weitesten weg vom Mittelpunkt.
+
+        K-Farthest-Neighbors-Pendant zu ``list_objects_nearest``:
+        waehrend die K-NN-Variante die spiegelbildliche Frage 'welche
+        sind die N nahesten Stuecke zu meinem Standort?' beantwortet
+        (Naehe-Achse), beantwortet die K-FN-Variante die Extrem-Achse
+        'welche sind die N weitesten Stuecke?' - typischerweise die
+        Ausreisser der Sammlung (das eine Souvenir-Stueck aus Namibia
+        in einer sonst Schweizer Sammlung, die Fern-Reise-Beute in
+        einer sonst regional gepflegten Sammlung). Beide K-Extrema-
+        Suchen bedienen verschiedene Auspraegungen derselben
+        geografischen Such-Achse - Naehe und Ferne sind die beiden
+        Rand-Extreme derselben Distanz-Verteilung.
+
+        Typische Anwendung: der Sammler will die N weitesten Stuecke
+        aus seinem Bestand identifizieren, ohne im Voraus zu wissen,
+        welcher Radius die richtige Trefferzahl liefert (Disk-Suche
+        erfordert vorab eine Distanz-Schaetzung, K-FN nicht). Auch
+        als Ausreisser-Detektor: die Distanz des N-t weitesten
+        Stuecks im Vergleich zu ``koordinaten_radius_durchschnitt_km``
+        beziffert, wie stark die Sammlungs-Streuung von diesen
+        Extrem-Punkten getrieben wird.
+
+        Reuse-Pfad: teilt ``_list_objects_haversine`` mit
+        ``list_objects_nearest`` (dieselbe Haversine-Distanz-Runde,
+        derselbe Erdradius 6371.0 km, dasselbe parse_coordinates-
+        Filter fuer Ortsname/leere-Fundort-Eintraege), unterscheidet
+        sich nur in der Sortier-Richtung (absteigend statt aufsteigend
+        nach Distanz). Fundort-Eintraege ohne erkennbare Koordinaten
+        (reine Ortsnamen) werden uebergangen - sie laufen ueber
+        ``list_objects_ohne_koordinaten`` auf der Pflege-Achse.
+
+        Rueckgabe als ``(obj_id, lat, lon, distance_km)``-Tupel - die
+        Distanz wird durchgereicht, damit der Caller die Trefferliste
+        sortieren oder anzeigen kann ohne erneuten Haversine-Aufruf.
+        Sekundaersortierung nach ``obj_id`` (aufsteigend) fuer
+        deterministische Ausgabe bei Distanz-Bindungen (zwei Stuecke
+        aus exakt derselben fernen Lokalitaet haben identische
+        Distanz - spiegelt die K-NN-Konvention).
+
+        ``limit`` <= 0 liefert eine leere Trefferliste (semantisch
+        leere K-FN-Anfrage, spiegelt K-NN); ``limit`` > Anzahl
+        geocoded-er Stuecke liefert alle verfuegbaren Stuecke (keine
+        Polsterung, keine Ausnahme).
+        """
+        if limit <= 0:
+            return []
+        candidates = self._list_objects_haversine(lat_center, lon_center)
+        candidates.sort(key=lambda r: (-r[3], r[0]))
         return candidates[:limit]
 
     def get(self, obj_id: str) -> sqlite3.Row | None:
