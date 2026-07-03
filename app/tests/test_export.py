@@ -1180,6 +1180,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
     assert info == {
         "count": 0,
         "total_bytes": 0,
+        "average_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1187,6 +1188,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
     assert info == {
         "count": 0,
         "total_bytes": 0,
+        "average_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1268,6 +1270,94 @@ def test_backup_directory_stats_einzelnes_backup(tmp_path):
     info = backup_directory_stats(backups_dir)
     assert info["count"] == 1
     assert info["oldest_stamp"] == info["newest_stamp"] == "2024-06-13T14:30:45"
+
+
+def test_backup_directory_stats_average_bytes(tmp_path):
+    """average_bytes = round(total_bytes / count) - typische Backup-Groesse.
+
+    Verifiziert die Kern-Formel des Volume-Achsen-Durchschnitts: drei
+    Backups mit unterschiedlichen ``st_size`` (durch verschiedene DB-Groessen
+    erzeugt) muessen als ``round(total / count)`` erscheinen. Sichert die
+    Rundungs-Konvention (bytes sind diskret, Rest-Halbbyte per ``round()``
+    aufloesen) und die Uebereinstimmung mit ``total_bytes``, sodass ein
+    Downstream-Konsument ``count * average_bytes ~= total_bytes`` als
+    Konsistenz-Check anwenden kann. Spiegelt das Durchschnitts-Pattern
+    aus ``stats.py`` (``wert_durchschnitt_chf``, ``gewicht_durchschnitt_g``,
+    ``mohs_kollektion_durchschnitt``, ``dichte_kollektion_durchschnitt``)
+    auf die Backup-Volume-Achse.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamps = [
+        datetime.datetime(2024, 1, 15, 10, 0, 0),
+        datetime.datetime(2024, 3, 20, 12, 30, 0),
+        datetime.datetime(2024, 6, 1, 8, 15, 0),
+    ]
+    for stamp in stamps:
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    db.close()
+
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["total_bytes"] > 0
+    assert info["average_bytes"] == round(info["total_bytes"] / info["count"])
+    # Sanity: average liegt zwischen der kleinsten und der groessten Datei
+    sizes = [p.stat().st_size for p in list_backups(backups_dir)]
+    assert min(sizes) <= info["average_bytes"] <= max(sizes)
+
+
+def test_backup_directory_stats_average_bytes_einzelnes_backup(tmp_path):
+    """Bei count=1 ist average_bytes == total_bytes (identische Datei).
+
+    Grenzfall count=1: kein Rundungsverlust, keine Division-Skalierung -
+    das eine Backup ist auch der Durchschnitt. Spiegelt die entsprechende
+    einzelnes_backup-Fixture fuer die Zeitstempel (oldest == newest).
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamp = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    db.close()
+
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["average_bytes"] == info["total_bytes"]
+
+
+def test_backup_directory_stats_average_bytes_ignoriert_fremde_dateien(tmp_path):
+    """average_bytes bezieht sich nur auf Backup-Schema-Dateien.
+
+    Spiegelt die entsprechende Fremd-Dateien-Fixture fuer count/total_bytes:
+    ein grosses Fremd-Archiv (10_000 Byte) im Ordner darf den Durchschnitt
+    nicht verzerren, weil weder die Fremd-Groesse in ``total_bytes`` noch
+    die Fremd-Datei in ``count`` einfliesst. Sichert die Konsistenz-
+    Invariante zwischen den drei Volume-Feldern (``count`` und
+    ``total_bytes`` beziehen sich auf dieselbe Datei-Menge, also gilt das
+    auch fuer ``average_bytes = total_bytes / count``).
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    stamp = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    db.close()
+    (backups_dir / "README.txt").write_text("nicht ein Backup", encoding="utf-8")
+    (backups_dir / "andere_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 10_000)
+
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    only_backup_bytes = list_backups(backups_dir)[0].stat().st_size
+    assert info["average_bytes"] == only_backup_bytes
+    # Fremdes Archiv (10_000 Byte) darf den Durchschnitt nicht verzerren
+    assert info["average_bytes"] < 10_000
+
+
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
     """Legt eine leere Backup-Pseudo-Datei mit dem gewuenschten Namensstempel ab.
 

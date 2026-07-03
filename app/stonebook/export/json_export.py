@@ -747,32 +747,55 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     waehrend ``list_backups`` einzelne Pfade liefert, fasst
     ``backup_directory_stats`` den Ordner in einem Schritt zu einem
     numerischen Report zusammen - Anzahl Backups, Gesamt-Bytes auf Platte,
-    frueheste und spaeteste Zeitstempel. Ergaenzt das prune-Vokabular
-    (:func:`prune_old_backups`, :func:`prune_backups_by_age`) um einen
-    read-only Reporter fuer Cron-Jobs und Wartungs-Dashboards, die vor
-    einer Prune-Entscheidung wissen wollen, wie viel Speicher die aktuelle
-    Backup-Halde belegt und wie weit der aelteste Eintrag zurueckreicht.
+    Durchschnitts-Bytes pro Backup, frueheste und spaeteste Zeitstempel.
+    Ergaenzt das prune-Vokabular (:func:`prune_old_backups`,
+    :func:`prune_backups_by_age`) um einen read-only Reporter fuer
+    Cron-Jobs und Wartungs-Dashboards, die vor einer Prune-Entscheidung
+    wissen wollen, wie viel Speicher die aktuelle Backup-Halde belegt und
+    wie weit der aelteste Eintrag zurueckreicht.
 
     Beruehrt ausschliesslich Dateien, die zum
     :func:`write_rotated_backup`-Schema passen
     (``stonebook_backup_*.json[.gz]``) - fremde Dateien im Ordner
     (README, andere Exporte, Lock-Files) bleiben unangetastet und zaehlen
-    weder in ``count`` noch in ``total_bytes``. ``oldest_stamp`` und
-    ``newest_stamp`` beziehen sich auf den Dateinamen-Zeitstempel
-    (nicht ``mtime``/``ctime``), damit Backups, die vom Backup-Server
-    kopiert oder verschoben wurden, ihr originales Alter behalten
-    (Single-Source-of-Truth = Filename-Stempel, spiegelt
+    weder in ``count`` noch in ``total_bytes`` noch in ``average_bytes``.
+    ``oldest_stamp`` und ``newest_stamp`` beziehen sich auf den
+    Dateinamen-Zeitstempel (nicht ``mtime``/``ctime``), damit Backups,
+    die vom Backup-Server kopiert oder verschoben wurden, ihr originales
+    Alter behalten (Single-Source-of-Truth = Filename-Stempel, spiegelt
     :func:`prune_backups_by_age`).
 
+    ``average_bytes`` ist der mittlere Bytes-Verbrauch pro Backup als
+    natuerliche Ergaenzung zu ``total_bytes`` auf der Volume-Achse -
+    spiegelt das Durchschnitts-Pattern aus ``stats.py``
+    (``wert_durchschnitt_chf``, ``gewicht_durchschnitt_g``,
+    ``mohs_kollektion_durchschnitt``, ``dichte_kollektion_durchschnitt``)
+    auf die Backup-Halde. Beantwortet in einem Schritt "wie gross ist
+    ein typisches Backup?" fuer Kapazitaetsplanung und macht damit
+    Groessen-Anomalien ohne separate largest/smallest-Aufrufe erkennbar
+    (Backup mit ``st_size >> average_bytes`` verdient einen
+    :func:`inspect_backup`-Check). Wird als ``round()``-integer
+    ausgeliefert (Bytes-Achse ist diskret), spiegelt die
+    Integer-Konvention von ``total_bytes``. Divison durch ``count``
+    (nicht ``len(size-lesbare Backups)``) ist konsistent mit
+    ``total_bytes``, wo eine einzelne unlesbare Datei zwar in ``count``
+    zaehlt aber nicht zur Summe beitraegt - der Durchschnitt darf durch
+    Race-Conditions minimal nach unten gezogen werden, aber nicht
+    divergieren.
+
     Leerer Ordner / nur fremde Dateien liefert
-    ``{"count": 0, "total_bytes": 0, "oldest_stamp": None,
-    "newest_stamp": None}``. Nicht existierender Ordner liefert
-    dasselbe (spiegelt :func:`list_backups`, das bei fehlendem Ordner
-    eine leere Liste zurueckgibt statt zu crashen - geeignet fuer
-    Cron-Reporter, die den Report-Aufruf vor der ersten Backup-Schreibe
-    machen). Unlesbare Dateien (Race gegen paralleles Loeschen) werden
-    beim ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt
-    das ``try: unlink except OSError``-Verhalten der prune-Funktionen.
+    ``{"count": 0, "total_bytes": 0, "average_bytes": None,
+    "oldest_stamp": None, "newest_stamp": None}``. Nicht existierender
+    Ordner liefert dasselbe (spiegelt :func:`list_backups`, das bei
+    fehlendem Ordner eine leere Liste zurueckgibt statt zu crashen -
+    geeignet fuer Cron-Reporter, die den Report-Aufruf vor der ersten
+    Backup-Schreibe machen). ``average_bytes`` ist ``None`` bei
+    ``count == 0`` (kein Division-by-Zero-Crash, kein irrefuehrender
+    ``0``-Report der wie "durchschnittlich leere Backups" aussaehe -
+    spiegelt die None-Konvention der Zeitstempel bei fehlendem Bestand).
+    Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
+    ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
+    ``try: unlink except OSError``-Verhalten der prune-Funktionen.
     Zeitstempel werden als ISO-8601-String ``YYYY-MM-DDTHH:MM:SS``
     ausgegeben (nicht als ``datetime``-Objekt), damit der Report ohne
     Konvertierung durch ``json.dumps`` laeuft - spiegelt das
@@ -793,6 +816,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     return {
         "count": count,
         "total_bytes": total_bytes,
+        "average_bytes": round(total_bytes / count) if count else None,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,
     }
