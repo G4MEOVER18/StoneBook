@@ -689,6 +689,46 @@ def _parse_backup_stamp(path: Path) -> datetime.datetime | None:
         return None
 
 
+def find_stale_backups(backup_dir: Path, max_age_days: int, *,
+                       now: datetime.datetime | None = None) -> list[Path]:
+    """Listet Backups, deren Dateinamen-Zeitstempel aelter als ``max_age_days`` ist.
+
+    Reine Lese-/Check-Variante von :func:`prune_backups_by_age` - berechnet
+    exakt dieselbe Kandidatenmenge (gleiche Cutoff-Semantik, gleiches
+    Namensschema-Filter, gleicher ``now``-Parameter), loescht aber nichts.
+    Bildet damit das check-Ende des check/fix-Paares, wie
+    :func:`stonebook.db.integrity.find_orphan_images` /
+    ``delete_orphan_images`` es fuer die FK-Achse tut.
+
+    Nutzen: Cron-Reporter kann die stale-Liste erst loggen, dann prune
+    entscheiden lassen (oder gar nicht); ein Bestaetigungs-Dialog kann dem
+    User zeigen, welche konkreten Dateien beim naechsten ``prune-age``
+    verloren gingen, bevor er OK klickt; ein Monitoring-Job kann Exit 1
+    liefern, sobald Backups > N Tage alt herumliegen, ohne selbst pruning-
+    Rechte zu brauchen.
+
+    Reihenfolge = ``list_backups``-Reihenfolge (aeltester Dateiname zuerst),
+    damit die Ausgabe deterministisch bleibt und ein CLI-Reporter direkt
+    "aeltestes zuerst" listen kann. Ignoriert nicht-parsbare Zeitstempel
+    (spiegelt :func:`prune_backups_by_age`).
+
+    ``max_age_days < 0`` wirft ``ValueError`` (spiegelt
+    :func:`prune_backups_by_age`). Fehlender Ordner -> ``[]`` (spiegelt
+    :func:`list_backups`).
+    """
+    if max_age_days < 0:
+        raise ValueError("max_age_days muss >= 0 sein")
+    now = now or datetime.datetime.now()
+    cutoff = now - datetime.timedelta(days=max_age_days)
+    stale: list[Path] = []
+    for p in list_backups(backup_dir):
+        stamp = _parse_backup_stamp(p)
+        if stamp is None or stamp >= cutoff:
+            continue
+        stale.append(p)
+    return stale
+
+
 def prune_backups_by_age(backup_dir: Path, max_age_days: int, *,
                          now: datetime.datetime | None = None) -> list[Path]:
     """Loescht Backups, deren Dateinamen-Zeitstempel aelter als ``max_age_days`` ist.
@@ -722,16 +762,14 @@ def prune_backups_by_age(backup_dir: Path, max_age_days: int, *,
     Dateien (Lock, Parallel-Loeschung) werden uebersprungen statt zu
     crashen (spiegelt :func:`prune_old_backups`). Liefert die geloeschten
     Pfade zurueck.
+
+    Die Kandidatenauswahl teilt sich mit :func:`find_stale_backups` -
+    identische Cutoff-Semantik, hier zusaetzlich mit tatsaechlicher
+    Loeschung. Fuer den reinen Pre-Flight-Check ohne Side-Effect
+    ``find_stale_backups`` verwenden.
     """
-    if max_age_days < 0:
-        raise ValueError("max_age_days muss >= 0 sein")
-    now = now or datetime.datetime.now()
-    cutoff = now - datetime.timedelta(days=max_age_days)
     deleted: list[Path] = []
-    for p in list_backups(backup_dir):
-        stamp = _parse_backup_stamp(p)
-        if stamp is None or stamp >= cutoff:
-            continue
+    for p in find_stale_backups(backup_dir, max_age_days, now=now):
         try:
             p.unlink()
             deleted.append(p)

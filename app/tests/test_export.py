@@ -9,10 +9,10 @@ from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           backup_directory_stats, export_json,
-                                          import_json, inspect_backup,
-                                          largest_backup, latest_backup,
-                                          list_backups, oldest_backup,
-                                          prune_backups_by_age,
+                                          find_stale_backups, import_json,
+                                          inspect_backup, largest_backup,
+                                          latest_backup, list_backups,
+                                          oldest_backup, prune_backups_by_age,
                                           prune_backups_gfs, prune_old_backups,
                                           read_backup_meta, smallest_backup,
                                           write_rotated_backup)
@@ -1769,3 +1769,103 @@ def test_prune_backups_gfs_isoweek_grenze_ueber_jahreswechsel(tmp_path):
     assert survivor.name in remaining
     assert outsider.name not in remaining
     assert outsider in deleted
+
+
+def test_find_stale_backups_listet_alte_ohne_zu_loeschen(tmp_path):
+    """find_stale_backups liefert die Kandidaten fuer prune_backups_by_age.
+
+    Reine Lese-/Check-Variante: gleiche Cutoff-Semantik wie
+    :func:`prune_backups_by_age`, aber ohne Loeschung. Bildet damit das
+    check-Ende des check/fix-Paares. Nach dem Aufruf muessen alle Backups
+    unangetastet vorliegen.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (40, 20, 5):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    assert len(list_backups(backups_dir)) == 3
+
+    stale = find_stale_backups(backups_dir, max_age_days=30, now=now)
+
+    assert len(stale) == 1
+    assert "20240504" in stale[0].name
+    assert len(list_backups(backups_dir)) == 3
+    db.close()
+
+
+def test_find_stale_backups_leere_liste_wenn_alle_frisch(tmp_path):
+    """Sind alle Backups juenger als das Cutoff, ist die stale-Liste leer."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99,
+                         now=now - datetime.timedelta(days=5))
+    assert find_stale_backups(backups_dir, max_age_days=30, now=now) == []
+    db.close()
+
+
+def test_find_stale_backups_negativer_wert_raises(tmp_path):
+    """Negative max_age_days werden abgelehnt (spiegelt prune_backups_by_age)."""
+    with pytest.raises(ValueError):
+        find_stale_backups(tmp_path / "b", max_age_days=-1)
+
+
+def test_find_stale_backups_fehlender_ordner(tmp_path):
+    """Fehlender Backup-Ordner liefert [] (spiegelt list_backups)."""
+    assert find_stale_backups(tmp_path / "gibt-es-nicht", max_age_days=30) == []
+
+
+def test_find_stale_backups_ignoriert_fremde_dateien(tmp_path):
+    """Fremde Dateien im Backup-Ordner werden ignoriert, nicht als stale gelistet.
+
+    Spiegelt :func:`prune_backups_by_age`: nur Dateien nach dem
+    ``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``-Muster kommen in Frage.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    write_rotated_backup(db, backups_dir, keep=99,
+                         now=now - datetime.timedelta(days=50))
+    fremd = backups_dir / "README.txt"
+    fremd.write_text("nicht ein Backup", encoding="utf-8")
+    fremdes_archiv = backups_dir / "andere_backup_20100101_000000.json.gz"
+    fremdes_archiv.write_bytes(b"")
+
+    stale = find_stale_backups(backups_dir, max_age_days=30, now=now)
+
+    assert len(stale) == 1
+    assert stale[0].name.startswith("stonebook_backup_")
+    db.close()
+
+
+def test_find_stale_backups_matches_prune_kandidaten(tmp_path):
+    """find_stale_backups liefert exakt die Menge, die prune_backups_by_age loeschen wuerde.
+
+    Vertrag: die Cutoff-Semantik ist zwischen check (find_stale_backups)
+    und fix (prune_backups_by_age) identisch. Der Test spannt drei Backups
+    ueber die Cutoff-Grenze und prueft, dass die stale-Liste vor dem prune
+    gleich der geloeschten Liste danach ist.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (40, 35, 25, 10):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+
+    stale_before = find_stale_backups(backups_dir, max_age_days=30, now=now)
+    deleted = prune_backups_by_age(backups_dir, max_age_days=30, now=now)
+
+    assert [p.name for p in stale_before] == [p.name for p in deleted]
+    assert find_stale_backups(backups_dir, max_age_days=30, now=now) == []
+    db.close()

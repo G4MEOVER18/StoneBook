@@ -194,6 +194,54 @@ def test_prune_age_ignoriert_fremde_dateien(tmp_path, capsys):
     assert fremd.exists() is True
 
 
+def test_stale_listet_alte_backups_ohne_zu_loeschen(tmp_path, capsys):
+    """stale Subcommand: alte Backups werden gelistet, Files bleiben da.
+
+    Spiegelt :func:`test_prune_age_loescht_alte_backups`: gleicher Aufbau
+    (1970-Stempel + heute-Stempel, Cutoff 30 Tage), aber ``stale`` ist der
+    check-Modus - Dateien bleiben, Kandidaten werden nur ausgegeben.
+    Exit-Code 1 bei Fund (spiegelt fts-check/check).
+    """
+    backup_dir = tmp_path / "s"
+    backup_dir.mkdir()
+    alt = backup_dir / "stonebook_backup_19700101_000000.json.gz"
+    alt.write_bytes(b"")
+    today = time.strftime("%Y%m%d")
+    jung = backup_dir / f"stonebook_backup_{today}_120000.json.gz"
+    jung.write_bytes(b"")
+
+    exit_code = main(["stale", "--backup-dir", str(backup_dir),
+                      "--max-age-days", "30"])
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "19700101" in out
+    assert today not in out
+    # Nichts wurde geloescht:
+    assert alt.exists() is True
+    assert jung.exists() is True
+
+
+def test_stale_ohne_kandidaten_exit_0(tmp_path, capsys):
+    """stale Subcommand: nichts stale -> keine Ausgabe, Exit 0.
+
+    Cron-Reporter-Pfad: gruen bedeutet leere Ausgabe und Exit 0. Kein
+    Rausch-Log fuer "alles frisch".
+    """
+    backup_dir = tmp_path / "sf"
+    backup_dir.mkdir()
+    today = time.strftime("%Y%m%d")
+    jung = backup_dir / f"stonebook_backup_{today}_120000.json.gz"
+    jung.write_bytes(b"")
+
+    exit_code = main(["stale", "--backup-dir", str(backup_dir),
+                      "--max-age-days", "30"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+    assert jung.exists() is True
+
+
 def test_write_fehlende_db_exit_2(tmp_path, capsys):
     exit_code = main(["write",
                       "--backup-dir", str(tmp_path / "x"),

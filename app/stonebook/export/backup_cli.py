@@ -10,6 +10,7 @@ Beispiele:
     python -m stonebook.export.backup_cli stats   --backup-dir backups/
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli prune-gfs --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
+    python -m stonebook.export.backup_cli stale     --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli compare <alt> <neu>
@@ -31,10 +32,10 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           compare_backup_to_db, compare_backups,
                                           diff_backup_object_fields,
                                           diff_backup_to_db_object_fields,
-                                          import_json, inspect_backup,
-                                          largest_backup, latest_backup,
-                                          list_backups, oldest_backup,
-                                          prune_backups_by_age,
+                                          find_stale_backups, import_json,
+                                          inspect_backup, largest_backup,
+                                          latest_backup, list_backups,
+                                          oldest_backup, prune_backups_by_age,
                                           prune_backups_gfs, prune_old_backups,
                                           smallest_backup, validate_backup,
                                           write_rotated_backup)
@@ -168,6 +169,25 @@ def _cmd_prune(args: argparse.Namespace) -> int:
     for p in deleted:
         print(p)
     return 0
+
+
+def _cmd_stale(args: argparse.Namespace) -> int:
+    """Listet Backups aelter als max_age_days, ohne zu loeschen.
+
+    Reine Lese-/Check-Variante von :func:`_cmd_prune_age` - berechnet die
+    gleiche Kandidatenmenge (gleiche Cutoff-Semantik), loescht aber
+    nichts. Geeignet als Pre-Flight-Report vor ``prune-age`` (welche
+    Dateien wuerden weg?) und als Monitoring-Check in Cronjobs
+    (Exit 1 signalisiert "es gibt stale Backups > N Tage alt"), ohne dass
+    der Cron-User pruning-Rechte braucht.
+
+    Exit-Code 1 wenn stale Backups gefunden wurden, sonst 0 (spiegelt
+    das check-Muster von ``fts-check`` / ``fkcheck`` / ``check``).
+    """
+    stale = find_stale_backups(args.backup_dir, max_age_days=args.max_age_days)
+    for p in stale:
+        print(p)
+    return 1 if stale else 0
 
 
 def _cmd_prune_age(args: argparse.Namespace) -> int:
@@ -456,6 +476,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--monthly", type=int, default=12,
                     help="Anzahl Kalendermonate (Default 12).")
     sp.set_defaults(func=_cmd_prune_gfs)
+
+    sp = sub.add_parser(
+        "stale",
+        help="Backups aelter als max_age_days listen, ohne zu loeschen "
+             "(Pre-Flight-Report vor prune-age); Exit 1 bei Fund.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.add_argument("--max-age-days", type=int, required=True,
+                    help="Hoechst-Alter in Tagen; aeltere Backups werden gelistet.")
+    sp.set_defaults(func=_cmd_stale)
 
     sp = sub.add_parser("inspect", help="Backup-Inhalt anzeigen (counts + meta).")
     sp.add_argument("path", type=Path)
