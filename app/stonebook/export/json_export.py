@@ -866,20 +866,52 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     ohne zweiten I/O-Pfad ueber :func:`largest_backup` und ohne den
     Pfad-Wrapper - der Aggregat-Report liefert die Byte-Zahl direkt.
 
+    ``min_bytes`` ist die Innen-Rand-Achse der Bytes-Verteilung -
+    symmetrisches Pendant zu ``max_bytes`` und spiegelt das
+    Min-Pattern aus ``stats.py`` (``wert_min_chf``, ``gewicht_min_g``,
+    ``mohs_kollektion_min``, ``dichte_kollektion_min``,
+    ``koordinaten_radius_min_km``) auf die Backup-Halde.
+    Vervollstaendigt gemeinsam mit ``max_bytes``, ``median_bytes`` und
+    ``average_bytes`` das Aggregations-Quartett min/max/durchschnitt/
+    median auf der Volume-Achse: min und max sind die beiden
+    Rand-Extreme derselben Verteilung, durchschnitt und median die
+    typischen Zentraltendenzen dazwischen. Beantwortet in einem Schritt
+    "wie klein ist das kompakteste Backup?" fuer Kapazitaetsplanung und
+    macht damit Unter-Ausreisser sichtbar (Delta-Snapshot neben
+    Voll-Backups; ein Backup mit ``st_size == min_bytes`` deutlich unter
+    ``median_bytes`` verdient einen :func:`inspect_backup`-Check, ob es
+    beim Schreiben abgebrochen wurde). Die Differenz ``max_bytes -
+    min_bytes`` (Range) beziffert die Gesamt-Spannweite der
+    Bytes-Verteilung, ``median_bytes - min_bytes`` die untere Half-Range
+    - beide Achsen zusammen mit ``max_bytes`` und ``median_bytes``
+    liefern ein vollstaendiges Fuenf-Zahlen-Bild ohne separaten
+    :func:`smallest_backup`-Aufruf. Basiert auf derselben Menge der
+    tatsaechlich lesbaren Dateien wie ``max_bytes`` / ``median_bytes`` /
+    ``average_bytes`` - unlesbare Dateien werden uebersprungen und
+    beeinflussen den Min nicht (spiegelt das ``total_bytes``-Verhalten).
+    Bei ``count == 1`` faellt ``min_bytes`` mit ``max_bytes`` /
+    ``median_bytes`` / ``average_bytes`` zusammen, spiegelt die
+    Grenzfall-Konvention bei Einzel-Stichproben. Wird als integer
+    ausgeliefert (Bytes-Achse ist diskret, spiegelt ``average_bytes``
+    / ``median_bytes`` / ``max_bytes``). Semantisch identisch zu
+    ``smallest_backup().stat().st_size`` bei lesbaren Dateien, aber
+    ohne zweiten I/O-Pfad ueber :func:`smallest_backup` und ohne den
+    Pfad-Wrapper - der Aggregat-Report liefert die Byte-Zahl direkt.
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
-    "median_bytes": None, "max_bytes": None, "oldest_stamp": None,
-    "newest_stamp": None}``.
+    "median_bytes": None, "min_bytes": None, "max_bytes": None,
+    "oldest_stamp": None, "newest_stamp": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
     Report-Aufruf vor der ersten Backup-Schreibe machen).
-    ``average_bytes``, ``median_bytes`` und ``max_bytes`` sind ``None``
-    bei ``count == 0`` (kein Division-by-Zero-Crash bei ``average``,
-    kein Index-Fehler bei ``median``, kein leeres-``max``-Crash, kein
-    irrefuehrender ``0``-Report der wie "durchschnittlich leere Backups"
-    aussaehe - spiegelt die None-Konvention der Zeitstempel bei
-    fehlendem Bestand).
+    ``average_bytes``, ``median_bytes``, ``min_bytes`` und ``max_bytes``
+    sind ``None`` bei ``count == 0`` (kein Division-by-Zero-Crash bei
+    ``average``, kein Index-Fehler bei ``median``, kein leeres-``max``-
+    oder leeres-``min``-Crash, kein irrefuehrender ``0``-Report der wie
+    "durchschnittlich leere Backups" aussaehe - spiegelt die
+    None-Konvention der Zeitstempel bei fehlendem Bestand).
     Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
     ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
     ``try: unlink except OSError``-Verhalten der prune-Funktionen.
@@ -909,6 +941,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "total_bytes": total_bytes,
         "average_bytes": round(total_bytes / count) if count else None,
         "median_bytes": _median_int(sizes) if sizes else None,
+        "min_bytes": min(sizes) if sizes else None,
         "max_bytes": max(sizes) if sizes else None,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,

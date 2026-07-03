@@ -1357,6 +1357,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "total_bytes": 0,
         "average_bytes": None,
         "median_bytes": None,
+        "min_bytes": None,
         "max_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
@@ -1367,6 +1368,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "total_bytes": 0,
         "average_bytes": None,
         "median_bytes": None,
+        "min_bytes": None,
         "max_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
@@ -1757,6 +1759,102 @@ def test_backup_directory_stats_max_bytes_stimmt_mit_largest_backup(tmp_path):
     largest = largest_backup(backups_dir)
     assert largest is not None
     assert info["max_bytes"] == largest.stat().st_size == 1000
+
+
+def test_backup_directory_stats_min_bytes_liefert_kleinstes(tmp_path):
+    """min_bytes = kleinste Backup-Groesse - Innen-Rand der Bytes-Verteilung.
+
+    Symmetrisches Pendant zu ``max_bytes``, spiegelt das gewicht_min_g /
+    wert_min_chf / mohs_kollektion_min / koordinaten_radius_min_km-Muster
+    auf die Backup-Volume-Achse: aus einer gemischten Halde
+    ([100, 500, 12345]) wird die kleinste dokumentierte Groesse (100) als
+    Innen-Rand-Achse zurueckgeliefert. Antwortet auf "wie klein ist das
+    kompakteste Backup?" ohne separaten :func:`smallest_backup`-Aufruf.
+    Sichert die Aggregations-Quartett-Invariante ``min <= average <=
+    max`` und ``min <= median <= max`` auf der Volume-Achse.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 500)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 12345)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["min_bytes"] == 100
+    # Aggregations-Quartett-Invariante: min <= median <= max
+    # und min <= average <= max (Bytes-Verteilung ist reell-nicht-negativ).
+    assert info["min_bytes"] <= info["median_bytes"] <= info["max_bytes"]
+    assert info["min_bytes"] <= info["average_bytes"] <= info["max_bytes"]
+
+
+def test_backup_directory_stats_min_bytes_einzelnes_backup(tmp_path):
+    """Bei count=1 kollabieren min_bytes / max_bytes / median_bytes / average_bytes / total_bytes.
+
+    Grenzfall count=1: der einzige Wert ist die Antwort auf jede
+    Aggregat-Frage - beide Raender wie auch Zentrum. Spiegelt die
+    entsprechende einzelnes_backup-Fixture fuer die uebrigen
+    Volume-Achsen (average / median / max), damit die
+    Einzel-Stichproben-Konvention auf allen Volume-Feldern uniform bleibt.
+    """
+    now = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 8888)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["min_bytes"] == 8888
+    assert info["min_bytes"] == info["max_bytes"]
+    assert info["min_bytes"] == info["median_bytes"]
+    assert info["min_bytes"] == info["average_bytes"]
+    assert info["min_bytes"] == info["total_bytes"]
+
+
+def test_backup_directory_stats_min_bytes_ignoriert_fremde_dateien(tmp_path):
+    """min_bytes basiert nur auf Backup-Schema-Dateien.
+
+    Spiegelt die entsprechende Fremd-Dateien-Fixture fuer count /
+    total_bytes / average_bytes / median_bytes / max_bytes: eine
+    winzige Fremd-Datei (1 Byte) im Ordner darf die Min-Achse nicht
+    auf einen Wert unterhalb der Backup-Menge druecken. Sichert die
+    Konsistenz-Invariante zwischen den Volume-Feldern (alle beziehen
+    sich auf dieselbe Datei-Menge).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 300)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 700)
+    (backups_dir / "README.txt").write_text("nicht ein Backup", encoding="utf-8")
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(b"x")
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["min_bytes"] == 300
+    # Fremd-Datei (1 Byte) darf die Min-Achse nicht auf 1 druecken.
+    assert info["min_bytes"] > 1
+
+
+def test_backup_directory_stats_min_bytes_stimmt_mit_smallest_backup(tmp_path):
+    """min_bytes stimmt bei gemischter Halde mit smallest_backup().st_size ueberein.
+
+    Konsistenz-Invariante spiegelt den max_bytes / largest_backup-Test:
+    die Aggregat-Antwort ``min_bytes`` und die Pfad-Antwort
+    ``smallest_backup().stat().st_size`` beziehen sich auf dieselbe
+    Datei-Menge und liefern denselben Byte-Wert. Ein Downstream-Konsument
+    kann beide Pfade uniform verwenden - der Aggregat-Report gibt die
+    Zahl direkt, ``smallest_backup`` liefert den Pfad fuer weitergehende
+    Datei-Operationen (:func:`inspect_backup`, Kompressions-Vergleich).
+    """
+    from stonebook.export.json_export import smallest_backup
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    for i, size in enumerate((250, 1000, 375, 800)):
+        _write_sized_backup(backups_dir,
+                            now + datetime.timedelta(minutes=i), size)
+    info = backup_directory_stats(backups_dir)
+    smallest = smallest_backup(backups_dir)
+    assert smallest is not None
+    assert info["min_bytes"] == smallest.stat().st_size == 250
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
