@@ -304,6 +304,50 @@ def load_v2(path: Path) -> dict[str, dict]:
 _ID_COLUMNS = ("ID", "obj_id")
 
 
+def find_duplicate_ids(path: Path) -> list[str]:
+    """Findet obj_ids, die in derselben Standard-CSV mehrfach als Zeile vorkommen.
+
+    :func:`load_standard` (und damit :func:`stonebook.export.csv_export.import_csv`)
+    baut das Ergebnis als ``dict[str, dict]`` auf, sodass eine zweite Zeile mit
+    derselben ID die erste kommentarlos ueberschreibt - typischer Datenverlust-
+    Fall bei nutzer-editierten CSVs, wo dieselbe ID doppelt eingetragen wurde
+    (z.B. beim Merge mehrerer Auszuege in Excel) und die spaetere Zeile alle
+    Werte der frueheren Zeile verdraengt, obwohl beide Zeilen nur teilweise
+    gefuellt sind. Diese Funktion pre-scannt die Datei und liefert die Liste
+    der doppelten IDs zurueck, ohne die Loesch-Semantik selbst zu aendern.
+
+    Normalisiert IDs ueber :func:`normalize_id` (spiegelt :func:`load_standard`),
+    sodass ``obj_1`` und ``OBJ_0001`` als dieselbe ID erkannt werden. Leere/
+    ungueltige IDs (die von :func:`load_standard` sowieso uebersprungen werden)
+    zaehlen hier nicht als Duplikat. Reihenfolge der Rueckgabe = Reihenfolge
+    der zweiten Vorkommen im File (deterministisch fuer Reporter/Log-Ausgabe).
+    Rueckgabe enthaelt jede ID hoechstens einmal, unabhaengig davon, wie oft
+    sie ueber die erste hinaus vorkommt.
+
+    Akzeptiert dieselben ID-Spalten wie :func:`load_standard` (``ID`` oder
+    ``obj_id``). Wirft ``ValueError`` (analog :func:`load_standard`), wenn
+    die CSV Zeilen enthaelt, aber weder ``ID`` noch ``obj_id`` als Header.
+    """
+    rows = _read_csv_robust(path)
+    if rows and not any(c in rows[0] for c in _ID_COLUMNS):
+        raise ValueError(
+            f"CSV ohne ID-Spalte ({' oder '.join(_ID_COLUMNS)}): {path}")
+    seen: set[str] = set()
+    duplikate: list[str] = []
+    duplikat_set: set[str] = set()
+    for row in rows:
+        obj_id = normalize_id(row.get("ID") or row.get("obj_id"))
+        if not obj_id:
+            continue
+        if obj_id in seen:
+            if obj_id not in duplikat_set:
+                duplikate.append(obj_id)
+                duplikat_set.add(obj_id)
+        else:
+            seen.add(obj_id)
+    return duplikate
+
+
 def load_standard(path: Path) -> dict[str, dict]:
     """Liest eine CSV im aktuellen Export-Schema (ID + 43 Standardfelder + status + notizen).
 

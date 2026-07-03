@@ -471,6 +471,52 @@ def test_import_report_as_dict_serialisierbar(tmp_path):
     db.close()
 
 
+def test_csv_import_meldet_duplikate_in_quelle(tmp_path):
+    """import_csv setzt rep.duplikate, wenn eine ID in der CSV mehrfach als Zeile steht.
+
+    load_standard baut das Ergebnis als dict[str, dict] auf und ueberschreibt
+    fruehere Zeilen kommentarlos - der Report weist den Verlust jetzt explizit
+    aus, damit user-editierte CSVs mit versehentlichem Doppel-Insert nicht als
+    "alles OK" durchgehen.
+    """
+    db = open_db(tmp_path / "d.sqlite3")
+    src = tmp_path / "d.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\n"
+        "OBJ_0001,Quarz\n"
+        "OBJ_0002,Calcit\n"
+        "OBJ_0001,Amethyst\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    # Der Duplikat-Eintrag ist im Report sichtbar, angelegt/aktualisiert
+    # spiegelt die dict-Semantik (letzte Zeile gewinnt).
+    assert rep.duplikate == ["OBJ_0001"]
+    assert set(rep.angelegt) == {"OBJ_0001", "OBJ_0002"}
+    # DB enthaelt die letzte Zeile (Amethyst hat Quarz ueberschrieben).
+    row = db.execute(
+        "SELECT Mineral_Primaer FROM objects WHERE obj_id='OBJ_0001'"
+    ).fetchone()
+    assert row["Mineral_Primaer"] == "Amethyst"
+    # as_dict serialisiert duplikate mit (fuer --json CLI-Weg).
+    assert rep.as_dict()["duplikate"] == ["OBJ_0001"]
+    db.close()
+
+
+def test_csv_import_ohne_duplikate_setzt_leere_liste(tmp_path):
+    """Ohne Duplikate bleibt rep.duplikate == [] (default_factory-Vertrag)."""
+    db = open_db(tmp_path / "n.sqlite3")
+    src = tmp_path / "n.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    rep = import_csv(db, src)
+    assert rep.duplikate == []
+    assert rep.as_dict()["duplikate"] == []
+    db.close()
+
+
 def test_csv_import_create_missing_false(tmp_path):
     src = tmp_path / "src.csv"
     src.write_text("ID,Mineral_Primaer\nOBJ_0999,Calcit\n", encoding="utf-8")

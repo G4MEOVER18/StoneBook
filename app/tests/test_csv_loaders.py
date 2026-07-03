@@ -439,6 +439,90 @@ def test_load_standard_obj_id_alias(tmp_path):
     assert data["OBJ_0001"]["Gewicht_g"] == 12.5
 
 
+def test_find_duplicate_ids_standard(tmp_path):
+    """Doppelte IDs in derselben CSV werden erkannt (spiegelt load_standard-Dict-Overwrite).
+
+    load_standard(dict[str, dict]) ueberschreibt fruehere Zeilen kommentarlos,
+    wenn dieselbe ID mehrfach als Zeile vorkommt (typischer Datenverlust-Fall
+    bei nutzer-editierten CSVs). find_duplicate_ids liefert die betroffenen
+    IDs zurueck, ohne die Loesch-Semantik selbst zu aendern.
+    """
+    from stonebook.migration.csv_loaders import find_duplicate_ids, load_standard
+    csv_path = tmp_path / "duplikate.csv"
+    csv_path.write_text(
+        "ID,Name\n"
+        "OBJ_0001,Erste Zeile\n"
+        "OBJ_0002,Zwischen\n"
+        "OBJ_0001,Zweite Zeile\n"
+        "OBJ_0003,Andere\n"
+        "OBJ_0001,Dritte Zeile\n",
+        encoding="utf-8",
+    )
+    # find_duplicate_ids meldet OBJ_0001 genau einmal, in der Reihenfolge des
+    # zweiten Vorkommens (deterministisch fuer Reporter/Log-Ausgabe).
+    assert find_duplicate_ids(csv_path) == ["OBJ_0001"]
+    # load_standard behaelt die letzte Zeile (dict-Overwrite-Semantik).
+    data = load_standard(csv_path)
+    assert data["OBJ_0001"]["Name"] == "Dritte Zeile"
+    assert data["OBJ_0002"]["Name"] == "Zwischen"
+    assert data["OBJ_0003"]["Name"] == "Andere"
+
+
+def test_find_duplicate_ids_normalisiert_alternativ_formen(tmp_path):
+    """obj_1 und OBJ_0001 werden als dieselbe ID erkannt (normalize_id-Semantik).
+
+    Spiegelt load_standard, das ueber normalize_id gleichermassen kompaktes
+    ``obj_1`` und ``OBJ_0001`` auf denselben Schluessel abbildet - ohne
+    Normalisierung wuerde ein user-editierter Mix beider Formen fuer dasselbe
+    Stueck nicht als Duplikat auffallen.
+    """
+    from stonebook.migration.csv_loaders import find_duplicate_ids
+    csv_path = tmp_path / "mixid.csv"
+    csv_path.write_text(
+        "ID,Name\nOBJ_0001,Erste\nobj_1,Zweite\n",
+        encoding="utf-8",
+    )
+    assert find_duplicate_ids(csv_path) == ["OBJ_0001"]
+
+
+def test_find_duplicate_ids_leer_und_ohne_duplikate(tmp_path):
+    """Leere CSV und CSV ohne Duplikate liefern eine leere Liste."""
+    from stonebook.migration.csv_loaders import find_duplicate_ids
+    leer = tmp_path / "leer.csv"
+    leer.write_text("ID,Name\n", encoding="utf-8")
+    assert find_duplicate_ids(leer) == []
+    ohne = tmp_path / "ohne.csv"
+    ohne.write_text(
+        "ID,Name\nOBJ_0001,A\nOBJ_0002,B\nOBJ_0003,C\n",
+        encoding="utf-8",
+    )
+    assert find_duplicate_ids(ohne) == []
+
+
+def test_find_duplicate_ids_raises_bei_fehlender_id_spalte(tmp_path):
+    """CSV mit Zeilen aber ohne ID/obj_id-Header wirft ValueError (spiegelt load_standard).
+
+    Ohne diesen Fehler wuerde ein falsch adressierter Dateipfad (z.B. v1-CSV
+    mit Header Name,Mineralart) hier stille als "keine Duplikate" durchgehen,
+    obwohl load_standard denselben Input mit ValueError abbricht - beide
+    Funktionen sollen zur gleichen Format-Regel stehen.
+    """
+    import pytest
+    from stonebook.migration.csv_loaders import find_duplicate_ids
+    csv_path = tmp_path / "fremd.csv"
+    csv_path.write_text("Name,Mineralart\nFoo,Quarz\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ID-Spalte"):
+        find_duplicate_ids(csv_path)
+
+
+def test_find_duplicate_ids_leere_datei_ohne_id_spalte_ist_ok(tmp_path):
+    """Leere CSV (nur Header) ohne ID-Spalte loest keinen Fehler aus (spiegelt load_standard)."""
+    from stonebook.migration.csv_loaders import find_duplicate_ids
+    csv_path = tmp_path / "leerohne.csv"
+    csv_path.write_text("Name,Mineralart\n", encoding="utf-8")
+    assert find_duplicate_ids(csv_path) == []
+
+
 def test_load_standard_raises_bei_fehlender_id_spalte(tmp_path):
     """CSV ohne ID/obj_id-Spalte ist kein gueltiger Standard-Import - klarer Fehler."""
     import pytest

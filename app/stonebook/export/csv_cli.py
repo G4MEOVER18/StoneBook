@@ -93,6 +93,12 @@ def _cmd_import(args: argparse.Namespace) -> int:
         print(f"Uebersprungen: {len(rep.uebersprungen)}")
         if rep.konflikte:
             print(f"Konflikte (merge-only): {len(rep.konflikte)} Objekte")
+        if rep.duplikate:
+            # Doppelte IDs in derselben CSV: die spaetere Zeile hat die
+            # fruehere ueberschrieben (load_standard-dict-Semantik), ohne
+            # diesen Hinweis waere der Datenverlust unsichtbar.
+            print(f"Doppelte IDs in Quelle: {len(rep.duplikate)} "
+                  f"(letzte Zeile gewinnt)")
     return 0
 
 

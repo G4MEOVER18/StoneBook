@@ -6,7 +6,7 @@ from pathlib import Path
 
 from stonebook.db.repository import ObjectRepo
 from stonebook.fields import FIELDS, is_empty
-from stonebook.migration.csv_loaders import load_standard
+from stonebook.migration.csv_loaders import find_duplicate_ids, load_standard
 
 COLUMNS = [f.name for f in FIELDS]  # beginnt mit ID
 _IMPORT_EXTRA = {"status", "notizen"}
@@ -46,6 +46,11 @@ class ImportReport:
     aktualisiert: list[str] = field(default_factory=list)
     uebersprungen: list[str] = field(default_factory=list)  # leere/unbekannte IDs
     konflikte: dict[str, list[str]] = field(default_factory=dict)  # obj_id → Feldnamen
+    # obj_ids, die in der Quelle mehrfach als Zeile vorkamen. Aus load_standard
+    # gewinnt die spaetere Zeile (dict-Ueberschreibung); ohne Report waere der
+    # frueher-Zeilen-Verlust in nutzer-editierten CSVs unsichtbar. Deterministisch
+    # in der Reihenfolge des zweiten Vorkommens (spiegelt find_duplicate_ids).
+    duplikate: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -53,6 +58,7 @@ class ImportReport:
             "aktualisiert": list(self.aktualisiert),
             "uebersprungen": list(self.uebersprungen),
             "konflikte": {k: list(v) for k, v in self.konflikte.items()},
+            "duplikate": list(self.duplikate),
         }
 
 
@@ -70,6 +76,7 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
     data = load_standard(path)
     objects = ObjectRepo(conn)
     rep = ImportReport()
+    rep.duplikate = find_duplicate_ids(path)
     for obj_id, fields_ in data.items():
         clean = {k: v for k, v in fields_.items() if not is_empty(v)}
         if objects.exists(obj_id):

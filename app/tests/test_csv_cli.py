@@ -178,6 +178,54 @@ def test_import_fehlende_csv_gibt_2(tmp_path, capsys):
     assert "CSV-Datei fehlt" in err
 
 
+def test_import_meldet_duplikate_text_und_json(tmp_path, capsys):
+    """CLI-Text zeigt "Doppelte IDs in Quelle: N" und --json enthaelt "duplikate".
+
+    Spiegelt die Konflikte-Meldung: Zeile erscheint nur, wenn es Duplikate
+    gibt (kein "Doppelte IDs: 0"-Noise), analog "Konflikte (merge-only)".
+    """
+    src = tmp_path / "dup.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\n"
+        "OBJ_0001,Quarz\n"
+        "OBJ_0001,Amethyst\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "dup.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Doppelte IDs in Quelle: 1" in out
+
+    # --json: duplikate-Feld enthaelt die ID.
+    src2 = tmp_path / "dup2.csv"
+    src2.write_text(
+        "ID,Mineral_Primaer\n"
+        "OBJ_0002,Calcit\n"
+        "OBJ_0002,Aragonit\n",
+        encoding="utf-8",
+    )
+    db2 = tmp_path / "dup2.sqlite3"
+    code = main(["import", str(src2), "--db", str(db2), "--json"])
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["duplikate"] == ["OBJ_0002"]
+
+
+def test_import_ohne_duplikate_zeigt_keine_zeile(tmp_path, capsys):
+    """Ohne Duplikate erscheint die "Doppelte IDs"-Zeile nicht in der Text-Ausgabe."""
+    src = tmp_path / "ok.csv"
+    src.write_text(
+        "ID,Mineral_Primaer\nOBJ_0001,Quarz\nOBJ_0002,Calcit\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "ok.sqlite3"
+    code = main(["import", str(src), "--db", str(db)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Doppelte IDs" not in out
+
+
 def test_export_import_roundtrip(migrated_db, tmp_path):
     """Export aus voller DB -> Import in frische DB liefert dieselben Felder."""
     out = tmp_path / "rt.csv"
