@@ -841,18 +841,45 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     paralleles Loeschen) werden uebersprungen und beeinflussen den Median
     nicht, spiegelt das ``total_bytes``-Verhalten.
 
+    ``max_bytes`` ist die Aussen-Rand-Achse der Bytes-Verteilung -
+    spiegelt das Max-Pattern aus ``stats.py`` (``wert_max_chf``,
+    ``gewicht_max_g``, ``mohs_kollektion_max``, ``dichte_kollektion_max``,
+    ``koordinaten_radius_max_km``) auf die Backup-Halde. Beantwortet die
+    naheliegende Speicher-Frage "wie gross ist das umfangreichste
+    Backup?" in einem Schritt aus dem Aggregat-Report, ohne dass der
+    Caller zusaetzlich :func:`largest_backup` aufrufen und dann
+    ``st_size`` neu abfragen muss (spart einen zweiten Pass ueber die
+    Backup-Halde bei Cron-Reportern, die den Volume-Report bereits
+    haben). Vervollstaendigt gemeinsam mit ``median_bytes`` und
+    ``average_bytes`` die Zentraltendenz-plus-Rand-Sicht auf die
+    Bytes-Verteilung; die Differenz ``max_bytes - average_bytes`` macht
+    die obere Ausreisser-Neigung sichtbar (grosser Voll-Backup neben
+    Delta-Snapshots). Basiert auf derselben Menge der tatsaechlich
+    lesbaren Dateien wie ``median_bytes`` und ``average_bytes`` -
+    unlesbare Dateien werden uebersprungen und beeinflussen den Max
+    nicht (spiegelt das ``total_bytes``-Verhalten). Bei ``count == 1``
+    faellt ``max_bytes`` mit ``median_bytes`` und ``average_bytes``
+    zusammen, spiegelt die Grenzfall-Konvention bei Einzel-Stichproben.
+    Wird als integer ausgeliefert (Bytes-Achse ist diskret, spiegelt
+    ``average_bytes`` / ``median_bytes``). Semantisch identisch zu
+    ``largest_backup().stat().st_size`` bei lesbaren Dateien, aber
+    ohne zweiten I/O-Pfad ueber :func:`largest_backup` und ohne den
+    Pfad-Wrapper - der Aggregat-Report liefert die Byte-Zahl direkt.
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
-    "median_bytes": None, "oldest_stamp": None, "newest_stamp": None}``.
+    "median_bytes": None, "max_bytes": None, "oldest_stamp": None,
+    "newest_stamp": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
     Report-Aufruf vor der ersten Backup-Schreibe machen).
-    ``average_bytes`` und ``median_bytes`` sind ``None`` bei
-    ``count == 0`` (kein Division-by-Zero-Crash bei ``average``, kein
-    Index-Fehler bei ``median``, kein irrefuehrender ``0``-Report der
-    wie "durchschnittlich leere Backups" aussaehe - spiegelt die None-
-    Konvention der Zeitstempel bei fehlendem Bestand).
+    ``average_bytes``, ``median_bytes`` und ``max_bytes`` sind ``None``
+    bei ``count == 0`` (kein Division-by-Zero-Crash bei ``average``,
+    kein Index-Fehler bei ``median``, kein leeres-``max``-Crash, kein
+    irrefuehrender ``0``-Report der wie "durchschnittlich leere Backups"
+    aussaehe - spiegelt die None-Konvention der Zeitstempel bei
+    fehlendem Bestand).
     Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
     ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
     ``try: unlink except OSError``-Verhalten der prune-Funktionen.
@@ -882,6 +909,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "total_bytes": total_bytes,
         "average_bytes": round(total_bytes / count) if count else None,
         "median_bytes": _median_int(sizes) if sizes else None,
+        "max_bytes": max(sizes) if sizes else None,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,
     }

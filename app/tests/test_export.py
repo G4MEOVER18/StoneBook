@@ -1357,6 +1357,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "total_bytes": 0,
         "average_bytes": None,
         "median_bytes": None,
+        "max_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1366,6 +1367,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "total_bytes": 0,
         "average_bytes": None,
         "median_bytes": None,
+        "max_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1662,6 +1664,99 @@ def test_backup_directory_stats_median_bytes_ignoriert_fremde_dateien(tmp_path):
     # Fremdes Archiv (100_000 Byte) darf den Median nicht in Bytes-Bereich
     # der Fremd-Datei ziehen.
     assert info["median_bytes"] < 1_000
+
+
+def test_backup_directory_stats_max_bytes_liefert_groesstes(tmp_path):
+    """max_bytes = groesste Backup-Groesse - Aussen-Rand der Bytes-Verteilung.
+
+    Spiegelt das gewicht_max_g / wert_max_chf / mohs_kollektion_max-Muster
+    auf die Backup-Volume-Achse: aus einer gemischten Halde ([100, 500,
+    12345]) wird die groesste dokumentierte Groesse (12345) als Aussen-
+    Rand-Achse zurueckgeliefert. Antwortet auf "wie gross ist das
+    umfangreichste Backup?" ohne separaten :func:`largest_backup`-Aufruf.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 500)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 12345)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["max_bytes"] == 12345
+    # Konsistenz: max_bytes >= median_bytes >= min-Aggregat-Anker (im
+    # Test-Setup ist median = 500, kein separates min-Feld noetig).
+    assert info["max_bytes"] >= info["median_bytes"]
+    assert info["max_bytes"] >= info["average_bytes"]
+
+
+def test_backup_directory_stats_max_bytes_einzelnes_backup(tmp_path):
+    """Bei count=1 kollabieren max_bytes / median_bytes / average_bytes / total_bytes.
+
+    Grenzfall count=1: der einzige Wert ist die Antwort auf jede
+    Aggregat-Frage - Zentrum wie auch Rand. Spiegelt die entsprechende
+    einzelnes_backup-Fixture fuer die uebrigen Volume-Achsen (average /
+    median), damit die Einzel-Stichproben-Konvention auf allen
+    Volume-Feldern uniform bleibt.
+    """
+    now = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 8888)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["max_bytes"] == 8888
+    assert info["max_bytes"] == info["median_bytes"]
+    assert info["max_bytes"] == info["average_bytes"]
+    assert info["max_bytes"] == info["total_bytes"]
+
+
+def test_backup_directory_stats_max_bytes_ignoriert_fremde_dateien(tmp_path):
+    """max_bytes basiert nur auf Backup-Schema-Dateien.
+
+    Spiegelt die entsprechende Fremd-Dateien-Fixture fuer count /
+    total_bytes / average_bytes / median_bytes: ein Fremd-Archiv
+    (999_999 Byte) im Ordner darf die Max-Achse nicht auf einen Wert
+    ausserhalb der Backup-Menge heben. Sichert die Konsistenz-
+    Invariante zwischen den Volume-Feldern (alle beziehen sich auf
+    dieselbe Datei-Menge).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 300)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 700)
+    (backups_dir / "README.txt").write_text("nicht ein Backup", encoding="utf-8")
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 999_999)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["max_bytes"] == 700
+    # Fremdes Archiv (999_999 Byte) darf die Max-Achse nicht anziehen.
+    assert info["max_bytes"] < 1_000
+
+
+def test_backup_directory_stats_max_bytes_stimmt_mit_largest_backup(tmp_path):
+    """max_bytes stimmt bei gemischter Halde mit largest_backup().st_size ueberein.
+
+    Konsistenz-Invariante: die Aggregat-Antwort ``max_bytes`` und die
+    Pfad-Antwort ``largest_backup().stat().st_size`` beziehen sich auf
+    dieselbe Datei-Menge und liefern denselben Byte-Wert. Ein
+    Downstream-Konsument kann beide Pfade uniform verwenden - der
+    Aggregat-Report gibt die Zahl direkt, ``largest_backup`` liefert
+    den Pfad fuer weitergehende Datei-Operationen (:func:`inspect_backup`,
+    Kompressions-Vergleich).
+    """
+    from stonebook.export.json_export import largest_backup
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    for i, size in enumerate((250, 1000, 375, 800)):
+        _write_sized_backup(backups_dir,
+                            now + datetime.timedelta(minutes=i), size)
+    info = backup_directory_stats(backups_dir)
+    largest = largest_backup(backups_dir)
+    assert largest is not None
+    assert info["max_bytes"] == largest.stat().st_size == 1000
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
