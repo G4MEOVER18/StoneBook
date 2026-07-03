@@ -94,6 +94,7 @@ class Statistik:
     koordinaten_radius_durchschnitt_km: float | None = None
     koordinaten_radius_median_km: float | None = None
     koordinaten_radius_spanweite_km: float | None = None
+    koordinaten_radius_standardabweichung_km: float | None = None
     koordinaten_diameter_km: float | None = None
     mohs_kollektion_min: float | None = None
     mohs_kollektion_max: float | None = None
@@ -1169,6 +1170,11 @@ class Statistik:
             "koordinaten_radius_spanweite_km": (
                 round(self.koordinaten_radius_spanweite_km, 3)
                 if self.koordinaten_radius_spanweite_km is not None else None
+            ),
+            "koordinaten_radius_standardabweichung_km": (
+                round(self.koordinaten_radius_standardabweichung_km, 3)
+                if self.koordinaten_radius_standardabweichung_km is not None
+                else None
             ),
             "koordinaten_diameter_km": (
                 round(self.koordinaten_diameter_km, 3)
@@ -3403,6 +3409,38 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         # auf 3 Nachkommastellen (spiegelt die Radius-Achsen-Serialisierung).
         st.koordinaten_radius_spanweite_km = (
             st.koordinaten_radius_max_km - st.koordinaten_radius_min_km)
+        # koordinaten_radius_standardabweichung_km: Populations-Standard-
+        # abweichung der Haversine-Distanzen vom Zentroid, als Streuungs-
+        # Achse in Original-Einheiten (km) zur zentralen-Tendenz-Achse
+        # koordinaten_radius_durchschnitt_km. Spiegelt das wert_standard-
+        # abweichung_chf / gewicht_standardabweichung_g / mohs_kollektion_
+        # standardabweichung / dichte_kollektion_standardabweichung /
+        # confidence_standardabweichung_prozent-Muster auf die geografische
+        # Achse. Waehrend die Spannweite nur auf die zwei Extremwerte
+        # reagiert (radiale Bandbreite), reagiert sigma auf die volle
+        # Verteilungsform - eine Sammlung mit gleichmaessig auf einem
+        # Ring verteilten Stuecken hat kleines sigma, eine mit einem
+        # nahen Ausreisser am Zentrum und einem Cluster am Rand hat
+        # grosses sigma trotz aehnlicher Bandbreite. Populations-Variante
+        # (Divisor n statt n-1) spiegelt die Sammlungs-als-Grundgesamtheit-
+        # Konvention der uebrigen Achsen. Numerisch stabile Formel via
+        # (x - mean)^2 statt E[X^2] - E[X]^2, weil Distanzen bei
+        # weltumfassenden Sammlungen bis in den 10^4-km-Bereich reichen
+        # koennen (Antipoden ~20000 km) und die Kancellations-Version
+        # bei grossen Werten mit kleiner Varianz Rundungsfehler erzeugt.
+        # Bei genau einem geocoded-Stueck kollabiert die Streuung auf 0.0
+        # (keine Dispersion moeglich, spiegelt Min/Max/Mittel/Median-
+        # Single-Point-Kollaps auf 0.0). Bei null geocoded-Stuecken
+        # bleibt None (spiegelt die uebrigen koordinaten_radius_-Achsen-
+        # None-Konvention). Reuse-Pfad: nutzt den bereits berechneten
+        # mean (st.koordinaten_radius_durchschnitt_km) und die distances-
+        # Liste (kein zweiter Haversine-Pass, kein zweiter Koordinaten-
+        # Iterations-Zyklus). as_dict serialisiert auf 3 Nachkommastellen
+        # (spiegelt die Radius-Achsen-Serialisierung).
+        radius_mean = st.koordinaten_radius_durchschnitt_km
+        st.koordinaten_radius_standardabweichung_km = (
+            sum((r - radius_mean) ** 2 for r in distances)
+            / len(distances)) ** 0.5
         distances.sort()
         n = len(distances)
         st.koordinaten_radius_median_km = (

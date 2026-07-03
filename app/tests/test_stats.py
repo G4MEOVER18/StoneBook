@@ -8062,6 +8062,130 @@ def test_koordinaten_radius_spanweite_km_nur_freitext_fundorte(tmp_path):
     c.close()
 
 
+def test_koordinaten_radius_standardabweichung_km_aus_seed_db(tmp_path):
+    """Populations-Standardabweichung der Haversine-Distanzen vom Zentroid
+    als Dispersions-Achse zur zentralen-Tendenz-Achse
+    koordinaten_radius_durchschnitt_km. Spiegelt das wert/gewicht/
+    mohs/dichte/confidence_standardabweichung-Muster auf die geografische
+    Achse."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_sigma.sqlite3")
+    # Drei geocoded Stuecke entlang derselben Laenge, identisch zum Seed
+    # aus test_koordinaten_radius_spanweite_km_aus_seed_db - damit die
+    # gleiche Distanz-Referenzliste geprueft werden kann.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "45.0, 8.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 8.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_standardabweichung_km is not None
+    earth_radius_km = 6371.0
+    lat_c = (45.0 + 47.0 + 48.0) / 3
+    lon_c = 8.0
+    lat_c_rad = math.radians(lat_c)
+    lon_c_rad = math.radians(lon_c)
+    dists: list[float] = []
+    for lat, lon in [(45.0, 8.0), (47.0, 8.0), (48.0, 8.0)]:
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        dlat = lat_rad - lat_c_rad
+        dlon = lon_rad - lon_c_rad
+        a = (math.sin(dlat / 2) ** 2
+             + math.cos(lat_c_rad) * math.cos(lat_rad) * math.sin(dlon / 2) ** 2)
+        dists.append(2 * earth_radius_km * math.asin(min(1.0, math.sqrt(a))))
+    mean = sum(dists) / len(dists)
+    expected_sigma = (sum((d - mean) ** 2 for d in dists) / len(dists)) ** 0.5
+    assert st.koordinaten_radius_standardabweichung_km == pytest.approx(
+        expected_sigma)
+    # Positivitaets-Invariante: paarweise verschiedene Distanzen -> sigma > 0.
+    assert st.koordinaten_radius_standardabweichung_km > 0.0
+    # sigma darf die Bandbreite nicht ueberschreiten (Chebyshev-artige
+    # obere Schranke: sigma <= (Max - Min) / 2 in der symmetrischen Zwei-
+    # Punkt-Grenzverteilung, immer aber <= Max - Min bei jeglicher
+    # Verteilung im nicht-degenerierten Fall). Wir pruefen die schwaechere,
+    # aber immer geltende Schranke sigma <= Spanne.
+    assert (st.koordinaten_radius_standardabweichung_km
+            <= st.koordinaten_radius_spanweite_km)
+    d = st.as_dict()
+    assert d["koordinaten_radius_standardabweichung_km"] == round(
+        expected_sigma, 3)
+    c.close()
+
+
+def test_koordinaten_radius_standardabweichung_km_leere_db(tmp_path):
+    """Leere DB: koordinaten_radius_standardabweichung_km ist None
+    (kein Wertegrund fuer eine Streuung) - spiegelt die uebrigen
+    koordinaten_radius_-Achsen-None-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_sigma.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_standardabweichung_km is None
+    assert st.as_dict()["koordinaten_radius_standardabweichung_km"] is None
+    c.close()
+
+
+def test_koordinaten_radius_standardabweichung_km_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert sigma auf 0.0 (keine
+    Streuung moeglich), spiegelt das Min/Max/Mittel/Median-Single-Point-
+    Kollaps-Verhalten."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_sigma.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [("OBJ_0001", "47.3769, 8.5417")],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_standardabweichung_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_standardabweichung_km_isotrope_verteilung(tmp_path):
+    """Zwei geocoded Stuecke symmetrisch um den Schwerpunkt: alle Distanzen
+    gleich, daher sigma kollabiert auf 0.0 - alle Radien identisch, keine
+    Streuung. Symmetrisch zum spanweite_km-Kollaps in derselben Konfiguration."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "isotrop_sigma.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 8.0"),
+            ("OBJ_0002", "48.0, 8.0"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_standardabweichung_km == pytest.approx(0.0)
+    c.close()
+
+
+def test_koordinaten_radius_standardabweichung_km_nur_freitext_fundorte(tmp_path):
+    """Sammlung ohne geocoded Stuecke: sigma None, obwohl objekte_mit_fundort
+    > 0. Spiegelt die Konvention der uebrigen koordinaten_radius_-Achsen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_sigma.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_standardabweichung_km is None
+    assert (st.as_dict()["koordinaten_radius_standardabweichung_km"] is None)
+    c.close()
+
+
 def _haversine_km(lat1: float, lon1: float,
                   lat2: float, lon2: float) -> float:
     """Test-Helper: Haversine-Distanz zwischen zwei Punkten in km.
