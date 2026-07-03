@@ -95,6 +95,7 @@ class Statistik:
     koordinaten_radius_median_km: float | None = None
     koordinaten_radius_spanweite_km: float | None = None
     koordinaten_radius_standardabweichung_km: float | None = None
+    koordinaten_radius_variationskoeffizient_prozent: float | None = None
     koordinaten_diameter_km: float | None = None
     mohs_kollektion_min: float | None = None
     mohs_kollektion_max: float | None = None
@@ -1174,6 +1175,12 @@ class Statistik:
             "koordinaten_radius_standardabweichung_km": (
                 round(self.koordinaten_radius_standardabweichung_km, 3)
                 if self.koordinaten_radius_standardabweichung_km is not None
+                else None
+            ),
+            "koordinaten_radius_variationskoeffizient_prozent": (
+                round(self.koordinaten_radius_variationskoeffizient_prozent, 2)
+                if (self.koordinaten_radius_variationskoeffizient_prozent
+                    is not None)
                 else None
             ),
             "koordinaten_diameter_km": (
@@ -3441,6 +3448,38 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         st.koordinaten_radius_standardabweichung_km = (
             sum((r - radius_mean) ** 2 for r in distances)
             / len(distances)) ** 0.5
+        # koordinaten_radius_variationskoeffizient_prozent: dimensionsloser
+        # Variationskoeffizient (sigma / mean * 100) auf der geografischen
+        # Radial-Streuungs-Achse. Vervollstaendigt das Sextett Min + Max +
+        # Durchschnitt + Median + Spannweite + Sigma um die dimensionslose
+        # Streuungs-Achse und spiegelt das wert/gewicht/mohs/dichte/
+        # confidence_variationskoeffizient_prozent-Muster auf die
+        # geografische Achse. Waehrend sigma die Radial-Streuung in
+        # Original-Einheiten km beziffert, normiert der CV sigma auf den
+        # Durchschnittsradius und macht die geografische Kompaktheit
+        # skalen-unabhaengig vergleichbar: eine lokal-Schweizer Sammlung
+        # mit Ø 30 km und sigma 3 km (CV 10%) hat dieselbe relative
+        # Streuung wie eine welt-weite Sammlung mit Ø 3000 km und sigma
+        # 300 km (CV 10%), obwohl die Absolutwerte um Faktor 100
+        # auseinanderliegen - "wie kompakt ist meine Sammlung um ihren
+        # Schwerpunkt, unabhaengig vom Skalenniveau?". Ausgabe in Prozent
+        # (sigma/mean * 100), spiegelt die uebrigen CV-Achsen-Konvention.
+        # Guarded gegen mean == 0.0 (Kollaps bei Singleton- oder
+        # bei-einem-Zentroid-Konfiguration): CV wird dann None statt
+        # ZeroDivisionError, damit as_dict und die CLI-Zeile den
+        # Undefined-Zustand transparent unterscheiden koennen - anders
+        # als sigma (0.0 bei Kollaps) ist CV mathematisch undefined bei
+        # mean == 0, nicht 0.0. Spiegelt die wert/gewicht/mohs/dichte/
+        # confidence_variationskoeffizient_prozent-None-Konvention. Bei
+        # leerer DB / ohne geocoded Stuecke bleibt None (dataclass-Default,
+        # spiegelt die uebrigen radius-Achsen-None-Konvention). Reuse-Pfad:
+        # nutzt den bereits berechneten mean und sigma (kein zweiter Pass
+        # ueber distances). as_dict serialisiert auf 2 Nachkommastellen
+        # (spiegelt die uebrigen CV-Achsen-Serialisierung).
+        if radius_mean > 0:
+            st.koordinaten_radius_variationskoeffizient_prozent = (
+                st.koordinaten_radius_standardabweichung_km
+                / radius_mean * 100.0)
         distances.sort()
         n = len(distances)
         st.koordinaten_radius_median_km = (

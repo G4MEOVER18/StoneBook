@@ -8186,6 +8186,113 @@ def test_koordinaten_radius_standardabweichung_km_nur_freitext_fundorte(tmp_path
     c.close()
 
 
+def test_koordinaten_radius_variationskoeffizient_prozent_aus_seed_db(tmp_path):
+    """Dimensionsloser CV (sigma / mean * 100) auf der Radial-Streuungs-Achse
+    als Vervollstaendigung des Sextetts min/max/durchschnitt/median/spanweite/
+    sigma. Spiegelt das wert/gewicht/mohs/dichte/confidence_variations-
+    koeffizient_prozent-Muster auf die geografische Achse."""
+    import math
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "radius_cv.sqlite3")
+    # Drei asymmetrische Stuecke - dieselbe Seed-Konfiguration wie in
+    # sigma/spanweite/min/max-Tests, damit der erwartete CV gegen die
+    # bekannte Distanz-Liste geprueft werden kann.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "45.0, 8.0"),
+            ("OBJ_0002", "47.0, 8.0"),
+            ("OBJ_0003", "48.0, 8.0"),
+            ("OBJ_0004", "Berner Oberland"),
+            ("OBJ_0005", None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_variationskoeffizient_prozent is not None
+    # Definitions-Invariante: CV == sigma / mean * 100.
+    expected_cv = (st.koordinaten_radius_standardabweichung_km
+                   / st.koordinaten_radius_durchschnitt_km * 100.0)
+    assert st.koordinaten_radius_variationskoeffizient_prozent == pytest.approx(
+        expected_cv)
+    # Positivitaets-Invariante: paarweise verschiedene Radien -> CV > 0.
+    assert st.koordinaten_radius_variationskoeffizient_prozent > 0.0
+    d = st.as_dict()
+    assert d["koordinaten_radius_variationskoeffizient_prozent"] == round(
+        expected_cv, 2)
+    c.close()
+
+
+def test_koordinaten_radius_variationskoeffizient_prozent_leere_db(tmp_path):
+    """Leere DB: CV None (mean undefined bei null geocoded Stuecken) -
+    spiegelt die uebrigen radius-Achsen-None-Konvention."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer_cv.sqlite3")
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_variationskoeffizient_prozent is None
+    assert (st.as_dict()["koordinaten_radius_variationskoeffizient_prozent"]
+            is None)
+    c.close()
+
+
+def test_koordinaten_radius_variationskoeffizient_prozent_bei_einem_geocoded(tmp_path):
+    """Bei genau einem geocoded-Stueck kollabiert mean auf 0.0 - CV
+    mathematisch undefined bei mean == 0, daher None statt 0.0. Spiegelt
+    die wert/gewicht/mohs/dichte/confidence_variationskoeffizient_prozent-
+    None-Konvention (mean-basierte Groessen mit None statt 0.0 im Undefined-
+    Fall)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "einer_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [("OBJ_0001", "47.3769, 8.5417")],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # mean = 0 (Zentroid == einziger Punkt), also CV undefined -> None.
+    assert st.koordinaten_radius_durchschnitt_km == pytest.approx(0.0)
+    assert st.koordinaten_radius_variationskoeffizient_prozent is None
+    c.close()
+
+
+def test_koordinaten_radius_variationskoeffizient_prozent_isotrope_verteilung(tmp_path):
+    """Zwei geocoded Stuecke symmetrisch um den Schwerpunkt: alle Distanzen
+    gleich, sigma kollabiert auf 0.0 -> CV = 0/mean = 0.0 (nicht None, weil
+    mean > 0). Spiegelt die uniform-Konfiguration der uebrigen CV-Achsen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "isotrop_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "46.0, 8.0"),
+            ("OBJ_0002", "48.0, 8.0"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_variationskoeffizient_prozent == pytest.approx(
+        0.0)
+    c.close()
+
+
+def test_koordinaten_radius_variationskoeffizient_prozent_nur_freitext_fundorte(tmp_path):
+    """Sammlung ohne geocoded Stuecke: CV None (kein mean/sigma).
+    Spiegelt die Konvention der uebrigen radius-Achsen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "freitext_cv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Fundort) VALUES (?,?)",
+        [
+            ("OBJ_0001", "Berner Oberland"),
+            ("OBJ_0002", "Schwarzwald"),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.koordinaten_radius_variationskoeffizient_prozent is None
+    c.close()
+
+
 def _haversine_km(lat1: float, lon1: float,
                   lat2: float, lon2: float) -> float:
     """Test-Helper: Haversine-Distanz zwischen zwei Punkten in km.
