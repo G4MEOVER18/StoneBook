@@ -1356,6 +1356,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "count": 0,
         "total_bytes": 0,
         "average_bytes": None,
+        "median_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1364,6 +1365,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "count": 0,
         "total_bytes": 0,
         "average_bytes": None,
+        "median_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1531,6 +1533,135 @@ def test_backup_directory_stats_average_bytes_ignoriert_fremde_dateien(tmp_path)
     assert info["average_bytes"] == only_backup_bytes
     # Fremdes Archiv (10_000 Byte) darf den Durchschnitt nicht verzerren
     assert info["average_bytes"] < 10_000
+
+
+def _write_sized_backup(backup_dir: Path, stamp: datetime.datetime,
+                        size: int) -> Path:
+    """Legt eine Backup-Pseudo-Datei mit exakter Byte-Groesse und Stempel ab.
+
+    Fuer die median_bytes-Tests brauchen wir kontrollierte Byte-Groessen,
+    die :func:`write_rotated_backup` nicht direkt liefert (die Groesse dort
+    haengt vom DB-Inhalt ab). Der Dateiname passt zum Backup-Namensschema,
+    sodass ``list_backups`` und ``backup_directory_stats`` die Datei
+    aufsammeln; der Inhalt selbst ist irrelevant fuer die Volume-Achse.
+    """
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    p = backup_dir / f"stonebook_backup_{stamp.strftime('%Y%m%d_%H%M%S')}.json.gz"
+    p.write_bytes(b"x" * size)
+    return p
+
+
+def test_backup_directory_stats_median_bytes_ungerade_anzahl(tmp_path):
+    """median_bytes bei drei Backups = mittlerer sortierter Wert.
+
+    Spiegelt das gewicht_median_g / wert_median_chf-Muster auf die Volume-
+    Achse: bei ungerader Anzahl ist der Median der mittlere Wert der
+    sortierten Groessen-Liste (nicht das arithmetische Mittel).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 1000)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 500)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    # Sortiert [100, 500, 1000] -> Median 500 (mittlerer Wert)
+    assert info["median_bytes"] == 500
+    # Bei asymmetrischer Verteilung liegen Median und Durchschnitt
+    # auseinander: total 1600 / 3 = 533.33 -> average 533, Median 500.
+    assert info["average_bytes"] == 533
+    assert info["median_bytes"] != info["average_bytes"]
+
+
+def test_backup_directory_stats_median_bytes_gerade_anzahl(tmp_path):
+    """median_bytes bei vier Backups = Mittel der beiden mittleren, gerundet.
+
+    Spiegelt die Median-Konvention aus ``stats.py``: bei gerader Anzahl wird
+    der Median als arithmetisches Mittel der beiden mittleren Werte berechnet
+    und auf Integer gerundet (Bytes-Achse ist diskret).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    for i, size in enumerate([100, 200, 300, 400]):
+        _write_sized_backup(backups_dir,
+                            now + datetime.timedelta(minutes=i), size)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    # Sortiert [100, 200, 300, 400] -> Median (200+300)/2 = 250
+    assert info["median_bytes"] == 250
+
+
+def test_backup_directory_stats_median_bytes_einzelnes_backup(tmp_path):
+    """Bei count=1 ist median_bytes == total_bytes == average_bytes.
+
+    Grenzfall count=1: der einzige Wert ist Zentrum aller Zentraltendenz-
+    Achsen (Durchschnitt, Median, Extrema). Spiegelt die entsprechende
+    einzelnes_backup-Fixture fuer die uebrigen Volume-Achsen.
+    """
+    now = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 12345)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["median_bytes"] == 12345
+    assert info["median_bytes"] == info["average_bytes"]
+    assert info["median_bytes"] == info["total_bytes"]
+
+
+def test_backup_directory_stats_median_bytes_ausreisser_robust(tmp_path):
+    """Median schuetzt vor Ausreisser-Verzerrung besser als Durchschnitt.
+
+    Vier gleich grosse Backups (a 100 Byte) plus ein sehr grosses Backup
+    (10_000 Byte, z.B. Voll-Backup nach Mass-Import): der Median bleibt bei
+    100 (die "typische" Backup-Groesse), der Durchschnitt springt auf ~2080
+    hoch. Konkretisiert den Robustheits-Nutzen der Median-Achse als
+    Ergaenzung zu average_bytes - der Grund, warum ``stats.py`` neben
+    ``wert_durchschnitt_chf`` auch ``wert_median_chf`` pflegt.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    for i in range(4):
+        _write_sized_backup(backups_dir,
+                            now + datetime.timedelta(minutes=i), 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=4), 10_000)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    # Sortiert [100, 100, 100, 100, 10000] -> Median = 100 (mittlerer)
+    assert info["median_bytes"] == 100
+    # Durchschnitt = 10400 / 5 = 2080 - deutlich vom Median entfernt
+    assert info["average_bytes"] == 2080
+    # Robustheits-Aussage: Median bleibt nahe der Massen-Groesse, waehrend
+    # der Durchschnitt vom Ausreisser weit weg gezogen wird.
+    assert info["median_bytes"] < info["average_bytes"] // 10
+
+
+def test_backup_directory_stats_median_bytes_ignoriert_fremde_dateien(tmp_path):
+    """median_bytes basiert nur auf Backup-Schema-Dateien.
+
+    Spiegelt die entsprechende Fremd-Dateien-Fixture fuer average_bytes /
+    count / total_bytes: ein grosses Fremd-Archiv (100_000 Byte) im Ordner
+    darf den Median nicht in den Fremd-Bereich schieben. Sichert die
+    Konsistenz-Invariante zwischen den Volume-Feldern (alle beziehen sich
+    auf dieselbe Datei-Menge).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 200)
+    (backups_dir / "README.txt").write_text("nicht ein Backup", encoding="utf-8")
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 100_000)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    # Sortiert [100, 200] -> Median 150 (nur die zwei Backup-Schema-Dateien)
+    assert info["median_bytes"] == 150
+    # Fremdes Archiv (100_000 Byte) darf den Median nicht in Bytes-Bereich
+    # der Fremd-Datei ziehen.
+    assert info["median_bytes"] < 1_000
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

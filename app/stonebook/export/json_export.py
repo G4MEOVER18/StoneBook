@@ -821,16 +821,38 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     Race-Conditions minimal nach unten gezogen werden, aber nicht
     divergieren.
 
+    ``median_bytes`` ist die ausreisser-robuste Zentraltendenz auf der
+    Volume-Achse - spiegelt das Median-Pattern aus ``stats.py``
+    (``wert_median_chf``, ``gewicht_median_g``,
+    ``mohs_kollektion_median``, ``dichte_kollektion_median``) auf die
+    Backup-Halde. Waehrend ``average_bytes`` von einem einzelnen sehr
+    grossen oder sehr kleinen Backup deutlich verzerrt werden kann (ein
+    Voll-Backup nach einer Mass-Import-Aktion neben Delta-Snapshots),
+    liegt der Median unverzerrt in der Mitte der Groessenverteilung und
+    macht die "typische Backup-Groesse" auch bei asymmetrischer
+    Verteilung sichtbar. Bei uniformer Verteilung (alle Backups gleicher
+    Groesse) faellt der Median mit dem Durchschnitt zusammen; die
+    Differenz beider Achsen beziffert die Schiefe der Bytes-Verteilung.
+    Wird als integer ausgeliefert (Bytes-Achse ist diskret, spiegelt
+    ``average_bytes``); bei gerader ``count`` wird der Median als
+    gerundetes Mittel der beiden mittleren Werte berechnet, spiegelt die
+    Median-Konvention aus ``stats.py``. Basiert auf der Menge der
+    tatsaechlich lesbaren Dateien - unlesbare Dateien (Race gegen
+    paralleles Loeschen) werden uebersprungen und beeinflussen den Median
+    nicht, spiegelt das ``total_bytes``-Verhalten.
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
-    "oldest_stamp": None, "newest_stamp": None}``. Nicht existierender
-    Ordner liefert dasselbe (spiegelt :func:`list_backups`, das bei
-    fehlendem Ordner eine leere Liste zurueckgibt statt zu crashen -
-    geeignet fuer Cron-Reporter, die den Report-Aufruf vor der ersten
-    Backup-Schreibe machen). ``average_bytes`` ist ``None`` bei
-    ``count == 0`` (kein Division-by-Zero-Crash, kein irrefuehrender
-    ``0``-Report der wie "durchschnittlich leere Backups" aussaehe -
-    spiegelt die None-Konvention der Zeitstempel bei fehlendem Bestand).
+    "median_bytes": None, "oldest_stamp": None, "newest_stamp": None}``.
+    Nicht existierender Ordner liefert dasselbe (spiegelt
+    :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
+    zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
+    Report-Aufruf vor der ersten Backup-Schreibe machen).
+    ``average_bytes`` und ``median_bytes`` sind ``None`` bei
+    ``count == 0`` (kein Division-by-Zero-Crash bei ``average``, kein
+    Index-Fehler bei ``median``, kein irrefuehrender ``0``-Report der
+    wie "durchschnittlich leere Backups" aussaehe - spiegelt die None-
+    Konvention der Zeitstempel bei fehlendem Bestand).
     Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
     ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
     ``try: unlink except OSError``-Verhalten der prune-Funktionen.
@@ -841,13 +863,17 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     """
     count = 0
     total_bytes = 0
+    sizes: list[int] = []
     stamps: list[datetime.datetime] = []
     for p in list_backups(backup_dir):
         count += 1
         try:
-            total_bytes += p.stat().st_size
+            size = p.stat().st_size
         except OSError:
-            pass
+            size = None
+        if size is not None:
+            total_bytes += size
+            sizes.append(size)
         stamp = _parse_backup_stamp(p)
         if stamp is not None:
             stamps.append(stamp)
@@ -855,9 +881,26 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "count": count,
         "total_bytes": total_bytes,
         "average_bytes": round(total_bytes / count) if count else None,
+        "median_bytes": _median_int(sizes) if sizes else None,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,
     }
+
+
+def _median_int(values: list[int]) -> int:
+    """Median einer Bytes-Liste, gerundet auf Integer.
+
+    Bytes sind diskret, daher wird der Median bei gerader Anzahl als
+    ``round((v[n//2-1] + v[n//2]) / 2)`` ausgeliefert - spiegelt die
+    Rundungs-Konvention von :func:`backup_directory_stats.average_bytes`.
+    Population-Median (Divisor 2 statt 1) ist konsistent mit den
+    Median-Berechnungen in :mod:`stonebook.db.stats`.
+    """
+    ordered = sorted(values)
+    n = len(ordered)
+    if n % 2:
+        return int(ordered[n // 2])
+    return round((ordered[n // 2 - 1] + ordered[n // 2]) / 2)
 
 
 def prune_backups_gfs(backup_dir: Path, *,
