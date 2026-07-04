@@ -1031,12 +1031,48 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     damit CV nicht durch die 0.5-Byte-Rundung von ``average_bytes``
     verzerrt wird).
 
+    ``days_span`` ist die Zeit-Achsen-Spanweite in Tagen zwischen
+    ``oldest_stamp`` und ``newest_stamp`` - spiegelt ``range_bytes``
+    (Spanweite auf der Volume-Achse) auf die Zeit-Achse. Waehrend
+    ``oldest_stamp`` und ``newest_stamp`` die Rand-Zeitstempel als
+    ISO-Strings liefern, beantwortet ``days_span`` in einem Schritt
+    "wie weit reicht die Backup-Halde zeitlich zurueck?" ohne dass der
+    Caller die Zeitstempel selbst parsen und differenzieren muss - der
+    Wert entspricht ``(newest_stamp - oldest_stamp).total_seconds() /
+    86400`` und ist damit ohne Zeitzone-/Sommerzeit-Umkehr direkt
+    vergleichbar (Filename-Zeitstempel sind konventionell in lokaler
+    Zeit ohne TZ-Anhang, spiegelt die
+    :func:`_parse_backup_stamp`-Konvention). Nutzen im Cron-Reporter:
+    zeigt die tatsaechliche Retention-Tiefe der Halde neben der
+    Zaehlung (``count``) und dem Volumen (``total_bytes``); bei einer
+    30-Tage-Rotation via :func:`prune_backups_by_age` bewacht
+    ``days_span`` die Retention-Vorgabe (``days_span <= 30`` als
+    Cron-Assertion). Bei erwarteter Retention-Ausdehnung durch
+    :func:`prune_backups_gfs` (GFS-Backups mit weit zurueckreichenden
+    Monats-Snapshots) zeigt ``days_span`` die gewuenschte Tiefe an.
+    Als ``float`` ausgeliefert (Zeit-Achse ist kontinuierlich, spiegelt
+    die Prozent-Achsen ``variationskoeffizient_bytes_prozent`` -
+    Bytes/Prozent-Achse wird auf Integer/2-Nachkommastellen gerundet,
+    Zeit-Achse bleibt voller Float damit sub-Tag-Aufloesung nicht
+    verloren geht: eine Halde mit stundenweisen Snapshots zeigt Bruch-
+    Tage). Bei ``count == 1`` faellt ``days_span`` auf ``0.0`` (oldest
+    == newest, keine Zeit-Spanne moeglich), spiegelt die Grenzfall-
+    Konvention von ``range_bytes == 0`` und der uebrigen
+    Rand-Extreme-Kollaps-Konventionen. Bei ``count == 0`` liefert der
+    Wert ``None`` (kein Zeitstempel-Bezugswert vorhanden, spiegelt die
+    None-Konvention von ``oldest_stamp`` / ``newest_stamp`` /
+    ``range_bytes`` bei fehlendem Bestand). Backups ohne parsbaren
+    Filename-Zeitstempel (Race gegen Rename, korrupte Namen) tragen
+    nicht zur Spanne bei - der Wert bleibt konsistent mit
+    ``oldest_stamp`` / ``newest_stamp``, die ebenfalls nur die
+    parsbaren Stempel beruecksichtigen.
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
     "range_bytes": None, "stddev_bytes": None,
     "variationskoeffizient_bytes_prozent": None,
-    "oldest_stamp": None, "newest_stamp": None}``.
+    "oldest_stamp": None, "newest_stamp": None, "days_span": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1086,6 +1122,17 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         cv_prozent = round(raw_sigma / mean * 100.0, 2) if mean > 0 else None
     else:
         cv_prozent = None
+    if stamps:
+        oldest = min(stamps)
+        newest = max(stamps)
+        # (newest - oldest).total_seconds() / 86400 - Float bleibt voll, damit
+        # sub-Tag-Aufloesung nicht verloren geht (stundenweise Snapshots
+        # ergeben Bruch-Tage, nicht 0 durch Integer-Trunkierung).
+        days_span = (newest - oldest).total_seconds() / 86400.0
+    else:
+        oldest = None
+        newest = None
+        days_span = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1096,8 +1143,9 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "range_bytes": (max(sizes) - min(sizes)) if sizes else None,
         "stddev_bytes": stddev,
         "variationskoeffizient_bytes_prozent": cv_prozent,
-        "oldest_stamp": min(stamps).isoformat() if stamps else None,
-        "newest_stamp": max(stamps).isoformat() if stamps else None,
+        "oldest_stamp": oldest.isoformat() if oldest else None,
+        "newest_stamp": newest.isoformat() if newest else None,
+        "days_span": days_span,
     }
 
 

@@ -1365,6 +1365,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "variationskoeffizient_bytes_prozent": None,
         "oldest_stamp": None,
         "newest_stamp": None,
+        "days_span": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1379,6 +1380,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "variationskoeffizient_bytes_prozent": None,
         "oldest_stamp": None,
         "newest_stamp": None,
+        "days_span": None,
     }
 
 
@@ -2127,6 +2129,97 @@ def test_backup_directory_stats_variationskoeffizient_ignoriert_fremde_dateien(
     assert info["count"] == 2
     # sigma=200, mean=500 -> CV = 200/500*100 = 40.0
     assert info["variationskoeffizient_bytes_prozent"] == 40.0
+
+
+def test_backup_directory_stats_days_span_liefert_zeit_spanweite(tmp_path):
+    """days_span = (newest - oldest).total_seconds() / 86400 zwischen den Stempeln.
+
+    Verifiziert die Kern-Formel der Zeit-Achsen-Spanweite: drei Backups
+    an drei verschiedenen Tagen (2024-01-15, 2024-03-20, 2024-06-01)
+    ergeben oldest_stamp = 2024-01-15T10:00, newest_stamp =
+    2024-06-01T08:15, days_span = differenz in Tagen (~137.925). Sichert
+    die Uebereinstimmung mit ``newest - oldest`` und die Float-
+    Konvention (kein Integer-Trunkierungs-Verlust bei sub-Tag-Anteilen).
+    Spiegelt das range_bytes-Pattern (Rand-Differenz auf der Volume-
+    Achse) auf die Zeit-Achse.
+    """
+    backups_dir = tmp_path / "b"
+    stamps = [
+        datetime.datetime(2024, 1, 15, 10, 0, 0),
+        datetime.datetime(2024, 3, 20, 12, 30, 0),
+        datetime.datetime(2024, 6, 1, 8, 15, 0),
+    ]
+    for stamp in stamps:
+        _write_sized_backup(backups_dir, stamp, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    expected = (stamps[-1] - stamps[0]).total_seconds() / 86400.0
+    assert info["days_span"] == expected
+    # Zeit-Achsen-Invariante: days_span >= 0 (newest >= oldest per Definition).
+    assert info["days_span"] >= 0.0
+    # Sub-Tag-Aufloesung bleibt erhalten (kein Integer-Trunkierungs-Verlust).
+    assert isinstance(info["days_span"], float)
+
+
+def test_backup_directory_stats_days_span_einzelnes_backup(tmp_path):
+    """Bei count == 1 kollabiert days_span auf 0.0 (oldest == newest).
+
+    Grenzfall-Konvention analog range_bytes == 0 bei count == 1: keine
+    Zeit-Spanne moeglich, weil derselbe Stempel als Rand-Extrem-Kollaps
+    wirkt. Spiegelt die Konvention der uebrigen Spanweiten-Achsen (Bytes-
+    Range, sigma) auf die Zeit-Achse.
+    """
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 13, 14, 30, 45),
+                        500)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["days_span"] == 0.0
+
+
+def test_backup_directory_stats_days_span_sub_tag_aufloesung(tmp_path):
+    """Zwei Stempel im selben Tag ergeben Bruch-Tage (kein 0-Kollaps).
+
+    Bewacht die Float-Konvention gegen versehentliche Integer-Rundung:
+    zwei Backups im Abstand von 12 Stunden ergeben days_span = 0.5, nicht
+    0. Fuer Halden mit stundenweisen Snapshots ist die sub-Tag-Aufloesung
+    die einzig aussagekraeftige Kennzahl - ein Cron-Reporter, der nur die
+    Tages-Zahl zeigt, wuerde eine 4-Stunden-Halde als "0 Tage" ansehen,
+    obwohl sie mehrere Snapshots umfasst.
+    """
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 13, 6, 0, 0),
+                        100)
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 13, 18, 0, 0),
+                        100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["days_span"] == 0.5
+
+
+def test_backup_directory_stats_days_span_ignoriert_fremde_dateien(tmp_path):
+    """days_span beruecksichtigt nur Backup-Schema-Dateien (spiegelt oldest/newest).
+
+    Ein Fremd-Archiv mit sehr altem Namens-Stempel (20100101) darf die
+    Zeit-Achsen-Spanweite nicht kuenstlich vergroessern - _parse_backup_stamp
+    filtert ueber _BACKUP_RE, sodass fremdes Praefix nicht als Backup-
+    Zeitstempel gelesen wird. Sichert die Konsistenz-Invariante zwischen
+    days_span und den Rand-Zeitstempeln (alle beziehen sich auf dieselbe
+    gefilterte Datei-Menge).
+    """
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 1, 10, 0, 0),
+                        100)
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 15, 10, 0, 0),
+                        100)
+    # Fremd-Archiv mit anderem Praefix wird von _BACKUP_RE nicht gematcht.
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 999)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    # 2024-06-01 -> 2024-06-15 = 14 Tage; das Fremd-Archiv 2010 darf nicht
+    # in die Spanweite einfliessen (sonst waere sie ~14 Jahre).
+    assert info["days_span"] == 14.0
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
