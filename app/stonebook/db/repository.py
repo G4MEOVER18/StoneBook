@@ -339,6 +339,8 @@ class ObjectRepo:
                      analysen_max: int | None = None,
                      has_ki_analyse_uebernommen: bool | None = None,
                      has_alias: bool | None = None,
+                     aliase_min: int | None = None,
+                     aliase_max: int | None = None,
                      funddatum_jahr_min: int | None = None,
                      funddatum_jahr_max: int | None = None,
                      funddatum_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -829,6 +831,42 @@ class ObjectRepo:
         # (aliases.canonical_id ist FK auf objects.obj_id mit ON DELETE CASCADE -
         # geloeschte Objekte hinterlassen keine verwaisten Alias-Eintraege).
         _append_has_related_filter(where, has_alias, "aliases", "canonical_id")
+        # aliase_min/aliase_max: Zaehl-basierter Bereichsfilter ueber die Merge-
+        # Tiefe pro Kanon-Objekt. Verfeinert has_alias (tri-state 0 vs. >0) auf
+        # konkrete Merge-Anzahl-Grenzen. Spiegelt bilder_min/max und analysen_min/max
+        # auf die berechnete Spalte ``aliase``: derselbe (SELECT COUNT(*) FROM
+        # aliases...)-Subquery wie in der SELECT-Liste, damit der Filter exakt mit
+        # der Sortier-Spalte uebereinstimmt (Sortier-nach-``aliase`` + Filter
+        # ``aliase_min=2`` selektieren dieselbe Zahlen-Domain). Provenienz-Frage:
+        # "welche Kanon-Objekte haben die tiefste Merge-Historie (>=3 alte IDs
+        # zusammengefuehrt, typisch fuer die dokumentierten Duplikat-Gruppen mit
+        # mehreren Foto-Serien unter verschiedenen Alt-IDs)?" -> aliase_min=3;
+        # "welche haben genau einen Alias (Erst-Merge-Kandidaten fuer weitere
+        # Duplikat-Suche mit besserer Foto-Vergleichs-Software)?" -> aliase_min=1
+        # kombiniert mit aliase_max=1. Aus Datenpflege-Sicht auch relevant fuer
+        # den Sammler-Report "wieviele historische IDs sind in dem aktuellen
+        # Bestand versammelt?" pro Kanon-Objekt in einem einzigen Filter-Durchgang.
+        # Negative Werte werfen ValueError (Alias-Anzahl kann nicht negativ sein,
+        # spiegelt bilder_min/analysen_min-Konvention); aliase_min=0 ist no-op
+        # semantisch (COUNT(*) liefert nie NULL, alle Objekte passen die Bedingung),
+        # wird aber trotzdem als SQL-Klausel ausgefuehrt fuer uniformes NULL-Verhalten.
+        # aliase_max=0 == has_alias=False (nur nicht-gemergte Originale), aliase_min=1
+        # == has_alias=True (alle Kanon-Objekte mit mindestens einem Merge).
+        # Kombinierbar mit has_alias als redundante Schnittmenge (kein Konflikt).
+        if aliase_min is not None:
+            a = int(aliase_min)
+            if a < 0:
+                raise ValueError(f"aliase_min muss >= 0 sein (war: {a})")
+            where.append(
+                "(SELECT COUNT(*) FROM aliases a WHERE a.canonical_id = o.obj_id) >= ?")
+            params.append(a)
+        if aliase_max is not None:
+            a = int(aliase_max)
+            if a < 0:
+                raise ValueError(f"aliase_max muss >= 0 sein (war: {a})")
+            where.append(
+                "(SELECT COUNT(*) FROM aliases a WHERE a.canonical_id = o.obj_id) <= ?")
+            params.append(a)
         if funddatum_jahr_min is not None or funddatum_jahr_max is not None:
             where.append("substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]'")
             if funddatum_jahr_min is not None:

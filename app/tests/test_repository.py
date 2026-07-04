@@ -815,6 +815,74 @@ def test_has_alias_filter(tmp_path):
     c.close()
 
 
+def test_aliase_min_max_filter(tmp_path):
+    """aliase_min/max verfeinert has_alias auf konkrete Merge-Tiefe-Grenzen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "aliamm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    # OBJ_0001: 0 Aliase (kein Merge, Original)
+    # OBJ_0002: 1 Alias (eine alte ID reingefolgt)
+    # OBJ_0003: 3 Aliase (dokumentierte Duplikat-Gruppe mit drei Alt-IDs)
+    # OBJ_0004: 5 Aliase (Sammel-Merge mit vielen historischen IDs)
+    entries = []
+    counter = 100
+    for count, obj_id in ((1, "OBJ_0002"), (3, "OBJ_0003"), (5, "OBJ_0004")):
+        for _ in range(count):
+            entries.append((f"OBJ_{counter:04d}", obj_id, "duplikat_gruppen.json"))
+            counter += 1
+    c.executemany(
+        "INSERT INTO aliases (alias_id, canonical_id, merge_quelle) VALUES (?, ?, ?)",
+        entries,
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Nur Min: mindestens 2 Aliase - tiefe Merge-Historie
+    rows = repo.list_objects(aliase_min=2)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Nur Max: hoechstens 3 Aliase - flache Merge-Historie
+    rows = repo.list_objects(aliase_max=3)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kombiniert: 2..4 Aliase
+    rows = repo.list_objects(aliase_min=2, aliase_max=4)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Grenzfall aliase_min=0: keine Wirkung, alle Objekte
+    rows = repo.list_objects(aliase_min=0)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Grenzfall aliase_max=0: nur nicht-gemergte Originale (== has_alias=False)
+    rows = repo.list_objects(aliase_max=0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    ha_false = repo.list_objects(has_alias=False)
+    assert [r["obj_id"] for r in rows] == [r["obj_id"] for r in ha_false]
+    # Grenzfall aliase_min=1: Aequivalent zu has_alias=True
+    rows_min1 = repo.list_objects(aliase_min=1)
+    rows_ha_true = repo.list_objects(has_alias=True)
+    assert [r["obj_id"] for r in rows_min1] == [r["obj_id"] for r in rows_ha_true]
+    # Erst-Merge-Kandidaten: genau ein Alias (aliase_min=1 UND aliase_max=1)
+    rows = repo.list_objects(aliase_min=1, aliase_max=1)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Kombination mit has_alias=True bleibt Schnittmenge (redundant)
+    rows = repo.list_objects(aliase_min=3, has_alias=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    c.close()
+
+
+def test_aliase_min_max_negativ_wirft(tmp_path):
+    """Negative Grenzwerte werfen ValueError (Alias-Anzahl kann nicht negativ sein)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "alian.sqlite3")
+    c.commit()
+    repo = ObjectRepo(c)
+    with pytest.raises(ValueError, match="aliase_min"):
+        repo.list_objects(aliase_min=-1)
+    with pytest.raises(ValueError, match="aliase_max"):
+        repo.list_objects(aliase_max=-1)
+    c.close()
+
+
 def test_has_ki_analyse_kombinierbar_mit_has_confidence(tmp_path):
     """KI-analysiert ohne Confidence-Wert: noch nicht uebernommener Vorschlag."""
     from stonebook.db.database import open_db
