@@ -1367,6 +1367,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "newest_stamp": None,
         "days_span": None,
         "average_gap_days": None,
+        "median_gap_days": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1383,6 +1384,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "newest_stamp": None,
         "days_span": None,
         "average_gap_days": None,
+        "median_gap_days": None,
     }
 
 
@@ -2286,6 +2288,88 @@ def test_backup_directory_stats_average_gap_days_stundenweise(tmp_path):
     assert info["count"] == 5
     assert info["days_span"] == 1.0
     assert info["average_gap_days"] == 0.25
+
+
+def test_backup_directory_stats_median_gap_days_uniforme_kadenz(tmp_path):
+    """Uniforme Kadenz: median_gap_days == average_gap_days == Intervall.
+
+    Bei vier Backups an vier aufeinanderfolgenden Tagen sind alle 3
+    Intervalle 1.0 Tag lang - der Median faellt mit dem Durchschnitt
+    zusammen (Ausreisser-freie uniforme Verteilung). Sichert die
+    Median-vs-Average-Konvention fuer den Grenzfall Null-Schiefe.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in range(4):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    assert info["median_gap_days"] == 1.0
+    assert info["median_gap_days"] == info["average_gap_days"]
+
+
+def test_backup_directory_stats_median_gap_days_ausreisser_robust(tmp_path):
+    """Grosse Ferien-Luecke verschiebt average_gap_days, median bleibt stabil.
+
+    Fuenf Backups: vier taegliche in Folge und ein spaeter Backup nach 40
+    Tagen Cron-Ausfall/Ferien. Intervalle: [1, 1, 1, 40] Tage. Der
+    Median ist 1.0 (typische Kadenz), der Durchschnitt ist 10.75
+    (Ausreisser hebt das Mittel deutlich). Sichert die Ausreisser-
+    Robustheit auf der Frequenz-Achse - spiegelt das median_bytes-vs-
+    average_bytes-Ausreisser-Muster auf die Zeit-Achse und macht die
+    tatsaechliche Backup-Kadenz sichtbar, auch wenn die Halde einzelne
+    grosse Luecken hat.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in (0, 1, 2, 3, 43):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    assert info["median_gap_days"] == 1.0
+    # Durchschnitt = 43 / 4 = 10.75 (Zaun-Post: days_span/(count-1))
+    assert info["average_gap_days"] == pytest.approx(10.75)
+    # Skew-Invariante: Median deutlich kleiner als Average bei rechts-
+    # schiefer Verteilung (grosse Luecke am Ende hebt Durchschnitt).
+    assert info["median_gap_days"] < info["average_gap_days"]
+
+
+def test_backup_directory_stats_median_gap_days_gerade_anzahl_intervalle(tmp_path):
+    """Gerade Anzahl Intervalle: Median = arithmetisches Mittel der zwei mittleren.
+
+    Fuenf Backups mit Intervallen [1, 2, 3, 4] Tagen (sortiert) - der
+    Median (bei gerader Anzahl 4) ist (2 + 3) / 2 = 2.5. Sichert die
+    Population-Median-Konvention aus _median_float bei gerader
+    Intervall-Anzahl (spiegelt _median_int auf die Float-Achse).
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    # Kumulierte Positionen: 0, 1, 3, 6, 10 -> Diffs [1, 2, 3, 4]
+    for day_offset in (0, 1, 3, 6, 10):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    assert info["median_gap_days"] == 2.5
+
+
+def test_backup_directory_stats_median_gap_days_einzelnes_backup_ist_none(tmp_path):
+    """Bei count == 1 kollabiert median_gap_days auf None (keine Intervalle).
+
+    Spiegelt die average_gap_days-Grenzfall-Konvention: mit einem einzigen
+    Backup gibt es keinen Vorgaenger, gegen den der Abstand gemessen werden
+    koennte - der Wert ist mathematisch undefined und wird als None
+    ausgeliefert statt einer irrefuehrenden 0.0.
+    """
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 13, 12, 0, 0),
+                        500)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["median_gap_days"] is None
+    assert info["average_gap_days"] is None
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

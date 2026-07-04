@@ -380,6 +380,7 @@ def test_stats_leerer_ordner_liefert_null_report(tmp_path, capsys):
         "newest_stamp": None,
         "days_span": None,
         "average_gap_days": None,
+        "median_gap_days": None,
     }
 
 

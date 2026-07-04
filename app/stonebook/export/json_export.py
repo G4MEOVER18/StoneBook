@@ -1099,13 +1099,42 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     ``oldest_stamp`` / ``newest_stamp``, die ebenfalls nur die
     parsbaren Stempel beruecksichtigen.
 
+    ``median_gap_days`` ist die ausreisser-robuste Zentraltendenz auf
+    der Frequenz-Achse - spiegelt das
+    :func:`_median_int`/``median_bytes``-vs-``average_bytes``-Paar aus
+    dem Volume-Bereich auf die Zeit-Achse. Waehrend ``average_gap_days``
+    von einem einzelnen sehr weiten Intervall verzerrt wird (eine
+    Ferien-Luecke von 6 Wochen in einer sonst taeglichen Backup-
+    Rotation zieht den Durchschnitts-Abstand deutlich hoch), liegt der
+    Median unverzerrt auf dem typischen Sekunden-Intervall zwischen
+    Backups und macht die tatsaechliche Backup-Kadenz sichtbar. Kern-
+    Formel: sortiere die Stamps aufsteigend, bilde die (n-1)
+    aufeinanderfolgenden Diffs in Tagen, gib den Median dieser Diffs
+    aus. Bei uniformer Kadenz (alle Intervalle gleich lang, z.B.
+    taegliches Cronjob-Backup) faellt ``median_gap_days`` mit
+    ``average_gap_days`` zusammen; die Differenz beider Achsen
+    beziffert die Schiefe der Intervall-Verteilung - ein deutlich
+    kleinerer Median gegenueber dem Durchschnitt zeigt eine Halde
+    mit sonst enger Kadenz aber einzelnen langen Luecken (Ferien,
+    Cron-Ausfall). Als ``float`` ausgeliefert (Zeit-Achse ist
+    kontinuierlich, spiegelt die ``days_span``/``average_gap_days``-
+    Float-Konvention - Sub-Tag-Aufloesung bleibt bei stundenweiser
+    Rotation erhalten und wird nicht durch Integer-Trunkierung
+    verloren). Bei ``len(stamps) < 2`` liefert der Wert ``None``
+    (keine Intervalle definierbar, spiegelt die Grenzfall-Konvention
+    von ``average_gap_days``). Reuse-Pfad: die sortierten Stamps und
+    die Sekunden-Diffs werden lokal berechnet, damit die
+    Zeit-Achsen-Achsen ``days_span`` / ``average_gap_days`` /
+    ``median_gap_days`` alle auf derselben Halden-Stamp-Menge
+    beruhen (single-source-of-truth).
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
     "range_bytes": None, "stddev_bytes": None,
     "variationskoeffizient_bytes_prozent": None,
     "oldest_stamp": None, "newest_stamp": None, "days_span": None,
-    "average_gap_days": None}``.
+    "average_gap_days": None, "median_gap_days": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1175,8 +1204,23 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     # zwischen Backups" gelesen und ein Cron-Alarm ausloesen).
     if len(stamps) >= 2:
         average_gap_days = days_span / (len(stamps) - 1)
+        # median_gap_days: ausreisser-robuste Zentraltendenz auf der
+        # Frequenz-Achse. Spiegelt das median_bytes-vs-average_bytes-Paar auf
+        # die Zeit-Achse: waehrend average_gap_days von einem einzelnen sehr
+        # weiten Intervall verzerrt wird (Ferien-Luecke von 6 Wochen in einer
+        # sonst taeglichen Rotation zieht den Durchschnitt hoch), liegt der
+        # Median unverzerrt auf dem typischen Sekunden-Intervall und macht die
+        # tatsaechliche Backup-Kadenz sichtbar. Reuse-Pfad: Sekunden-Diffs
+        # aufeinanderfolgender sortierter Stamps, dann _median_float.
+        ordered_stamps = sorted(stamps)
+        gaps_days = [
+            (ordered_stamps[i + 1] - ordered_stamps[i]).total_seconds() / 86400.0
+            for i in range(len(ordered_stamps) - 1)
+        ]
+        median_gap_days = _median_float(gaps_days)
     else:
         average_gap_days = None
+        median_gap_days = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1191,6 +1235,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "newest_stamp": newest.isoformat() if newest else None,
         "days_span": days_span,
         "average_gap_days": average_gap_days,
+        "median_gap_days": median_gap_days,
     }
 
 
@@ -1208,6 +1253,26 @@ def _median_int(values: list[int]) -> int:
     if n % 2:
         return int(ordered[n // 2])
     return round((ordered[n // 2 - 1] + ordered[n // 2]) / 2)
+
+
+def _median_float(values: list[float]) -> float:
+    """Median einer Zeit-/Frequenz-Liste als voller Float (keine Rundung).
+
+    Symmetrisches Pendant zu :func:`_median_int` auf der kontinuierlichen
+    Achse - waehrend Bytes diskret sind und auf Integer gerundet werden,
+    ist die Zeit-Achse kontinuierlich und darf keine Sub-Tag-Aufloesung
+    durch Integer-Trunkierung verlieren (spiegelt die
+    ``days_span``/``average_gap_days``-Float-Konvention). Bei gerader
+    Anzahl wird das arithmetische Mittel der beiden mittleren Werte
+    ausgeliefert (Population-Median mit Divisor 2, konsistent zu
+    :func:`_median_int` und den Median-Berechnungen in
+    :mod:`stonebook.db.stats`).
+    """
+    ordered = sorted(values)
+    n = len(ordered)
+    if n % 2:
+        return float(ordered[n // 2])
+    return (ordered[n // 2 - 1] + ordered[n // 2]) / 2.0
 
 
 def _stddev_int(values: list[int]) -> int:
