@@ -925,6 +925,42 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     max-Crash, spiegelt die None-Konvention der Zentraltendenz- und
     Rand-Achsen bei fehlendem Bestand).
 
+    ``stddev_bytes`` ist die Populations-Standardabweichung der
+    Bytes-Verteilung als Streuungs-Achse in Original-Einheiten (Bytes)
+    zur Zentraltendenz-Achse ``average_bytes``. Spiegelt das
+    ``wert_standardabweichung_chf`` / ``gewicht_standardabweichung_g``
+    / ``mohs_kollektion_standardabweichung`` /
+    ``dichte_kollektion_standardabweichung`` /
+    ``confidence_standardabweichung_prozent`` /
+    ``koordinaten_radius_standardabweichung_km``-Muster auf die
+    Backup-Volume-Achse. Waehrend ``range_bytes`` nur auf die zwei
+    Extremwerte reagiert (Groessen-Bandbreite), reagiert sigma auf die
+    volle Verteilungsform - eine Halde mit gleichmaessig grossen
+    Backups hat kleines sigma, eine mit einem grossen Voll-Backup
+    neben vielen Delta-Snapshots hat grosses sigma trotz aehnlicher
+    Bandbreite. Populations-Variante (Divisor ``n`` statt ``n-1``)
+    spiegelt die Backup-Halde-als-Grundgesamtheit-Konvention der
+    uebrigen Volume-Achsen (``average_bytes`` / ``median_bytes``
+    verwenden ebenfalls die volle Menge, keine Stichproben-Korrektur).
+    Numerisch stabile Formel via ``(x - mean)^2`` statt
+    ``E[X^2] - E[X]^2``, spiegelt die stddev-Berechnung in
+    ``stats.py`` (bei Backup-Groessen im GiB-Bereich mit kleiner
+    Varianz zwischen Delta-Snapshots waere die Kancellations-Version
+    numerisch instabil). Bei ``count == 1`` kollabiert ``stddev_bytes``
+    auf ``0`` (kein Streuungs-Grund bei Einzel-Stichprobe, spiegelt
+    die Grenzfall-Konvention der Radial-Streuungs-Achse und die
+    Min/Max/Mittel/Median-Single-Point-Kollaps-Konvention). Wird als
+    ``round()``-integer ausgeliefert (Bytes-Achse ist diskret,
+    spiegelt ``average_bytes`` / ``median_bytes``). Basiert auf der
+    Menge der tatsaechlich lesbaren Dateien - unlesbare Dateien
+    werden uebersprungen und beeinflussen sigma nicht (spiegelt das
+    ``total_bytes``-Verhalten). Reuse-Pfad: nutzt die bereits
+    berechnete ``sizes``-Liste und den ``total_bytes``-Zwischenwert
+    fuer den Mittelwert (kein zweiter Pass ueber die Backup-Halde,
+    kein zweiter ``st_size``-Zugriff). Die Differenz
+    ``range_bytes - stddev_bytes`` zeigt, wie stark die Streuung von
+    Ausreissern statt der volleren Verteilungsform getrieben ist.
+
     ``min_bytes`` ist die Innen-Rand-Achse der Bytes-Verteilung -
     symmetrisches Pendant zu ``max_bytes`` und spiegelt das
     Min-Pattern aus ``stats.py`` (``wert_min_chf``, ``gewicht_min_g``,
@@ -960,18 +996,19 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
-    "range_bytes": None, "oldest_stamp": None, "newest_stamp": None}``.
+    "range_bytes": None, "stddev_bytes": None,
+    "oldest_stamp": None, "newest_stamp": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
     Report-Aufruf vor der ersten Backup-Schreibe machen).
-    ``average_bytes``, ``median_bytes``, ``min_bytes``, ``max_bytes``
-    und ``range_bytes`` sind ``None`` bei ``count == 0`` (kein
-    Division-by-Zero-Crash bei ``average``, kein Index-Fehler bei
-    ``median``, kein leeres-``max``- oder leeres-``min``-Crash, keine
-    irrefuehrende ``0``-Spanweite die wie "identische Backup-Groessen"
-    aussaehe - spiegelt die None-Konvention der Zeitstempel bei
-    fehlendem Bestand).
+    ``average_bytes``, ``median_bytes``, ``min_bytes``, ``max_bytes``,
+    ``range_bytes`` und ``stddev_bytes`` sind ``None`` bei
+    ``count == 0`` (kein Division-by-Zero-Crash bei ``average`` /
+    ``stddev``, kein Index-Fehler bei ``median``, kein leeres-``max``-
+    oder leeres-``min``-Crash, keine irrefuehrende ``0``-Streuung die
+    wie "identische Backup-Groessen" aussaehe - spiegelt die
+    None-Konvention der Zeitstempel bei fehlendem Bestand).
     Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
     ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
     ``try: unlink except OSError``-Verhalten der prune-Funktionen.
@@ -1004,6 +1041,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "min_bytes": min(sizes) if sizes else None,
         "max_bytes": max(sizes) if sizes else None,
         "range_bytes": (max(sizes) - min(sizes)) if sizes else None,
+        "stddev_bytes": _stddev_int(sizes) if sizes else None,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,
     }
@@ -1023,6 +1061,29 @@ def _median_int(values: list[int]) -> int:
     if n % 2:
         return int(ordered[n // 2])
     return round((ordered[n // 2 - 1] + ordered[n // 2]) / 2)
+
+
+def _stddev_int(values: list[int]) -> int:
+    """Populations-Standardabweichung einer Bytes-Liste, gerundet auf Integer.
+
+    Divisor ``n`` (nicht ``n-1``) spiegelt die Backup-Halde-als-
+    Grundgesamtheit-Konvention, konsistent mit den ``stddev``-
+    Berechnungen in :mod:`stonebook.db.stats` (``koordinaten_radius_
+    standardabweichung_km``, ``mohs_kollektion_standardabweichung`` &c).
+    Numerisch stabile Formel via ``(x - mean)^2`` statt
+    ``E[X^2] - E[X]^2`` - spiegelt die stddev-Berechnung in ``stats.py``
+    und vermeidet Kancellations-Rundungsfehler bei Backup-Groessen im
+    GiB-Bereich mit kleiner Varianz zwischen Delta-Snapshots. Rundung
+    auf Integer spiegelt die :func:`backup_directory_stats.average_bytes`
+    / ``median_bytes``-Konvention (Bytes-Achse ist diskret). Bei
+    ``len(values) == 1`` faellt die Streuung auf ``0`` (kein
+    Streuungs-Grund bei Einzel-Stichprobe, spiegelt die
+    Single-Point-Kollaps-Konvention der uebrigen Volume-Achsen).
+    """
+    n = len(values)
+    mean = sum(values) / n
+    variance = sum((v - mean) ** 2 for v in values) / n
+    return round(variance ** 0.5)
 
 
 def prune_backups_gfs(backup_dir: Path, *,

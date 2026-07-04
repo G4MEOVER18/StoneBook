@@ -1361,6 +1361,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "min_bytes": None,
         "max_bytes": None,
         "range_bytes": None,
+        "stddev_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1373,6 +1374,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "min_bytes": None,
         "max_bytes": None,
         "range_bytes": None,
+        "stddev_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1931,6 +1933,106 @@ def test_backup_directory_stats_range_bytes_ignoriert_fremde_dateien(tmp_path):
     # Spanweite: sie muss unter der Groesse des groesseren Fremd-Archivs
     # bleiben und ueber der reinen 1-Byte-Fremd-Datei.
     assert info["range_bytes"] < 1_000
+
+
+def test_backup_directory_stats_stddev_bytes_liefert_streuung(tmp_path):
+    """stddev_bytes = Populations-Standardabweichung der Bytes-Verteilung.
+
+    Spiegelt das koordinaten_radius_standardabweichung_km /
+    wert_standardabweichung_chf / gewicht_standardabweichung_g /
+    mohs_kollektion_standardabweichung / dichte_kollektion_standardabweichung
+    / confidence_standardabweichung_prozent-Muster auf die Backup-Volume-
+    Achse: aus einer gemischten Halde ([100, 500, 900]) mit mean=500 wird
+    sigma = sqrt(((100-500)^2 + (500-500)^2 + (900-500)^2) / 3)
+          = sqrt((160000 + 0 + 160000) / 3) = sqrt(320000/3)
+          ≈ 326.6 -> round(326.6) = 327
+    als Populations-Standardabweichung geliefert.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 500)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 900)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    expected = round(((160000 + 0 + 160000) / 3) ** 0.5)
+    assert info["stddev_bytes"] == expected
+    # sigma ist eine Streuungs-Achse: <= range_bytes bei nicht-negativen
+    # Werten (worst-case-Verteilung mit Massen an beiden Extremen).
+    assert 0 <= info["stddev_bytes"] <= info["range_bytes"]
+
+
+def test_backup_directory_stats_stddev_bytes_einzelnes_backup(tmp_path):
+    """Bei count=1 kollabiert stddev_bytes auf 0 (keine Streuung).
+
+    Grenzfall-Konvention der Streuungs-Achsen aus ``stats.py``
+    (Single-Point-Kollaps auf 0): bei nur einem Backup gibt es keinen
+    Streuungs-Grund, sigma faellt konsistent zur Range-Achse (die auf 0
+    kollabiert) auf 0. Spiegelt die entsprechende einzelnes_backup-
+    Fixture fuer die uebrigen Volume-Achsen, damit die Einzel-
+    Stichproben-Konvention uniform bleibt.
+    """
+    now = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 8888)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["stddev_bytes"] == 0
+    assert info["stddev_bytes"] == info["range_bytes"]
+
+
+def test_backup_directory_stats_stddev_bytes_gleiche_groesse(tmp_path):
+    """Bei uniformer Verteilung (alle Backups gleich gross) ist stddev_bytes = 0.
+
+    Populations-Standardabweichung ist per Definition 0 wenn alle Werte
+    mit dem Mittelwert uebereinstimmen - keine Streuung ohne
+    Wert-Differenz. Deckt den Weg-vom-Grenzfall-count=1 (den auch schon
+    einzelnes_backup gepruefte) ab: mehrere Backups, aber trotzdem
+    Streuung 0. Sichert die 0-Konvention konsistent zum range_bytes = 0
+    bei identischen Werten.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 4242)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 4242)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 4242)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["stddev_bytes"] == 0
+    # Konsistenz: range_bytes == 0 => stddev_bytes == 0 (keine Streuung
+    # ohne Bandbreite).
+    assert info["range_bytes"] == 0
+
+
+def test_backup_directory_stats_stddev_bytes_ignoriert_fremde_dateien(tmp_path):
+    """stddev_bytes basiert nur auf Backup-Schema-Dateien.
+
+    Ein grosses Fremd-Archiv im Ordner darf die Streuung nicht kuenstlich
+    aufblaehen; sigma bleibt an die Streuung der gefilterten Backup-Menge
+    gebunden. Spiegelt die entsprechende Fremd-Dateien-Fixture fuer die
+    uebrigen Volume-Achsen und sichert die Konsistenz-Invariante zwischen
+    den Volume-Feldern (alle beziehen sich auf dieselbe Datei-Menge).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 300)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 700)
+    (backups_dir / "README.txt").write_bytes(b"x")
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 999_999)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    # sigma der Backup-Menge (mean=500, |v-mean|=200 fuer beide)
+    # = sqrt((200^2 + 200^2) / 2) = 200
+    assert info["stddev_bytes"] == 200
+    # Fremd-Archiv (999_999) darf sigma nicht in die 10^5-Groessenordnung
+    # heben - die Backup-Menge bleibt eng um mean=500 verteilt.
+    assert info["stddev_bytes"] < 1_000
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
