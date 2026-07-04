@@ -866,6 +866,29 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     ohne zweiten I/O-Pfad ueber :func:`largest_backup` und ohne den
     Pfad-Wrapper - der Aggregat-Report liefert die Byte-Zahl direkt.
 
+    ``range_bytes`` ist die Original-Einheiten-Dispersions-Achse der
+    Bytes-Verteilung: ``max_bytes - min_bytes``. Spiegelt das
+    Spanweiten-Pattern aus ``stats.py`` (``wert_spanweite_chf``,
+    ``gewicht_spanweite_g``, ``mohs_kollektion_spanweite``,
+    ``dichte_kollektion_spanweite``, ``confidence_spanweite_prozent``,
+    ``koordinaten_radius_spanweite_km``) auf die Backup-Volume-Achse und
+    ergaenzt die Innen-/Aussen-Rand-Achsen (``min_bytes`` / ``max_bytes``)
+    um die vorberechnete Differenz - der Caller kann die Streubreite ohne
+    zweiten Rechenschritt ablesen. Beantwortet in einem Schritt "wie stark
+    schwanken die Backup-Groessen?" fuer Kapazitaetsplanung und macht
+    heterogene Backup-Halden sichtbar (viele Delta-Snapshots neben einem
+    Voll-Backup: kleiner ``median_bytes`` + grosser ``range_bytes``).
+    Wird als integer ausgeliefert (Bytes-Achse ist diskret, spiegelt
+    ``min_bytes`` / ``max_bytes``). Bei ``count == 1`` faellt
+    ``range_bytes`` auf ``0`` (min == max), spiegelt die Grenzfall-
+    Konvention der Spanweiten-Achsen in ``stats.py`` (gleiche Werte →
+    keine Streuung). Basiert auf derselben Menge der tatsaechlich
+    lesbaren Dateien wie ``min_bytes`` / ``max_bytes`` - unlesbare
+    Dateien werden uebersprungen und beeinflussen die Spanweite nicht.
+    ``range_bytes`` ist ``None`` bei ``count == 0`` (kein leeres-min/
+    max-Crash, spiegelt die None-Konvention der Zentraltendenz- und
+    Rand-Achsen bei fehlendem Bestand).
+
     ``min_bytes`` ist die Innen-Rand-Achse der Bytes-Verteilung -
     symmetrisches Pendant zu ``max_bytes`` und spiegelt das
     Min-Pattern aus ``stats.py`` (``wert_min_chf``, ``gewicht_min_g``,
@@ -901,17 +924,18 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
-    "oldest_stamp": None, "newest_stamp": None}``.
+    "range_bytes": None, "oldest_stamp": None, "newest_stamp": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
     Report-Aufruf vor der ersten Backup-Schreibe machen).
-    ``average_bytes``, ``median_bytes``, ``min_bytes`` und ``max_bytes``
-    sind ``None`` bei ``count == 0`` (kein Division-by-Zero-Crash bei
-    ``average``, kein Index-Fehler bei ``median``, kein leeres-``max``-
-    oder leeres-``min``-Crash, kein irrefuehrender ``0``-Report der wie
-    "durchschnittlich leere Backups" aussaehe - spiegelt die
-    None-Konvention der Zeitstempel bei fehlendem Bestand).
+    ``average_bytes``, ``median_bytes``, ``min_bytes``, ``max_bytes``
+    und ``range_bytes`` sind ``None`` bei ``count == 0`` (kein
+    Division-by-Zero-Crash bei ``average``, kein Index-Fehler bei
+    ``median``, kein leeres-``max``- oder leeres-``min``-Crash, keine
+    irrefuehrende ``0``-Spanweite die wie "identische Backup-Groessen"
+    aussaehe - spiegelt die None-Konvention der Zeitstempel bei
+    fehlendem Bestand).
     Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
     ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
     ``try: unlink except OSError``-Verhalten der prune-Funktionen.
@@ -943,6 +967,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "median_bytes": _median_int(sizes) if sizes else None,
         "min_bytes": min(sizes) if sizes else None,
         "max_bytes": max(sizes) if sizes else None,
+        "range_bytes": (max(sizes) - min(sizes)) if sizes else None,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,
     }

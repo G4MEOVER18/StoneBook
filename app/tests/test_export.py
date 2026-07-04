@@ -1359,6 +1359,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "median_bytes": None,
         "min_bytes": None,
         "max_bytes": None,
+        "range_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1370,6 +1371,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "median_bytes": None,
         "min_bytes": None,
         "max_bytes": None,
+        "range_bytes": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1855,6 +1857,79 @@ def test_backup_directory_stats_min_bytes_stimmt_mit_smallest_backup(tmp_path):
     smallest = smallest_backup(backups_dir)
     assert smallest is not None
     assert info["min_bytes"] == smallest.stat().st_size == 250
+
+
+def test_backup_directory_stats_range_bytes_liefert_spanweite(tmp_path):
+    """range_bytes = max_bytes - min_bytes - Original-Einheiten-Spanweite.
+
+    Spiegelt das gewicht_spanweite_g / wert_spanweite_chf /
+    mohs_kollektion_spanweite / dichte_kollektion_spanweite /
+    confidence_spanweite_prozent / koordinaten_radius_spanweite_km-Muster
+    auf die Backup-Volume-Achse: aus einer gemischten Halde
+    ([100, 500, 12345]) wird die Streubreite (12345 - 100 = 12245) als
+    Dispersions-Achse zurueckgeliefert und ergaenzt die beiden Rand-
+    Achsen (min/max) um die vorberechnete Differenz.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 100)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 500)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 12345)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["range_bytes"] == 12345 - 100
+    # Konsistenz-Invariante: range_bytes == max_bytes - min_bytes.
+    assert info["range_bytes"] == info["max_bytes"] - info["min_bytes"]
+    # Dispersion ist nicht-negativ (Bytes-Verteilung ist reell-nicht-negativ).
+    assert info["range_bytes"] >= 0
+
+
+def test_backup_directory_stats_range_bytes_einzelnes_backup(tmp_path):
+    """Bei count=1 kollabiert range_bytes auf 0 (min == max).
+
+    Grenzfall-Konvention der Spanweiten-Achsen aus ``stats.py`` (gleiche
+    Werte → keine Streuung): bei nur einem Backup ist ``min_bytes ==
+    max_bytes``, damit ``range_bytes == 0``. Spiegelt die entsprechende
+    einzelnes_backup-Fixture fuer die uebrigen Volume-Achsen (average /
+    median / min / max), damit die Einzel-Stichproben-Konvention auf
+    allen Volume-Feldern uniform bleibt.
+    """
+    now = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 8888)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["range_bytes"] == 0
+    assert info["range_bytes"] == info["max_bytes"] - info["min_bytes"]
+
+
+def test_backup_directory_stats_range_bytes_ignoriert_fremde_dateien(tmp_path):
+    """range_bytes basiert nur auf Backup-Schema-Dateien.
+
+    Ein grosses Fremd-Archiv und eine winzige Fremd-Datei duerfen die
+    Streubreite nicht kuenstlich aufblaehen; die Spanweite bleibt an
+    ``max_bytes - min_bytes`` der gefilterten Backup-Menge gebunden.
+    Spiegelt die entsprechende Fremd-Dateien-Fixture fuer min_bytes /
+    max_bytes und sichert die Konsistenz-Invariante zwischen den
+    Volume-Feldern (alle beziehen sich auf dieselbe Datei-Menge).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 300)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 700)
+    (backups_dir / "README.txt").write_bytes(b"x")
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 999_999)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["range_bytes"] == 700 - 300
+    # Weder Fremd-Archiv (999_999) noch Fremd-Datei (1) veraendern die
+    # Spanweite: sie muss unter der Groesse des groesseren Fremd-Archivs
+    # bleiben und ueber der reinen 1-Byte-Fremd-Datei.
+    assert info["range_bytes"] < 1_000
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
