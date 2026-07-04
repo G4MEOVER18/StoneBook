@@ -5,15 +5,44 @@ import sqlite3
 from pathlib import Path
 
 
+def page_count(conn: sqlite3.Connection) -> int:
+    """Gesamt-Seitenzahl der DB-Datei (``PRAGMA page_count``).
+
+    Spiegelt :func:`free_page_count` (Freilist-Seiten) auf die Gesamt-Achse
+    der Seiten-Zaehlung: waehrend ``free_page_count`` die durch VACUUM
+    freigebbaren Seiten liefert, beantwortet ``page_count`` direkt "wieviele
+    Seiten hat die DB-Datei insgesamt?" - ohne dass der Caller den PRAGMA-
+    Wert selbst abfragen muss. Vervollstaendigt gemeinsam mit
+    :func:`free_page_count` die Rand-Sicht auf die Seiten-Belegung analog
+    zum Bytes-Triplett :func:`database_size_bytes` /
+    :func:`used_bytes` / :func:`free_bytes`: hier die Rand-Achse
+    ``page_count`` (Gesamt) und ``free_page_count`` (Freilist) auf der
+    reinen Seiten-Zaehler-Ebene ohne Bytes-Rundungs-Wechsel.
+
+    Nuetzlich fuer Debugging und den direkten Vergleich mit
+    ``PRAGMA page_count``-Output aus der SQLite-CLI (identischer Zaehler,
+    keine Byte-Umrechnung dazwischen); die Bytes-Sicht liefert
+    :func:`database_size_bytes` per ``page_count * page_size``. Der Aufruf
+    ist idempotent und liest nur Metadaten (keine Tabellen-Scans), ist
+    damit sicher im Cron-Reporter zusammen mit :func:`free_page_count` in
+    einer einzigen Health-Check-Rundreise aufrufbar. Bei einer frisch
+    angelegten (leeren) DB liefert SQLite typischerweise ``2`` Seiten
+    (Header + eine System-Seite fuer den Katalog); der genaue Wert ist
+    SQLite-Version- und Schema-abhaengig, aber immer > 0.
+    """
+    return int(conn.execute("PRAGMA page_count").fetchone()[0])
+
+
 def database_size_bytes(conn: sqlite3.Connection) -> int:
     """Logische Datenbankgroesse in Bytes (Seitenzahl x Seitengroesse).
 
     Bezieht sich auf die Hauptdatei, ohne WAL/SHM, ohne Free-Pages-Defrag.
-    Zum Vergleich vor/nach :func:`vacuum`.
+    Zum Vergleich vor/nach :func:`vacuum`. Reuse-Pfad: nutzt
+    :func:`page_count` als single-source-of-truth fuer den Seiten-Zaehler
+    (kein zweiter PRAGMA-Roundtrip parallel zu ``page_count``).
     """
-    page_count = conn.execute("PRAGMA page_count").fetchone()[0]
     page_size = conn.execute("PRAGMA page_size").fetchone()[0]
-    return int(page_count) * int(page_size)
+    return page_count(conn) * int(page_size)
 
 
 def free_page_count(conn: sqlite3.Connection) -> int:

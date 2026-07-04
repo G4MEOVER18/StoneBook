@@ -33,7 +33,8 @@ from stonebook.db.maintenance import (analyze, database_size_bytes, free_bytes,
                                       delete_orphan_ki_analysen,
                                       foreign_key_check, free_page_count,
                                       fts_integrity_check, fts_optimize,
-                                      fts_rebuild, optimize, quick_check,
+                                      fts_rebuild, optimize, page_count,
+                                      quick_check,
                                       used_bytes,
                                       vacuum)
 
@@ -56,6 +57,7 @@ def _cmd_size(args: argparse.Namespace) -> int:
             "db_file": str(db_file),
             "logical_bytes": database_size_bytes(conn),
             "file_bytes": db_file_bytes(db_file),
+            "page_count": page_count(conn),
             "free_pages": free_page_count(conn),
             "free_bytes": free_bytes(conn),
             "used_bytes": used_bytes(conn),
@@ -69,6 +71,7 @@ def _cmd_size(args: argparse.Namespace) -> int:
         print(f"DB:                {info['db_file']}")
         print(f"Logisch:           {info['logical_bytes']:,} Bytes")
         print(f"Datei (mit WAL):   {info['file_bytes']:,} Bytes")
+        print(f"Page-Count:        {info['page_count']}")
         print(f"Free-Pages:        {info['free_pages']}")
         print(f"Free-Bytes:        {info['free_bytes']:,} Bytes")
         print(f"Used-Bytes:        {info['used_bytes']:,} Bytes")

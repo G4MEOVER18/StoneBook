@@ -8,7 +8,8 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       foreign_key_check, free_bytes,
                                       free_page_count, fts_integrity_check,
                                       fts_optimize, fts_rebuild, optimize,
-                                      quick_check, used_bytes, vacuum)
+                                      page_count, quick_check, used_bytes,
+                                      vacuum)
 from stonebook.db.repository import ObjectRepo
 
 
@@ -48,6 +49,77 @@ def test_vacuum_verkleinert_db_nach_loesch(tmp_path):
         assert after <= before
         assert after < bytes_voll
         assert free_page_count(c) == 0
+    finally:
+        c.close()
+
+
+def test_page_count_leere_db_positiv(tmp_path):
+    """Frisch angelegte DB hat mindestens eine allokierte Seite.
+
+    Spiegelt database_size_bytes > 0 auf der Seiten-Achse: SQLite legt
+    beim Anlegen der Datei mindestens den Header und eine Katalog-Seite
+    an. Der genaue Wert ist SQLite-Version- und Schema-abhaengig, aber
+    strikt positiv - eine DB mit page_count == 0 wuerde eine leere Datei
+    ohne Header bedeuten und ist nur waehrend eines abgebrochenen
+    Erstellungs-Pfads moeglich.
+    """
+    c = open_db(tmp_path / "empty.sqlite3")
+    try:
+        assert page_count(c) > 0
+    finally:
+        c.close()
+
+
+def test_page_count_stimmt_mit_database_size_bytes_durch_page_size(tmp_path):
+    """Konsistenz-Invariante: page_count == database_size_bytes / page_size.
+
+    page_count ist der Seiten-Zaehler, database_size_bytes die Bytes-Form
+    (page_count * page_size); beide Kennzahlen muessen strikt zusammen-
+    passen, damit Wartungs-Reporter die Seiten- und Bytes-Achsen ohne
+    Divergenz nebeneinander zeigen koennen. Reuse-Path-Sanity: nach dem
+    Refactoring nutzt database_size_bytes den page_count-Helper als
+    single-source-of-truth, statt PRAGMA page_count parallel abzufragen -
+    dieser Test bewacht die Konsistenz gegen Regressionen.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        # Genug Datenmenge, dass mehrere Seiten belegt werden.
+        for i in range(1, 201):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50)
+        page_size = int(c.execute("PRAGMA page_size").fetchone()[0])
+        assert page_count(c) > 1
+        assert database_size_bytes(c) == page_count(c) * page_size
+    finally:
+        c.close()
+
+
+def test_page_count_ist_hoechstens_gleich_und_nie_kleiner_free_page_count(tmp_path):
+    """Rand-Achsen-Invariante: page_count >= free_page_count.
+
+    Die Freilist ist per Definition eine Teilmenge der allokierten Seiten,
+    daher ist page_count die Obergrenze fuer free_page_count. Spiegelt
+    die free_bytes <= database_size_bytes-Invariante auf die Seiten-Ebene
+    und schuetzt gegen kuenstlich manipulierte PRAGMA-Werte, bei denen
+    ``freelist_count`` groesser als ``page_count`` sein koennte.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 201):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50)
+        # Nach Loesch-Zyklus liegt Freilist > 0.
+        c.execute(
+            "DELETE FROM objects "
+            "WHERE substr(obj_id, -1) IN ('0','1','2','3','4')")
+        c.commit()
+        assert free_page_count(c) > 0
+        assert page_count(c) >= free_page_count(c)
+        # Nach VACUUM ist die Freilist leer; page_count kann strikt groesser sein
+        # (die verbliebenen Objekte belegen weiterhin Seiten).
+        vacuum(c)
+        assert free_page_count(c) == 0
+        assert page_count(c) > 0
     finally:
         c.close()
 

@@ -21,6 +21,10 @@ def test_size_text(tmp_path, capsys):
     assert "Logisch:" in out
     assert "Datei (mit WAL):" in out
     assert "Free-Pages:" in out
+    # page_count-Block ergaenzt free_pages um die Gesamt-Seiten-Achse (Rand-
+    # Sicht der Seiten-Belegung: Gesamt vs. Freilist), spiegelt das Bytes-
+    # Triplett Logisch / Used / Free auf die Seiten-Ebene.
+    assert "Page-Count:" in out
     # free_bytes-Block ergaenzt free_pages um die Bytes-Sicht (Wartungs-
     # Reporter zeigt beide Achsen: Seiten-Zaehler fuer PRAGMA-Debugging,
     # Bytes-Zaehler fuer direkte MB/GB-Vergleiche mit der Datei-Groesse).
@@ -40,6 +44,10 @@ def test_size_json(tmp_path, capsys):
     assert info["logical_bytes"] > 0
     assert info["file_bytes"] > 0
     assert info["free_pages"] == 0
+    # page_count-Grenzfall: eine leere DB liegt strikt > 0 (SQLite legt
+    # mindestens Header + Katalog-Seite an), spiegelt die
+    # database_size_bytes > 0-Konvention auf die Seiten-Ebene.
+    assert info["page_count"] > 0
     # Neu-Angelegte DB hat keine Freilist-Eintraege - free_bytes muss
     # konsistent zu free_pages auf 0 fallen (spiegelt die Grenzfall-
     # Konvention aus free_bytes/free_page_count).
