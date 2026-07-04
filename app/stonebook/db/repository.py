@@ -375,6 +375,8 @@ class ObjectRepo:
                      breite_max: float | None = None,
                      hoehe_min: float | None = None,
                      hoehe_max: float | None = None,
+                     volumen_min: float | None = None,
+                     volumen_max: float | None = None,
                      mohs_min: float | None = None,
                      mohs_max: float | None = None,
                      dichte_min: float | None = None,
@@ -1191,6 +1193,22 @@ class ObjectRepo:
         if hoehe_max is not None:
             where.append("o.Hoehe_mm <= ?")
             params.append(float(hoehe_max))
+        # Volumen_mm3-Filter als kombinierte Groessen-Achse (Produkt L*B*H):
+        # ergaenzt die drei Einzel-Achsen laenge_/breite_/hoehe_min/max um die
+        # Vitrinen-Gesamtgroesse - "welche Stuecke sind ueberhaupt sammelwuerdig
+        # (>= 10 cm3)?" -> volumen_min=10000. Spiegelt die Volumen_mm3-Sortier-
+        # Achse aus SORTABLE_COLUMNS auf die Filter-Ebene. NULL-Eintraege
+        # (mindestens eine Dimension nicht vermessen) fallen durch die
+        # ?-Vergleiche raus, spiegelt die laenge_/breite_/hoehe_-Konvention und
+        # die Produkt-NULL-Semantik der Volumen_mm3-Sortierung.
+        if volumen_min is not None:
+            where.append(
+                "(o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) >= ?")
+            params.append(float(volumen_min))
+        if volumen_max is not None:
+            where.append(
+                "(o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) <= ?")
+            params.append(float(volumen_max))
         # Mohs-Haerte-Filter ueber das min/max-Spaltenpaar: Sammler-Frage
         # "welche Stuecke sind hart genug fuer Schmuck (>=7)?" -> mohs_min=7,
         # filtert auf Mohs_Haerte_min (das Mineral faellt nirgends unter 7).

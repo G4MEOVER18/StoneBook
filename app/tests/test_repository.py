@@ -1970,6 +1970,48 @@ def test_dimensionen_filter_kombiniert(tmp_path):
     c.close()
 
 
+def test_volumen_min_max_filter(tmp_path):
+    """Volumen-Filter als kombinierte Groessen-Achse (Produkt L*B*H).
+
+    Ergaenzt die drei Einzel-Achsen laenge_/breite_/hoehe_min/max um die
+    Vitrinen-Gesamtgroesse - "welche Stuecke sind sammelwuerdig (>=10 cm3)?"
+    -> volumen_min=10000. Spiegelt die Volumen_mm3-Sortier-Achse auf die
+    Filter-Ebene und die Produkt-NULL-Semantik (mind. eine Dimension NULL
+    -> Produkt NULL -> faellt aus dem Filter raus, spiegelt Einzel-Achsen-
+    Filter).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", 120.0, 80.0, 40.0),   # 384000 mm3 - grosses Handstueck
+            ("OBJ_0002",  60.0, 50.0, 50.0),   # 150000 mm3 - mittel
+            ("OBJ_0003",  30.0, 20.0, 80.0),   #  48000 mm3 - klein
+            ("OBJ_0004",  10.0, 10.0, 10.0),   #   1000 mm3 - Mineral-Korn
+            ("OBJ_0005",  None, None, None),   # nicht vermessen
+            ("OBJ_0006", 100.0, 100.0, None),  # teil-vermessen (Produkt NULL)
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Untergrenze: nur Stuecke ab 100k mm3 (100 cm3).
+    rows = repo.list_objects(volumen_min=100_000.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Obergrenze: nur bis 50k mm3.
+    rows = repo.list_objects(volumen_max=50_000.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Mittelbereich: 30k..200k mm3.
+    rows = repo.list_objects(volumen_min=30_000.0, volumen_max=200_000.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # NULL/teil-NULL faellt in allen drei Faellen raus (spiegelt L/B/H-Filter).
+    rows = repo.list_objects(volumen_min=0.0)  # inklusiv-Grenze
+    assert "OBJ_0005" not in {r["obj_id"] for r in rows}
+    assert "OBJ_0006" not in {r["obj_id"] for r in rows}
+    c.close()
+
+
 def test_mohs_min_max_filter(tmp_path):
     """Mohs-Haerte-Filter: Untergrenze auf Mohs_Haerte_min, Obergrenze auf Mohs_Haerte_max.
 
