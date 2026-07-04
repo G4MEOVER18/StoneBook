@@ -1366,6 +1366,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "oldest_stamp": None,
         "newest_stamp": None,
         "days_span": None,
+        "average_gap_days": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1381,6 +1382,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "oldest_stamp": None,
         "newest_stamp": None,
         "days_span": None,
+        "average_gap_days": None,
     }
 
 
@@ -2220,6 +2222,70 @@ def test_backup_directory_stats_days_span_ignoriert_fremde_dateien(tmp_path):
     # 2024-06-01 -> 2024-06-15 = 14 Tage; das Fremd-Archiv 2010 darf nicht
     # in die Spanweite einfliessen (sonst waere sie ~14 Jahre).
     assert info["days_span"] == 14.0
+
+
+def test_backup_directory_stats_average_gap_days_taeglich(tmp_path):
+    """average_gap_days = days_span / (count - 1) bei taeglicher Rotation ~ 1.0.
+
+    Vier Backups an vier aufeinanderfolgenden Tagen (00:00-Stempel)
+    ergeben days_span = 3 Tage (Tag1 -> Tag4), 3 Intervalle,
+    average_gap_days = 1.0 - klassisches Beispiel fuer die Zaun-Post-
+    Regel (n Zeitstempel, n-1 Intervalle). Sichert die Kern-Formel
+    des durchschnittlichen Backup-Abstands: ein Cron-Reporter mit
+    taeglicher Rotation muss den Wert ~1.0 sehen, sonst hat der Cron-
+    Job Ausfaelle gehabt.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in range(4):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    # 4 Backups an 4 Tagen -> Zaun-Post-Regel: days_span = 3, Intervalle = 3
+    assert info["days_span"] == 3.0
+    assert info["average_gap_days"] == 1.0
+
+
+def test_backup_directory_stats_average_gap_days_einzelnes_backup_ist_none(
+        tmp_path):
+    """Bei count == 1 kollabiert average_gap_days auf None (keine Intervalle).
+
+    Grenzfall-Konvention analog stddev_bytes bei Einzel-Stichproben: mit
+    einem einzigen Backup gibt es keinen Vorgaenger, gegen den der
+    Abstand gemessen werden koennte - der Wert ist mathematisch
+    undefined und wird als None ausgeliefert statt einer irrefuehrenden
+    0.0 (die "0 Tage zwischen Backups" suggerieren wuerde und einen
+    Cron-Alarm ausloesen koennte).
+    """
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 13, 12, 0, 0),
+                        500)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["days_span"] == 0.0
+    assert info["average_gap_days"] is None
+
+
+def test_backup_directory_stats_average_gap_days_stundenweise(tmp_path):
+    """Sub-Tag-Aufloesung: fuenf Snapshots im Abstand 6h -> average_gap_days = 0.25.
+
+    Fuenf Backups an fuenf 6-Stunden-Marken (Tag1 00:00, 06:00, 12:00,
+    18:00, Tag2 00:00) ergeben days_span = 1 Tag, 4 Intervalle,
+    average_gap_days = 0.25 - klassisches Beispiel fuer die Bruch-Tage-
+    Aufloesung auf der Frequenz-Achse. Sichert, dass sub-Tag-Anteile
+    nicht durch Integer-Trunkierung verloren gehen, sondern die
+    tatsaechliche Snapshot-Frequenz sichtbar bleibt.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for hour_offset in (0, 6, 12, 18, 24):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(hours=hour_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    assert info["days_span"] == 1.0
+    assert info["average_gap_days"] == 0.25
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

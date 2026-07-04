@@ -1031,6 +1031,38 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     damit CV nicht durch die 0.5-Byte-Rundung von ``average_bytes``
     verzerrt wird).
 
+    ``average_gap_days`` ist der durchschnittliche Abstand in Tagen
+    zwischen aufeinanderfolgenden Backups (``days_span / (count - 1)``)
+    - spiegelt ``average_bytes`` (Durchschnitts-Volumen pro Backup) auf
+    die Zeit-Frequenz-Achse. Waehrend ``days_span`` die absolute
+    Retention-Tiefe beziffert (wie weit reicht die Halde zurueck),
+    beantwortet ``average_gap_days`` die Frequenz-Frage "wie oft wird
+    typischerweise ein Backup geschrieben?" ohne dass der Caller die
+    Formel selbst rechnen muss. Nutzen im Cron-Reporter: bei einer
+    taeglichen Backup-Rotation liefert der Wert ~1.0; bei einer
+    stuendlichen ~1/24; ein Wert > 1 zeigt sporadische Backups (z.B.
+    manuelles Backup nach Bearbeitungssessions), ein Wert < 1/24
+    hyperaktives Snapshotting. Kombiniert mit ``count`` bewacht die
+    Kennzahl die Retention-Vorgabe: bei einer 30-Tage / 30-Backups-
+    Rotation soll ``average_gap_days ~= 1``, ein deutlich groesserer
+    Wert deutet auf ausgefallene Backup-Cronjobs hin. Reuse-Pfad:
+    berechnet als ``days_span / (count - 1)`` aus den bereits vor-
+    handenen Werten (single-source-of-truth, keine parallele stamps-
+    Iteration); die (count - 1)-Divisor-Semantik spiegelt die
+    "Zaun-Post-Regel" der consecutive-intervals-Konvention aus der
+    Time-Series-Statistik (n Punkte haben n-1 Intervalle). Bei
+    ``count < 2`` liefert der Wert ``None`` (keine Intervalle definier-
+    bar - bei 0 Backups gibt es weder Zeit noch Frequenz, bei 1
+    Backup gibt es keinen Vorgaenger als Intervall-Anker), spiegelt
+    die Grenzfall-Konvention von ``stddev_bytes`` bei Einzel-
+    Stichproben (kein Streuungs-Grund). Bei ``count >= 2`` mit
+    ``days_span == 0`` (mehrere Backups im gleichen Sekunden-Stempel,
+    unwahrscheinlich aber moeglich bei Batch-Import) liefert der Wert
+    ``0.0`` (Intervalle sind alle null - die Divison ``0 / (n-1)``
+    ist mathematisch wohldefiniert und gibt 0). Als ``float`` aus-
+    geliefert, spiegelt die ``days_span``-Konvention (Zeit-Achse ist
+    kontinuierlich, keine Integer-Rundung).
+
     ``days_span`` ist die Zeit-Achsen-Spanweite in Tagen zwischen
     ``oldest_stamp`` und ``newest_stamp`` - spiegelt ``range_bytes``
     (Spanweite auf der Volume-Achse) auf die Zeit-Achse. Waehrend
@@ -1072,7 +1104,8 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
     "range_bytes": None, "stddev_bytes": None,
     "variationskoeffizient_bytes_prozent": None,
-    "oldest_stamp": None, "newest_stamp": None, "days_span": None}``.
+    "oldest_stamp": None, "newest_stamp": None, "days_span": None,
+    "average_gap_days": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1133,6 +1166,17 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         oldest = None
         newest = None
         days_span = None
+    # average_gap_days = days_span / (count - 1) mit Zaun-Post-Regel: n
+    # Zeitstempel haben n-1 aufeinanderfolgende Intervalle. Bei count < 2
+    # sind keine Intervalle definierbar (spiegelt stddev-Konvention bei
+    # Einzel-Stichproben) - beide Zaehler (count == 0 mit days_span None,
+    # count == 1 mit days_span == 0.0) sollen None liefern statt eine
+    # irrefuehrende 0 (die Fall count == 1 wuerde sonst als "0 Tage
+    # zwischen Backups" gelesen und ein Cron-Alarm ausloesen).
+    if len(stamps) >= 2:
+        average_gap_days = days_span / (len(stamps) - 1)
+    else:
+        average_gap_days = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1146,6 +1190,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "oldest_stamp": oldest.isoformat() if oldest else None,
         "newest_stamp": newest.isoformat() if newest else None,
         "days_span": days_span,
+        "average_gap_days": average_gap_days,
     }
 
 
