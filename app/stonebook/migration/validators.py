@@ -714,8 +714,14 @@ _DECIMAL_PAIR = re.compile(
     # wurden. Spiegelt das Komma/Semikolon-Verhalten auf den Tab-Separator,
     # ohne die bestehenden Separatoren zu beruehren - re.VERBOSE behandelt
     # \t als gewoehnliches Tab-Literal innerhalb der Zeichenklasse.
+    # Ampersand ``&`` als Separator deckt URL-Query-Parameter-Paare ab
+    # (``?lat=46.5&lon=7.5``, ``?mlat=46.5&mlon=7.5`` aus OpenStreetMap-
+    # /GeoServer-Share-Links): das ``&`` ist der URL-Query-Trenner zwischen
+    # den zwei Parametern und trennt gleichzeitig die Zahlen, sobald die
+    # Label ``lat=``/``lon=``/``mlat=``/``mlon=`` vorher gestrippt sind.
+    # Ohne diesen Zusatz fielen die typischen Share-Links auf None.
     r"""([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # erste Zahl + opt. Richtung
-        \s*[ \t,;/]\s*
+        \s*[ \t,;/&]\s*
         ([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # zweite Zahl + opt. Richtung
     """,
     re.VERBOSE,
@@ -786,6 +792,7 @@ _COORD_LABEL = re.compile(
             latitude | lat | breitengrad | breite
           | longitude | longitudinal | long | lon | laengengrad | laenge
           | längengrad | länge
+          | mlat | mlon                # OpenStreetMap-Share-URL-Query-Parameter
         )
         (?![A-Za-zÄÖÜäöü])     # kein Anschnitt eines laengeren Wortes ("latex")
         \.?\s*[:=]?\s*         # optionaler Punkt + : / = + Whitespace
@@ -1259,6 +1266,17 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     # einfacher und sicherer als alle Zahl-Patterns parallel zu erweitern;
     # U+2212 hat im Koordinaten-Kontext keine andere Bedeutung als "negativ".
     s = s.replace("−", "-")
+    # URL-encoded Komma (``%2C``/``%2c``) auf ASCII-Komma normalisieren, damit
+    # aus dem Browser-Adress-Feld kopierte Geo-URLs (Google Maps ``?q=46.5%2C7.5``,
+    # generische Query-Strings mit RFC-3986-Percent-Encoding des reservierten
+    # ``,``-Zeichens) nicht stille Koordinaten-Verluste erzeugen. Ohne diese
+    # Normalisierung faellt ``46.5%2C7.5`` durch die _DECIMAL_PAIR-Separator-
+    # Klasse ``[ \t,;/&]`` (``%`` gehoert nicht dazu) und liefert None. Single-
+    # Pass-Strip vor allen Pattern-Versuchen ist einfacher und sicherer als
+    # alle Zahl-Patterns parallel um ``%2C``-Alternation zu erweitern; ``%2C``
+    # hat im Koordinaten-Kontext keine andere Bedeutung als Komma. Symmetrisch
+    # zum U+2212-Strip auf der Vorzeichen-Achse.
+    s = s.replace("%2C", ",").replace("%2c", ",")
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):

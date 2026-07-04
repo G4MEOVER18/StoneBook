@@ -1937,3 +1937,82 @@ def test_parse_coordinates_invalid():
     assert parse_coordinates("95.0, 7.5") is None     # lat out of range
     assert parse_coordinates("46.5, 200.0") is None   # lon out of range
     assert parse_coordinates("46.5") is None          # nur eine Zahl
+
+
+def test_parse_coordinates_url_encoded_komma():
+    """URL-encoded Komma (%2C) - aus dem Browser kopierte Geo-URLs.
+
+    Sammler kopieren die Google-Maps- oder generische Share-URL direkt aus dem
+    Browser-Adress-Feld ins Fundort-Feld. Das Komma zwischen lat/lon wird beim
+    RFC-3986-Percent-Encoding als ``%2C`` (Grossbuchstabe, Standard-Konvention)
+    oder ``%2c`` (Kleinbuchstabe, tolerante Encoder-Variante) kodiert. Ohne
+    Normalisierung faellt das Muster durch die _DECIMAL_PAIR-Separator-Klasse
+    (``%`` gehoert nicht dazu) und liefert None.
+    """
+    # Standard Google Maps mit URL-encoded Komma
+    assert parse_coordinates(
+        "https://www.google.com/maps?q=46.5%2C7.5") == (46.5, 7.5)
+    # Kleinbuchstabe-Varianten (tolerante Encoder-Praxis)
+    assert parse_coordinates(
+        "https://www.google.com/maps?q=46.5%2c7.5") == (46.5, 7.5)
+    # Reines Zahlenpaar mit %2C ohne URL-Kontext
+    assert parse_coordinates("46.5%2C7.5") == (46.5, 7.5)
+    # Mit Vorzeichen (Suedhalbkugel)
+    assert parse_coordinates("-46.5%2C-7.5") == (-46.5, -7.5)
+    # Out-of-range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("100%2C50") is None
+    # Regression: normales Komma weiterhin gueltig
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_url_query_params():
+    """URL-Query-Parameter-Formen (lat=/lon=/mlat=/mlon=/latitude=/longitude=).
+
+    OpenStreetMap-Share-Links und generische Geo-URL-Formate uebermitteln
+    Koordinaten als zwei separate Query-Parameter mit ``&``-Separator dazwischen
+    (``?mlat=46.5&mlon=7.5``, ``?lat=46.5&lon=7.5``). Ohne die Erweiterung um
+    ``mlat``/``mlon`` in _COORD_LABEL und ``&`` in der _DECIMAL_PAIR-Separator-
+    Klasse fielen alle Share-URL-Formen stille auf None.
+    """
+    # OSM Share-Link ("mark lat/lon" fuer Marker-Position)
+    assert parse_coordinates(
+        "https://www.openstreetmap.org/?mlat=46.5&mlon=7.5") == (46.5, 7.5)
+    # Reine Query-Params ohne URL-Kontext
+    assert parse_coordinates("?mlat=46.5&mlon=7.5") == (46.5, 7.5)
+    # Generische lat/lon-Parameter
+    assert parse_coordinates("?lat=46.5&lon=7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://example.com/geo?lat=46.5&lon=7.5") == (46.5, 7.5)
+    # Verbose latitude/longitude
+    assert parse_coordinates("?latitude=46.5&longitude=7.5") == (46.5, 7.5)
+    # Case-insensitive
+    assert parse_coordinates("?MLAT=46.5&MLON=7.5") == (46.5, 7.5)
+    # Mit Vorzeichen (Suedhalbkugel)
+    assert parse_coordinates("?lat=-46.5&lon=-7.5") == (-46.5, -7.5)
+    # Mit trailing Fragment (OSM hat oft ein #map=... Suffix nach den Query-Params)
+    assert parse_coordinates(
+        "?mlat=46.5&mlon=7.5#map=15/46.5/7.5") == (46.5, 7.5)
+    # Out-of-range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("?lat=100&lon=50") is None
+    # Fehlender zweiter Parameter -> None (keine halben Koordinaten)
+    assert parse_coordinates("?lat=46.5") is None
+    # Regression: bestehende URL-Formen weiterhin gueltig
+    assert parse_coordinates(
+        "https://www.google.com/maps/@46.5,7.5,15z") == (46.5, 7.5)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_ampersand_separator():
+    """Ampersand als natuerlicher AND-Separator zwischen zwei Zahlen.
+
+    Konsistent zur URL-Query-Anwendung: ``&`` als Separator im _DECIMAL_PAIR
+    laesst auch natuerlich-sprachliche Zahlen-Paare mit ``&`` als Trenner
+    durch (``46.5 & 7.5`` als "46.5 UND 7.5"), was in geerbten Sammlungs-
+    Notizen gelegentlich vorkommt (Excel-Copy-Paste, Hand-Notizen).
+    """
+    assert parse_coordinates("46.5 & 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5&7.5") == (46.5, 7.5)
+    # Regression: bestehende Separatoren weiterhin gueltig
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5; 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
