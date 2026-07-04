@@ -302,6 +302,8 @@ class ObjectRepo:
                      kategorie_in: list[str] | tuple[str, ...] | None = None,
                      only_images: bool = False,
                      has_bilder: bool | None = None,
+                     bilder_min: int | None = None,
+                     bilder_max: int | None = None,
                      has_image_kategorie: str = "",
                      missing_image_kategorie: str = "",
                      min_confidence: int | None = None,
@@ -464,6 +466,33 @@ class ObjectRepo:
         effective_has_bilder = has_bilder if has_bilder is not None else (
             True if only_images else None)
         _append_has_related_filter(where, effective_has_bilder, "images", "obj_id")
+        # bilder_min/bilder_max: Zaehl-basierter Bereichsfilter ueber die Foto-Anzahl
+        # pro Objekt. Verfeinert has_bilder (tri-state 0 vs. >0) auf konkrete
+        # Grenzen ("mindestens 3 Fotos" fuer Vitrinen-Reife oder Auktions-Beleg,
+        # "hoechstens 1 Foto" fuer Foto-Pflege-Restanten). Spiegelt gewicht_min/max
+        # und laenge_min/max auf die berechnete Spalte ``bilder``: derselbe
+        # (SELECT COUNT(*)...)-Subquery wie in der SELECT-Liste, damit der Filter
+        # exakt mit der spaeteren Sortier-Spalte uebereinstimmt (Sortier-nach-
+        # ``bilder`` + Filter ``bilder_min=2`` selektieren dieselbe Zahlen-Domain).
+        # Negative Werte werfen ValueError (Foto-Anzahl kann nicht negativ sein);
+        # bilder_min=0 ist no-op semantisch, wird aber trotzdem ausgefuehrt, um
+        # NULL-Verhalten transparent zu halten (COUNT(*) liefert nie NULL).
+        # Kombinierbar mit has_bilder (bilder_min=1 == has_bilder=True als
+        # redundantes Aequivalent; bilder_max=0 == has_bilder=False).
+        if bilder_min is not None:
+            b = int(bilder_min)
+            if b < 0:
+                raise ValueError(f"bilder_min muss >= 0 sein (war: {b})")
+            where.append(
+                "(SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) >= ?")
+            params.append(b)
+        if bilder_max is not None:
+            b = int(bilder_max)
+            if b < 0:
+                raise ValueError(f"bilder_max muss >= 0 sein (war: {b})")
+            where.append(
+                "(SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) <= ?")
+            params.append(b)
         # has_image_kategorie: nur Objekte mit mindestens einem Bild der genannten Kategorie.
         # missing_image_kategorie: nur Objekte ohne Bild dieser Kategorie - typische
         # Foto-Workflow-Frage ("welche Objekte fehlen UV365-Aufnahmen?").

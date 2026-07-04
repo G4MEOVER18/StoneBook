@@ -1519,6 +1519,69 @@ def test_has_bilder_ueberschreibt_only_images(tmp_path):
     c.close()
 
 
+def test_bilder_min_max_filter(tmp_path):
+    """bilder_min/bilder_max verfeinert has_bilder auf konkrete Foto-Zahlgrenzen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bmm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    # OBJ_0001: 0 Bilder (nicht fotografiert)
+    # OBJ_0002: 1 Bild
+    # OBJ_0003: 3 Bilder
+    # OBJ_0004: 5 Bilder (Foto-Reifegrad Vitrinen-Reife)
+    images = []
+    for count, obj_id in ((1, "OBJ_0002"), (3, "OBJ_0003"), (5, "OBJ_0004")):
+        for k in range(count):
+            images.append((obj_id, "Kamera", f"{obj_id}_{k}.jpg"))
+    c.executemany(
+        "INSERT INTO images (obj_id, kategorie, rel_path) VALUES (?, ?, ?)",
+        images,
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Nur Min: mindestens 2 Fotos - schneidet die 0/1-Foto-Restanten weg
+    rows = repo.list_objects(bilder_min=2)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Nur Max: hoechstens 3 Fotos - Foto-Pflege-Restanten
+    rows = repo.list_objects(bilder_max=3)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kombiniert: 2..4 Fotos
+    rows = repo.list_objects(bilder_min=2, bilder_max=4)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Grenzfall bilder_min=0: keine Wirkung, alle Objekte
+    rows = repo.list_objects(bilder_min=0)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Grenzfall bilder_max=0: nur die 0-Foto-Objekte (== has_bilder=False)
+    rows = repo.list_objects(bilder_max=0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    hb_false = repo.list_objects(has_bilder=False)
+    assert [r["obj_id"] for r in rows] == [r["obj_id"] for r in hb_false]
+    # Grenzfall bilder_min=1: Aequivalent zu has_bilder=True
+    rows_min1 = repo.list_objects(bilder_min=1)
+    rows_hb_true = repo.list_objects(has_bilder=True)
+    assert [r["obj_id"] for r in rows_min1] == [r["obj_id"] for r in rows_hb_true]
+    # Kombination mit has_bilder=True bleibt Schnittmenge (redundant, kein Konflikt)
+    rows = repo.list_objects(bilder_min=3, has_bilder=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    c.close()
+
+
+def test_bilder_min_max_negativ_wirft(tmp_path):
+    """Negative Grenzwerte werfen ValueError (Foto-Anzahl kann nicht negativ sein)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "bmn.sqlite3")
+    c.commit()
+    repo = ObjectRepo(c)
+    with pytest.raises(ValueError, match="bilder_min"):
+        repo.list_objects(bilder_min=-1)
+    with pytest.raises(ValueError, match="bilder_max"):
+        repo.list_objects(bilder_max=-1)
+    c.close()
+
+
 def test_funddatum_iso_range_filter(tmp_path):
     """Tagesgenauer Funddatum-Filter ueber ISO-Strings (lexikographisch)."""
     from stonebook.db.database import open_db
