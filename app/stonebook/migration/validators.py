@@ -620,6 +620,49 @@ _CENTURY_EN = re.compile(
     re.IGNORECASE,
 )
 
+# Relative Position innerhalb eines Jahrhunderts ("Anfang 19. Jahrhundert",
+# "Mitte 20. Jahrhundert", "Ende 19. Jhdt.", "early 19th century",
+# "mid-19th century", "late 20th c."). Spiegelt _RELATIVE_DECADE (relative
+# Position innerhalb einer Dekade) auf die Jahrhundert-Achse - in geerbten
+# Sammlungs-Notizen sehr verbreitet fuer Museums-Provenienz-Vermerke ("Fund
+# aus dem spaeten 19. Jahrhundert", "collected in the mid-20th century"),
+# weil Vorbesitzer und Museums-Kuratoren die Erwerb-/Fund-Phase oft nur
+# grob innerhalb eines Jahrhunderts einordnen konnten. Bisher fielen alle
+# Sprach-Varianten und alle drei Positionen stille auf None, obwohl
+# semantisch eindeutig in das Jahrhundert verortbar.
+#
+# Konvention: Offset innerhalb des Jahrhunderts (0-99):
+#   Anfang/early → 0   (Jahrhundert-Startjahr, z.B. 1800)
+#   Mitte/mid    → 50  (Jahrhundert-Mitte, z.B. 1850)
+#   Ende/late    → 99  (Jahrhundert-Endjahr, z.B. 1899)
+# Spiegelt das _RELATIVE_DECADE_OFFSETS-Schema (Anfang=0/Mitte=5/Ende=9)
+# proportional auf die 100er-Skala. "Ende 19. Jahrhundert" liefert
+# 1899-01-01 (letztes Jahr des Jahrhunderts), "Mitte 19. Jahrhundert"
+# liefert 1850-01-01 (50. Jahr des Jahrhunderts), "Anfang 19. Jahrhundert"
+# liefert 1800-01-01 (deckungsgleich mit _CENTURY "19. Jahrhundert").
+#
+# Pattern kombiniert die _RELATIVE_DECADE-Praefix-Struktur (dieselben sechs
+# Schluesselwoerter, gleicher [-\s]+-Separator) mit der _CENTURY-Suffix-
+# Struktur (DE-Wort-Suffix vs. EN-Ordinal-mit-Wort-Suffix). Zwei getrennte
+# Regexe fuer DE/EN, weil das EN-Ordinalsuffix (st/nd/rd/th) in der DE-Form
+# nicht vorkommt und die DE-Form eine reichere Kurzform-Menge (Jhdt./Jhrdt./
+# Jh.) mitbringt.
+_RELATIVE_CENTURY_OFFSETS: dict[str, int] = {
+    "anfang": 0, "early": 0,
+    "mitte": 50, "mid": 50,
+    "ende": 99, "late": 99,
+}
+_RELATIVE_CENTURY_DE = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
+    r"(\d{1,2})\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    re.IGNORECASE,
+)
+_RELATIVE_CENTURY_EN = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
+    r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:century|cent\.?|c\.)\s*$",
+    re.IGNORECASE,
+)
+
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
@@ -865,6 +908,22 @@ def parse_iso_date(text) -> str | None:
     m = _DECADE.match(s)
     if m:
         year = int(m.group(1))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-01-01"
+        return None
+    # Relative Position innerhalb eines Jahrhunderts ("Anfang 19. Jahrhundert",
+    # "Mitte 20. Jahrhundert", "Ende 19. Jhdt.", "early 19th century",
+    # "mid-19th century", "late 20th c."). Vor dem base _CENTURY_* geprueft,
+    # damit die Praefix-Form ("Anfang 19. Jahrhundert") nicht durch das base
+    # Century-Pattern versucht wird (kein Match wegen "Anfang", aber die
+    # explizite Reihenfolge macht das Verhalten lesbarer). Konvention analog
+    # _RELATIVE_DECADE: Anfang/early → 0, Mitte/mid → 50, Ende/late → 99 als
+    # Offset innerhalb des Jahrhunderts. "Ende 19. Jahrhundert" → 1899-01-01.
+    m = _RELATIVE_CENTURY_DE.match(s) or _RELATIVE_CENTURY_EN.match(s)
+    if m:
+        offset = _RELATIVE_CENTURY_OFFSETS[m.group(1).lower()]
+        century = int(m.group(2))
+        year = (century - 1) * 100 + offset
         if 1800 <= year <= 2999:
             return f"{year:04d}-01-01"
         return None

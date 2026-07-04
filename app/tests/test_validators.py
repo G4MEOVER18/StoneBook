@@ -506,6 +506,78 @@ def test_parse_iso_date_jahrhundert_ungueltig():
     assert parse_iso_date("1985") == "1985-01-01"
 
 
+def test_parse_iso_date_relative_jahrhundert():
+    """Relative Position innerhalb eines Jahrhunderts ('Mitte 19. Jahrhundert',
+    'late 20th century', 'mid-19th c.') spiegelt _RELATIVE_DECADE auf die
+    Jahrhundert-Achse.
+
+    Konvention: Anfang/early=0 (Jahrhundert-Startjahr), Mitte/mid=50
+    (Jahrhundert-Mitte), Ende/late=99 (Jahrhundert-Endjahr). Beispiele:
+    - "Anfang 19. Jahrhundert" → 1800-01-01
+    - "Mitte 19. Jahrhundert" → 1850-01-01
+    - "Ende 19. Jahrhundert" → 1899-01-01
+    """
+    # Deutsche Varianten - Vollform
+    assert parse_iso_date("Anfang 19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("Mitte 19. Jahrhundert") == "1850-01-01"
+    assert parse_iso_date("Ende 19. Jahrhundert") == "1899-01-01"
+    assert parse_iso_date("Anfang 20. Jahrhundert") == "1900-01-01"
+    assert parse_iso_date("Mitte 20. Jahrhundert") == "1950-01-01"
+    assert parse_iso_date("Ende 20. Jahrhundert") == "1999-01-01"
+    assert parse_iso_date("Anfang 21. Jahrhundert") == "2000-01-01"
+    # Deutsche Kurzformen
+    assert parse_iso_date("Mitte 20. Jhdt.") == "1950-01-01"
+    assert parse_iso_date("Ende 19. Jh.") == "1899-01-01"
+    assert parse_iso_date("Anfang 20. Jhrdt.") == "1900-01-01"
+    # Englische Varianten
+    assert parse_iso_date("early 19th century") == "1800-01-01"
+    assert parse_iso_date("mid 19th century") == "1850-01-01"
+    assert parse_iso_date("late 19th century") == "1899-01-01"
+    assert parse_iso_date("early 20th century") == "1900-01-01"
+    assert parse_iso_date("mid 20th century") == "1950-01-01"
+    assert parse_iso_date("late 20th century") == "1999-01-01"
+    # Englische Kurzformen (c./cent.)
+    assert parse_iso_date("early 20th c.") == "1900-01-01"
+    assert parse_iso_date("mid 20th c.") == "1950-01-01"
+    assert parse_iso_date("late 20th cent.") == "1999-01-01"
+    # Englische Bindestrich-Kompositum ("mid-19th century" typische EN-Form)
+    assert parse_iso_date("mid-19th century") == "1850-01-01"
+    assert parse_iso_date("late-19th century") == "1899-01-01"
+    assert parse_iso_date("early-20th century") == "1900-01-01"
+    # EN ohne Ordinalsuffix
+    assert parse_iso_date("mid 20 century") == "1950-01-01"
+    # Case-insensitive (Etiketten in Grossbuchstaben)
+    assert parse_iso_date("ENDE 19. JAHRHUNDERT") == "1899-01-01"
+    assert parse_iso_date("EARLY 20TH CENTURY") == "1900-01-01"
+    assert parse_iso_date("Mitte 20. Jh.") == "1950-01-01"
+    # Rand-Grenzfall: 30. Jhdt. + Ende = 2999 (Obergrenze) muss noch matchen
+    assert parse_iso_date("Ende 30. Jahrhundert") == "2999-01-01"
+
+
+def test_parse_iso_date_relative_jahrhundert_ungueltig():
+    """Ausserhalb des 1800-2999-Bandes, ohne Wort-Suffix, oder Kollisionen -> None."""
+    # 18. Jahrhundert = 1700-1799, komplett unter der 1800-Untergrenze
+    assert parse_iso_date("Anfang 18. Jahrhundert") is None
+    assert parse_iso_date("Mitte 18. Jahrhundert") is None
+    assert parse_iso_date("Ende 18. Jahrhundert") is None
+    # 31. Jahrhundert = 3000-3099, ueber der 2999-Obergrenze
+    assert parse_iso_date("Anfang 31. Jahrhundert") is None
+    assert parse_iso_date("Mitte 31. Jahrhundert") is None
+    assert parse_iso_date("Ende 31. Jahrhundert") is None
+    # 1. Jahrhundert = 0-99, weit ausserhalb
+    assert parse_iso_date("Anfang 1. Jahrhundert") is None
+    # Praefix ohne Century-Suffix bleibt None (nicht als reines Jahr interpretiert)
+    assert parse_iso_date("Anfang 19") is None
+    assert parse_iso_date("Mitte 20") is None
+    # Ohne Praefix bleibt die base Century-Notation aktiv (kein Regress)
+    assert parse_iso_date("19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("20th century") == "1900-01-01"
+    # Relative-Dekade bleibt unangetastet (kein Regress durch Pattern-Kollision)
+    assert parse_iso_date("Mitte 1980er") == "1985-01-01"
+    assert parse_iso_date("Ende 1990s") == "1999-01-01"
+    assert parse_iso_date("Anfang 2000s") == "2000-01-01"
+
+
 def test_parse_iso_date_relative_dekade():
     """Relative Position innerhalb einer Dekade ('Mitte 1980er', 'mid-1990s',
     'Late 2000s') spiegelt _RELATIVE_YEAR auf die Dekaden-Achse.
