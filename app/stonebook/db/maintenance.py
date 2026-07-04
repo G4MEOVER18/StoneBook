@@ -21,6 +21,38 @@ def free_page_count(conn: sqlite3.Connection) -> int:
     return int(conn.execute("PRAGMA freelist_count").fetchone()[0])
 
 
+def free_bytes(conn: sqlite3.Connection) -> int:
+    """Nicht belegte Bytes in der DB-Datei (``free_page_count`` in Bytes).
+
+    Spiegelt :func:`database_size_bytes` (Gesamt-Bytes = Page-Count x
+    Page-Size) auf die Freilist-Achse: waehrend ``database_size_bytes`` die
+    logische Gesamt-Groesse der DB-Datei liefert, beantwortet ``free_bytes``
+    direkt "wieviel Bytes koennte ein VACUUM freigeben?" - ohne dass der
+    Caller ``free_page_count() * page_size()`` selbst berechnen muss.
+    Vervollstaendigt gemeinsam mit :func:`database_size_bytes` die Rand-
+    Sicht auf die Datei-Belegung: total_bytes - free_bytes ergibt die
+    tatsaechlich belegten Bytes ("Netto-Nutzung"), free_bytes / total_bytes
+    die Fragmentierungs-Quote. Beide Kennzahlen zusammen entscheiden im
+    Wartungs-Cron, ob ein VACUUM sich lohnt (typische Faustregel: VACUUM
+    ausfuehren, wenn free_bytes > 10 MB oder free_bytes / total_bytes > 25 %,
+    weil VACUUM die gesamte DB-Datei neu schreibt und selbst Zeit/IO kostet).
+
+    Waehrend :func:`free_page_count` die Freilist als Seiten-Zaehler
+    ausliefert (natuerlich fuer Debugging und Vergleich mit PRAGMA-Output),
+    ist ``free_bytes`` die caller-freundliche Bytes-Achse fuer Reporter/
+    Dashboards, die den Wert direkt mit der Datei-Groesse (in MB/GB)
+    vergleichen. Der Aufruf ist idempotent und liest nur Metadaten (keine
+    Tabellen-Scans), ist damit sicher im Cron-Reporter zusammen mit
+    :func:`database_size_bytes` und :func:`db_file_bytes` in einer
+    einzigen Health-Check-Rundreise aufrufbar. Bei einer frisch angelegten
+    (leeren) DB liegt ``free_bytes`` auf ``0`` (keine geloeschten Seiten in
+    der Freilist), spiegelt die Grenzfall-Konvention von
+    :func:`free_page_count`.
+    """
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    return free_page_count(conn) * page_size
+
+
 def vacuum(conn: sqlite3.Connection) -> tuple[int, int]:
     """Fuehrt ``VACUUM`` aus; gibt (bytes_vorher, bytes_nachher) zurueck.
 

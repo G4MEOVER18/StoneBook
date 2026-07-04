@@ -5,7 +5,7 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       delete_dangling_aliases,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
-                                      foreign_key_check,
+                                      foreign_key_check, free_bytes,
                                       free_page_count, fts_integrity_check,
                                       fts_optimize, fts_rebuild, optimize,
                                       quick_check, vacuum)
@@ -48,6 +48,67 @@ def test_vacuum_verkleinert_db_nach_loesch(tmp_path):
         assert after <= before
         assert after < bytes_voll
         assert free_page_count(c) == 0
+    finally:
+        c.close()
+
+
+def test_free_bytes_leere_db_ist_null(tmp_path):
+    """Frisch angelegte DB hat keine Freilist-Eintraege - free_bytes == 0.
+
+    Spiegelt free_page_count == 0 auf der Bytes-Achse: eine leere DB hat
+    keine geloeschten Seiten, die zurueckgewonnen werden koennten.
+    """
+    c = open_db(tmp_path / "empty.sqlite3")
+    try:
+        assert free_bytes(c) == 0
+    finally:
+        c.close()
+
+
+def test_free_bytes_stimmt_mit_free_page_count_mal_page_size(tmp_path):
+    """Konsistenz-Invariante: free_bytes == free_page_count * page_size.
+
+    free_bytes ist die Bytes-Form von free_page_count auf der Freilist-
+    Achse; beide Kennzahlen muessen strikt zusammenpassen, damit
+    Wartungs-Reporter beide Achsen gleichzeitig zeigen koennen ohne
+    Divergenz zwischen Seiten-Zaehler und Bytes-Zaehler.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 401):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50,
+                        Reaktionshinweis="Wartungs-Test " * 50)
+        c.execute("DELETE FROM objects")
+        c.commit()
+        page_size = int(c.execute("PRAGMA page_size").fetchone()[0])
+        assert free_page_count(c) > 0
+        assert free_bytes(c) == free_page_count(c) * page_size
+        # Nach VACUUM ist die Freilist leer, entsprechend auch die Bytes-Achse.
+        vacuum(c)
+        assert free_page_count(c) == 0
+        assert free_bytes(c) == 0
+    finally:
+        c.close()
+
+
+def test_free_bytes_ist_hoechstens_database_size_bytes(tmp_path):
+    """free_bytes darf nie groesser sein als die logische Gesamt-Groesse.
+
+    Konsistenz-Invariante zwischen den beiden Rand-Achsen (Netto-Nutzung
+    = total - free): die Freilist ist per Definition eine Teilmenge der
+    allokierten Seiten und kann daher nie mehr Bytes beziffern als die
+    ganze DB-Datei ausmacht - schuetzt gegen Rechen-Fehler in der
+    free_bytes-Formel bei kuenstlich manipulierten PRAGMA-Werten.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 201):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50)
+        c.execute("DELETE FROM objects WHERE substr(obj_id, -1) IN ('0','1','2','3','4')")
+        c.commit()
+        assert free_bytes(c) <= database_size_bytes(c)
     finally:
         c.close()
 

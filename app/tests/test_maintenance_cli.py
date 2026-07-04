@@ -21,6 +21,10 @@ def test_size_text(tmp_path, capsys):
     assert "Logisch:" in out
     assert "Datei (mit WAL):" in out
     assert "Free-Pages:" in out
+    # free_bytes-Block ergaenzt free_pages um die Bytes-Sicht (Wartungs-
+    # Reporter zeigt beide Achsen: Seiten-Zaehler fuer PRAGMA-Debugging,
+    # Bytes-Zaehler fuer direkte MB/GB-Vergleiche mit der Datei-Groesse).
+    assert "Free-Bytes:" in out
 
 
 def test_size_json(tmp_path, capsys):
@@ -33,6 +37,10 @@ def test_size_json(tmp_path, capsys):
     assert info["logical_bytes"] > 0
     assert info["file_bytes"] > 0
     assert info["free_pages"] == 0
+    # Neu-Angelegte DB hat keine Freilist-Eintraege - free_bytes muss
+    # konsistent zu free_pages auf 0 fallen (spiegelt die Grenzfall-
+    # Konvention aus free_bytes/free_page_count).
+    assert info["free_bytes"] == 0
 
 
 def test_check_text_ok(tmp_path, capsys):

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
 from stonebook.db.integrity import find_duplicate_image_sha256
-from stonebook.db.maintenance import (analyze, database_size_bytes,
+from stonebook.db.maintenance import (analyze, database_size_bytes, free_bytes,
                                       db_file_bytes, deep_check,
                                       delete_dangling_aliases,
                                       delete_orphan_images,
@@ -56,6 +56,7 @@ def _cmd_size(args: argparse.Namespace) -> int:
             "logical_bytes": database_size_bytes(conn),
             "file_bytes": db_file_bytes(db_file),
             "free_pages": free_page_count(conn),
+            "free_bytes": free_bytes(conn),
         }
     finally:
         conn.close()
@@ -67,6 +68,7 @@ def _cmd_size(args: argparse.Namespace) -> int:
         print(f"Logisch:           {info['logical_bytes']:,} Bytes")
         print(f"Datei (mit WAL):   {info['file_bytes']:,} Bytes")
         print(f"Free-Pages:        {info['free_pages']}")
+        print(f"Free-Bytes:        {info['free_bytes']:,} Bytes")
     return 0
 
 
