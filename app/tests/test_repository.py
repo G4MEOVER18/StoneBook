@@ -680,6 +680,69 @@ def test_has_ki_analyse_filter(tmp_path):
     c.close()
 
 
+def test_analysen_min_max_filter(tmp_path):
+    """analysen_min/max verfeinert has_ki_analyse auf konkrete Lauf-Zahlgrenzen."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "amm.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id) VALUES (?)",
+        [("OBJ_0001",), ("OBJ_0002",), ("OBJ_0003",), ("OBJ_0004",)],
+    )
+    # OBJ_0001: 0 Analysen (noch nicht analysiert)
+    # OBJ_0002: 1 Analyse (Erst-Lauf)
+    # OBJ_0003: 3 Analysen (Erst + Re-Analyse mit Tilt/UV)
+    # OBJ_0004: 5 Analysen (mineralogisch unsicherer Fall mit vielen Re-Laufen)
+    entries = []
+    for count, obj_id in ((1, "OBJ_0002"), (3, "OBJ_0003"), (5, "OBJ_0004")):
+        for k in range(count):
+            entries.append((obj_id, "claude-sonnet-4-6", "{}"))
+    c.executemany(
+        "INSERT INTO ki_analysen (obj_id, modell, antwort_json) VALUES (?, ?, ?)",
+        entries,
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Nur Min: mindestens 2 Laeufe - trennt die einmalig/nicht analysierten weg
+    rows = repo.list_objects(analysen_min=2)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # Nur Max: hoechstens 3 Laeufe - Nachhol-Kandidaten
+    rows = repo.list_objects(analysen_max=3)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kombiniert: 2..4 Laeufe
+    rows = repo.list_objects(analysen_min=2, analysen_max=4)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Grenzfall analysen_min=0: keine Wirkung, alle Objekte
+    rows = repo.list_objects(analysen_min=0)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    # Grenzfall analysen_max=0: nur die Objekte ohne Analyse (== has_ki_analyse=False)
+    rows = repo.list_objects(analysen_max=0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    hki_false = repo.list_objects(has_ki_analyse=False)
+    assert [r["obj_id"] for r in rows] == [r["obj_id"] for r in hki_false]
+    # Grenzfall analysen_min=1: Aequivalent zu has_ki_analyse=True
+    rows_min1 = repo.list_objects(analysen_min=1)
+    rows_hki_true = repo.list_objects(has_ki_analyse=True)
+    assert [r["obj_id"] for r in rows_min1] == [r["obj_id"] for r in rows_hki_true]
+    # Kombination mit has_ki_analyse=True bleibt Schnittmenge (redundant)
+    rows = repo.list_objects(analysen_min=3, has_ki_analyse=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    c.close()
+
+
+def test_analysen_min_max_negativ_wirft(tmp_path):
+    """Negative Grenzwerte werfen ValueError (Analyse-Anzahl kann nicht negativ sein)."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "amn.sqlite3")
+    c.commit()
+    repo = ObjectRepo(c)
+    with pytest.raises(ValueError, match="analysen_min"):
+        repo.list_objects(analysen_min=-1)
+    with pytest.raises(ValueError, match="analysen_max"):
+        repo.list_objects(analysen_max=-1)
+    c.close()
+
+
 def test_has_ki_analyse_uebernommen_filter(tmp_path):
     """has_ki_analyse_uebernommen findet Objekte mit mind. einem uebernommenen Vorschlag."""
     from stonebook.db.database import open_db

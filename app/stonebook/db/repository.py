@@ -335,6 +335,8 @@ class ObjectRepo:
                      has_dichte: bool | None = None,
                      has_dimensionen: bool | None = None,
                      has_ki_analyse: bool | None = None,
+                     analysen_min: int | None = None,
+                     analysen_max: int | None = None,
                      has_ki_analyse_uebernommen: bool | None = None,
                      has_alias: bool | None = None,
                      funddatum_jahr_min: int | None = None,
@@ -765,6 +767,40 @@ class ObjectRepo:
         # ist FK auf objects.obj_id mit ON DELETE CASCADE - geloeschte Objekte
         # haben automatisch keine verwaisten Analyse-Eintraege.
         _append_has_related_filter(where, has_ki_analyse, "ki_analysen", "obj_id")
+        # analysen_min/analysen_max: Zaehl-basierter Bereichsfilter ueber die KI-
+        # Analyse-Anzahl pro Objekt. Verfeinert has_ki_analyse (tri-state 0 vs. >0)
+        # auf konkrete Grenzen ("mindestens 3 Laeufe" fuer intensiv analysierte
+        # mineralogisch unsichere Faelle, "hoechstens 1 Lauf" fuer flache KI-Historie).
+        # Spiegelt bilder_min/max auf die berechnete Spalte ``analysen``: derselbe
+        # (SELECT COUNT(*) FROM ki_analysen...)-Subquery wie in der SELECT-Liste,
+        # damit der Filter exakt mit der Sortier-Spalte uebereinstimmt (Sortier-
+        # nach-``analysen`` + Filter ``analysen_min=2`` selektieren dieselbe
+        # Zahlen-Domain, kein Drift zwischen Filter- und Sortier-Definition).
+        # Sammler-Frage: "welche Stuecke haben die tiefste KI-Analyse-Historie
+        # (>=3 Laeufe, typisch fuer mineralogisch unsichere Faelle mit mehreren
+        # Re-Analysen unter Tilt/UV/Mikroskop)?" -> analysen_min=3; "welche haben
+        # noch keinen Re-Lauf (max. 1 Analyse) und koennten mit besserer Foto-Lage
+        # profitieren?" -> analysen_max=1. Negative Werte werfen ValueError (KI-
+        # Analyse-Anzahl kann nicht negativ sein); analysen_min=0 ist no-op
+        # semantisch (COUNT(*) liefert nie NULL, alle Objekte passen die Bedingung),
+        # analysen_max=0 == has_ki_analyse=False, analysen_min=1 == has_ki_analyse=
+        # True. Kombinierbar mit has_ki_analyse als redundante Schnittmenge und
+        # mit has_ki_analyse_uebernommen zur Diagnose "3 Laeufe, keiner
+        # uebernommen" (Verwerfungs-Kandidaten fuer Re-Analyse mit neuer Foto-Lage).
+        if analysen_min is not None:
+            a = int(analysen_min)
+            if a < 0:
+                raise ValueError(f"analysen_min muss >= 0 sein (war: {a})")
+            where.append(
+                "(SELECT COUNT(*) FROM ki_analysen k WHERE k.obj_id = o.obj_id) >= ?")
+            params.append(a)
+        if analysen_max is not None:
+            a = int(analysen_max)
+            if a < 0:
+                raise ValueError(f"analysen_max muss >= 0 sein (war: {a})")
+            where.append(
+                "(SELECT COUNT(*) FROM ki_analysen k WHERE k.obj_id = o.obj_id) <= ?")
+            params.append(a)
         # has_ki_analyse_uebernommen: tri-state Filter fuer Objekte mit mindestens
         # einer uebernommenen KI-Analyse. Feinere Granularitaet als has_ki_analyse:
         # ein KI-Lauf erzeugt zunaechst nur einen Antwort-Eintrag (antwort_json);
