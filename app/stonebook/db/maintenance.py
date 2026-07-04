@@ -53,6 +53,43 @@ def free_bytes(conn: sqlite3.Connection) -> int:
     return free_page_count(conn) * page_size
 
 
+def used_bytes(conn: sqlite3.Connection) -> int:
+    """Tatsaechlich belegte Bytes in der DB-Datei (``database_size_bytes - free_bytes``).
+
+    Spiegelt :func:`free_bytes` auf die Gegen-Achse der Datei-Belegung:
+    waehrend ``free_bytes`` die durch VACUUM freigebbaren Bytes beziffert,
+    beantwortet ``used_bytes`` direkt "wieviel Bytes traegt der
+    tatsaechliche Datenbestand?" - die reine Netto-Nutzung ohne
+    Fragmentierungs-Overhead. Vervollstaendigt gemeinsam mit
+    :func:`database_size_bytes` (Gesamt) und :func:`free_bytes` (Freilist)
+    das klassische Datei-Belegungs-Triplett total/used/free, spiegelt
+    damit das Muster ``df``/``du``-Reporter aus dem Betriebssystem-
+    Vokabular auf die SQLite-DB-Ebene. Beantwortet in einem Schritt "wie
+    viele Nutzdaten-Bytes stehen in meiner Sammlung?" ohne dass der
+    Caller ``database_size_bytes() - free_bytes()`` selbst berechnen muss;
+    besonders praktisch fuer Reporter-Ausgaben, die die Netto-Nutzung
+    ueber die Zeit (nach Datenpflege-Sessions) unabhaengig von der
+    Fragmentierung verfolgen wollen. Der Aufruf ist idempotent und liest
+    nur Metadaten (PRAGMA page_count / page_size / freelist_count), ist
+    damit sicher im Cron-Reporter zusammen mit :func:`database_size_bytes`
+    / :func:`free_bytes` / :func:`db_file_bytes` in einer einzigen
+    Health-Check-Rundreise aufrufbar (kein Tabellen-Scan).
+
+    Reuse-Pfad: berechnet als ``database_size_bytes() - free_bytes()``
+    aus den bereits vorhandenen Helpern (single-source-of-truth fuer
+    Page-Count und Freilist, keine dritte parallele PRAGMA-Auswertung).
+    Bei einer frisch angelegten (leeren) DB kollabiert ``used_bytes`` auf
+    ``database_size_bytes`` (kein Free-Anteil abzuziehen), spiegelt die
+    Grenzfall-Konvention von :func:`free_bytes` == 0 bei leerer DB. Nach
+    einem VACUUM ist die Freilist wieder leer, entsprechend faellt
+    ``used_bytes`` erneut mit ``database_size_bytes`` zusammen - das
+    macht ``used_bytes`` zum stabilsten der drei Werte gegenueber
+    Fragmentierungs-Schwankungen (spiegelt die vacuum-Idempotenz-
+    Konvention).
+    """
+    return database_size_bytes(conn) - free_bytes(conn)
+
+
 def vacuum(conn: sqlite3.Connection) -> tuple[int, int]:
     """Fuehrt ``VACUUM`` aus; gibt (bytes_vorher, bytes_nachher) zurueck.
 

@@ -25,6 +25,9 @@ def test_size_text(tmp_path, capsys):
     # Reporter zeigt beide Achsen: Seiten-Zaehler fuer PRAGMA-Debugging,
     # Bytes-Zaehler fuer direkte MB/GB-Vergleiche mit der Datei-Groesse).
     assert "Free-Bytes:" in out
+    # used_bytes-Block vervollstaendigt das total/used/free-Triplett auf
+    # die Datei-Belegungs-Sicht (df/du-Vokabular auf SQLite-DB-Ebene).
+    assert "Used-Bytes:" in out
 
 
 def test_size_json(tmp_path, capsys):
@@ -41,6 +44,9 @@ def test_size_json(tmp_path, capsys):
     # konsistent zu free_pages auf 0 fallen (spiegelt die Grenzfall-
     # Konvention aus free_bytes/free_page_count).
     assert info["free_bytes"] == 0
+    # used_bytes-Grenzfall: bei leerer DB (Freilist leer) faellt used_bytes
+    # mit logical_bytes zusammen (Total = Used + Free, mit Free = 0).
+    assert info["used_bytes"] == info["logical_bytes"]
 
 
 def test_check_text_ok(tmp_path, capsys):

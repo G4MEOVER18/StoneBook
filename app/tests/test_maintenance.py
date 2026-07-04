@@ -8,7 +8,7 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       foreign_key_check, free_bytes,
                                       free_page_count, fts_integrity_check,
                                       fts_optimize, fts_rebuild, optimize,
-                                      quick_check, vacuum)
+                                      quick_check, used_bytes, vacuum)
 from stonebook.db.repository import ObjectRepo
 
 
@@ -109,6 +109,73 @@ def test_free_bytes_ist_hoechstens_database_size_bytes(tmp_path):
         c.execute("DELETE FROM objects WHERE substr(obj_id, -1) IN ('0','1','2','3','4')")
         c.commit()
         assert free_bytes(c) <= database_size_bytes(c)
+    finally:
+        c.close()
+
+
+def test_used_bytes_leere_db_ist_database_size_bytes(tmp_path):
+    """Frisch angelegte DB hat keine Freilist - used_bytes == database_size_bytes.
+
+    Grenzfall-Konvention: ohne Freilist gibt es keinen Abzug, die
+    tatsaechliche Nutzung faellt mit der Gesamt-Groesse zusammen. Spiegelt
+    die free_bytes == 0-Konvention auf die used-Achse (total - 0 == total).
+    """
+    c = open_db(tmp_path / "empty.sqlite3")
+    try:
+        assert used_bytes(c) == database_size_bytes(c)
+        # Und die used/free-Zerlegung geht auf: total = used + free.
+        assert used_bytes(c) + free_bytes(c) == database_size_bytes(c)
+    finally:
+        c.close()
+
+
+def test_used_bytes_ist_total_minus_free(tmp_path):
+    """Konsistenz-Invariante: used_bytes == database_size_bytes - free_bytes.
+
+    Klassische df/du-Triplett-Zerlegung total = used + free auf die
+    SQLite-DB-Ebene: die drei Rand-Achsen der Datei-Belegung muessen
+    strikt auf einander passen, damit Wartungs-Reporter alle drei
+    gleichzeitig zeigen koennen ohne Divergenz.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 401):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50,
+                        Reaktionshinweis="Wartungs-Test " * 50)
+        c.execute("DELETE FROM objects")
+        c.commit()
+        assert free_bytes(c) > 0
+        # Kern-Invariante (used = total - free) direkt gegen die Helper-Formel:
+        assert used_bytes(c) == database_size_bytes(c) - free_bytes(c)
+        # Und die Additivitaet (total = used + free) als Roundtrip:
+        assert used_bytes(c) + free_bytes(c) == database_size_bytes(c)
+    finally:
+        c.close()
+
+
+def test_used_bytes_nach_vacuum_stabil_gegen_fragmentierung(tmp_path):
+    """Nach VACUUM ist die Freilist wieder leer - used == total (kein Free-Abzug).
+
+    Damit ist used_bytes der stabilste der drei Werte gegenueber
+    Fragmentierungs-Schwankungen: waehrend total_bytes und free_bytes
+    durch Insert-Delete-Zyklen schwanken (total waechst, free waechst
+    ebenfalls), zeigt used_bytes die tatsaechliche Nutzdaten-Menge, die
+    sich nach dem VACUUM erneut mit total_bytes deckt.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 201):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50)
+        c.execute("DELETE FROM objects WHERE substr(obj_id, -1) IN ('0','1','2','3','4')")
+        c.commit()
+        assert free_bytes(c) > 0  # Fragmentierung nach Delete-Zyklus
+        vacuum(c)
+        # Nach VACUUM: Freilist leer, used == total (spiegelt die
+        # Idempotenz-Konvention von vacuum auf die used-Achse).
+        assert free_bytes(c) == 0
+        assert used_bytes(c) == database_size_bytes(c)
     finally:
         c.close()
 
