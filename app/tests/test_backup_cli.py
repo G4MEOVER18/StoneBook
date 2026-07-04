@@ -242,6 +242,85 @@ def test_stale_ohne_kandidaten_exit_0(tmp_path, capsys):
     assert jung.exists() is True
 
 
+def test_excess_listet_alte_backups_ohne_zu_loeschen(tmp_path, capsys):
+    """excess Subcommand: aeltere Backups jenseits keep werden gelistet, Files bleiben da.
+
+    Spiegelt :func:`test_stale_listet_alte_backups_ohne_zu_loeschen` auf
+    die Count-Achse: statt Cutoff nach Alter jetzt Cutoff nach
+    Anzahl. Vier Backups mit unterschiedlichen Stempeln, ``--keep 2``
+    listet die zwei aeltesten (die :func:`_cmd_prune` loeschen wuerde),
+    ohne etwas zu bewegen. Exit-Code 1 bei Fund (spiegelt
+    stale/fts-check/check).
+    """
+    backup_dir = tmp_path / "e"
+    backup_dir.mkdir()
+    stamps = ["19700101_000000", "20200101_000000",
+              "20230101_000000", "20240101_000000"]
+    paths = []
+    for s in stamps:
+        p = backup_dir / f"stonebook_backup_{s}.json.gz"
+        p.write_bytes(b"")
+        paths.append(p)
+
+    exit_code = main(["excess", "--backup-dir", str(backup_dir),
+                      "--keep", "2"])
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "19700101" in out
+    assert "20200101" in out
+    assert "20230101" not in out
+    assert "20240101" not in out
+    for p in paths:
+        assert p.exists() is True
+
+
+def test_excess_ohne_kandidaten_exit_0(tmp_path, capsys):
+    """excess Subcommand: <= keep Backups -> keine Ausgabe, Exit 0.
+
+    Cron-Reporter-Pfad: gruen bedeutet leere Ausgabe und Exit 0. Kein
+    Rausch-Log fuer "unter der Grenze".
+    """
+    backup_dir = tmp_path / "ef"
+    backup_dir.mkdir()
+    for s in ("20230101_000000", "20240101_000000"):
+        (backup_dir / f"stonebook_backup_{s}.json.gz").write_bytes(b"")
+
+    exit_code = main(["excess", "--backup-dir", str(backup_dir),
+                      "--keep", "5"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_excess_ignoriert_fremde_dateien(tmp_path, capsys):
+    """excess Subcommand ignoriert Fremd-Dateien im Backup-Ordner.
+
+    Spiegelt :func:`test_prune_ignoriert_fremde_dateien` /
+    :func:`test_stale_.*ignoriert.*` : nur ``stonebook_backup_*.json[.gz]``
+    zaehlt fuer die Grenze, die Fremd-Datei bleibt garantiert erhalten und
+    darf die keep-Zaehlung nicht verschieben.
+    """
+    backup_dir = tmp_path / "ex"
+    backup_dir.mkdir()
+    alt = backup_dir / "stonebook_backup_19700101_000000.json.gz"
+    alt.write_bytes(b"")
+    jung = backup_dir / "stonebook_backup_20240101_000000.json.gz"
+    jung.write_bytes(b"")
+    fremd = backup_dir / "README.txt"
+    fremd.write_text("nicht ein Backup", encoding="utf-8")
+
+    exit_code = main(["excess", "--backup-dir", str(backup_dir),
+                      "--keep", "1"])
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "19700101" in out
+    assert "20240101" not in out
+    assert "README" not in out
+    assert fremd.exists() is True
+
+
 def test_write_fehlende_db_exit_2(tmp_path, capsys):
     exit_code = main(["write",
                       "--backup-dir", str(tmp_path / "x"),

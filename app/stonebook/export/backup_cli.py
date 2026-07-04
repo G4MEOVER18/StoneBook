@@ -11,6 +11,7 @@ Beispiele:
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli prune-gfs --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
     python -m stonebook.export.backup_cli stale     --backup-dir backups/ --max-age-days 30
+    python -m stonebook.export.backup_cli excess    --backup-dir backups/ --keep 10
     python -m stonebook.export.backup_cli inspect <file>
     python -m stonebook.export.backup_cli validate <file>
     python -m stonebook.export.backup_cli compare <alt> <neu>
@@ -32,6 +33,7 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           compare_backup_to_db, compare_backups,
                                           diff_backup_object_fields,
                                           diff_backup_to_db_object_fields,
+                                          find_excess_backups,
                                           find_stale_backups, import_json,
                                           inspect_backup, largest_backup,
                                           latest_backup, list_backups,
@@ -188,6 +190,26 @@ def _cmd_stale(args: argparse.Namespace) -> int:
     for p in stale:
         print(p)
     return 1 if stale else 0
+
+
+def _cmd_excess(args: argparse.Namespace) -> int:
+    """Listet Backups, die ``prune --keep N`` loeschen wuerde, ohne zu loeschen.
+
+    Reine Lese-/Check-Variante von :func:`_cmd_prune` auf der Count-Achse,
+    symmetrisch zu :func:`_cmd_stale` (Check-Variante von
+    :func:`_cmd_prune_age` auf der Zeit-Achse). Geeignet als
+    Pre-Flight-Report vor ``prune`` (welche Dateien wuerden weg?) und als
+    Monitoring-Check in Cronjobs (Exit 1 signalisiert "es liegen mehr als
+    N Backups herum"), ohne dass der Cron-User pruning-Rechte braucht.
+
+    Exit-Code 1 wenn excess Backups gefunden wurden, sonst 0 (spiegelt
+    das check-Muster von ``stale`` / ``fts-check`` / ``fkcheck`` /
+    ``check``).
+    """
+    excess = find_excess_backups(args.backup_dir, keep=args.keep)
+    for p in excess:
+        print(p)
+    return 1 if excess else 0
 
 
 def _cmd_prune_age(args: argparse.Namespace) -> int:
@@ -485,6 +507,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--max-age-days", type=int, required=True,
                     help="Hoechst-Alter in Tagen; aeltere Backups werden gelistet.")
     sp.set_defaults(func=_cmd_stale)
+
+    sp = sub.add_parser(
+        "excess",
+        help="Backups jenseits der keep-Grenze listen, ohne zu loeschen "
+             "(Pre-Flight-Report vor prune); Exit 1 bei Fund.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.add_argument("--keep", type=int, required=True,
+                    help="Anzahl juengster Backups, die behalten wuerden; "
+                         "aeltere Backups werden gelistet.")
+    sp.set_defaults(func=_cmd_excess)
 
     sp = sub.add_parser("inspect", help="Backup-Inhalt anzeigen (counts + meta).")
     sp.add_argument("path", type=Path)

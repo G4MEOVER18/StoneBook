@@ -9,6 +9,7 @@ from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           backup_directory_stats, export_json,
+                                          find_excess_backups,
                                           find_stale_backups, import_json,
                                           inspect_backup, largest_backup,
                                           latest_backup, list_backups,
@@ -2267,4 +2268,110 @@ def test_find_stale_backups_matches_prune_kandidaten(tmp_path):
 
     assert [p.name for p in stale_before] == [p.name for p in deleted]
     assert find_stale_backups(backups_dir, max_age_days=30, now=now) == []
+    db.close()
+
+
+def test_find_excess_backups_listet_alte_ohne_zu_loeschen(tmp_path):
+    """find_excess_backups liefert die Kandidaten fuer prune_old_backups.
+
+    Reine Lese-/Check-Variante auf der Count-Achse: gleiche Kandidatenmenge
+    wie :func:`prune_old_backups(keep=N)` (die aeltesten Dateien jenseits
+    der keep-Grenze), aber ohne Loeschung. Bildet damit das check-Ende des
+    check/fix-Paares symmetrisch zu :func:`find_stale_backups` (check-Ende
+    von :func:`prune_backups_by_age` auf der Zeit-Achse).
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (40, 30, 20, 10, 5):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    assert len(list_backups(backups_dir)) == 5
+
+    excess = find_excess_backups(backups_dir, keep=2)
+
+    assert len(excess) == 3
+    assert "20240504" in excess[0].name
+    assert "20240514" in excess[1].name
+    assert "20240524" in excess[2].name
+    assert len(list_backups(backups_dir)) == 5
+    db.close()
+
+
+def test_find_excess_backups_leere_liste_wenn_unter_grenze(tmp_path):
+    """Sind hoechstens ``keep`` Backups vorhanden, ist die excess-Liste leer."""
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (10, 5):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+
+    assert find_excess_backups(backups_dir, keep=5) == []
+    assert find_excess_backups(backups_dir, keep=2) == []
+    db.close()
+
+
+def test_find_excess_backups_keep_zu_klein_raises(tmp_path):
+    """keep < 1 wirft ValueError (spiegelt prune_old_backups)."""
+    with pytest.raises(ValueError):
+        find_excess_backups(tmp_path / "b", keep=0)
+
+
+def test_find_excess_backups_fehlender_ordner(tmp_path):
+    """Fehlender Backup-Ordner liefert [] (spiegelt list_backups)."""
+    assert find_excess_backups(tmp_path / "gibt-es-nicht", keep=3) == []
+
+
+def test_find_excess_backups_ignoriert_fremde_dateien(tmp_path):
+    """Fremde Dateien im Backup-Ordner werden ignoriert.
+
+    Spiegelt :func:`prune_old_backups`: nur Dateien nach dem
+    ``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``-Muster kommen in Frage.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (40, 20):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+    (backups_dir / "README.txt").write_text("nicht ein Backup", encoding="utf-8")
+    (backups_dir / "andere_backup_20100101_000000.json.gz").write_bytes(b"")
+
+    excess = find_excess_backups(backups_dir, keep=1)
+
+    assert len(excess) == 1
+    assert excess[0].name.startswith("stonebook_backup_")
+    assert "20240504" in excess[0].name
+    db.close()
+
+
+def test_find_excess_backups_matches_prune_kandidaten(tmp_path):
+    """find_excess_backups liefert exakt die Menge, die prune_old_backups loeschen wuerde.
+
+    Vertrag: die keep-Semantik ist zwischen check (find_excess_backups)
+    und fix (prune_old_backups) identisch. Der Test legt vier Backups an
+    und prueft, dass die excess-Liste vor dem prune gleich der geloeschten
+    Liste danach ist.
+    """
+    db = open_db(tmp_path / "x.sqlite3")
+    db.execute("INSERT INTO objects (obj_id) VALUES ('OBJ_0001')")
+    db.commit()
+    backups_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (40, 30, 20, 10):
+        stamp = now - datetime.timedelta(days=days_back)
+        write_rotated_backup(db, backups_dir, keep=99, now=stamp)
+
+    excess_before = find_excess_backups(backups_dir, keep=2)
+    deleted = prune_old_backups(backups_dir, keep=2)
+
+    assert [p.name for p in excess_before] == [p.name for p in deleted]
+    assert find_excess_backups(backups_dir, keep=2) == []
     db.close()

@@ -669,6 +669,42 @@ def prune_old_backups(backup_dir: Path, keep: int) -> list[Path]:
     return deleted
 
 
+def find_excess_backups(backup_dir: Path, keep: int) -> list[Path]:
+    """Listet die aeltesten Backups, die ``prune_old_backups(keep)`` loeschen wuerde.
+
+    Reine Lese-/Check-Variante von :func:`prune_old_backups` - berechnet die
+    gleiche Kandidatenmenge (die ``len(list_backups) - keep`` aeltesten
+    Dateien nach Filename-Stempel), loescht aber nichts. Bildet damit das
+    check-Ende des check/fix-Paares auf der Count-Achse, symmetrisch zu
+    :func:`find_stale_backups` (check-Ende von :func:`prune_backups_by_age`
+    auf der Zeit-Achse) und zu :func:`stonebook.db.integrity.find_orphan_images`
+    (check-Ende von ``delete_orphan_images`` auf der FK-Achse).
+
+    Nutzen: Cron-Reporter kann die excess-Liste erst loggen, dann prune
+    entscheiden lassen (oder gar nicht); ein Bestaetigungs-Dialog kann dem
+    User zeigen, welche konkreten Dateien beim naechsten ``prune``
+    verloren gingen, bevor er OK klickt; ein Monitoring-Job kann Exit 1
+    liefern, sobald mehr als ``keep`` Backups herumliegen, ohne selbst
+    pruning-Rechte zu brauchen.
+
+    Reihenfolge = ``list_backups``-Reihenfolge (aeltester Dateiname zuerst,
+    spiegelt die Loesch-Reihenfolge von :func:`prune_old_backups`), damit
+    die Ausgabe deterministisch bleibt und ein CLI-Reporter direkt
+    "aeltestes zuerst" listen kann.
+
+    ``keep < 1`` wirft ``ValueError`` (spiegelt :func:`prune_old_backups`).
+    Fehlender Ordner -> ``[]`` (spiegelt :func:`list_backups` /
+    :func:`find_stale_backups`). Ordner mit ``<= keep`` Backups liefert
+    ``[]`` (nichts zu tun).
+    """
+    if keep < 1:
+        raise ValueError("keep muss >= 1 sein")
+    existing = list_backups(backup_dir)
+    if len(existing) <= keep:
+        return []
+    return existing[:len(existing) - keep]
+
+
 def _parse_backup_stamp(path: Path) -> datetime.datetime | None:
     """Liest den Zeitstempel ``YYYYMMDD_HHMMSS`` aus einem Backup-Dateinamen.
 
