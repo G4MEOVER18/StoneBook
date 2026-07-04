@@ -592,6 +592,34 @@ _RELATIVE_DECADE = re.compile(
     re.IGNORECASE,
 )
 
+# Jahrhundert-Notation (DE/EN) - in geerbten Sammlungs-Notizen die uebliche
+# Grobdatierung fuer Museums-Eingaenge und Provenienz-Vermerke ("Fund aus dem
+# 19. Jahrhundert", "acquired in the 20th century"). Bisher fielen alle Formen
+# stille auf None, obwohl semantisch eindeutig in ein Jahrhundert-Startjahr
+# verortbar - aus einem typischen Etikett wie "19. Jahrhundert" wurde silenter
+# Funddatum-Datenverlust. Konvention: umgangssprachliche Ausrichtung, bei der
+# das Label auf die "18xx"-Jahre zeigt (19. Jahrhundert = 1800er Jahre), analog
+# zur Dekaden-Konvention (1980er → 1980-01-01 = Dekaden-Startjahr). Das ergibt
+# fuer century N das Startjahr (N-1) * 100. Die pedantische Konvention
+# (19. Jhdt. = 1801-1900) wird hier bewusst nicht gewaehlt, weil sie im
+# Sammler-Sprachgebrauch mit dem Label ("18xx") nicht zusammenpasst.
+# DE-Sammler-Vokabular: "Jahrhundert" (Vollform), "Jahrhdt", "Jhrdt", "Jhdt",
+# "Jhrd", "Jh"; alle mit optionalem Trailing-Punkt. Ordinaler Punkt nach der
+# Jahrhundert-Zahl ("19.") ist im Deutschen ueblich, aber auch die punktlose
+# Form ("19 Jahrhundert") kommt in Notizen vor.
+_CENTURY_DE = re.compile(
+    r"^\s*(\d{1,2})\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    re.IGNORECASE,
+)
+# EN: "19th century", "20 century", "19th c." - die Kurzform "c." ist im
+# Englischen der uebliche Century-Abbreviation aus Museums-Katalogen und
+# Auktions-Beschreibungen. Ordinalsuffix (st/nd/rd/th) ist optional
+# (Museums-Etiketten schreiben teils die reine Zahl "19 century").
+_CENTURY_EN = re.compile(
+    r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s+(?:century|cent\.?|c\.)\s*$",
+    re.IGNORECASE,
+)
+
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
@@ -837,6 +865,21 @@ def parse_iso_date(text) -> str | None:
     m = _DECADE.match(s)
     if m:
         year = int(m.group(1))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-01-01"
+        return None
+    # Jahrhundert-Notation ("19. Jahrhundert", "19th century", "20. Jh."). Auf
+    # das Jahrhundert-Startjahr abgebildet (Konvention analog Dekaden-Notation:
+    # 19. Jahrhundert → 1800-01-01, spiegelt die "1980er → 1980-01-01"-Kette,
+    # bei der das Label auf die "18xx"-Jahre zeigt). Vor _YEAR_ONLY spielt die
+    # Reihenfolge keine Rolle (Jahrhundert-Pattern verlangt den Wort-Suffix
+    # "Jahrhundert"/"century" o.ae., YEAR_ONLY nur eine 4-Ziffer-Zahl), aber
+    # der Block wird direkt nach _DECADE gefuehrt, weil beide Notationen
+    # semantisch zur Grob-Datierungs-Familie gehoeren (Dekade → Jahrhundert).
+    m = _CENTURY_DE.match(s) or _CENTURY_EN.match(s)
+    if m:
+        century = int(m.group(1))
+        year = (century - 1) * 100
         if 1800 <= year <= 2999:
             return f"{year:04d}-01-01"
         return None

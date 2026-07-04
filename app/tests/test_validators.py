@@ -442,6 +442,70 @@ def test_parse_iso_date_jahrzehnt_ungueltig():
     assert parse_iso_date("1980 j") is None
 
 
+def test_parse_iso_date_jahrhundert():
+    """Jahrhundert-Notation (DE/EN) ergibt das Jahrhundert-Startjahr.
+
+    Konvention analog Dekaden-Notation (1980er → 1980-01-01): das Label zeigt
+    umgangssprachlich auf die "18xx"-Jahre, also 19. Jahrhundert → 1800-01-01.
+    Museums-Etiketten, Provenienz-Vermerke und Auktions-Beschreibungen aus
+    geerbten Sammlungen verwenden diese Grobdatierung typisch, wenn der
+    Vorbesitzer den Fund nicht exakt jahrweise datieren konnte.
+    """
+    # Deutsche Vollform
+    assert parse_iso_date("19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("20. Jahrhundert") == "1900-01-01"
+    assert parse_iso_date("21. Jahrhundert") == "2000-01-01"
+    # Ohne Punkt/Whitespace-Variationen (ordinaler Punkt ist optional, kommt in
+    # Notizen ohne strenge DE-Grammatik vor: "19 Jahrhundert")
+    assert parse_iso_date("19.Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19 Jahrhundert") == "1800-01-01"
+    # DE-Kurzformen
+    assert parse_iso_date("19. Jh.") == "1800-01-01"
+    assert parse_iso_date("19. Jh") == "1800-01-01"
+    assert parse_iso_date("19. Jhdt.") == "1800-01-01"
+    assert parse_iso_date("19. Jhrdt.") == "1800-01-01"
+    assert parse_iso_date("20. Jhdt") == "1900-01-01"
+    # Englische Form
+    assert parse_iso_date("19th century") == "1800-01-01"
+    assert parse_iso_date("20th century") == "1900-01-01"
+    assert parse_iso_date("21st century") == "2000-01-01"
+    # EN ohne Ordinalsuffix (Museums-Etikett-Kurzform)
+    assert parse_iso_date("20 century") == "1900-01-01"
+    # EN Kurzform mit Punkt
+    assert parse_iso_date("20th c.") == "1900-01-01"
+    assert parse_iso_date("19th cent.") == "1800-01-01"
+    # Case-insensitive (Etiketten in Grossbuchstaben, Kaufmanns-Notation)
+    assert parse_iso_date("19. JAHRHUNDERT") == "1800-01-01"
+    assert parse_iso_date("20TH CENTURY") == "1900-01-01"
+    # Trailing Satzzeichen (Fliesstext-Notation "Fund aus dem 19. Jahrhundert.")
+    assert parse_iso_date("19. Jahrhundert.") == "1800-01-01"
+    assert parse_iso_date("19. Jh.,") == "1800-01-01"
+    # Umschliessende Klammern (zitierte Datierung)
+    assert parse_iso_date("(19. Jahrhundert)") == "1800-01-01"
+
+
+def test_parse_iso_date_jahrhundert_ungueltig():
+    """Ausserhalb des 1800-2999-Bandes, kein Wort-Suffix oder Kollisionen -> None."""
+    # 18. Jahrhundert = 1700-1799, unter der 1800-Untergrenze
+    assert parse_iso_date("18. Jahrhundert") is None
+    # 1. Jahrhundert = 0-99, deutlich ausserhalb
+    assert parse_iso_date("1. Jahrhundert") is None
+    # 31. Jahrhundert = 3000, ueber die 2999-Obergrenze
+    assert parse_iso_date("31. Jahrhundert") is None
+    assert parse_iso_date("40. Jahrhundert") is None
+    # Ohne Wort-Suffix bleibt es eine reine Zahl (die durch _YEAR_ONLY laeuft)
+    assert parse_iso_date("19") is None       # 19 < 1800
+    # Wort ohne Zahl
+    assert parse_iso_date("Jahrhundert") is None
+    assert parse_iso_date("century") is None
+    # Wort-vor-Zahl-Reihenfolge (im DE/EN unueblich) bleibt None
+    assert parse_iso_date("Jahrhundert 19") is None
+    assert parse_iso_date("century 19th") is None
+    # Bestehende Jahrzehnt-/Jahresangaben bleiben unangetastet (kein Regress)
+    assert parse_iso_date("1980er") == "1980-01-01"
+    assert parse_iso_date("1985") == "1985-01-01"
+
+
 def test_parse_iso_date_relative_dekade():
     """Relative Position innerhalb einer Dekade ('Mitte 1980er', 'mid-1990s',
     'Late 2000s') spiegelt _RELATIVE_YEAR auf die Dekaden-Achse.
