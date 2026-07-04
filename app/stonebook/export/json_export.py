@@ -993,22 +993,62 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     ohne zweiten I/O-Pfad ueber :func:`smallest_backup` und ohne den
     Pfad-Wrapper - der Aggregat-Report liefert die Byte-Zahl direkt.
 
+    ``variationskoeffizient_bytes_prozent`` ist der dimensionslose
+    Variationskoeffizient (CV = ``stddev_bytes / average_bytes * 100``)
+    auf der Backup-Volume-Achse. Spiegelt das
+    ``koordinaten_radius_variationskoeffizient_prozent`` /
+    ``wert_variationskoeffizient_prozent`` /
+    ``gewicht_variationskoeffizient_prozent`` /
+    ``mohs_kollektion_variationskoeffizient_prozent`` /
+    ``dichte_kollektion_variationskoeffizient_prozent`` /
+    ``confidence_variationskoeffizient_prozent``-Muster aus ``stats.py``
+    auf die Backup-Halde. Waehrend ``stddev_bytes`` die Streuung in
+    Original-Einheiten (Bytes) beziffert, normiert der CV sigma auf den
+    Durchschnitts-Verbrauch und macht die Backup-Homogenitaet skalen-
+    unabhaengig vergleichbar: eine Halde von Delta-Snapshots mit
+    Ø 5 MB und sigma 500 KB (CV 10%) hat dieselbe relative Streuung
+    wie eine Voll-Backup-Halde mit Ø 500 MB und sigma 50 MB (CV 10%),
+    obwohl die Absolutwerte um Faktor 100 auseinanderliegen -
+    "wie einheitlich sind meine Backup-Groessen, unabhaengig vom
+    Skalenniveau?". Ausgabe in Prozent (``sigma/mean * 100``, auf 2
+    Nachkommastellen gerundet), spiegelt die CV-Achsen-Konvention aus
+    ``stats.py``. Guarded gegen ``mean == 0`` (Kollaps bei leerer /
+    unlesbarer Halde): CV wird dann ``None`` statt
+    ``ZeroDivisionError``, damit der Report und Downstream-Konsumenten
+    den Undefined-Zustand transparent unterscheiden koennen - anders
+    als sigma (``0`` bei uniformer Verteilung) ist CV mathematisch
+    undefined bei ``mean == 0``, nicht ``0``. Bei ``count == 1``
+    kollabiert CV auf ``0.0`` (sigma = 0 durch Single-Point-Konvention,
+    mean = size des einzigen Backups), konsistent zum ``stddev_bytes ==
+    range_bytes == 0`` bei Einzel-Stichproben. Bei uniformer Verteilung
+    (alle Backups gleich gross) faellt CV ebenfalls auf ``0.0`` als
+    natuerliche Konsequenz der ``sigma == 0``-Voraussetzung. Reuse-Pfad:
+    nutzt die bereits berechnete ``sizes``-Liste und den ``stddev_bytes``-
+    Zwischenwert (kein zweiter Pass ueber die Backup-Halde, kein zweiter
+    ``st_size``-Zugriff, kein zweiter sigma-Rechenschritt); der Mittelwert
+    wird lokal aus ``sum(sizes) / len(sizes)`` unabhaengig vom gerundeten
+    ``average_bytes`` neu berechnet (spiegelt die _stddev_int-Konvention,
+    damit CV nicht durch die 0.5-Byte-Rundung von ``average_bytes``
+    verzerrt wird).
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
     "range_bytes": None, "stddev_bytes": None,
+    "variationskoeffizient_bytes_prozent": None,
     "oldest_stamp": None, "newest_stamp": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
     Report-Aufruf vor der ersten Backup-Schreibe machen).
     ``average_bytes``, ``median_bytes``, ``min_bytes``, ``max_bytes``,
-    ``range_bytes`` und ``stddev_bytes`` sind ``None`` bei
+    ``range_bytes``, ``stddev_bytes`` und
+    ``variationskoeffizient_bytes_prozent`` sind ``None`` bei
     ``count == 0`` (kein Division-by-Zero-Crash bei ``average`` /
-    ``stddev``, kein Index-Fehler bei ``median``, kein leeres-``max``-
-    oder leeres-``min``-Crash, keine irrefuehrende ``0``-Streuung die
-    wie "identische Backup-Groessen" aussaehe - spiegelt die
-    None-Konvention der Zeitstempel bei fehlendem Bestand).
+    ``stddev`` / CV, kein Index-Fehler bei ``median``, kein leeres-
+    ``max``- oder leeres-``min``-Crash, keine irrefuehrende ``0``-
+    Streuung die wie "identische Backup-Groessen" aussaehe - spiegelt
+    die None-Konvention der Zeitstempel bei fehlendem Bestand).
     Unlesbare Dateien (Race gegen paralleles Loeschen) werden beim
     ``st_size``-Zugriff uebersprungen statt zu crashen, spiegelt das
     ``try: unlink except OSError``-Verhalten der prune-Funktionen.
@@ -1033,6 +1073,19 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         stamp = _parse_backup_stamp(p)
         if stamp is not None:
             stamps.append(stamp)
+    stddev = _stddev_int(sizes) if sizes else None
+    if sizes:
+        mean = sum(sizes) / len(sizes)
+        # CV nutzt das ungerundete sigma statt _stddev_int (das die Rundung auf
+        # Integer vollzieht), damit die 2-Nachkommastellen-CV-Ausgabe nicht
+        # durch die 0.5-Byte-Rundung von stddev_bytes verzerrt wird - spiegelt
+        # die Konvention der ungerundeten sigma-Weiterverwendung in
+        # koordinaten_radius_variationskoeffizient_prozent aus stats.py.
+        variance = sum((v - mean) ** 2 for v in sizes) / len(sizes)
+        raw_sigma = variance ** 0.5
+        cv_prozent = round(raw_sigma / mean * 100.0, 2) if mean > 0 else None
+    else:
+        cv_prozent = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1041,7 +1094,8 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "min_bytes": min(sizes) if sizes else None,
         "max_bytes": max(sizes) if sizes else None,
         "range_bytes": (max(sizes) - min(sizes)) if sizes else None,
-        "stddev_bytes": _stddev_int(sizes) if sizes else None,
+        "stddev_bytes": stddev,
+        "variationskoeffizient_bytes_prozent": cv_prozent,
         "oldest_stamp": min(stamps).isoformat() if stamps else None,
         "newest_stamp": max(stamps).isoformat() if stamps else None,
     }

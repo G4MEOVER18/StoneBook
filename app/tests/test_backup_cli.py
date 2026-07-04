@@ -375,6 +375,7 @@ def test_stats_leerer_ordner_liefert_null_report(tmp_path, capsys):
         "max_bytes": None,
         "range_bytes": None,
         "stddev_bytes": None,
+        "variationskoeffizient_bytes_prozent": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }

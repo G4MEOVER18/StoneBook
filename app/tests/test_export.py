@@ -1362,6 +1362,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "max_bytes": None,
         "range_bytes": None,
         "stddev_bytes": None,
+        "variationskoeffizient_bytes_prozent": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -1375,6 +1376,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "max_bytes": None,
         "range_bytes": None,
         "stddev_bytes": None,
+        "variationskoeffizient_bytes_prozent": None,
         "oldest_stamp": None,
         "newest_stamp": None,
     }
@@ -2033,6 +2035,98 @@ def test_backup_directory_stats_stddev_bytes_ignoriert_fremde_dateien(tmp_path):
     # Fremd-Archiv (999_999) darf sigma nicht in die 10^5-Groessenordnung
     # heben - die Backup-Menge bleibt eng um mean=500 verteilt.
     assert info["stddev_bytes"] < 1_000
+
+
+def test_backup_directory_stats_variationskoeffizient_liefert_relative_streuung(
+        tmp_path):
+    """CV = stddev_bytes / average_bytes * 100 als dimensionslose Streuung.
+
+    Spiegelt das koordinaten_radius_variationskoeffizient_prozent /
+    wert_variationskoeffizient_prozent / gewicht_variationskoeffizient_prozent /
+    mohs_kollektion_variationskoeffizient_prozent / dichte_kollektion_variationskoeffizient_prozent
+    / confidence_variationskoeffizient_prozent-Muster auf die Backup-Volume-
+    Achse. Aus einer Halde mit sigma == mean (starke Streuung relativ zum
+    Durchschnitt: [100, 500, 900] mit mean=500, sigma~326.6 - wir waehlen
+    eine engere Konfiguration, die CV exakt herausrechnen laesst):
+    sizes [400, 500, 600] -> mean=500, sigma=sqrt(20000/3)~81.65 ->
+    CV = 81.65 / 500 * 100 ~= 16.33 %.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 400)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 500)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 600)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    mean = (400 + 500 + 600) / 3
+    sigma = ((100 ** 2 + 0 + 100 ** 2) / 3) ** 0.5
+    expected = round(sigma / mean * 100.0, 2)
+    assert info["variationskoeffizient_bytes_prozent"] == expected
+    # CV ist nicht-negativ (spiegelt sigma / mean-Konvention bei nicht-negativen
+    # Backup-Groessen).
+    assert info["variationskoeffizient_bytes_prozent"] >= 0.0
+
+
+def test_backup_directory_stats_variationskoeffizient_einzelnes_backup(tmp_path):
+    """Bei count=1 kollabiert CV auf 0.0 (sigma = 0, mean = einzige Groesse).
+
+    Konsistent zum stddev_bytes == range_bytes == 0 bei Einzel-Stichprobe -
+    ohne Streuungs-Grund faellt CV auf 0.0 als natuerliche Konsequenz von
+    sigma == 0 (bei mean > 0). Spiegelt die Single-Point-Kollaps-Konvention
+    der uebrigen Volume-Achsen.
+    """
+    now = datetime.datetime(2024, 6, 13, 14, 30, 45)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 8888)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["variationskoeffizient_bytes_prozent"] == 0.0
+
+
+def test_backup_directory_stats_variationskoeffizient_gleiche_groesse(tmp_path):
+    """Bei uniformer Verteilung (alle Backups gleich gross) ist CV = 0.0.
+
+    Deckt den Weg-vom-Grenzfall-count=1 ab: mehrere Backups, aber trotzdem
+    sigma == 0 (identische Werte) -> CV = 0.0 / mean = 0.0. Spiegelt die
+    stddev_bytes == 0-Konvention auf die CV-Achse.
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 4242)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 4242)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=2), 4242)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["stddev_bytes"] == 0
+    assert info["variationskoeffizient_bytes_prozent"] == 0.0
+
+
+def test_backup_directory_stats_variationskoeffizient_ignoriert_fremde_dateien(
+        tmp_path):
+    """CV basiert nur auf Backup-Schema-Dateien.
+
+    Ein grosses Fremd-Archiv im Ordner darf CV nicht verzerren; sowohl
+    sigma als auch der Mittelwert bleiben an die gefilterte Backup-Menge
+    gebunden. Spiegelt die entsprechende Fremd-Dateien-Fixture fuer die
+    uebrigen Volume-Achsen und sichert die Konsistenz-Invariante zwischen
+    den Volume-Feldern (alle beziehen sich auf dieselbe Datei-Menge).
+    """
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, now, 300)
+    _write_sized_backup(backups_dir,
+                        now + datetime.timedelta(minutes=1), 700)
+    (backups_dir / "README.txt").write_bytes(b"x")
+    (backups_dir / "anderes_backup_20100101_000000.json.gz").write_bytes(
+        b"x" * 999_999)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    # sigma=200, mean=500 -> CV = 200/500*100 = 40.0
+    assert info["variationskoeffizient_bytes_prozent"] == 40.0
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:
