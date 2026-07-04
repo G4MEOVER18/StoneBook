@@ -248,6 +248,46 @@ def test_sort_by_dimensionen(tmp_path):
     c.close()
 
 
+def test_sort_by_volumen_mm3(tmp_path):
+    """Sortierung nach Volumen_mm3 (L*B*H) als kombinierte Groessen-Achse.
+
+    Ergaenzt die einzelnen L/B/H-Sortierungen: bei ungleichen Achsen liefert
+    keine der Einzel-Achsen die Vitrinen-Gesamtgroesse (ein flach-breites Stueck
+    kann groesser sein als ein hohes-schlankes trotz kleinerer Laenge). Product-
+    NULL-Semantik: fehlt eine der drei Achsen, ist Volumen NULL und faellt
+    nach der NULL-an-Ende-Konvention ans Listenende (spiegelt Laenge_mm/
+    Breite_mm/Hoehe_mm-Sortierung).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vol.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            # Volumen ergibt: 384000 / 150000 / 48000
+            ("OBJ_0001", 120.0, 80.0, 40.0),   # gross flach -> 384000
+            ("OBJ_0002",  60.0, 50.0, 50.0),   # mittel kompakt -> 150000
+            ("OBJ_0003",  30.0, 20.0, 80.0),   # klein hoch -> 48000
+            ("OBJ_0004",  None, None, None),   # NULL -> ans Ende
+            ("OBJ_0005", 100.0, 100.0, None),  # Teil-NULL -> Produkt NULL -> ans Ende
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Volumen_mm3", sort_desc=True)
+    # OBJ_0001 (384k) > OBJ_0002 (150k) > OBJ_0003 (48k), NULL-Objekte hinten.
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    assert [r["Volumen_mm3"] for r in rows[:3]] == [384000.0, 150000.0, 48000.0]
+    # Beide NULL-Traeger stehen am Ende, Tie-Break lexikographisch auf obj_id.
+    assert [r["obj_id"] for r in rows[-2:]] == ["OBJ_0004", "OBJ_0005"]
+    assert rows[-1]["Volumen_mm3"] is None
+    # Aufsteigend: kleinstes Volumen zuerst, NULL weiterhin ans Ende.
+    rows = repo.list_objects(sort_by="Volumen_mm3")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0002", "OBJ_0001"]
+    assert rows[-1]["Volumen_mm3"] is None
+    c.close()
+
+
 def test_sort_by_seltenheit_und_nachfrage(tmp_path):
     """Sortierung nach 1..10-Skalen (Seltenheit/Nachfrage) - Begleitung zu den
     seltenheit_/nachfrage_-Filtern: erst Rarity-Bereich, dann absteigend sortieren.

@@ -76,8 +76,12 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     "Mohs_Haerte_min", "Mohs_Haerte_max",
     "Dichte_min_gcm3", "Dichte_max_gcm3",
     # Geometrische Dimensionen fuer Vitrinen-/Schubladen-Auswahl: nach jeder
-    # Achse einzeln sortierbar. Volumen waere idealer, ist aber kein Schema-Feld.
-    "Laenge_mm", "Breite_mm", "Hoehe_mm",
+    # Achse einzeln sortierbar. Volumen_mm3 (Produkt L*B*H) ist die kombinierte
+    # Groessen-Achse als computed Column (spiegelt bilder/aliase/analysen/
+    # gesamtwert_chf auf die Dimensions-Ebene): fuer die reine Vitrinen-Sortierung
+    # "welches Stueck ist mein groesstes/kleinstes?" ist der Produkt-Wert die
+    # natuerliche Antwort ohne dreifache Achsen-Vergleiche.
+    "Laenge_mm", "Breite_mm", "Hoehe_mm", "Volumen_mm3",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
@@ -162,8 +166,14 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
 })
 
 # Berechnete Aliase im SELECT (kein o.-Prefix beim ORDER BY).
+# Volumen_mm3 unterscheidet sich von den COUNT-basierten Alias-Zaehlern (bilder/
+# aliase/analysen liefern 0 fuer leere Bezuege) und von der Wert-Aggregation
+# (gesamtwert_chf liefert 0.0 via COALESCE): das Produkt Laenge_mm * Breite_mm *
+# Hoehe_mm gibt NULL zurueck, sobald eine der drei Achsen NULL ist - das ist
+# semantisch korrekt (ohne komplette Vermessung ist kein Volumen definiert) und
+# spiegelt die NULL-an-Ende-Konvention der Einzel-Dimensions-Sortierung.
 _COMPUTED_COLUMNS: frozenset[str] = frozenset(
-    {"bilder", "gesamtwert_chf", "aliase", "analysen"})
+    {"bilder", "gesamtwert_chf", "aliase", "analysen", "Volumen_mm3"})
 
 
 def _now() -> str:
@@ -402,7 +412,8 @@ class ObjectRepo:
                    (SELECT COUNT(*) FROM images i WHERE i.obj_id = o.obj_id) AS bilder,
                    (SELECT COUNT(*) FROM aliases a WHERE a.canonical_id = o.obj_id) AS aliase,
                    (SELECT COUNT(*) FROM ki_analysen k WHERE k.obj_id = o.obj_id) AS analysen,
-                   {wert_sql} AS gesamtwert_chf
+                   {wert_sql} AS gesamtwert_chf,
+                   (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) AS Volumen_mm3
             FROM objects o
         """
         where, params = [], []
