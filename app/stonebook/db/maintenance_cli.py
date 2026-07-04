@@ -31,7 +31,9 @@ from stonebook.db.maintenance import (analyze, database_size_bytes, free_bytes,
                                       delete_dangling_aliases,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
-                                      foreign_key_check, free_page_count,
+                                      foreign_key_check,
+                                      fragmentierungs_quote_prozent,
+                                      free_page_count,
                                       fts_integrity_check, fts_optimize,
                                       fts_rebuild, optimize, page_count,
                                       quick_check,
@@ -61,6 +63,7 @@ def _cmd_size(args: argparse.Namespace) -> int:
             "free_pages": free_page_count(conn),
             "free_bytes": free_bytes(conn),
             "used_bytes": used_bytes(conn),
+            "fragmentierungs_quote_prozent": fragmentierungs_quote_prozent(conn),
         }
     finally:
         conn.close()
@@ -75,6 +78,9 @@ def _cmd_size(args: argparse.Namespace) -> int:
         print(f"Free-Pages:        {info['free_pages']}")
         print(f"Free-Bytes:        {info['free_bytes']:,} Bytes")
         print(f"Used-Bytes:        {info['used_bytes']:,} Bytes")
+        quote = info["fragmentierungs_quote_prozent"]
+        quote_str = "-" if quote is None else f"{quote:.1f} %"
+        print(f"Fragmentierung:    {quote_str}")
     return 0
 
 

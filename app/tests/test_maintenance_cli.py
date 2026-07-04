@@ -32,6 +32,10 @@ def test_size_text(tmp_path, capsys):
     # used_bytes-Block vervollstaendigt das total/used/free-Triplett auf
     # die Datei-Belegungs-Sicht (df/du-Vokabular auf SQLite-DB-Ebene).
     assert "Used-Bytes:" in out
+    # fragmentierungs_quote_prozent-Block ergaenzt die absoluten Bytes-
+    # Achsen um die skalen-unabhaengige Prozent-Sicht (Cron-Reporter-
+    # Faustregel VACUUM ab ~25 %).
+    assert "Fragmentierung:" in out
 
 
 def test_size_json(tmp_path, capsys):
@@ -55,6 +59,10 @@ def test_size_json(tmp_path, capsys):
     # used_bytes-Grenzfall: bei leerer DB (Freilist leer) faellt used_bytes
     # mit logical_bytes zusammen (Total = Used + Free, mit Free = 0).
     assert info["used_bytes"] == info["logical_bytes"]
+    # fragmentierungs_quote_prozent-Grenzfall: bei leerer DB (Freilist
+    # leer) faellt die Quote auf 0.0 (kein Free-Anteil zu bezeichnen),
+    # spiegelt free_bytes == 0 auf die Prozent-Achse.
+    assert info["fragmentierungs_quote_prozent"] == 0.0
 
 
 def test_check_text_ok(tmp_path, capsys):

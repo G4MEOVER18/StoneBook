@@ -5,11 +5,12 @@ from stonebook.db.maintenance import (analyze, database_size_bytes,
                                       delete_dangling_aliases,
                                       delete_orphan_images,
                                       delete_orphan_ki_analysen,
-                                      foreign_key_check, free_bytes,
-                                      free_page_count, fts_integrity_check,
-                                      fts_optimize, fts_rebuild, optimize,
-                                      page_count, quick_check, used_bytes,
-                                      vacuum)
+                                      foreign_key_check,
+                                      fragmentierungs_quote_prozent,
+                                      free_bytes, free_page_count,
+                                      fts_integrity_check, fts_optimize,
+                                      fts_rebuild, optimize, page_count,
+                                      quick_check, used_bytes, vacuum)
 from stonebook.db.repository import ObjectRepo
 
 
@@ -248,6 +249,84 @@ def test_used_bytes_nach_vacuum_stabil_gegen_fragmentierung(tmp_path):
         # Idempotenz-Konvention von vacuum auf die used-Achse).
         assert free_bytes(c) == 0
         assert used_bytes(c) == database_size_bytes(c)
+    finally:
+        c.close()
+
+
+def test_fragmentierungs_quote_prozent_leere_db_ist_null(tmp_path):
+    """Frisch angelegte DB hat keine Freilist-Eintraege - Quote == 0.0.
+
+    Grenzfall-Konvention: eine leere DB kann keine Fragmentierung
+    beziffern (kein Free-Anteil abzuziehen), die Quote kollabiert auf
+    0.0 - spiegelt die free_bytes == 0-Grenzfall-Konvention auf die
+    Prozent-Achse. Wichtig: der Wert bleibt strikt 0.0 (nicht None),
+    weil die DB-Datei zwar leer, aber angelegt ist - der Divisor
+    (database_size_bytes) ist > 0.
+    """
+    c = open_db(tmp_path / "empty.sqlite3")
+    try:
+        quote = fragmentierungs_quote_prozent(c)
+        assert quote is not None
+        assert quote == 0.0
+    finally:
+        c.close()
+
+
+def test_fragmentierungs_quote_prozent_ist_free_geteilt_durch_total_mal_100(tmp_path):
+    """Konsistenz-Invariante: quote == free_bytes / database_size_bytes * 100.
+
+    Die Prozent-Achse ist die skalen-unabhaengige Sicht auf die Bytes-
+    Achse; beide Kennzahlen muessen strikt zusammenpassen, damit
+    Wartungs-Reporter absolute und relative Fragmentierung parallel
+    zeigen koennen ohne Divergenz. Reuse-Path-Sanity: nach dem
+    Refactoring nutzt die Prozent-Achse die bereits vorhandenen
+    Helper (free_bytes / database_size_bytes) als single-source-of-
+    truth, statt PRAGMA-Werte parallel abzufragen - dieser Test
+    bewacht die Konsistenz gegen Regressionen.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 401):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50,
+                        Reaktionshinweis="Wartungs-Test " * 50)
+        c.execute("DELETE FROM objects")
+        c.commit()
+        assert free_bytes(c) > 0
+        total = database_size_bytes(c)
+        assert total > 0
+        quote = fragmentierungs_quote_prozent(c)
+        assert quote is not None
+        # Kern-Formel (Bytes-Achse -> Prozent-Achse) exakt gegen Helper-Werte:
+        assert quote == free_bytes(c) / total * 100.0
+        # Range-Invariante: Quote liegt in [0, 100] (Freilist ist Teilmenge der
+        # Gesamt-Bytes, deshalb kann free_bytes / total * 100 nie > 100 sein).
+        assert 0.0 <= quote <= 100.0
+    finally:
+        c.close()
+
+
+def test_fragmentierungs_quote_prozent_nach_vacuum_null(tmp_path):
+    """Nach VACUUM ist die Freilist wieder leer - Quote faellt erneut auf 0.0.
+
+    Spiegelt die vacuum-Idempotenz-Konvention auf die Prozent-Achse:
+    nach dem Neuschreiben der DB-Datei ist der Free-Anteil weg,
+    entsprechend faellt die Fragmentierungs-Quote unabhaengig vom
+    vorherigen Wert auf 0.0 (kein persistenter Offset). Bewacht damit
+    den Cron-Reporter-Vertrag "unmittelbar nach VACUUM ist die Quote
+    strikt 0" gegen Regressionen.
+    """
+    c = open_db(tmp_path / "v.sqlite3")
+    repo = ObjectRepo(c)
+    try:
+        for i in range(1, 201):
+            repo.create(f"OBJ_{i:04d}", Name=f"Name {i}" * 50)
+        c.execute("DELETE FROM objects WHERE substr(obj_id, -1) IN ('0','1','2','3','4')")
+        c.commit()
+        assert fragmentierungs_quote_prozent(c) > 0
+        vacuum(c)
+        assert free_bytes(c) == 0
+        assert fragmentierungs_quote_prozent(c) == 0.0
     finally:
         c.close()
 

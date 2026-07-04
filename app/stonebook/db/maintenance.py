@@ -119,6 +119,59 @@ def used_bytes(conn: sqlite3.Connection) -> int:
     return database_size_bytes(conn) - free_bytes(conn)
 
 
+def fragmentierungs_quote_prozent(conn: sqlite3.Connection) -> float | None:
+    """Anteil freigebbarer Bytes an der DB-Datei in Prozent (``free_bytes / total_bytes * 100``).
+
+    Skalen-unabhaengige Wartungs-Achse zur VACUUM-Entscheidung: waehrend
+    :func:`free_bytes` die absolute Freilist-Groesse in Bytes ausliefert
+    (sinnvoll fuer harte MB/GB-Schwellwerte), beantwortet
+    ``fragmentierungs_quote_prozent`` direkt "wie stark ist die Datei
+    fragmentiert?" - also den Anteil der Datei, den ein VACUUM zurueck-
+    gewinnen wuerde, unabhaengig davon, ob die DB gerade wenige MB oder
+    viele GB gross ist. Damit spiegelt der Wert die
+    ``variationskoeffizient_bytes_prozent``-Konvention aus dem
+    Backup-Volume-Bereich (dimensionslose Prozent-Achse ueber der
+    absoluten Bytes-Achse) auf die Wartungs-/Fragmentierungs-Achse und
+    schliesst die Symmetrie-Luecke: bisher lag die Prozent-Sicht nur auf
+    der Backup-Volume-Achse vor, waehrend die DB-Datei-Belegung nur die
+    absoluten Bytes-Achsen kannte.
+    Wartungs-Faustregel aus dem SQLite-Umfeld: VACUUM lohnt sich ab
+    ~25 % Fragmentierung (Kosten fuer die volle Datei-Neuschreibung
+    lohnen sich erst dann gegenueber dem Gewinn). Cron-Reporter koennen
+    die Schwelle in einer Zeile pruefen (``if quote >= 25: ...``) ohne
+    manuellen Bytes-Vergleich mit :func:`database_size_bytes`. Fuer
+    Trend-Reports ueber Monate ist die Prozent-Achse robuster als die
+    Bytes-Achse: eine wachsende Sammlung skaliert die Bytes-Achse
+    natuerlicherweise hoch, waehrend die Prozent-Achse den
+    Fragmentierungs-Zustand unabhaengig von der Groesse zeigt.
+
+    Reuse-Pfad: berechnet als ``free_bytes() / database_size_bytes() *
+    100`` aus den bereits vorhandenen Helpern (single-source-of-truth
+    fuer Freilist und Gesamt-Bytes, keine parallele PRAGMA-Auswertung,
+    konsistent zu ``free_bytes``/``used_bytes``). Der Aufruf ist
+    idempotent und liest nur Metadaten (kein Tabellen-Scan), ist damit
+    sicher im Cron-Reporter zusammen mit :func:`database_size_bytes` /
+    :func:`free_bytes` / :func:`used_bytes` in einer einzigen
+    Health-Check-Rundreise aufrufbar.
+
+    Bei einer frisch angelegten (leeren) DB kollabiert
+    ``fragmentierungs_quote_prozent`` auf ``0.0`` (kein Free-Anteil,
+    spiegelt die ``free_bytes == 0``-Grenzfall-Konvention). Nach einem
+    ``VACUUM`` faellt der Wert erneut auf ``0.0`` (Freilist wieder
+    leer, spiegelt die vacuum-Idempotenz-Konvention). Bei
+    ``database_size_bytes == 0`` (theoretisch nur bei einer abgebrochenen
+    Datei-Anlage, praktisch nie erreicht) liefert die Funktion
+    ``None`` statt Division-by-Zero - spiegelt die None-Konvention der
+    Streuungs-Achsen in :mod:`stats` (``koordinaten_radius_variationskoeffizient_prozent``,
+    ``variationskoeffizient_bytes_prozent``), die bei fehlender Bezugs-
+    groesse ebenfalls ``None`` zurueckgeben statt einer irrefuehrenden 0.
+    """
+    total = database_size_bytes(conn)
+    if total <= 0:
+        return None
+    return free_bytes(conn) / total * 100.0
+
+
 def vacuum(conn: sqlite3.Connection) -> tuple[int, int]:
     """Fuehrt ``VACUUM`` aus; gibt (bytes_vorher, bytes_nachher) zurueck.
 
