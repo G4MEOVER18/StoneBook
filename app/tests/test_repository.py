@@ -2175,6 +2175,53 @@ def test_wert_min_max_filter(tmp_path):
     c.close()
 
 
+def test_wert_pro_gewicht_min_max_filter(tmp_path):
+    """wert_pro_gewicht_min/max als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
+    Sortier-Achse. Spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze -
+    Sammler-/Verkaeufer-Frage 'welche Stuecke rentieren sich pro Gramm ueberhaupt
+    fuer den Boersen-Transport?'. Spiegelt volumen_min/max und wert_min/max
+    auf die computed-column-Achse. NULL-Semantik: fehlende oder Null-Masse
+    (Gewicht_g IS NULL OR = 0) laesst die CASE-Expression NULL werden -
+    solche Objekte fallen implizit aus dem Filter (spiegelt die volumen_-/
+    mohs_-/dichte_-Konvention).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgf.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", 100.0, 500.0),   # 5.0 CHF/g (Sammler-Bergkristall)
+            ("OBJ_0002", 2.0, 200.0),     # 100.0 CHF/g (Rubin-Splitter)
+            ("OBJ_0003", 500.0, 50.0),    # 0.1 CHF/g (Handstueck)
+            ("OBJ_0004", None, 300.0),    # Gewicht NULL -> Filter uebergangen
+            ("OBJ_0005", 0.0, 100.0),     # Gewicht 0 -> Filter uebergangen
+            ("OBJ_0006", 10.0, 0.0),      # 0.0 CHF/g (wertloses Stueck)
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Boersen-Transport-Untergrenze: >= 1 CHF/g rentiert sich
+    rows = repo.list_objects(wert_pro_gewicht_min=1.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Karat-Kandidaten: >= 10 CHF/g typisch fuer Rubin-/Smaragd-/Diamant-Splitter
+    rows = repo.list_objects(wert_pro_gewicht_min=10.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Handstueck-Kandidaten: <= 1 CHF/g
+    rows = repo.list_objects(wert_pro_gewicht_max=1.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0006"]
+    # Kombiniert: mittleres Wert-Dichte-Segment (Sammler-Qualitaet, aber nicht Karat)
+    rows = repo.list_objects(wert_pro_gewicht_min=1.0, wert_pro_gewicht_max=50.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Grenzfall exakt 0.1 CHF/g: OBJ_0003 gerade nicht mehr im min>=1
+    rows = repo.list_objects(wert_pro_gewicht_min=0.1)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # NULL/Null-Gewicht-Traeger fallen aus beiden Filtern raus
+    rows = repo.list_objects(wert_pro_gewicht_min=0.0)
+    assert "OBJ_0004" not in [r["obj_id"] for r in rows]
+    assert "OBJ_0005" not in [r["obj_id"] for r in rows]
+    c.close()
+
+
 def test_sort_by_gesamtwert_chf_desc(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "s.sqlite3")

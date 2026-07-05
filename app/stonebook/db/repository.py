@@ -426,6 +426,8 @@ class ObjectRepo:
                      notizen_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
+                     wert_pro_gewicht_min: float | None = None,
+                     wert_pro_gewicht_max: float | None = None,
                      gewicht_min: float | None = None,
                      gewicht_max: float | None = None,
                      laenge_min: float | None = None,
@@ -1329,6 +1331,34 @@ class ObjectRepo:
         if wert_max is not None:
             where.append(f"{wert_sql} <= ?")
             params.append(float(wert_max))
+        # Wert_pro_Gewicht-Filter als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
+        # Sortier-Achse: spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze.
+        # Sammler-/Verkaeufer-Frage: "welche Stuecke rentieren sich pro Gramm
+        # ueberhaupt fuer den Boersen-Transport (>= 1 CHF/g, sonst frisst die
+        # Wegzeit den Ertrag)?" -> wert_pro_gewicht_min=1.0; oder "welche sind
+        # potentielle Schmuck-/Karat-Kandidaten (>= 10 CHF/g, typisch fuer
+        # Rubin-/Smaragd-/Diamant-Splitter)?" -> wert_pro_gewicht_min=10.0.
+        # Spiegelt volumen_min/max und wert_min/max: derselbe SQL-Ausdruck wie
+        # in der SELECT-Liste (der Zaehler {wert_sql}, der Nenner Gewicht_g mit
+        # Null-Guard), damit der Filter exakt mit der Sortier-Spalte
+        # uebereinstimmt (Sortier-nach-Wert_pro_Gewicht_chf_g + Filter
+        # wert_pro_gewicht_min=10 selektieren dieselbe Zahlen-Domain, kein
+        # Drift zwischen Filter- und Sortier-Definition). NULL-Semantik der
+        # Sortier-Achse spiegelt sich auch hier: fehlende oder Null-Masse
+        # (Gewicht_g IS NULL OR = 0) laesst die CASE-Expression NULL werden,
+        # und NULL >= X / NULL <= X sind beide NULL == FALSE - solche Objekte
+        # fallen implizit aus dem Filter, spiegelt die volumen_-/mohs_-/dichte_-
+        # Konvention.
+        if wert_pro_gewicht_min is not None:
+            where.append(
+                f"(CASE WHEN o.Gewicht_g IS NULL OR o.Gewicht_g = 0 THEN NULL "
+                f"ELSE {wert_sql} * 1.0 / o.Gewicht_g END) >= ?")
+            params.append(float(wert_pro_gewicht_min))
+        if wert_pro_gewicht_max is not None:
+            where.append(
+                f"(CASE WHEN o.Gewicht_g IS NULL OR o.Gewicht_g = 0 THEN NULL "
+                f"ELSE {wert_sql} * 1.0 / o.Gewicht_g END) <= ?")
+            params.append(float(wert_pro_gewicht_max))
         if gewicht_min is not None:
             where.append("o.Gewicht_g >= ?")
             params.append(float(gewicht_min))
