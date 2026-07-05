@@ -13,6 +13,25 @@ _DATE_FORMATS = (
     "%d-%m-%Y",
     "%Y%m%d",   # ISO 8601 compact YYYYMMDD (Dateinamen, Logs)
     "%Y:%m:%d",  # EXIF DateTime ohne Zeit-Suffix (stripped Camera-Stempel)
+    # US-Datumsformat "MM/DD/YYYY" / "MM-DD-YYYY" / "MM.DD.YYYY" als Fallback
+    # NACH den DE/EU-Varianten - dadurch behalten mehrdeutige Eingaben wie
+    # "01/02/2024" ihre bestehende DE-Interpretation (2024-02-01, Tag 1 im
+    # Februar), waehrend eindeutige US-Formen "06/13/2024" (Tag 13 waere in
+    # DE-Interpretation ungueltiger Monat 13) den Fallback treffen und
+    # korrekt als 2024-06-13 (Juni 13) aufgeloest werden. Bisher fielen alle
+    # US-Formen mit Tag > 12 stille auf None - typisch in Sammlungs-Notizen
+    # aus englischsprachigen Quellen (Auktions-Kataloge, US-Mineral-Boersen,
+    # Foto-Captions mit MDN-Datetime aus amerikanischen Kameras), die den
+    # DE-Fallback nicht durchlaufen. EN/US-Ausgangs-CSVs aus Excel schreiben
+    # per Default MM/DD/YYYY (locale-abhaengig) - der Fallback macht diese
+    # Datensaetze re-importierbar, ohne die deutschen Bestands-Daten zu
+    # veraendern (der Loop stoppt beim ersten erfolgreichen Match, sodass
+    # DE/EU eindeutig Vorrang behaelt). Bindestrich- und Punkt-Variante
+    # symmetrisch zu den DE-Formen, damit "06-13-2024" und "06.13.2024"
+    # gleich behandelt werden wie "06/13/2024".
+    "%m/%d/%Y",
+    "%m-%d-%Y",
+    "%m.%d.%Y",
 )
 
 # Explizite "keine Angabe"-Marker, die parse_iso_date wie Leer behandelt (None).

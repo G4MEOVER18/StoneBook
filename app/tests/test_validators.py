@@ -15,6 +15,32 @@ def test_parse_iso_date_slash_dot():
     assert parse_iso_date("2024.06.13") == "2024-06-13"
 
 
+def test_parse_iso_date_us_format_fallback():
+    """US-Datumsformat MM/DD/YYYY greift als Fallback, wenn DE als DD/MM/YYYY scheitert.
+
+    Sehr verbreitet in Sammlungs-Notizen aus englischsprachigen Quellen
+    (Auktions-Kataloge, US-Boersen, EN-Excel-Exporte mit Locale-abhaengiger
+    Datumsspalte). Vor dem Fix fielen alle US-Formen mit Tag>12 stille auf
+    None, weil das Feld dann in DE-Interpretation "Monat 13" hatte. Nach dem
+    Fix greift der US-Zweig, ohne die DE-Interpretation mehrdeutiger Eingaben
+    zu beeintraechtigen - der Loop stoppt beim ersten erfolgreichen Parse, so
+    dass "01/02/2024" weiter als "2024-02-01" (DE: Tag 1, Monat 2) gelesen wird.
+    """
+    # Eindeutig US (Tag 13 > 12 -> DE-Interpretation als Monat 13 scheitert)
+    assert parse_iso_date("06/13/2024") == "2024-06-13"
+    assert parse_iso_date("06/13/1985") == "1985-06-13"
+    # Bindestrich- und Punkt-Variante symmetrisch zu den DE-Formen
+    assert parse_iso_date("06-13-2024") == "2024-06-13"
+    assert parse_iso_date("06.13.2024") == "2024-06-13"
+    # DE-Vorrang: mehrdeutige Eingaben (Tag <= 12 UND Monat <= 12) bleiben DE
+    assert parse_iso_date("01/02/2024") == "2024-02-01"
+    assert parse_iso_date("13/06/2024") == "2024-06-13"
+    # Ungueltig in beiden Interpretationen -> None
+    assert parse_iso_date("13/13/2024") is None
+    # US mit Jahr ausserhalb [1800, 2999] -> None (Bereichs-Konvention greift)
+    assert parse_iso_date("06/13/1500") is None
+
+
 def test_parse_iso_date_year_only():
     assert parse_iso_date("2024") == "2024-01-01"
     assert parse_iso_date("1999") == "1999-01-01"
