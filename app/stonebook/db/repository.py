@@ -93,7 +93,15 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # stats.py auf die Listen-Sortier-Sicht (dort AVG/Median ueber alle
     # Mittelpunkte, hier der Mittelpunkt pro Objekt als Sortier-Achse).
     "Mohs_Haerte_min", "Mohs_Haerte_max", "Mohs_Haerte_Mitte",
-    "Dichte_min_gcm3", "Dichte_max_gcm3",
+    # Dichte_Mitte spiegelt Mohs_Haerte_Mitte auf die Massendichte-Achse:
+    # dieselbe COALESCE-Kette ueber die zweiseitigen Dichte-Grenzen und dieselben
+    # Single-Point-/Beide-NULL-Konventionen, damit die Kollektions-Aggregation
+    # aus stats.py (_dichte_durchschnitt / _dichte_median / _dichte_standard-
+    # abweichung, die alle auf demselben Objekt-Mittelpunkt-Ausdruck arbeiten)
+    # in der Listen-Sortier-Sicht identisch verfuegbar ist. Sortier-Frage
+    # "welche Stuecke sind typisch leicht/schwer (Bims/Opal vs. Pyrit/Galenit)?"
+    # ohne separate Auswahl der Bereichsgrenze.
+    "Dichte_min_gcm3", "Dichte_max_gcm3", "Dichte_Mitte",
     # Geometrische Dimensionen fuer Vitrinen-/Schubladen-Auswahl: nach jeder
     # Achse einzeln sortierbar. Volumen_mm3 (Produkt L*B*H) ist die kombinierte
     # Groessen-Achse als computed Column (spiegelt bilder/aliase/analysen/
@@ -195,9 +203,14 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
 # nur bei komplett fehlender Mohs-Pflege (min UND max NULL) liefert der Ausdruck
 # NULL und faellt ans Listenende; Single-Point-Pflege ("7" ohne max) wird via
 # COALESCE zum beidseitigen Grenzwert und liefert den einzelnen Wert.
+# Dichte_Mitte spiegelt die COALESCE-/NULL-Konvention exakt auf die Massendichte-
+# Achse: strukturidentisch zur Mohs-Mitte, damit die Kollektions-Aggregation aus
+# stats.py (dichte_kollektion_durchschnitt/median/sigma) und die Listen-Sortier-
+# Achse auf demselben Objekt-Ausdruck ruhen (kein Drift zwischen Statistik-
+# Definition und Sortier-Definition).
 _COMPUTED_COLUMNS: frozenset[str] = frozenset(
     {"bilder", "gesamtwert_chf", "aliase", "analysen", "Volumen_mm3",
-     "Mohs_Haerte_Mitte"})
+     "Mohs_Haerte_Mitte", "Dichte_Mitte"})
 
 
 def _now() -> str:
@@ -448,7 +461,10 @@ class ObjectRepo:
                    (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) AS Volumen_mm3,
                    ((COALESCE(o.Mohs_Haerte_min, o.Mohs_Haerte_max)
                     + COALESCE(o.Mohs_Haerte_max, o.Mohs_Haerte_min))
-                    / 2.0) AS Mohs_Haerte_Mitte
+                    / 2.0) AS Mohs_Haerte_Mitte,
+                   ((COALESCE(o.Dichte_min_gcm3, o.Dichte_max_gcm3)
+                    + COALESCE(o.Dichte_max_gcm3, o.Dichte_min_gcm3))
+                    / 2.0) AS Dichte_Mitte
             FROM objects o
         """
         where, params = [], []

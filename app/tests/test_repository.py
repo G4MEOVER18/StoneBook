@@ -270,6 +270,54 @@ def test_sort_by_mohs_haerte_mitte(tmp_path):
     c.close()
 
 
+def test_sort_by_dichte_mitte(tmp_path):
+    """Sortierung nach Dichte_Mitte als Bereichs-Mittelpunkt-Achse auf der
+    Massendichte-Achse. Spiegelt test_sort_by_mohs_haerte_mitte auf die Dichte-
+    Ebene: dieselbe COALESCE-Semantik, dieselbe NULL-an-Ende-Konvention.
+
+    Punkt-Pflege bei physikalisch feststehenden Werten (Quarz 2.65 g/cm3,
+    Galenit 7.5 g/cm3) wird per COALESCE zum beidseitigen Grenzwert und liefert
+    den einzelnen Wert - damit sind die typischen Sammler-Punkt-Eintraege in
+    der Dichte-Reihenfolge sichtbar, ohne dass der Sortier-Konsument die
+    Pflege-Konvention (nur min bzw. nur max gesetzt) kennen muss.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "dmi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            # Zweiseitiger Bereich: (2.6+2.7)/2 = 2.65 (Quarz-Familie)
+            ("OBJ_0001", 2.6, 2.7),
+            # Single-Point min only -> 7.5 (Galenit)
+            ("OBJ_0002", 7.5, None),
+            # Single-Point max only -> 5.0 (Pyrit-Bereichs-Max)
+            ("OBJ_0003", None, 5.0),
+            # Zweiseitiger Bereich: (1.9+2.3)/2 = 2.1 (Opal-Uebergang)
+            ("OBJ_0004", 1.9, 2.3),
+            # Beide NULL -> Mittelpunkt NULL -> ans Ende
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Dichte_Mitte", sort_desc=True)
+    # OBJ_0002 (7.5) > OBJ_0003 (5.0) > OBJ_0001 (2.65) > OBJ_0004 (2.1),
+    # NULL-Traeger am Ende. Float-Vergleich mit Toleranz gegen die uebliche
+    # IEEE-754-Rundung (2.6+2.7)/2 = 2.6500000000000004.
+    assert [r["obj_id"] for r in rows[:4]] == [
+        "OBJ_0002", "OBJ_0003", "OBJ_0001", "OBJ_0004"]
+    assert [round(r["Dichte_Mitte"], 4) for r in rows[:4]] == [7.5, 5.0, 2.65, 2.1]
+    assert rows[-1]["obj_id"] == "OBJ_0005"
+    assert rows[-1]["Dichte_Mitte"] is None
+    # Aufsteigend: leichtestes Stueck zuerst, NULL weiterhin ans Ende.
+    rows = repo.list_objects(sort_by="Dichte_Mitte")
+    assert [r["obj_id"] for r in rows[:4]] == [
+        "OBJ_0004", "OBJ_0001", "OBJ_0003", "OBJ_0002"]
+    assert rows[-1]["obj_id"] == "OBJ_0005"
+    c.close()
+
+
 def test_sort_by_dimensionen(tmp_path):
     """Sortierung nach Laenge_mm/Breite_mm/Hoehe_mm fuer Vitrinen-/Schubladen-Auswahl."""
     from stonebook.db.database import open_db
