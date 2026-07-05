@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from stonebook.fields import is_empty
 from stonebook.migration import csv_loaders
 from stonebook.migration.id_utils import normalize_id, display_name
@@ -169,6 +171,33 @@ def test_parse_range_einzelne_whitespace_gruppe_bleibt_ambivalent():
     assert csv_loaders.parse_range("1 234") == (1.0, 234.0)
     # Bestaetigung: gleicher Mechanismus wie "5 7"
     assert csv_loaders.parse_range("5 7") == (5.0, 7.0)
+
+
+def test_parse_range_plus_minus_unsicherheit():
+    """Wissenschaftliche Unsicherheits-Notation ``N ± M`` liefert (N-M, N+M).
+
+    In Mineralogie-Publikationen und -Tabellen der Standard-Weg, Messgenauigkeit
+    zu notieren. Vor dem Fix lieferte ``5.5 ± 0.3`` den Center-Wert doppelt
+    (Toleranz ging verloren); nach dem Fix werden die publizierten Bereichs-
+    grenzen sichtbar. Komma-Dezimal (DE) und negativer Center werden unterstuetzt.
+    """
+    # Standard-Notation mit Whitespace um das ±-Zeichen (Publikations-Praxis).
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Ohne Whitespace (Hand-Notation, Excel-Auto-Format).
+    assert csv_loaders.parse_range("5.5±0.3") == pytest.approx((5.2, 5.8))
+    # DE-Komma-Dezimal (deutschsprachige Publikationen, Excel-DE).
+    assert csv_loaders.parse_range("2,65 ± 0,05") == pytest.approx((2.60, 2.70))
+    # Negativer Center (thermische/isotopische Werte, seltener in Sammler-DB).
+    assert csv_loaders.parse_range("-1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    # Toleranz = 0 kollabiert auf Punkt-Wert (Publikationen ohne dokumentierte
+    # Unsicherheit notieren manchmal explizit ± 0 als "exakt gemessen").
+    assert csv_loaders.parse_range("5.5 ± 0") == (5.5, 5.5)
+    # Freitext-Anhang bricht das Pattern; Fallback auf Zahl-Extraktion liefert
+    # nur den Center (Toleranz wird ohne strikten Pattern-Match nicht gesondert
+    # ausgewertet).
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur)") == (5.5, 5.5)
+    # Ohne Center (nur Toleranz) bleibt das alte Verhalten: eine Zahl.
+    assert csv_loaders.parse_range("± 0.5") == (0.5, 0.5)
 
 
 def test_parse_range_schweizer_apostroph_tausender():

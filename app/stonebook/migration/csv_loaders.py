@@ -10,6 +10,21 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 
 _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 
+# Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
+# In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
+# notieren: ``Dichte 2.65 ± 0.05`` = "Wert 2.65, Toleranz 0.05, Range [2.60, 2.70]".
+# ``5.5 ± 0.3`` liefert damit (5.2, 5.8) statt (5.5, 5.5) und macht die publizierte
+# Toleranz explizit als Bereichsgrenzen sichtbar - sinnvoll fuer Sammler-Notizen,
+# die Dichte-/Haerte-Werte direkt aus Referenz-Tabellen uebernehmen. Center darf
+# negativ sein (fuer thermische/isotopische Werte ausserhalb der klassischen
+# Mineralogie); Toleranz ist nicht-negativ per Definition. Komma als Dezimaltrenner
+# akzeptiert (DE-Publikationen). Muss auf den gesamten String matchen (^...$),
+# damit Freitext-Anhaenge wie ``5.5 ± 0.3 (Literatur)`` nicht versehentlich
+# einbezogen werden - fuer die kommt die Fallback-Zahl-Suche zum Zug.
+_PLUS_MINUS_UNCERTAINTY = re.compile(
+    r"^\s*(-?\d+(?:[.,]\d+)?)\s*±\s*(\d+(?:[.,]\d+)?)\s*$"
+)
+
 # Eindeutig erkennbare Tausender-Strukturen (Komma+Punkt oder Punkt+Komma in einer Zahl,
 # oder mehrere Trenner desselben Typs in Folge). ``(?<!\d)``/``(?!\d)`` stellen sicher,
 # dass die Zahl als Ganzes erkannt wird (kein Anschnitt einer laengeren Ziffernfolge).
@@ -119,6 +134,16 @@ def parse_range(text) -> tuple[float | None, float | None]:
     if text is None:
         return None, None
     s = normalize_numeric_locale(str(text))
+    # ``N ± M``-Notation vor der generischen Zahlen-Extraktion pruefen: die
+    # Toleranz ist strukturell an das Zentrum gebunden, nicht ein zweiter
+    # unabhaengiger Wert. Ohne diesen Zweig wuerde ``5.5 ± 0.3`` als
+    # ``[5.5, 0.3]`` erkannt und via ``if hi < lo`` auf ``(5.5, 5.5)`` fallen -
+    # die publizierte Toleranz ginge stille verloren.
+    m = _PLUS_MINUS_UNCERTAINTY.match(s)
+    if m:
+        center = float(m.group(1).replace(",", "."))
+        tol = float(m.group(2).replace(",", "."))
+        return center - tol, center + tol
     nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
     if not nums:
         return None, None
