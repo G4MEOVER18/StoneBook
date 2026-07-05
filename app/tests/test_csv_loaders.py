@@ -273,6 +273,72 @@ def test_parse_range_plus_minus_ascii_ersatzform():
     assert csv_loaders.parse_range("5.5 +/- 0.3 (Literatur)") == (5.5, 5.5)
 
 
+def test_parse_range_wissenschaftliche_notation():
+    """Zahl-Token mit Exponent ``E±N`` wird als scientific-notation gelesen.
+
+    In Mineralogie-/Physik-Publikationen die Standardform fuer Werte, die
+    viele Groessenordnungen ueberspannen: Absorptions-Querschnitte in cm²
+    (``2.5e-19``), Halbwertszeiten von Isotopen in Jahren (``4.5e9``),
+    Kalibrier-Konstanten aus spektroskopischen Messungen (``1.5e-3``),
+    Fluoreszenz-Lebensdauern in Sekunden (``3e-6``). Vor dem Fix wurde
+    ``1e3`` als zwei Tokens ``1`` und ``3`` gelesen (inverted range,
+    Fallback (1.0, 1.0)); ``1.5e-3`` lieferte ``(1.5, 3.0)`` als
+    vermeintlicher Range ``1.5 bis 3`` - beide Faelle verwerfen die
+    Groessenordnung stille.
+
+    Kollisionsfreiheit zu den Uncertainty-Patterns (Langform ``N ± M``
+    und IUCr-Kompaktform ``N(M)``): der Exponent-Match greift nur, wenn
+    weder die ± noch die Klammer-Struktur den Freitext strukturell
+    umschliesst - beide Uncertainty-Zweige fangen ihren Fall via
+    ^...$-Anker vor der generischen Zahlen-Extraktion ab, sodass
+    ``5.5(3)`` und ``5.5 ± 0.3`` weiterhin die publizierte Toleranz
+    liefern und nicht als scientific-notation-Kollision fehlinterpretiert
+    werden.
+    """
+    # Ganzzahl-Mantisse mit positivem Exponent: klassische Compact-Form fuer
+    # Werte in wissenschaftlichen Notizen.
+    assert csv_loaders.parse_range("1e3") == (1000.0, 1000.0)
+    # Explizites Plus-Vorzeichen (Excel-DE-Auto-Format schreibt haeufig
+    # ``1,5E+03``; NIST-CODATA-Tabellen ``1.5E+3`` mit sichtbarem Plus).
+    assert csv_loaders.parse_range("1.5E+3") == (1500.0, 1500.0)
+    # Negativer Exponent: der Standard-Fall fuer sub-Einheiten-Groessen
+    # (Kalibrier-Konstanten, Absorptions-Querschnitte, HWZ-Bruchteile).
+    assert csv_loaders.parse_range("1.5e-3") == (0.0015, 0.0015)
+    # Case-insensitive: ``e`` und ``E`` beide gueltig (LaTeX-Rendering
+    # schreibt ``e``, Excel-Auto-Format ``E``).
+    assert csv_loaders.parse_range("2.65e0") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65E0") == (2.65, 2.65)
+    # DE-Komma-Dezimal in der Mantisse (deutsche Publikationen, Excel-DE
+    # schreibt ``1,5E-03`` mit Komma-Dezimal); der Exponent selbst ist
+    # immer ganzzahlig ohne Locale-Problem.
+    assert csv_loaders.parse_range("1,5e-3") == (0.0015, 0.0015)
+    # Astronomische Groessenordnungen (Halbwertszeit U-238 in Jahren,
+    # Absorptions-Querschnitt in cm²) - decken den float-Wertebereich ab.
+    assert csv_loaders.parse_range("4.5e9") == (4.5e9, 4.5e9)
+    assert csv_loaders.parse_range("2.5e-19") == (2.5e-19, 2.5e-19)
+    # Echter Range mit scientific notation auf beiden Seiten (Kalibrier-
+    # Bereich, Absorptions-Spektrum): der Range-Trenner ist der Bindestrich
+    # zwischen den beiden Exponent-Zahlen, nicht der Minus-Anker des
+    # rechten Exponents.
+    assert csv_loaders.parse_range("1e3 - 5e3") == (1000.0, 5000.0)
+    # Range mit negativem Exponent auf beiden Seiten: sicherstellen, dass
+    # die Zahl-Zerlegung greedy den ganzen Exponent-Token nimmt und nicht
+    # vorzeitig beim Bindestrich abbricht.
+    assert csv_loaders.parse_range("1e-3 - 5e-3") == (0.001, 0.005)
+    # Einzelner Exponent ohne Mantisse-Dezimalstelle (``1e0`` = 1) - lieferte
+    # frueher ueber die Zwei-Zahl-Zerlegung (1.0, 0.0) → collapsed (1.0, 1.0).
+    # Neues Verhalten: exponent wird ausgewertet, liefert dasselbe (1.0, 1.0)
+    # aber ueber den semantisch korrekten Pfad.
+    assert csv_loaders.parse_range("1e0") == (1.0, 1.0)
+    # Kollisionsfreiheit mit den Uncertainty-Zweigen: die publizierte
+    # Toleranz-Semantik bleibt Vorrang; ``5.5(3)`` liefert weiterhin die
+    # Klammer-Unsicherheit, kein scientific-notation-Fallback, und
+    # ``5.5 ± 0.3`` bleibt Langform-Uncertainty. Regression-Anker fuer
+    # den Fall, dass jemand die Zweige umsortiert.
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+
+
 def test_parse_range_schweizer_apostroph_tausender():
     """Schweizer Tausendertrenner ''' wird ignoriert (CHF-Betraege aus Excel)."""
     # Ohne Fix waere "1'000.00" als (1, 0) gelesen worden.

@@ -8,7 +8,45 @@ from stonebook.fields import DATA_FIELDS, NUMERIC_TYPES, FIELD_BY_NAME
 from stonebook.migration.id_utils import normalize_id
 from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 
-_NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
+# Zahl-Token-Regex mit optionaler wissenschaftlicher Notation ``E±N`` (Exponent
+# zur Basis 10). In Mineralogie-/Physik-Tabellen und Referenz-Publikationen die
+# Standardform fuer Werte, die viele Groessenordnungen ueberspannen: Absorptions-
+# Querschnitte in cm² (``2.5e-19``), Halbwertszeiten von Isotopen in Jahren
+# (``4.5e9``), Kalibrier-Konstanten aus spektroskopischen Messungen (``1.5e-3``),
+# Fluoreszenz-Lebensdauern in Sekunden (``3e-6``). Ohne die Exponent-Alternation
+# fielen alle diese Formen auf eine Mehrfach-Zahl-Zerlegung: ``1.5e-3`` wurde
+# als zwei Tokens ``1.5`` und ``3`` gelesen und lieferte ``(1.5, 3.0)`` als
+# vermeintlicher Range ``1.5 bis 3``; ``1e3`` wurde ``[1.0, 3.0]`` und fiel via
+# ``hi < lo``-Fallback auf ``(1.0, 1.0)`` zurueck; ``1.5E+3`` denselben Kollaps
+# ueber das ignorierte Vorzeichen des Exponenten. Bei der Migration aus
+# wissenschaftlichen Quellen (Sammler kopieren Kalibrier-/Absorptions-Werte
+# direkt aus Publikationen oder NIST-CODATA-Tabellen) entstand damit silenter
+# Verlust der Groessenordnung - der Wert wurde als Punktwert der Mantisse
+# gelesen, die eigentliche Zehnerpotenz fiel weg.
+#
+# Exponent-Zeichen ``e``/``E`` (case-insensitive per Zeichen-Klasse), optionales
+# Vorzeichen ``+``/``-`` und mindestens eine Ziffer. Wird von ``float()``
+# automatisch als IEEE-754-Basis-10-Exponent interpretiert (``float("1.5e-3")
+# == 0.0015``), sodass die bereits vorhandene ``float(n.replace(",", "."))``-
+# Konvertierung in :func:`parse_range` die scientific-notation-Form transparent
+# akzeptiert - keine separate Postprocessing-Logik noetig. Locale-Toleranz
+# symmetrisch zur bereits vorhandenen Komma-Dezimal-Konvention des Basis-
+# Teils: Komma-Dezimal in der Mantisse (``1,5e-3``) wird durch das
+# ``.replace(",", ".")`` vor dem ``float()``-Aufruf normalisiert (DE/EU-
+# Publikationen und Excel-DE schreiben ``1,5E-03`` mit Komma-Dezimal); der
+# Exponent selbst ist ganzzahlig ohne Locale-Problem.
+#
+# Kollisionsfreiheit zu den bereits vorhandenen Uncertainty-Patterns
+# (_PLUS_MINUS_UNCERTAINTY / _PARENTHESIS_UNCERTAINTY): beide fangen vor der
+# generischen Zahlen-Extraktion via ^...$-Anker die Publikations-Notation ab
+# und lassen den Exponent-Match hier nur bei Freitext-Werten ohne
+# Uncertainty-Struktur greifen; die Uncertainty-Basis- und -Toleranz-Zahlen
+# bleiben absichtlich ohne Exponent-Alternation, weil die IUCr-/DIN-Uncertainty-
+# Konventionen den Exponent nicht innerhalb der ± -/Klammer-Struktur setzen,
+# sondern die gesamte Notation getrennt vom Exponent notieren (etwa
+# ``2.65e0 ± 5e-2`` wuerde in einer Publikation als ``2.65(5)e0`` geschrieben,
+# nicht als Kombination beider Notationen im gleichen Token).
+_NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)")
 
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
@@ -187,6 +225,11 @@ def parse_range(text) -> tuple[float | None, float | None]:
     Excel-/Buchhaltungsexporte mit CHF-Betraegen nicht in Einzelziffern zerfallen.
     Eindeutige EN/DE-Tausender (``1,000.50`` / ``1.000,50`` / ``1,000,000``) werden
     ebenfalls normalisiert; ambivalente Faelle wie ``2,55`` bleiben Dezimalwerte.
+
+    Wissenschaftliche Notation ``E±N`` wird als Zehnerpotenz gelesen
+    (``'1.5e-3'`` → (0.0015, 0.0015), ``'1e3'`` → (1000.0, 1000.0)); ohne
+    Exponent-Auswertung wuerden Absorptions-/Kalibrier-Werte aus
+    Publikationen auf ihre Mantisse kollabieren (siehe :data:`_NUM_RE`).
     """
     if text is None:
         return None, None
