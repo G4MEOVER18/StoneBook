@@ -109,6 +109,22 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # "welches Stueck ist mein groesstes/kleinstes?" ist der Produkt-Wert die
     # natuerliche Antwort ohne dreifache Achsen-Vergleiche.
     "Laenge_mm", "Breite_mm", "Hoehe_mm", "Volumen_mm3",
+    # Wert_pro_Gewicht_chf_g als spezifische Marktwert-Dichte je Gramm
+    # (gesamtwert_chf / Gewicht_g) und Nutzwert-Ergaenzung zur bereits vorhandenen
+    # gesamtwert_chf-Sortier-Achse: waehrend gesamtwert_chf die absolute Wert-
+    # Summe pro Stueck beziffert (grosse schwere Stuecke stehen bei DESC oben,
+    # unabhaengig davon, ob der Wert aus Masse oder aus Rarity kommt), zeigt die
+    # spezifische Achse die "Wert-Dichte" - die Sammler-/Verkaeufer-Frage
+    # "welche Stuecke sind pro Gramm am wertvollsten?" (Diamant/Rubin/Smaragd
+    # in kleinen Karat-Portionen oben, faustgrosse Quarze/Calcite unten).
+    # Komplementaer zu den drei Wert-Sichten: absolute Summe (gesamtwert_chf),
+    # spezifische Massen-Dichte (dieses Feld) und spezifische Volumen-Dichte
+    # (waere Wert/Volumen, eigene Achse). Sortier-Frage "welches Stueck rentiert
+    # sich am meisten pro Gepaeck-Gramm bei Transport zur Boerse?" oder "welche
+    # Vitrinen-Plaetze traegt am meisten Versicherungswert pro Kilo?". NULL bei
+    # fehlender/Null-Masse (Gewicht_g IS NULL OR = 0) - die Division waere
+    # entweder undefined oder unendlich, spiegelt die NULL-an-Ende-Konvention.
+    "Wert_pro_Gewicht_chf_g",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
@@ -210,7 +226,7 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
 # Definition und Sortier-Definition).
 _COMPUTED_COLUMNS: frozenset[str] = frozenset(
     {"bilder", "gesamtwert_chf", "aliase", "analysen", "Volumen_mm3",
-     "Mohs_Haerte_Mitte", "Dichte_Mitte"})
+     "Mohs_Haerte_Mitte", "Dichte_Mitte", "Wert_pro_Gewicht_chf_g"})
 
 
 def _now() -> str:
@@ -464,7 +480,10 @@ class ObjectRepo:
                     / 2.0) AS Mohs_Haerte_Mitte,
                    ((COALESCE(o.Dichte_min_gcm3, o.Dichte_max_gcm3)
                     + COALESCE(o.Dichte_max_gcm3, o.Dichte_min_gcm3))
-                    / 2.0) AS Dichte_Mitte
+                    / 2.0) AS Dichte_Mitte,
+                   (CASE WHEN o.Gewicht_g IS NULL OR o.Gewicht_g = 0 THEN NULL
+                         ELSE {wert_sql} * 1.0 / o.Gewicht_g END)
+                    AS Wert_pro_Gewicht_chf_g
             FROM objects o
         """
         where, params = [], []

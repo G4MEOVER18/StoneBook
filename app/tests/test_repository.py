@@ -318,6 +318,90 @@ def test_sort_by_dichte_mitte(tmp_path):
     c.close()
 
 
+def test_sort_by_wert_pro_gewicht_chf_g(tmp_path):
+    """Sortierung nach Wert_pro_Gewicht_chf_g als spezifische Marktwert-Dichte
+    (CHF pro Gramm). Sammler-/Verkaeufer-Frage 'welche Stuecke sind pro Gramm
+    am wertvollsten?': kleine Diamant-/Rubin-/Smaragd-Portionen ganz oben,
+    faustgrosse Quarze/Calcite unten. Spiegelt gesamtwert_chf auf die
+    Massen-spezifische Achse: waehrend gesamtwert_chf die absolute Summe
+    beziffert (grosse schwere Stuecke oben), zeigt Wert_pro_Gewicht_chf_g die
+    Wert-Dichte pro Masseneinheit.
+
+    NULL-Konvention: Gewicht_g IS NULL ODER = 0 -> Wert-Dichte NULL -> ans
+    Listenende (spiegelt Volumen_mm3-Semantik: fehlt eine Bezugsgroesse, ist
+    die Ableitung nicht definiert). SUM-COALESCE-Konvention der Zaehler-
+    Wert-Felder bleibt aus gesamtwert_chf uebernommen: fehlende Einzel-Wert-
+    Felder zaehlen als 0 CHF. Ergibt spezifische Werte in CHF/g mit typischen
+    Sammler-Reihenfolgen: Diamant (~50-500 CHF/g Rohstein) > Rubin/Smaragd
+    (~5-50 CHF/g) > Bergkristall in Sammler-Qualitaet (~0.5-5 CHF/g) >
+    Baumarkt-Quarz-Handstueck (~0.05 CHF/g).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            # 500 CHF / 100 g = 5.0 CHF/g (Sammler-Bergkristall)
+            ("OBJ_0001", 100.0, 500.0),
+            # 200 CHF / 2 g = 100.0 CHF/g (Rubin-Splitter)
+            ("OBJ_0002", 2.0, 200.0),
+            # 50 CHF / 500 g = 0.1 CHF/g (Handstueck)
+            ("OBJ_0003", 500.0, 50.0),
+            # Gewicht NULL -> Wert-Dichte NULL, ans Ende
+            ("OBJ_0004", None, 300.0),
+            # Gewicht 0 -> Wert-Dichte NULL, ans Ende (keine Division-durch-Null)
+            ("OBJ_0005", 0.0, 100.0),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Wert_pro_Gewicht_chf_g", sort_desc=True)
+    # OBJ_0002 (100.0) > OBJ_0001 (5.0) > OBJ_0003 (0.1), NULL-Traeger hinten
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0002", "OBJ_0001", "OBJ_0003"]
+    assert [round(r["Wert_pro_Gewicht_chf_g"], 4) for r in rows[:3]] == [
+        100.0, 5.0, 0.1]
+    # Beide NULL-Traeger stehen am Ende, Tie-Break lexikographisch auf obj_id
+    assert [r["obj_id"] for r in rows[-2:]] == ["OBJ_0004", "OBJ_0005"]
+    assert rows[-1]["Wert_pro_Gewicht_chf_g"] is None
+    # Aufsteigend: kleinste Dichte zuerst, NULL weiterhin ans Ende
+    rows = repo.list_objects(sort_by="Wert_pro_Gewicht_chf_g")
+    assert [r["obj_id"] for r in rows[:3]] == ["OBJ_0003", "OBJ_0001", "OBJ_0002"]
+    assert rows[-1]["Wert_pro_Gewicht_chf_g"] is None
+    c.close()
+
+
+def test_sort_by_wert_pro_gewicht_chf_g_summiert_alle_wertfelder(tmp_path):
+    """Wert_pro_Gewicht_chf_g nutzt die volle WERT_FELDER-Summe im Zaehler,
+    identisch zur gesamtwert_chf-Konvention. Ein Stueck mit gemischten
+    Wert-Feldern (Rohwert + Polierwert + Schmuckwert + Industrie +
+    Wissenschaftlich) laeuft ueber die gesamte 5-Felder-Summe, nicht nur
+    ueber Wert_CHF_roh - kein Drift zwischen der absoluten und der
+    spezifischen Marktwert-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpg2.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g, Wert_CHF_roh, "
+        "Wert_CHF_poliert, Wert_CHF_Schmuck, Marktwert_Industrie, "
+        "Wissenschaftlicher_Wert_CHF) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            # 10 g, alle 5 Wert-Felder zusammen 100 CHF -> 10 CHF/g
+            ("OBJ_0001", 10.0, 20.0, 30.0, 20.0, 10.0, 20.0),
+            # 10 g, nur Rohwert 50 -> 5 CHF/g
+            ("OBJ_0002", 10.0, 50.0, None, None, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    rows = repo.list_objects(sort_by="Wert_pro_Gewicht_chf_g", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    assert [round(r["Wert_pro_Gewicht_chf_g"], 4) for r in rows] == [10.0, 5.0]
+    # gesamtwert_chf-Konsistenz: die Summe im Zaehler entspricht dem gesamtwert
+    assert round(rows[0]["gesamtwert_chf"], 4) == 100.0
+    assert round(rows[1]["gesamtwert_chf"], 4) == 50.0
+    c.close()
+
+
 def test_sort_by_dimensionen(tmp_path):
     """Sortierung nach Laenge_mm/Breite_mm/Hoehe_mm fuer Vitrinen-/Schubladen-Auswahl."""
     from stonebook.db.database import open_db
