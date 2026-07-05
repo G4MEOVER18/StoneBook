@@ -123,6 +123,23 @@ class Statistik:
     objekte_mit_wert: int = 0
     top_wert_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
+    # Top-Wert-Dichte-Objekte auf der spezifischen Marktwert-Achse: (obj_id,
+    # Name, CHF/g) fuer die Stuecke mit hoechstem Wert pro Gramm. Spiegelt
+    # top_wert_objekte (absolute Wert-Summe) auf die spezifische Massen-
+    # Dichte-Achse (Wert_pro_Gewicht_chf_g in repository.py). Waehrend
+    # top_wert_objekte grosse schwere Stuecke oben zeigt (unabhaengig davon,
+    # ob der Wert aus Masse oder aus Rarity kommt), zeigt die Wert-Dichte-
+    # Top-Liste die "wertvollsten pro Gramm" - kleine Diamant-/Rubin-/
+    # Smaragd-Portionen ganz oben, faustgrosse Quarze/Calcite unten.
+    # Sammler-/Verkaeufer-Frage der Boersen-Vorbereitung: welche Stuecke
+    # rentieren sich pro Gepaeck-Gramm am meisten, welche traegt die
+    # Vitrinen-Auslage den hoechsten Versicherungswert pro Kilo.
+    # Beruht auf demselben (wert_sql / Gewicht_g)-Ausdruck wie die Sortier-
+    # Achse in repository.py (kein Drift zwischen Kollektions-Top-Sicht und
+    # Listen-Sortier-Definition). Objekte ohne Wert oder ohne/mit Null-
+    # Gewicht fallen aus (WHERE-Filter), damit die Top-Liste nicht durch
+    # 0.0-Traeger dominiert wird.
+    top_wert_pro_gewicht_objekte: list[tuple[str, str, float]] = field(default_factory=list)
     top_bilder_objekte: list[tuple[str, str, int]] = field(default_factory=list)
     top_confidence_objekte: list[tuple[str, str, int]] = field(default_factory=list)
     wert_pro_mineral: list[tuple[str, float]] = field(default_factory=list)
@@ -1289,6 +1306,10 @@ class Statistik:
             ],
             "top_gewicht_objekte": [
                 (oid, name, round(g, 2)) for oid, name, g in self.top_gewicht_objekte
+            ],
+            "top_wert_pro_gewicht_objekte": [
+                (oid, name, round(v, 4))
+                for oid, name, v in self.top_wert_pro_gewicht_objekte
             ],
             "top_bilder_objekte": [
                 (oid, name, int(n)) for oid, name, n in self.top_bilder_objekte
@@ -2675,6 +2696,7 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
                        top_wert_beste_verwendung: int = 10,
                        top_gewicht_beste_verwendung: int = 10,
                        top_gewicht: int = 10,
+                       top_wert_pro_gewicht: int = 10,
                        top_bilder: int = 10,
                        top_confidence: int = 10,
                        top_wert_funddatum_jahr: int = 10,
@@ -4442,6 +4464,26 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
             "WHERE Gewicht_g IS NOT NULL AND Gewicht_g > 0 "
             "ORDER BY g DESC, obj_id LIMIT ?",
             (int(top_gewicht),),
+        ).fetchall()
+    ]
+    # Top-Wert-Dichte-Objekte auf der spezifischen Marktwert-Achse (CHF/g).
+    # Spiegelt top_wert_objekte (absolute Summe) und top_gewicht_objekte
+    # (absolute Masse) auf die Massen-normalisierte Wert-Achse. Beruht auf
+    # demselben (wert_sql / Gewicht_g)-Ausdruck wie die Wert_pro_Gewicht_chf_g-
+    # Sortier-Achse in repository.py: kein Drift zwischen Kollektions-Top-
+    # Sicht (hier) und Listen-Sortier-Definition (dort). WHERE-Filter
+    # schliesst Null-Gewicht-/Null-Wert-Traeger aus, damit die Top-Liste nicht
+    # durch 0.0- oder undefined-Traeger dominiert wird (spiegelt die
+    # {wert_sql} > 0 - Konvention von top_wert und die Gewicht_g > 0 -
+    # Konvention von top_gewicht).
+    st.top_wert_pro_gewicht_objekte = [
+        (r["obj_id"], r["Name"] or "", float(r["v"]))
+        for r in conn.execute(
+            f"SELECT obj_id, Name, "
+            f"({wert_sql} * 1.0 / Gewicht_g) AS v FROM objects "
+            f"WHERE Gewicht_g IS NOT NULL AND Gewicht_g > 0 "
+            f"AND {wert_sql} > 0 ORDER BY v DESC, obj_id LIMIT ?",
+            (int(top_wert_pro_gewicht),),
         ).fetchall()
     ]
     # Best-fotografierte Objekte (analog top_wert/top_gewicht): zeigt, welche Stuecke

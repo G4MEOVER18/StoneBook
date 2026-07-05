@@ -379,6 +379,81 @@ def test_top_wert_limit_respektiert(tmp_path):
     c.close()
 
 
+def test_top_wert_pro_gewicht_objekte(tmp_path):
+    """top_wert_pro_gewicht_objekte spiegelt top_wert_objekte auf die spezifische
+    Marktwert-Dichte-Achse (CHF/g). Waehrend die absolute Top-Sicht grosse
+    schwere Stuecke oben zeigt (Wert-Summe unabhaengig davon, ob der Wert aus
+    Masse oder Rarity kommt), zeigt die Wert-Dichte-Top-Sicht die pro-Gramm-
+    wertvollsten - kleine Rubin-/Diamant-Splitter oben, faustgrosse Quarze
+    unten.
+
+    Beruht auf demselben (wert_sql / Gewicht_g)-Ausdruck wie die
+    Wert_pro_Gewicht_chf_g-Sortier-Achse in repository.py: kein Drift zwischen
+    Kollektions-Top-Sicht und Listen-Sortier-Definition. Objekte ohne Wert
+    ODER ohne/mit Null-Gewicht fallen aus - die Top-Liste darf nicht von 0.0-
+    oder undefined-Traegern dominiert werden (spiegelt {wert_sql} > 0 -
+    Konvention von top_wert und Gewicht_g > 0 - Konvention von top_gewicht).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "twpg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Name, Gewicht_g, Wert_CHF_roh) "
+        "VALUES (?, ?, ?, ?)",
+        [
+            ("OBJ_0001", "Bergkristall", 100.0, 500.0),   # 5.0 CHF/g
+            ("OBJ_0002", "Rubin-Splitter", 2.0, 200.0),    # 100.0 CHF/g
+            ("OBJ_0003", "Handstueck", 500.0, 50.0),       # 0.1 CHF/g
+            ("OBJ_0004", "Ohne Gewicht", None, 300.0),     # ausgeschlossen
+            ("OBJ_0005", "Null-Gewicht", 0.0, 100.0),      # ausgeschlossen (Guard)
+            ("OBJ_0006", "Wertlos", 10.0, 0.0),            # ausgeschlossen (0 Wert)
+            ("OBJ_0007", "Ohne Wert", 10.0, None),         # ausgeschlossen
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # DESC-Reihenfolge: Rubin > Bergkristall > Handstueck; ausgeschlossene fehlen
+    ids = [oid for oid, _, _ in st.top_wert_pro_gewicht_objekte]
+    assert ids == ["OBJ_0002", "OBJ_0001", "OBJ_0003"]
+    werte = [round(v, 4) for _, _, v in st.top_wert_pro_gewicht_objekte]
+    assert werte == [100.0, 5.0, 0.1]
+    namen = [name for _, name, _ in st.top_wert_pro_gewicht_objekte]
+    assert namen == ["Rubin-Splitter", "Bergkristall", "Handstueck"]
+    # as_dict rundet auf 4 Nachkommastellen (Wert-Dichte kann Dezimalstellen
+    # unter 1 CHF/g liefern, 4 Digits reichen fuer die Anzeige)
+    d = st.as_dict()
+    assert "top_wert_pro_gewicht_objekte" in d
+    assert d["top_wert_pro_gewicht_objekte"][0] == ("OBJ_0002", "Rubin-Splitter", 100.0)
+    c.close()
+
+
+def test_top_wert_pro_gewicht_limit_respektiert(tmp_path):
+    """top_wert_pro_gewicht-Parameter begrenzt die Top-Liste. Spiegelt
+    test_top_wert_limit_respektiert auf die Wert-Dichte-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "twpglim.sqlite3")
+    # 20 Objekte mit strikt aufsteigender CHF/g-Dichte (i CHF pro 1g)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Gewicht_g, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [(f"OBJ_{i:04d}", 1.0, float(i)) for i in range(1, 21)],
+    )
+    c.commit()
+    st = compute_statistics(c, top_wert_pro_gewicht=3)
+    assert len(st.top_wert_pro_gewicht_objekte) == 3
+    werte = [v for _, _, v in st.top_wert_pro_gewicht_objekte]
+    assert werte == [20.0, 19.0, 18.0]
+    c.close()
+
+
+def test_top_wert_pro_gewicht_leere_db(tmp_path):
+    """Leere DB -> leere Top-Liste; kein Crash."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.top_wert_pro_gewicht_objekte == []
+    c.close()
+
+
 def test_by_funddatum_jahr_aus_seed_db(tmp_path):
     from stonebook.db.database import open_db
 
