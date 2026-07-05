@@ -509,6 +509,20 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         # beziffert die Vermessungs-Luecke (gewogen aber nicht vermessen).
         lines.append(
             f"  Dimensionen:         {st.quote_mit_dimensionen_prozent:.1f} %")
+        # Volumen (Laenge_mm UND Breite_mm UND Hoehe_mm - strengere Vermessungs-
+        # Vollstaendigkeit) direkt unter Dimensionen: waehrend Dimensionen die
+        # Vermessungs-Aktivitaet beziffert (irgendeine Achse angefasst, typisch
+        # Laenge als Vitrinen-Index), beziffert Volumen die Vermessungs-Vollst-
+        # aendigkeit (alle drei Achsen gesetzt, sodass das axis-aligned Bounding-
+        # Box-Volumen ohne NULL definiert ist). Spiegelt die NULL-Semantik der
+        # Volumen_mm3-Sortier-Achse auf die Kollektions-Sicht. Die Differenz
+        # Dimensionen - Volumen beziffert den Zwischenbestand mit angefangener,
+        # aber nicht abgeschlossener Vermessung - typisch die Stuecke mit
+        # dokumentierter Laenge, aber ohne Breite/Hoehe. Aus Datenpflege-Sicht
+        # der zweite Vermessungs-Pflege-Indikator nach Dimensionen: erst wenn
+        # beide Quoten sich annaehern, ist die Vermessung wirklich vollstaendig.
+        lines.append(
+            f"  Volumen:             {st.quote_mit_volumen_prozent:.1f} %")
         # Mohs-Haerte (physikalische Haerte-Achse) direkt unter Dimensionen,
         # weil sie die naechste physikalische Mess-Achse abdeckt: Masse ->
         # Geometrie -> Haerte. Mohs (1=Talk ... 10=Diamant) ist die zentrale

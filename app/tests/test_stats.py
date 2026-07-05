@@ -3585,6 +3585,68 @@ def test_quote_mit_dimensionen_aus_seed_db(tmp_path):
     c.close()
 
 
+def test_quote_mit_volumen_aus_seed_db(tmp_path):
+    """Coverage-Quote fuer vollstaendige geometrische Vermessung (Laenge_mm UND
+    Breite_mm UND Hoehe_mm gesetzt) - die strengere Definition zur
+    quote_mit_dimensionen_prozent-Achse (mindestens eine Achse). Waehrend
+    Dimensionen die Vermessungs-Aktivitaet beziffert, beziffert Volumen die
+    Vermessungs-Vollstaendigkeit: alle drei Achsen gesetzt, sodass das axis-
+    aligned Bounding-Box-Volumen Laenge_mm * Breite_mm * Hoehe_mm ohne NULL
+    definiert ist. Spiegelt die NULL-Semantik der Volumen_mm3-Sortier-Achse
+    in repository.py (Produkt ist NULL, sobald eine Achse fehlt) auf die
+    Kollektions-Sicht. Die Differenz quote_mit_dimensionen - quote_mit_volumen
+    beziffert den Zwischenbestand mit angefangener, aber nicht abgeschlossener
+    Vermessung.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qv.sqlite3")
+    # 5 Objekte: zwei mit allen drei Achsen (40%), einer mit zwei Achsen (nicht
+    # ausreichend), einer mit nur Laenge (nicht ausreichend), einer ganz ohne.
+    # Konjunktive Definition: nur die kompletten zaehlen. Die Differenz zur
+    # disjunktiven quote_mit_dimensionen_prozent (60% mit den beiden Halb-
+    # Vermessenen dabei) beziffert die Vermessungs-Restluecke.
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?,?,?,?)",
+        [
+            ("OBJ_0001", 50.0, 30.0, 20.0),  # alle drei → zaehlt
+            ("OBJ_0002", 40.0, 20.0, 10.0),  # alle drei → zaehlt
+            ("OBJ_0003", 80.0, 30.0, None),  # nur zwei → zaehlt nicht
+            ("OBJ_0004", 100.0, None, None), # nur Laenge → zaehlt nicht
+            ("OBJ_0005", None, None, None),  # nichts → zaehlt nicht
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.objekte_mit_volumen == 2
+    assert st.quote_mit_volumen_prozent == 40.0
+    # Konjunktive Volumen-Quote ist strikt kleiner als die disjunktive
+    # Dimensionen-Quote, weil OBJ_0003 (zwei Achsen) und OBJ_0004 (eine Achse)
+    # in Dimensionen zaehlen, in Volumen aber nicht.
+    assert st.objekte_mit_dimensionen == 4
+    assert st.quote_mit_dimensionen_prozent == 80.0
+    d = st.as_dict()
+    assert d["objekte_mit_volumen"] == 2
+    assert d["quote_mit_volumen_prozent"] == 40.0
+    c.close()
+
+
+def test_quote_mit_volumen_leere_db(tmp_path):
+    """Bei leerer DB liefert quote_mit_volumen_prozent None (spiegelt die
+    None-Konvention aller Coverage-Quoten - _quote schuetzt gegen
+    objekte_total==0). objekte_mit_volumen ist 0 (Zaehl-Achse, kein NULL).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "qvl.sqlite3")
+    st = compute_statistics(c)
+    assert st.objekte_mit_volumen == 0
+    assert st.quote_mit_volumen_prozent is None
+    d = st.as_dict()
+    assert d["objekte_mit_volumen"] == 0
+    assert d["quote_mit_volumen_prozent"] is None
+    c.close()
+
+
 def test_quote_mit_mohs_aus_seed_db(tmp_path):
     """Coverage-Quote fuer Mohs-Haerte (Mohs_Haerte_min / Mohs_Haerte_max)
     spiegelt die has_mohs-Filter-Konvention exakt: ein Objekt zaehlt als

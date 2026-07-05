@@ -187,6 +187,7 @@ class Statistik:
     gewicht_spanweite_g: float = 0.0
     objekte_mit_gewicht: int = 0
     objekte_mit_dimensionen: int = 0
+    objekte_mit_volumen: int = 0
     objekte_mit_mohs: int = 0
     objekte_mit_dichte: int = 0
     objekte_mit_seltenheit_global: int = 0
@@ -244,6 +245,29 @@ class Statistik:
         # Die Differenz quote_mit_gewicht_prozent - quote_mit_dimensionen_prozent
         # beziffert die Vermessungs-Luecke (gewogen, aber nicht vermessen).
         return self._quote(self.objekte_mit_dimensionen)
+
+    @property
+    def quote_mit_volumen_prozent(self) -> float | None:
+        # Coverage-Quote fuer vollstaendige geometrische Vermessung (Laenge_mm
+        # UND Breite_mm UND Hoehe_mm gesetzt) - die strengere Definition zur
+        # quote_mit_dimensionen_prozent-Achse (Konvention: eine der drei Achsen
+        # reicht). Waehrend quote_mit_dimensionen_prozent die Vermessungs-
+        # Aktivitaet beziffert (irgendeine Achse angefasst, typisch Laenge als
+        # Vitrinen-/Schubladen-Index), beziffert quote_mit_volumen_prozent die
+        # Vermessungs-Vollstaendigkeit (alle drei Achsen gesetzt, sodass das
+        # axis-aligned Bounding-Box-Volumen Laenge_mm * Breite_mm * Hoehe_mm
+        # definiert ist). Spiegelt damit die NULL-Semantik der Volumen_mm3-
+        # Sortier-Achse in repository.py (Produkt ist NULL, sobald eine Achse
+        # fehlt) auf die Kollektions-Sicht: die Quote sagt, wie gross der
+        # Anteil der Sammlung ist, dessen Vitrinen-Belegung ohne weiteres
+        # Vermessen berechenbar ist. Die Differenz quote_mit_dimensionen_prozent
+        # - quote_mit_volumen_prozent beziffert die Vermessungs-Restluecke
+        # (mindestens eine, aber nicht alle drei Achsen geführt) - typisch
+        # der grosse Zwischen-Bestand, dessen Laenge dokumentiert ist, aber
+        # Breite/Hoehe fehlen. Aus Datenpflege-Sicht der zweite Vermessungs-
+        # Pflege-Indikator nach quote_mit_dimensionen_prozent: erst wenn beide
+        # Quoten sich annaehern, ist die Vermessung wirklich vollstaendig.
+        return self._quote(self.objekte_mit_volumen)
 
     @property
     def quote_mit_dichte_prozent(self) -> float | None:
@@ -1443,6 +1467,7 @@ class Statistik:
             "gewicht_spanweite_g": round(self.gewicht_spanweite_g, 2),
             "objekte_mit_gewicht": self.objekte_mit_gewicht,
             "objekte_mit_dimensionen": self.objekte_mit_dimensionen,
+            "objekte_mit_volumen": self.objekte_mit_volumen,
             "objekte_mit_mohs": self.objekte_mit_mohs,
             "objekte_mit_dichte": self.objekte_mit_dichte,
             "objekte_mit_confidence": self.objekte_mit_confidence,
@@ -1472,6 +1497,7 @@ class Statistik:
             "quote_mit_wert_prozent": _round_or_none(self.quote_mit_wert_prozent),
             "quote_mit_gewicht_prozent": _round_or_none(self.quote_mit_gewicht_prozent),
             "quote_mit_dimensionen_prozent": _round_or_none(self.quote_mit_dimensionen_prozent),
+            "quote_mit_volumen_prozent": _round_or_none(self.quote_mit_volumen_prozent),
             "quote_mit_mohs_prozent": _round_or_none(self.quote_mit_mohs_prozent),
             "quote_mit_dichte_prozent": _round_or_none(self.quote_mit_dichte_prozent),
             "quote_mit_ki_analyse_prozent": _round_or_none(self.quote_mit_ki_analyse_prozent),
@@ -3900,6 +3926,29 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
         "SELECT COUNT(*) FROM objects "
         "WHERE Laenge_mm IS NOT NULL OR Breite_mm IS NOT NULL "
         "OR Hoehe_mm IS NOT NULL"
+    ).fetchone()[0]
+    # objekte_mit_volumen: strengere Vermessungs-Coverage - alle drei Achsen
+    # (Laenge_mm UND Breite_mm UND Hoehe_mm) muessen gesetzt sein, damit das
+    # axis-aligned Bounding-Box-Volumen Laenge_mm * Breite_mm * Hoehe_mm ohne
+    # NULL definiert ist. Konjunktive Definition zur disjunktiven objekte_mit_
+    # dimensionen-Definition (mindestens eine Achse): waehrend objekte_mit_
+    # dimensionen die Vermessungs-Aktivitaet beziffert (irgendeine Achse
+    # angefasst), beziffert objekte_mit_volumen die Vermessungs-Vollstaendigkeit
+    # (Volumen berechenbar). Spiegelt die NULL-Semantik der Volumen_mm3-Sortier-
+    # Achse in repository.py exakt (Produkt ist NULL, sobald eine Achse fehlt);
+    # damit korrespondiert die Kollektions-Zaehl-Achse strukturell zur Listen-
+    # Sortier-Achse. Die Differenz objekte_mit_dimensionen - objekte_mit_volumen
+    # beziffert den Zwischenbestand mit angefangener, aber nicht abgeschlossener
+    # Vermessung - typisch die Stuecke mit dokumentierter Laenge als Vitrinen-
+    # Index, aber ohne Breite/Hoehe. Kein separater Filter noetig (wird ueber
+    # has_dimensionen abgedeckt); die Zaehl-Achse dient der Kollektions-Statistik
+    # und der quote_mit_volumen_prozent-Coverage. Complementaer zu objekte_mit_
+    # gewicht (Masse-Coverage) und objekte_mit_mohs (Haerte-Coverage): die dritte
+    # streng-geprueft-Achse im Vermessungs-Pflege-Workflow.
+    st.objekte_mit_volumen = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Laenge_mm IS NOT NULL AND Breite_mm IS NOT NULL "
+        "AND Hoehe_mm IS NOT NULL"
     ).fetchone()[0]
     # objekte_mit_mohs: Anzahl Objekte mit mindestens einem dokumentierten
     # Mohs-Haerte-Bereichsfeld (min ODER max). Spiegelt die has_mohs-Filter-

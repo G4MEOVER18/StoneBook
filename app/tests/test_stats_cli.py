@@ -389,6 +389,37 @@ def test_text_ausgabe_zeigt_dimensionen_quote(tmp_path, capsys):
     assert "50.0 %" in out
 
 
+def test_text_ausgabe_zeigt_volumen_quote(tmp_path, capsys):
+    """Coverage-Block fuehrt Volumen-Quote direkt unter Dimensionen auf.
+    Volumen (Laenge_mm UND Breite_mm UND Hoehe_mm - alle drei Achsen) ist die
+    strengere Vermessungs-Achse zur disjunktiven Dimensionen-Achse (mindestens
+    eine Achse). Waehrend Dimensionen die Vermessungs-Aktivitaet beziffert
+    (irgendeine Achse angefasst), beziffert Volumen die Vermessungs-Vollst-
+    aendigkeit (alle drei Achsen gesetzt, sodass das axis-aligned Bounding-
+    Box-Volumen ohne NULL definiert ist). Spiegelt die NULL-Semantik der
+    Volumen_mm3-Sortier-Achse in repository.py auf die Kollektions-Sicht.
+    """
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "vol.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Laenge_mm, Breite_mm, Hoehe_mm) "
+        "VALUES (?,?,?,?)",
+        [("OBJ_0001", 50.0, 30.0, 20.0),  # alle drei → Volumen zaehlt
+         ("OBJ_0002", 80.0, 30.0, None),  # nur zwei → Volumen zaehlt nicht
+         ("OBJ_0003", None, None, None),
+         ("OBJ_0004", None, None, None)],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Coverage:" in out
+    assert "Volumen:" in out
+    # 1 von 4 Objekten hat alle drei Dimensions-Achsen → 25.0 %
+    assert "25.0 %" in out
+
+
 def test_text_ausgabe_zeigt_mohs_quote(tmp_path, capsys):
     """Coverage-Block fuehrt Mohs-Haerte-Quote direkt unter Dimensionen auf.
     Physikalische Haerte-Achse symmetrisch zur Masse- und Geometrie-Achse:
