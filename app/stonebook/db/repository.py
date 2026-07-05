@@ -80,8 +80,19 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # Physikalische Eigenschaften: sowohl untere (``_min``) als auch obere
     # Bereichsgrenze (``_max``). Sammler-Reihenfolge "vom weichsten zum haertesten"
     # arbeitet mit _min; "wer hat das robusteste/dichteste Maximum?" mit _max
-    # (z.B. fuer Polier-Auswahl per Mohs-Obergrenze).
-    "Mohs_Haerte_min", "Mohs_Haerte_max",
+    # (z.B. fuer Polier-Auswahl per Mohs-Obergrenze). Mohs_Haerte_Mitte ist die
+    # Bereichs-Mittelpunkt-Achse als computed Column (spiegelt Volumen_mm3 auf
+    # die Mohs-Achse): waehrend min/max nur die untere/obere Bereichsgrenze
+    # zeigen (und bei Single-Point-Pflege wie "7" nur eines der beiden Felder
+    # gesetzt ist, was Mohs_Haerte_min-Sortierung um "7 max only"-Stuecke
+    # verschiebt), zeigt Mohs_Haerte_Mitte den typischen Wert pro Stueck
+    # ((min+max)/2 bei zweiseitigem Bereich, der eine Wert bei Single-Point
+    # via COALESCE) - die natuerliche Vitrinen-/Polier-Sortier-Frage "welche
+    # Stuecke sind typisch weich/hart?" ohne separate Auswahl der Grenzachse.
+    # Spiegelt die _mohs_durchschnitt/_mohs_median-Kollektions-Aggregation aus
+    # stats.py auf die Listen-Sortier-Sicht (dort AVG/Median ueber alle
+    # Mittelpunkte, hier der Mittelpunkt pro Objekt als Sortier-Achse).
+    "Mohs_Haerte_min", "Mohs_Haerte_max", "Mohs_Haerte_Mitte",
     "Dichte_min_gcm3", "Dichte_max_gcm3",
     # Geometrische Dimensionen fuer Vitrinen-/Schubladen-Auswahl: nach jeder
     # Achse einzeln sortierbar. Volumen_mm3 (Produkt L*B*H) ist die kombinierte
@@ -180,8 +191,13 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
 # Hoehe_mm gibt NULL zurueck, sobald eine der drei Achsen NULL ist - das ist
 # semantisch korrekt (ohne komplette Vermessung ist kein Volumen definiert) und
 # spiegelt die NULL-an-Ende-Konvention der Einzel-Dimensions-Sortierung.
+# Mohs_Haerte_Mitte teilt die NULL-Semantik der Dimensions-/Volumen-Achse:
+# nur bei komplett fehlender Mohs-Pflege (min UND max NULL) liefert der Ausdruck
+# NULL und faellt ans Listenende; Single-Point-Pflege ("7" ohne max) wird via
+# COALESCE zum beidseitigen Grenzwert und liefert den einzelnen Wert.
 _COMPUTED_COLUMNS: frozenset[str] = frozenset(
-    {"bilder", "gesamtwert_chf", "aliase", "analysen", "Volumen_mm3"})
+    {"bilder", "gesamtwert_chf", "aliase", "analysen", "Volumen_mm3",
+     "Mohs_Haerte_Mitte"})
 
 
 def _now() -> str:
@@ -429,7 +445,10 @@ class ObjectRepo:
                    (SELECT COUNT(*) FROM aliases a WHERE a.canonical_id = o.obj_id) AS aliase,
                    (SELECT COUNT(*) FROM ki_analysen k WHERE k.obj_id = o.obj_id) AS analysen,
                    {wert_sql} AS gesamtwert_chf,
-                   (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) AS Volumen_mm3
+                   (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) AS Volumen_mm3,
+                   ((COALESCE(o.Mohs_Haerte_min, o.Mohs_Haerte_max)
+                    + COALESCE(o.Mohs_Haerte_max, o.Mohs_Haerte_min))
+                    / 2.0) AS Mohs_Haerte_Mitte
             FROM objects o
         """
         where, params = [], []
