@@ -242,6 +242,37 @@ def test_parse_range_plus_minus_unsicherheit():
     assert csv_loaders.parse_range("± 0.5") == (0.5, 0.5)
 
 
+def test_parse_range_plus_minus_ascii_ersatzform():
+    """ASCII-Ersatzformen ``+/-`` und ``+-`` loesen zu identischen Bereichs-
+    grenzen auf wie die Unicode-Langform ``±``.
+
+    In E-Mails, Terminal-Ausgaben, LaTeX-Roh-Exporten und geerbten Excel-
+    Kopien mit Character-Set-Verlust ist die ASCII-Schreibweise Standard,
+    weil der Autor kein Unicode ± zur Verfuegung hatte oder das Zeichen
+    beim Kopieren verloren ging (z.B. beim Durchlaufen alter Sammlungs-DB-
+    Formate, Foto-EXIF-Kommentaren oder 7-bit-Mail-Transports). Ohne die
+    Ersatzform-Erkennung fielen alle diese Notationen weiter auf den
+    inverted-Range-Kollaps ``(5.5, 5.5)`` - die Toleranz ging genauso
+    verloren, wie beim reinen ``±``-Ausfall vor dem Original-Fix, obwohl
+    das rohe Muster ``+/-`` semantisch identisch ist.
+    """
+    # +/- Standard-Notation (verbreitetste ASCII-Ersatzform)
+    assert csv_loaders.parse_range("5.5 +/- 0.3") == pytest.approx((5.2, 5.8))
+    # +- (kompakter, ohne Slash)
+    assert csv_loaders.parse_range("5.5 +- 0.3") == pytest.approx((5.2, 5.8))
+    # Ohne Whitespace um das ASCII-Symbol (Hand-Notation)
+    assert csv_loaders.parse_range("5.5+/-0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5+-0.3") == pytest.approx((5.2, 5.8))
+    # Ganzzahl-Zentrum mit ganzzahliger Toleranz (100 +/- 2)
+    assert csv_loaders.parse_range("100 +/- 2") == (98.0, 102.0)
+    # DE-Komma-Dezimal mit ASCII-Ersatzform (DE-Excel-Roh-Exporte)
+    assert csv_loaders.parse_range("2,65 +/- 0,05") == pytest.approx((2.60, 2.70))
+    # Negativer Center - spiegelt die ±-Konvention
+    assert csv_loaders.parse_range("-1.5 +/- 0.3") == pytest.approx((-1.8, -1.2))
+    # Freitext-Anhang: Fallback greift, spiegelt die ±-Konvention
+    assert csv_loaders.parse_range("5.5 +/- 0.3 (Literatur)") == (5.5, 5.5)
+
+
 def test_parse_range_schweizer_apostroph_tausender():
     """Schweizer Tausendertrenner ''' wird ignoriert (CHF-Betraege aus Excel)."""
     # Ohne Fix waere "1'000.00" als (1, 0) gelesen worden.

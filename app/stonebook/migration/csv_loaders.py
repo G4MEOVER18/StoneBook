@@ -21,8 +21,19 @@ _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?)")
 # akzeptiert (DE-Publikationen). Muss auf den gesamten String matchen (^...$),
 # damit Freitext-Anhaenge wie ``5.5 ± 0.3 (Literatur)`` nicht versehentlich
 # einbezogen werden - fuer die kommt die Fallback-Zahl-Suche zum Zug.
+#
+# Neben dem Unicode-Zeichen ± (U+00B1, DE/Excel/Print-Standard) werden auch die
+# ASCII-Ersatzformen ``+/-`` und ``+-`` akzeptiert - beide sind in E-Mails,
+# Terminal-Ausgaben und LaTeX-Roh-Exporten die uebliche Notation, wenn der
+# Autor kein Unicode zur Verfuegung hat oder die Notiz von einem 7-bit ASCII-
+# Tool stammt (alte Sammlungs-Datenbanken, Foto-EXIF-Kommentare, geerbte
+# Excel-Kopien mit Character-Set-Verlust). Ohne die ASCII-Fallbacks fielen
+# diese Formen weiter auf den inverted-Range-Kollaps (5.5, 5.5) und die
+# publizierte Toleranz ging stille verloren - unabhaengig davon, ob der
+# Sammler das ±-Zeichen zum Zeitpunkt der Notiz uebersetzen konnte oder
+# nicht. Alle drei Varianten loesen zu identischen Bereichs-Grenzen auf.
 _PLUS_MINUS_UNCERTAINTY = re.compile(
-    r"^\s*(-?\d+(?:[.,]\d+)?)\s*±\s*(\d+(?:[.,]\d+)?)\s*$"
+    r"^\s*(-?\d+(?:[.,]\d+)?)\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)\s*$"
 )
 
 # IUCr / kristallographische Kompakt-Unsicherheits-Notation ``N(M)`` - der
