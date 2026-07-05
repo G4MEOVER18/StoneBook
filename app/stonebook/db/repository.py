@@ -1,10 +1,18 @@
 """CRUD-Schicht über der SQLite-DB."""
 import datetime
+import re
 import sqlite3
 
 from stonebook.fields import DATA_FIELDS, FIELD_BY_NAME, IMAGE_CATEGORIES, is_empty
 
 DATA_COLS = [f.name for f in DATA_FIELDS]
+
+# Strikte YYYY-MM-DD-Form ohne Uhrzeit-Zusatz. Wird von
+# ``list_objects_mit_ungueltigem_funddatum`` als Pflege-Filter benutzt:
+# Rohtext-Regex + datetime.date-Konstruktion, damit sowohl Struktur (10-Zeichen-
+# Form) als auch semantische Gueltigkeit (kein 2024-13-01, kein 2024-02-30) in
+# einem Zug geprueft werden.
+_STRICT_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 VALID_STATUSES: frozenset[str] = frozenset({"aktiv", "platzhalter", "archiviert"})
 
@@ -1548,6 +1556,59 @@ class ObjectRepo:
         ).fetchall()
         return [(row["obj_id"], row["Fundort"]) for row in rows
                 if parse_coordinates(row["Fundort"]) is None]
+
+    def list_objects_mit_ungueltigem_funddatum(self) -> list[tuple[str, str]]:
+        """Listet Objekte mit dokumentiertem Funddatum, aber ohne strikte ISO-Form.
+
+        Pflege-Sicht auf die Funddatum-Achse als Spiegel von
+        ``list_objects_ohne_koordinaten`` auf der Fundort-Achse: waehrend die
+        Koordinaten-Pflege den Fundort-Freitext auf parsebare Lat/Lon-Paare
+        prueft, prueft dieser Helper den Funddatum-Freitext auf die strikte
+        YYYY-MM-DD-Form, die die Standard-Schreibweise laut Feldwoerterbuch
+        (``fields.py`` ``FieldDef(..., "date", ...)`` mit Description
+        ``"YYYY-MM-DD"``) und die Konvention der CSV-Migration
+        (``load_v2``/``load_standard`` schreiben nur ``parse_iso_date``-
+        normalisierte Werte oder ueberspringen den Eintrag) darstellt.
+        Nicht-strikte Werte wie ``"13.06.2024"``, ``"2024"``, ``"unbekannt"``
+        oder ``"2024-13-01"`` (ungueltiger Monat) und ``"2024-02-30"``
+        (ungueltiger Tag im Feb) tauchen typischerweise nach manueller
+        DB-Edition, JSON-Restore aus externer Quelle oder alten
+        Vor-Migrations-Datensaetzen auf - fuer diese Faelle liefert der
+        Helper eine deterministische Arbeitsliste zur Nachpflege.
+
+        Sowohl Struktur (10-Zeichen-YYYY-MM-DD-Regex) als auch semantische
+        Gueltigkeit (``datetime.date``-Konstruktion, damit Monat 13 oder
+        Tag 30 im Feb aussortiert werden) muessen bestanden werden. Nur
+        das strikte Format zaehlt als valide - die permissive
+        ``parse_iso_date``-Umformung ist Migrations-/Import-Logik und
+        nicht die DB-Ziel-Form. Objekte ohne Funddatum werden uebergangen
+        (sie tauchen in ``has_funddatum=False`` auf, das ist eine eigene
+        Pflege-Achse: Datums-Akquise vs. Formatnorm). Reihenfolge
+        aufsteigend nach ``obj_id``, damit die Pflege-Liste
+        deterministisch ist.
+
+        Rueckgabe als ``(obj_id, Funddatum)``-Tupel, damit der Caller den
+        rohen Freitext-Eintrag ohne erneutes Lookup hat (typisch: in einer
+        Pflege-Liste anzeigen mit Klick-zu-bearbeiten oder als
+        ``parse_iso_date``-Vorschlag).
+        """
+        rows = self.conn.execute(
+            "SELECT obj_id, Funddatum FROM objects "
+            "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        result: list[tuple[str, str]] = []
+        for row in rows:
+            raw = row["Funddatum"]
+            if _STRICT_ISO_DATE_RE.match(raw):
+                y, m, d = int(raw[0:4]), int(raw[5:7]), int(raw[8:10])
+                try:
+                    datetime.date(y, m, d)
+                    continue
+                except ValueError:
+                    pass
+            result.append((row["obj_id"], raw))
+        return result
 
     def list_objects_in_radius(self, lat_center: float, lon_center: float,
                                radius_km: float

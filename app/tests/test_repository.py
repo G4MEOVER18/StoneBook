@@ -4185,6 +4185,87 @@ def test_list_objects_ohne_koordinaten_leere_db(tmp_path):
     c.close()
 
 
+def test_list_objects_mit_ungueltigem_funddatum_pflege_liste(tmp_path):
+    """list_objects_mit_ungueltigem_funddatum liefert die Arbeitsliste der
+    Objekte mit nicht-striktem Funddatum - Pflege-Spiegel von
+    list_objects_ohne_koordinaten auf der Funddatum-Achse. Filtert Objekte
+    mit nicht-leerem Funddatum, deren Rohtext nicht die YYYY-MM-DD-Form aus
+    dem Feldwoerterbuch trifft; Objekte ohne Funddatum werden uebergangen
+    (sie laufen ueber has_funddatum=False auf der eigenen Pflege-Achse
+    Datums-Akquise vs. Formatnorm).
+
+    Decken muss: strikte YYYY-MM-DD-Form (uebergangen), DE-Punkt-Notation
+    "13.06.2024" (Pflege-Treffer, weil die App diese Form nur als
+    parse_iso_date-Input akzeptiert und nicht als DB-Zielwert), Jahr-nur
+    "2024" (Pflege-Treffer, weil unvollstaendig), Freitext "unbekannt"
+    (Pflege-Treffer), semantisch ungueltiges Datum "2024-13-01" (Monat 13
+    -> Pflege-Treffer) und "2024-02-30" (Tag 30 im Feb -> Pflege-Treffer),
+    ISO-Datetime "2024-06-13T10:00" (Zusatz-Zeit-Anteil -> Pflege-Treffer),
+    leerer/NULL/Whitespace-Funddatum (uebergangen). Reihenfolge aufsteigend
+    nach obj_id, damit die Pflege-Liste deterministisch ist.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "pflege.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13"),          # strikt gueltig, uebergangen
+            ("OBJ_0002", "13.06.2024"),          # DE-Punkt, Pflege-Treffer
+            ("OBJ_0003", "2024"),                # Jahr-nur, Pflege-Treffer
+            ("OBJ_0004", "unbekannt"),           # Freitext, Pflege-Treffer
+            ("OBJ_0005", "2024-13-01"),          # Monat 13, Pflege-Treffer
+            ("OBJ_0006", "2024-02-30"),          # Tag 30 Feb, Pflege-Treffer
+            ("OBJ_0007", "2024-06-13T10:00"),    # ISO-Datetime, Pflege-Treffer
+            ("OBJ_0008", ""),                    # leer, uebergangen
+            ("OBJ_0009", "   "),                 # Whitespace, uebergangen
+            ("OBJ_0010", None),                  # NULL, uebergangen
+            ("OBJ_0011", "1999-12-31"),          # strikt gueltig, uebergangen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    pflege = repo.list_objects_mit_ungueltigem_funddatum()
+    # Pflege-Liste: alle nicht-strikt-ISO-Eintraege mit nicht-leerem Funddatum
+    assert [p[0] for p in pflege] == [
+        "OBJ_0002", "OBJ_0003", "OBJ_0004",
+        "OBJ_0005", "OBJ_0006", "OBJ_0007",
+    ]
+    # Roh-Funddatum wird durchgereicht (kein Lookup-Round-Trip noetig)
+    assert pflege[0] == ("OBJ_0002", "13.06.2024")
+    assert pflege[3] == ("OBJ_0005", "2024-13-01")
+    assert pflege[4] == ("OBJ_0006", "2024-02-30")
+    c.close()
+
+
+def test_list_objects_mit_ungueltigem_funddatum_alles_strikt(tmp_path):
+    """Vollstaendig striktes Funddatum -> leere Pflege-Liste. Spiegelt den
+    100 % strikten Fall der Coverage: wenn alle Datumsstempel in
+    YYYY-MM-DD stehen, gibt es keine Pflege-Restmenge."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "vg.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13"),
+            ("OBJ_0002", "1999-12-31"),
+            ("OBJ_0003", "2020-01-01"),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    assert repo.list_objects_mit_ungueltigem_funddatum() == []
+    c.close()
+
+
+def test_list_objects_mit_ungueltigem_funddatum_leere_db(tmp_path):
+    """Leere DB -> leere Pflege-Liste; kein Crash."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "leer.sqlite3")
+    repo = ObjectRepo(c)
+    assert repo.list_objects_mit_ungueltigem_funddatum() == []
+    c.close()
+
+
 def test_list_objects_in_radius_filtert_nach_distanz(tmp_path):
     """list_objects_in_radius liefert Stuecke im Umkreis um einen Mittelpunkt.
 
