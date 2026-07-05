@@ -25,6 +25,47 @@ _PLUS_MINUS_UNCERTAINTY = re.compile(
     r"^\s*(-?\d+(?:[.,]\d+)?)\s*±\s*(\d+(?:[.,]\d+)?)\s*$"
 )
 
+# IUCr / kristallographische Kompakt-Unsicherheits-Notation ``N(M)`` - der
+# Klammer-Term beziffert die Standard-Unsicherheit auf die letzten Ziffern
+# des Zentrums, ohne dass Toleranz und Dezimalstelle separat notiert werden
+# muessen. Standard-Konvention der International Union of Crystallography
+# (IUCr Style Guide "Notes for authors", Abschnitt "Estimated standard
+# uncertainties") und in mineralogischen Referenz-Tabellen, Roentgen-
+# Beugungs-Reports (Rietveld-Verfeinerung, Einkristall-Strukturaufloesung)
+# sowie NIST-CODATA-Konstanten-Tabellen die etablierte platzsparende
+# Alternative zur ``N ± M``-Langform:
+#
+# * ``5.5(3)``     = 5.5 ± 0.3       -> (5.2, 5.8)     (Toleranz auf 1. Nachkomma)
+# * ``2.65(5)``    = 2.65 ± 0.05     -> (2.60, 2.70)   (Toleranz auf 2. Nachkomma)
+# * ``100(2)``     = 100 ± 2         -> (98, 102)      (Toleranz auf letzte ganze Ziffer)
+# * ``12.345(67)`` = 12.345 ± 0.067  -> (12.278, 12.412) (Toleranz auf 3. Nachkomma)
+# * ``7.4(15)``    = 7.4 ± 1.5       -> (5.9, 8.9)     (mehrstellige Toleranz)
+#
+# Bisher fielen alle diese Formen entweder auf inverted-Range-Kollaps
+# ``(5.5, 5.5)`` (wenn Klammer-Zahl < Center, z.B. ``5.5(3)``) oder auf
+# einen falsch interpretierten Range ``(2.65, 5.0)`` (wenn Klammer-Zahl >
+# Center, z.B. ``2.65(5)``) - beide Faelle verwerfen die publizierte
+# Standard-Unsicherheit und beziffern statt der Bereichs-Grenzen einen
+# Punkt-Wert bzw. einen semantisch falschen Range. Bei der Migration aus
+# wissenschaftlichen Quellen (Sammler kopieren Dichte-/Haerte-Werte direkt
+# aus IUCr-Publikationen oder mineralogischen Nachschlagewerken) entsteht
+# damit silenter Verlust der Messgenauigkeit.
+#
+# Muss auf den gesamten String matchen ($-Anker), damit Freitext-Anhaenge
+# wie ``5.5(3) (Literatur)`` nicht versehentlich als Unsicherheit gelesen
+# werden - fuer die faellt der Match und die Fallback-Zahl-Suche greift.
+# Kein Whitespace zwischen Wert und Klammer erlaubt (``5.5 (3)``), damit
+# echte Annotations-Klammern (``1.5 (Literatur)``, ``2.65 (aus Katalog)``)
+# nicht als Unsicherheit interpretiert werden - die IUCr-Konvention setzt
+# die Klammer strikt ohne Trenner direkt hinter den Wert. Center darf
+# negativ sein (thermische/isotopische Werte ausserhalb der klassischen
+# Mineralogie, spiegelt die _PLUS_MINUS_UNCERTAINTY-Konvention); Klammer-
+# Ziffer-Gruppe muss aus reinen Dezimalziffern bestehen (keine Trenner
+# innerhalb, sonst wuerde ``5.5(1,2)`` als "1 bis 2 Toleranz" mehrdeutig).
+_PARENTHESIS_UNCERTAINTY = re.compile(
+    r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)\s*$"
+)
+
 # Eindeutig erkennbare Tausender-Strukturen (Komma+Punkt oder Punkt+Komma in einer Zahl,
 # oder mehrere Trenner desselben Typs in Folge). ``(?<!\d)``/``(?!\d)`` stellen sicher,
 # dass die Zahl als Ganzes erkannt wird (kein Anschnitt einer laengeren Ziffernfolge).
@@ -122,9 +163,14 @@ def normalize_numeric_locale(text: str) -> str:
 def parse_range(text) -> tuple[float | None, float | None]:
     """'6.5–7' → (6.5, 7.0); 'ca. 2.65' → (2.65, 2.65); '' → (None, None).
 
-    Wenn die letzte gefundene Zahl kleiner als die erste ist (z.B.
-    Unsicherheitsnotation ``'5.5(3)'`` oder Tippfehler ``'7-5'``), wird ein
-    inverted Range vermieden: es zaehlt nur der erste Wert als (n, n).
+    Wissenschaftliche Unsicherheits-Notation wird als Bereich aufgeloest:
+    ``'5.5 ± 0.3'`` → (5.2, 5.8) (Langform, siehe :data:`_PLUS_MINUS_UNCERTAINTY`);
+    ``'5.5(3)'`` → (5.2, 5.8), ``'2.65(5)'`` → (2.60, 2.70), ``'100(2)'`` → (98, 102)
+    (IUCr-Kompaktform, siehe :data:`_PARENTHESIS_UNCERTAINTY`).
+
+    Ansonsten: wenn die letzte gefundene Zahl kleiner als die erste ist
+    (z.B. Tippfehler ``'7-5'``), wird ein inverted Range vermieden: es
+    zaehlt nur der erste Wert als (n, n).
 
     Schweizer Tausendertrenner ``'`` (z.B. ``1'500.00``) werden entfernt, damit
     Excel-/Buchhaltungsexporte mit CHF-Betraegen nicht in Einzelziffern zerfallen.
@@ -143,6 +189,24 @@ def parse_range(text) -> tuple[float | None, float | None]:
     if m:
         center = float(m.group(1).replace(",", "."))
         tol = float(m.group(2).replace(",", "."))
+        return center - tol, center + tol
+    # Kompakt-Unsicherheits-Notation ``N(M)`` (IUCr-Standard) vor der
+    # generischen Zahlen-Extraktion pruefen: ohne diesen Zweig wuerde
+    # ``5.5(3)`` als ``[5.5, 3.0]`` erkannt und via ``if hi < lo`` auf
+    # ``(5.5, 5.5)`` fallen (Toleranz verloren), waehrend ``2.65(5)`` als
+    # ``[2.65, 5.0]`` als semantisch falscher Range ``(2.65, 5.0)``
+    # interpretiert wuerde. Die Toleranz ist strukturell an das Zentrum
+    # gebunden (angewandt auf die letzten Ziffern), nicht ein zweiter
+    # unabhaengiger Wert. Der Divisor 10**n_decimals bezieht die Klammer-
+    # Zahl auf die Position der letzten signifikanten Stelle des Zentrums:
+    # bei ``5.5(3)`` liegt die 3 auf der ersten Nachkommastelle -> 0.3;
+    # bei ``100(2)`` liegt die 2 auf der letzten Ganzzahl-Stelle -> 2.
+    m = _PARENTHESIS_UNCERTAINTY.match(s)
+    if m:
+        center_str = m.group(1).replace(",", ".")
+        center = float(center_str)
+        n_decimals = len(center_str.split(".", 1)[1]) if "." in center_str else 0
+        tol = int(m.group(2)) / (10 ** n_decimals)
         return center - tol, center + tol
     nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
     if not nums:

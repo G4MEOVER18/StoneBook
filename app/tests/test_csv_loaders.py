@@ -70,13 +70,55 @@ def test_parse_range():
 
 
 def test_parse_range_keine_invertierten_paare():
-    """Unsicherheitsnotation '5.5(3)' oder umgedrehte Eingabe '7-5' sind keine Ranges."""
-    # "5.5(3)" - Unsicherheit, nicht 5.5..3
-    assert csv_loaders.parse_range("5.5(3)") == (5.5, 5.5)
+    """Umgedrehte Range-Eingabe '7-5' (Tippfehler) darf keinen inverted Range liefern.
+
+    (Die IUCr-Kompaktform ``'5.5(3)'`` wird jetzt als publizierte Toleranz
+    ausgelesen und lebt in :func:`test_parse_range_klammer_unsicherheit`.)
+    """
     # Tippfehler "7-5" → soll nicht (7, 5) liefern
     assert csv_loaders.parse_range("7-5") == (7.0, 7.0)
     # Echter Range bleibt korrekt
     assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+
+
+def test_parse_range_klammer_unsicherheit():
+    """IUCr-Kompaktform ``N(M)`` liefert die publizierten Toleranz-Grenzen.
+
+    Standard-Konvention der International Union of Crystallography und
+    verbreitet in mineralogischen Referenz-Tabellen, Roentgen-Beugungs-
+    Reports und NIST-CODATA-Konstanten-Tabellen. Vor dem Fix fielen alle
+    Kompaktformen entweder auf inverted-Range-Kollaps ``(5.5, 5.5)``
+    (Klammer-Zahl < Center) oder auf einen falsch interpretierten Range
+    ``(2.65, 5.0)`` (Klammer-Zahl > Center) - beide Faelle verwarfen die
+    publizierte Standard-Unsicherheit stille.
+    """
+    # 5.5(3) = 5.5 ± 0.3 -> Toleranz auf 1. Nachkommastelle
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    # 2.65(5) = 2.65 ± 0.05 -> Toleranz auf 2. Nachkommastelle
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+    # 100(2) = 100 ± 2 -> Toleranz auf letzte ganze Ziffer (n_decimals = 0)
+    assert csv_loaders.parse_range("100(2)") == pytest.approx((98.0, 102.0))
+    # Mehrstellige Toleranz: 7.4(15) = 7.4 ± 1.5 (nicht 0.15, weil 15 ist
+    # die Standardabweichung in Einheiten der letzten Ziffer und die letzte
+    # Ziffer des Zentrums liegt auf 10^-1).
+    assert csv_loaders.parse_range("7.4(15)") == pytest.approx((5.9, 8.9))
+    # 12.345(67) = 12.345 ± 0.067 -> Toleranz auf 3. Nachkommastelle
+    assert csv_loaders.parse_range("12.345(67)") == pytest.approx((12.278, 12.412))
+    # Negativer Center (thermische/isotopische Werte, spiegelt die
+    # ±-Langform-Konvention).
+    assert csv_loaders.parse_range("-1.5(3)") == pytest.approx((-1.8, -1.2))
+    # DE-Komma-Dezimal (deutschsprachige Publikationen, Excel-DE).
+    assert csv_loaders.parse_range("2,65(5)") == pytest.approx((2.60, 2.70))
+    # Whitespace zwischen Wert und Klammer bricht das strikte IUCr-Pattern
+    # (echte Annotations-Klammern wie "1.5 (Literatur)" duerfen nicht als
+    # Unsicherheit interpretiert werden); Fallback auf Zahl-Extraktion.
+    assert csv_loaders.parse_range("5.5 (3)") == (5.5, 5.5)
+    # Freitext-Anhang bricht das $-Anker-Pattern; Fallback liefert nur Center.
+    assert csv_loaders.parse_range("5.5(3) (Literatur)") == (5.5, 5.5)
+    # Ganzzahliger Wert mit einstelliger Toleranz (haeufig in NIST-Tabellen).
+    assert csv_loaders.parse_range("50(1)") == pytest.approx((49.0, 51.0))
+    # Toleranz-Klammer allein (ohne Center) bleibt Standard-Fallback.
+    assert csv_loaders.parse_range("(3)") == (3.0, 3.0)
 
 
 def test_parse_range_en_tausendertrenner_mit_dezimal():
