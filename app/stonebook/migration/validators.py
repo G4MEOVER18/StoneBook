@@ -107,6 +107,20 @@ _MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\-](\d{4})\s*$")
 # DE-Sammler-Vokabular umfasst zusaetzlich ``etwa``, ``vermutlich``,
 # ``schaetzungsweise``/``schätzungsweise`` (alle "geschaetzter Wert", semantisch
 # identisch mit ``ca.``); EN ergaenzt ``estimated``/``est.``/``roughly``.
+#
+# Wahrscheinlichkeits-/Vermutungs-Marker (DE: ``wahrscheinlich``, ``moeglicher-
+# weise``/``möglicherweise``, ``evtl.``/``evtl``/``eventuell``; EN: ``perhaps``,
+# ``possibly``, ``maybe``) spiegeln semantisch die Konservativ-Annaeherung
+# (``vermutlich``/``ca.``) auf die Unsicherheits-Achse. In geerbten Sammlungs-
+# Notizen sehr verbreitet, wenn der Vorbesitzer das Datum nicht genau kannte
+# ("wahrscheinlich 1985 gekauft", "möglicherweise 1980er", "evtl. Juni 2024",
+# "perhaps 1995"). Bisher fielen alle diese Praefix-Formen still auf None -
+# aus typischen Etikett-/Tagebuch-Eintraegen mit Unsicherheits-Markierung
+# wurde silenter Funddatum-Datenverlust. Der Praefix ist semantische Wert-
+# Anmerkung ("welche Verlaesslichkeit"), keine Datums-Modifikation; das
+# ISO-Datum-Output bleibt identisch zur reinen Form, die Vermutungs-Angabe
+# bleibt im Freitext (notizen).
+#
 # Symbolische Annaeherungs-Marker (Tilde ``~`` und Almost-Equal ``≈`` U+2248)
 # decken die typografisch-knappe Notation aus Print-Katalogen, Auktions-PDFs und
 # LaTeX-Exporten ab (``\approx`` rendert als ``≈``); auch verbreitet in Tabellen-
@@ -123,6 +137,11 @@ _APPROX_PREFIX = re.compile(
     r"|um|gegen|etwa|vermutlich"
     # Umlaut-Variante und Transliteration ae (gemischte Sammlungs-Notizen)
     r"|sch[äa]tzungsweise|schaetzungsweise"
+    # Wahrscheinlichkeits-/Vermutungs-Marker (DE)
+    r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
+    r"|evtl\.?|eventuell"
+    # Wahrscheinlichkeits-/Vermutungs-Marker (EN)
+    r"|perhaps|possibly|maybe"
     r")\s+"
     r"|[~≈]\s*"
     r")",

@@ -348,6 +348,51 @@ def test_parse_iso_date_annaeherungs_symbol():
     assert parse_iso_date("etwa 1985") == "1985-01-01"
 
 
+def test_parse_iso_date_wahrscheinlichkeits_praefix():
+    """Wahrscheinlichkeits-/Vermutungs-Marker (DE/EN) als Praefix vor dem Datum.
+
+    Sehr verbreitet in geerbten Sammlungs-Notizen, wenn der Vorbesitzer das
+    Datum nicht genau kannte ("wahrscheinlich 1985 gekauft",
+    "möglicherweise 1980er", "evtl. Juni 2024", "perhaps 1995"). Semantisch
+    identisch zu ``ca.``/``circa`` (Naeherungswert mit dokumentierter
+    Unsicherheit), aber auf einer eigenen Praefix-Achse (Wahrscheinlichkeit
+    statt Praezision) - vor dem Fix fielen alle Formen still auf None.
+    """
+    # Deutsche Marker
+    assert parse_iso_date("wahrscheinlich 1985") == "1985-01-01"
+    assert parse_iso_date("moeglicherweise 1985") == "1985-01-01"
+    assert parse_iso_date("möglicherweise 1985") == "1985-01-01"
+    assert parse_iso_date("möglicherweise Juni 2024") == "2024-06-01"
+    assert parse_iso_date("evtl. 1985") == "1985-01-01"
+    assert parse_iso_date("evtl 1985") == "1985-01-01"
+    assert parse_iso_date("eventuell 1985") == "1985-01-01"
+    assert parse_iso_date("eventuell 13.06.2024") == "2024-06-13"
+    # Englische Marker
+    assert parse_iso_date("perhaps 1985") == "1985-01-01"
+    assert parse_iso_date("possibly 1985") == "1985-01-01"
+    assert parse_iso_date("maybe 1985") == "1985-01-01"
+    assert parse_iso_date("perhaps Juni 2024") == "2024-06-01"
+    # Case-insensitive (Etiketten in Grossbuchstaben/Kleinbuchstaben/Mischform)
+    assert parse_iso_date("Wahrscheinlich 1985") == "1985-01-01"
+    assert parse_iso_date("MÖGLICHERWEISE 1985") == "1985-01-01"
+    assert parse_iso_date("Perhaps 1985") == "1985-01-01"
+    # Verkettet mit anderen Praefixen (Rekursion loest sie sequentiell auf)
+    assert parse_iso_date("wahrscheinlich ca. 1985") == "1985-01-01"
+    assert parse_iso_date("evtl. Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("perhaps 1980er") == "1980-01-01"
+    assert parse_iso_date("möglicherweise Mitte 19. Jahrhundert") == "1850-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("wahrscheinlich") is None
+    assert parse_iso_date("perhaps abc") is None
+    assert parse_iso_date("evtl. 1700") is None  # ausserhalb 1800-2999
+    # Nicht als Praefix (mittendrin) - keine Strippung
+    assert parse_iso_date("1985 wahrscheinlich") is None
+    # Bestehende Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("vermutlich 1985") == "1985-01-01"
+    assert parse_iso_date("estimated 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_jahreszeiten():
     """Sammlungs-Notizen mit Jahreszeit + Jahr ergeben den meteorologischen Saison-Start."""
     # Deutsch
