@@ -292,6 +292,53 @@ _TRAILING_PUNCT = re.compile(r"[.,;:!?]+\s*$")
 _TRAILING_PAREN_REMARK = re.compile(
     r"\s*[\(\[\{][^\(\)\[\]\{\}]*[\)\]\}]\s*$"
 )
+# Trailing Aera-Marker (DE/EN/Latein) nach dem Datum: "1985 n. Chr.",
+# "1985 nach Christus", "500 v. Chr.", "500 vor Christus", "1985 AD",
+# "1985 A.D.", "1985 CE", "1985 C.E.", "500 BC", "500 B.C.", "500 BCE",
+# "500 B.C.E.". Traditionelle Museums-Etiketten- und Auktions-Kataloge-
+# Praxis in Sammlungen mit kulturhistorischer/archaeologischer Provenienz,
+# wo das Datum um die Zeitrechnungs-Aera explizit qualifiziert wird -
+# besonders in geerbten Sammlungen aus akademischen Kontexten und in
+# aelteren Referenzen aus dem 19./20. Jhdt., wo AD/BC im wissenschaftlichen
+# Diskurs Standard war. Bisher fielen alle diese Formen stille auf None,
+# weil die strukturellen Datums-Patterns den Aera-Suffix als Format-Bruch
+# sehen und weder _TRAILING_TIME (Zeit-Suffix) noch _TRAILING_PAREN_REMARK
+# (Klammer-Annotation) noch _TRAILING_PUNCT (nur die letzten Satzzeichen)
+# die mehr-Token-Wort-Marker-Form abdecken - aus einem typischen Sammler-
+# Etikett wie "1985 n. Chr." wurde silenter Funddatum-Datenverlust.
+#
+# Spiegelt das Konzept von _APPROX_PREFIX/_BOUNDARY_PREFIX (Praefix wird
+# gestrippt, Datum bleibt unveraendert) auf die Suffix-Achse: die Aera-
+# Angabe ist semantische Wert-Anmerkung ("welche Zeitrechnungs-Konvention"),
+# keine Datums-Modifikation - das ISO-Datum-Output ist identisch zur reinen
+# Form. AD/n. Chr./CE liegen im gueltigen 1800..2999-Band; BC/v. Chr./BCE
+# liegen ausserhalb (Jahres-Range-Pruefung filtert sie transparent auf None,
+# konsistent mit "500" -> None ohne Aera-Marker). Strip + Rekursion analog
+# _TRAILING_TIME/_TRAILING_PAREN_REMARK/_TRAILING_PUNCT.
+#
+# BCE-Muster (b\.?\s*c\.?\s*e\.?) vor dem BC-Muster (b\.?\s*c\.?), damit
+# die spezifischere 3-Buchstaben-Form nicht durch das kuerzere BC-Pattern
+# vorzeitig konsumiert wird. AD/BC/CE nur mit obligatorischer Anwesenheit
+# eines Wortes vor der Aera-Angabe (dass \s+ mit mindestens einem Whitespace
+# vorangeht), damit z.B. "AD 1985" (leading-Form) nicht versehentlich als
+# alles-Aera gelesen wird - eine leading Aera-Form braucht eigene Behandlung.
+# Interne Whitespaces innerhalb der Aera-Angabe optional ("A.D.", "A D",
+# "A. D.") mit \s* zwischen den Buchstaben. Case-insensitive akzeptiert
+# (Etiketten in Grossbuchstaben/Kleinbuchstaben/Mischform sind alle in
+# geerbten Sammlungs-Notizen zu finden).
+_TRAILING_ERA_MARKER = re.compile(
+    r"\s+(?:"
+    r"n\.?\s*chr\.?"           # n. Chr. / n.Chr. / n Chr. / nChr.
+    r"|nach\s+christus"        # nach Christus (Vollform)
+    r"|v\.?\s*chr\.?"          # v. Chr. / v.Chr. / v Chr. / vChr.
+    r"|vor\s+christus"         # vor Christus (Vollform)
+    r"|a\.?\s*d\.?"            # AD / A.D. / A. D. / A D
+    r"|b\.?\s*c\.?\s*e\.?"     # BCE / B.C.E. / B. C. E. (vor BC-Muster!)
+    r"|b\.?\s*c\.?"            # BC / B.C. / B. C. / B C
+    r"|c\.?\s*e\.?"            # CE / C.E. / C. E. / C E
+    r")\s*$",
+    re.IGNORECASE
+)
 # Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
 # "(2024)", "[2024-06-13]", '"13. Juni 2024"', '„Sommer 1985"'.
 # Genau ein Paar wird gestrippt; danach Re-Parsing per Rekursion.
@@ -1308,6 +1355,23 @@ def parse_iso_date(text) -> str | None:
         year = int(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # Trailing Aera-Marker abstreifen ("1985 n. Chr.", "500 v. Chr.", "1985 AD",
+    # "1985 BCE"). Aera-Marker gehoert nicht zum Datum selbst; das Jahr bleibt
+    # der bekannte Anker, die Zeitrechnungs-Konvention ist semantische Wert-
+    # Anmerkung und keine Datums-Modifikation (analog _APPROX_PREFIX/
+    # _BOUNDARY_PREFIX auf der Suffix-Achse). Vor _TRAILING_TIME einsortiert,
+    # weil die Aera-Angabe eine mehr-Token-Wort-Marker-Form ist und nicht durch
+    # die reine Zeit-/Klammer-/Punkt-Strip-Kaskade abgedeckt wird - ohne
+    # explizite Aera-Behandlung fielen typische Museums-Etiketten mit
+    # AD/BC/CE/n. Chr.-Suffix stille auf None (das trailing "." wuerde zwar
+    # durch _TRAILING_PUNCT gestrippt, aber die verbliebene "1985 n Chr"
+    # matcht keine der Struktur-Patterns). BC/v. Chr./BCE-Formen werden
+    # akzeptiert und gestrippt, das resultierende Jahr wird dann durch die
+    # 1800..2999-Range-Pruefung transparent auf None gefiltert (kein zusaetz-
+    # licher BC-Sonderpfad noetig; spiegelt "500" -> None ohne Aera-Marker).
+    stripped = _TRAILING_ERA_MARKER.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
     # Faengt nicht-ISO-Eingaben wie "13.06.2024 14:30" oder "13. Juni 2024 10:00" ab.
     stripped = _TRAILING_TIME.sub("", s).strip()
