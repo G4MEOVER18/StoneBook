@@ -1558,6 +1558,48 @@ def test_parse_iso_date_trailing_paren_annotation():
     assert parse_iso_date("[2024-06-13]") == "2024-06-13"
 
 
+def test_parse_iso_date_trailing_paren_geschachtelt():
+    """Verschachtelte trailing Klammer-Annotationen ("(Foto (gut))",
+    "[Sammlung (Muster (jun.))]") werden vom Balanced-Bracket-Helper
+    :func:`_strip_trailing_balanced_bracket` in einem Zug gestrippt.
+
+    Die bestehende :data:`_TRAILING_PAREN_REMARK`-Regex schliesst Nest-Inhalt
+    strukturell aus (Nicht-Klammer-Zeichenklasse ``[^\\(\\)\\[\\]\\{\\}]*``)
+    und der ``$``-Anker verhindert einen iterativen Innen-nach-aussen-Strip,
+    sodass geschachtelte Annotationen bisher stille auf None fielen. In
+    Sammlungs-Notizen sind sie aber verbreitet: Provenienz-Anmerkungen mit
+    eingebetteter Klammer-Sub-Info (``"(Foto (2020))"``, ``"(Provenienz
+    (Auktion 2024))"``) oder mehrfach verschachtelte Museums-Etiketten
+    (``"[Sammlung (Muster (jun.))]"``). Der Balanced-Helper zaehlt Klammer-
+    Tiefe rueckwaerts und strippt die gesamte Gruppe, wenn ein passender
+    Opener mit Tiefe 0 gefunden wird.
+    """
+    # Runde Klammern mit Nest
+    assert parse_iso_date("13.06.2024 (Foto (gut))") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 (Provenienz (Auktion 2024))") == "2024-06-13"
+    assert parse_iso_date("ca. 1985 (Sammlung (geerbt))") == "1985-01-01"
+    # Eckige Klammern mit Nest
+    assert parse_iso_date("1985 [Sammlung (Muster (jun.))]") == "1985-01-01"
+    assert parse_iso_date("1985 [Foto (2020)]") == "1985-01-01"
+    # Dreifache Schachtelung
+    assert parse_iso_date("2024-06-13 [Foto [Auktion (2020)]]") == "2024-06-13"
+    # Gemischte Klammer-Arten innerhalb des Nests (Fremd-Klammer als Content)
+    assert parse_iso_date("2024-06-13 (Foto {gut})") == "2024-06-13"
+    assert parse_iso_date("1985 [Foto {gut} (2020)]") == "1985-01-01"
+    # Mit trailing Satzzeichen: erst Satzzeichen strippen, dann geschachtelt
+    assert parse_iso_date("2024-06-13 (Foto (gut)).") == "2024-06-13"
+    # Nur Klammer-Inhalt ohne Datum → None (Rekursion strippt, Rest ungueltig)
+    assert parse_iso_date("(Foto (gut))") is None
+    # Unbalanciert (mehr Openers als Closer) → kein Strip, kein Match
+    assert parse_iso_date("2024-06-13 (Foto (gut)") is None
+    # Unbalanciert (mehr Closer als Opener) → kein Strip, kein Match
+    assert parse_iso_date("2024-06-13 Foto (gut))") is None
+    # Bestehende Single-Level-Faelle bleiben unveraendert (kein Regress)
+    assert parse_iso_date("13.06.2024 (Foto)") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 [Foto]") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 ()") == "2024-06-13"
+
+
 def test_parse_iso_date_trailing_aera_marker():
     """Trailing Aera-Marker (DE/EN/Latein) - n. Chr., v. Chr., AD, BC, CE, BCE -
     werden abgestrippt, damit das Jahr fuer die Parser-Kaskade zurueck bleibt.

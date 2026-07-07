@@ -283,15 +283,66 @@ _TRAILING_PUNCT = re.compile(r"[.,;:!?]+\s*$")
 # nicht die strukturelle Klammer-Form - aus einem typischen Sammler-
 # Etikett wie "13.06.2024 (Foto)" wurde silenter Funddatum-Datenverlust.
 # Single-Level (keine geschachtelten Klammern im Annotations-Inhalt); fuer
-# verschachtelte Annotationen ("(Foto (gut))") loest die Rekursion das
-# innen-nach-aussen auf: nach Strip der inneren Klammer wird der Rest mit
-# verbliebenem aeusserer Klammer wieder geparst. Vor _TRAILING_PUNCT
-# einsortiert, weil parenthesierte Annotation eine eigenstaendige strukturelle
-# Form ist und nicht erst durch Satzzeichen-Vorstufe gefiltert werden muss.
+# verschachtelte Annotationen ("(Foto (gut))") ergaenzt der Balanced-Bracket-
+# Helper :func:`_strip_trailing_balanced_bracket` diese Regex: er verfolgt
+# Klammer-Tiefe rueckwaerts vom Zeilenende und strippt eine trailing Klammer-
+# Gruppe erst dann, wenn ein passender Oeffner mit Tiefe 0 gefunden wurde -
+# sodass ``"(Foto (gut))"`` in einem Schritt aufgeloest wird, ohne dass die
+# reine Regex-Kaskade rekursiv scheitert (die Regex verlangt ``$``-Anker und
+# schliesst geschachtelte Klammern ueber die Nicht-Klammer-Zeichenklasse aus).
+# Vor _TRAILING_PUNCT einsortiert, weil parenthesierte Annotation eine
+# eigenstaendige strukturelle Form ist und nicht erst durch Satzzeichen-
+# Vorstufe gefiltert werden muss.
 # Strip + Rekursion analog _TRAILING_TIME/_TRAILING_PUNCT.
 _TRAILING_PAREN_REMARK = re.compile(
     r"\s*[\(\[\{][^\(\)\[\]\{\}]*[\)\]\}]\s*$"
 )
+# Zuordnung Closer -> Opener fuer den Balanced-Bracket-Strip. Nur die drei
+# Standard-Klammer-Paare (runde/eckige/geschwungene) werden erkannt; wenn
+# der Input eine gemischte Kombination enthaelt (``[Foto)``, ``(Foto]``),
+# faellt der Strip transparent aus und die einfachere :data:`_TRAILING_PAREN_REMARK`-
+# Regex uebernimmt (die auch nicht-passende Paare stripped, aber nur ohne
+# Nest-Inhalt).
+_TRAILING_BRACKET_PAIRS: dict[str, str] = {")": "(", "]": "[", "}": "{"}
+
+
+def _strip_trailing_balanced_bracket(s: str) -> str | None:
+    """Strippt am Ende von ``s`` eine balancierte Klammer-Gruppe inkl. Nest.
+
+    Traeger-Semantik: das letzte nicht-Whitespace-Zeichen muss ein Closer sein
+    (``)``/``]``/``}``); rueckwaerts wird die Klammer-Tiefe verfolgt, bis der
+    passende Opener mit Tiefe 0 gefunden wird. Der Rueckgabe-String ist ``s``
+    ohne die trailing Klammer-Gruppe (und ohne den nachgelaufenen Whitespace);
+    ohne passenden Opener (unbalanciert, oder gemischtes Paar) wird ``None``
+    zurueckgegeben - der Caller faellt dann auf die einfachere Regex-Strip-
+    Kaskade oder auf Rueckgabe ``None`` zurueck.
+
+    Ergaenzt :data:`_TRAILING_PAREN_REMARK` fuer geschachtelte Annotationen
+    (``"(Foto (gut))"``, ``"[Sammlung (Muster (jun.))]"``), die durch die
+    reine Regex nicht abgedeckt sind (die Nicht-Klammer-Zeichenklasse
+    schliesst den inneren Nest-Inhalt strukturell aus, und der ``$``-Anker
+    verhindert einen iterativen Innen-nach-aussen-Strip).
+    Nur andere Klammer-Zeichen desselben Typs werden bei der Tiefen-
+    Zaehlung beruecksichtigt - Fremd-Klammern (``[`` innerhalb einer
+    ``()``-Gruppe) sind Content und stoeren die Balanced-Erkennung nicht.
+    """
+    stripped = s.rstrip()
+    if not stripped:
+        return None
+    closer = stripped[-1]
+    opener = _TRAILING_BRACKET_PAIRS.get(closer)
+    if opener is None:
+        return None
+    depth = 0
+    for i in range(len(stripped) - 1, -1, -1):
+        c = stripped[i]
+        if c == closer:
+            depth += 1
+        elif c == opener:
+            depth -= 1
+            if depth == 0:
+                return stripped[:i].rstrip()
+    return None
 # Trailing Aera-Marker (DE/EN/Latein) nach dem Datum: "1985 n. Chr.",
 # "1985 nach Christus", "500 v. Chr.", "500 vor Christus", "1985 AD",
 # "1985 A.D.", "1985 CE", "1985 C.E.", "500 BC", "500 B.C.", "500 BCE",
@@ -1450,6 +1501,14 @@ def parse_iso_date(text) -> str | None:
     # Suffix nach dem Datum; gehoert nicht zum Datum selbst. Strip + Rekursion
     # vor _TRAILING_PUNCT, weil die Klammer-Form eine eigenstaendige strukturelle
     # Notation ist (die _TRAILING_PUNCT-Klasse deckt nur Satzzeichen ab).
+    # Zuerst der Balanced-Bracket-Helper fuer geschachtelte Annotationen
+    # ("(Foto (gut))", "[Sammlung (Muster (jun.))]"), die die _TRAILING_PAREN_REMARK-
+    # Regex durch die Nicht-Klammer-Zeichenklasse strukturell ausschliesst;
+    # anschliessend die einfachere Regex fuer Single-Level (auch mit gemischten
+    # Paaren wie "(Foto]", die der Balanced-Helper nicht behandelt).
+    stripped = _strip_trailing_balanced_bracket(s)
+    if stripped is not None and stripped != s:
+        return parse_iso_date(stripped) if stripped else None
     stripped = _TRAILING_PAREN_REMARK.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
