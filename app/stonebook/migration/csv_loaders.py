@@ -192,6 +192,73 @@ _SPACE_THOUSANDS_PURE = re.compile(
 )
 _SPACE_THOUSAND_CHAR_RE = re.compile(_SP_THOUSAND_CHARS)
 
+# Bracket-Annotation-Strip fuer die Fallback-Zahl-Extraktion. Klammer-
+# umschlossene Freitext-Anhaenge in Sammler-Notizen ("(Foto)", "(Nr. 42)",
+# "(Ref 2020)", "(siehe Katalog)", "[verified 2024]", "{geerbt}") enthalten
+# oft Zahlen (Katalog-Nummern, Foto-Referenzen, Jahres-Marker, ID-Verweise),
+# die *nicht* Teil des zu parsenden Wert-Bereichs sind - sie sind Metadaten
+# zum Wert. Ohne Strip lieferte die generische :data:`_NUM_RE`-Extraktion
+# alle Zahlen inkl. der Annotation als vermeintliche Range-Grenzen:
+#
+# * ``"5.5 (2020)"``       -> nums = [5.5, 2020] -> (5.5, 2020.0)      (Jahr als hi)
+# * ``"5-7 Mohs (Nr. 42)"`` -> nums = [5, 7, 42] -> (5.0, 42.0)         (Katalog-Nr. als hi)
+# * ``"2.65 (Ref 42)"``    -> nums = [2.65, 42] -> (2.65, 42.0)         (Ref-Nr. als hi)
+# * ``"5.5-7.0 [2024]"``   -> nums = [5.5, 7, 2024] -> (5.5, 2024.0)    (Jahr ueberschreibt Range-hi)
+#
+# Bei allen inverted-Range-Faellen (Annotation-Zahl < Zentrum-Zahl) griff
+# der ``if hi < lo``-Fallback und kollabierte auf ``(lo, lo)`` (Toleranz-
+# aehnlicher Schutz). Sobald die Annotation-Zahl aber *groesser* als das
+# Zentrum ist - typisch bei Jahres-Marker (2020, 2024) oder Katalog-Nummern
+# (Nr. 42, Nr. 1234) - wurde die Annotation stille als hoher Range-Wert
+# gelesen und produzierte mineralogisch/sammlungslogisch unsinnige Bereiche
+# ("Wert 2.65 bis 2020 g/cm³" statt "Wert 2.65 g/cm³, Referenz-Jahr 2020").
+#
+# Iterative Regex-Substitution loest verschachtelte Klammern von innen
+# nach aussen: bei ``"5.5 (Foto (gut))"`` matcht der Innen-Pass zuerst
+# ``(gut)`` (kein weiterer Nest-Inhalt), dann der Aussen-Pass ``(Foto  )``.
+# Fixpunkt-Loop stoppt, wenn keine Klammer mehr matcht. Runde/eckige/
+# geschweifte Klammern werden symmetrisch behandelt - die drei Klammer-
+# Varianten sind in Sammler-Notizen austauschbar (rund am haeufigsten,
+# eckig fuer technische/maschinen-lesbare Marker, geschweift selten aber
+# spec-konform).
+#
+# Kritischer Rueckfall-Schutz: wenn der Strip den gesamten Zahl-Inhalt
+# entfernt (weil der Wert *selbst* in Klammern steht, z.B. ``"(5-7)"``,
+# ``"(2.65)"`` oder ``"[5,7]"`` als mathematisches Intervall), wird der
+# Original-String beibehalten. Die Heuristik ``_HAS_DIGIT.search(stripped)``
+# entscheidet: nur wenn nach dem Strip noch Ziffern uebrig sind, ist die
+# Klammer wirklich Annotation und nicht der Wert-Traeger; sonst wird die
+# Klammer als Wert-Umhuellung interpretiert (spiegelt die Standard-
+# Konvention, dass ``"(5-7)"`` = "5 bis 7" und ``"(2.65)"`` = "2.65"
+# einwertig sind, wie sie in Buchhaltungs-/Formular-Auszuegen mit
+# Trenner-Klammern und in mathematischen Intervall-Notationen ueblich
+# sind). Damit bleibt die Grenzform-Semantik erhalten und der Strip
+# greift nur, wenn die Klammer eindeutig Annotation zum Wert-Traeger ist.
+_BRACKETED_ROUND = re.compile(r"\([^()]*\)")
+_BRACKETED_SQUARE = re.compile(r"\[[^\[\]]*\]")
+_BRACKETED_CURLY = re.compile(r"\{[^{}]*\}")
+_HAS_DIGIT = re.compile(r"\d")
+
+
+def _strip_bracketed_annotations(s: str) -> str:
+    """Entfernt runde/eckige/geschweifte Klammer-Annotationen inklusive Nest.
+
+    Iterativ von innen nach aussen, damit ``"(Foto (gut))"`` in zwei
+    Passes verschwindet. Wenn der Strip alle Ziffern entfernt (Wert *selbst*
+    in Klammern), wird der Original-String zurueckgegeben - die Klammer-
+    Umhuellung wird dann als Wert-Traeger interpretiert, nicht als Annotation.
+    """
+    prev = None
+    stripped = s
+    while prev != stripped:
+        prev = stripped
+        stripped = _BRACKETED_ROUND.sub("", stripped)
+        stripped = _BRACKETED_SQUARE.sub("", stripped)
+        stripped = _BRACKETED_CURLY.sub("", stripped)
+    if _HAS_DIGIT.search(stripped):
+        return stripped
+    return s
+
 
 def _strip_locale_thousands(s: str) -> str:
     """Entfernt eindeutig erkennbare Tausender-Trenner aus EN/DE/FR-Excel-Exporten.
@@ -292,6 +359,14 @@ def parse_range(text) -> tuple[float | None, float | None]:
         n_decimals = len(center_str.split(".", 1)[1]) if "." in center_str else 0
         tol = int(m.group(2)) / (10 ** n_decimals)
         return center - tol, center + tol
+    # Klammer-Annotation vor der generischen Zahl-Extraktion strippen: Sammler-
+    # Notizen setzen Foto-/Katalog-/Referenz-Marker (``(Nr. 42)``, ``(2020)``,
+    # ``[verified]``, ``{geerbt}``) rein zusaetzlich zum Wert, oft mit einer
+    # Zahl im Annotations-Inhalt. Ohne Strip wuerden Katalog-/Jahres-Nummern
+    # als Range-Grenzen fehlgelesen (``"5.5 (2020)"`` -> (5.5, 2020.0) statt
+    # (5.5, 5.5)). Siehe :func:`_strip_bracketed_annotations` fuer Details
+    # zur Nest-Aufloesung und dem Rueckfall-Schutz bei Wert-in-Klammern.
+    s = _strip_bracketed_annotations(s)
     nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
     if not nums:
         return None, None

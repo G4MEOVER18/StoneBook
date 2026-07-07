@@ -340,6 +340,75 @@ def test_parse_range_uncertainty_mit_trailing_einheit():
     assert csv_loaders.parse_range("5.5 ± 0.3 42") == (5.5, 42.0)
 
 
+def test_parse_range_klammer_annotation_wird_nicht_als_range_gelesen():
+    """Klammer-umschlossene Freitext-Anhaenge sind Annotation, nicht Range-Grenze.
+
+    In Sammler-Notizen sind Foto-/Katalog-/Referenz-Marker in Klammern
+    strukturell separat vom Wert-Bereich: ``"5.5 (2020)"`` bedeutet "Wert 5.5,
+    Referenz-Jahr 2020" - nicht "Wert-Bereich 5.5 bis 2020". Vor dem Fix
+    lieferte die generische Fallback-Zahl-Extraktion alle Zahlen inkl. der
+    Annotation als vermeintliche Range-Grenzen und produzierte mineralogisch/
+    sammlungslogisch unsinnige Bereiche:
+
+    * ``"5.5 (2020)"``        -> (5.5, 2020.0)   (Jahr als hi statt Annotation)
+    * ``"5-7 Mohs (Nr. 42)"`` -> (5.0, 42.0)     (Katalog-Nr. als hi)
+    * ``"2.65 (Ref 42)"``     -> (2.65, 42.0)    (Ref-Nr. als hi)
+    * ``"5.5 [2024]"``        -> (5.5, 2024.0)   (Jahr in eckigen Klammern)
+
+    Bei allen inverted-Range-Faellen (Annotation-Zahl < Zentrum-Zahl) griff
+    der ``if hi < lo``-Fallback und kollabierte auf ``(lo, lo)`` - aber
+    sobald die Annotation *groesser* als das Zentrum war (Jahres-Marker,
+    hohe Katalog-Nummern), wurde die Annotation stille als hoher Range-Wert
+    gelesen.
+
+    Der Fix strippt runde/eckige/geschweifte Klammer-Annotationen inkl.
+    Verschachtelung vor der Zahl-Extraktion. Kritischer Rueckfall-Schutz:
+    wenn der Wert *selbst* in Klammern steht (``"(5-7)"``, ``"(2.65)"``,
+    ``"[5,7]"`` als mathematisches Intervall), wird der Original-String
+    beibehalten - die Klammer-Umhuellung wird dann als Wert-Traeger
+    interpretiert, nicht als Annotation.
+    """
+    # Jahres-Annotation nach Wert (Foto-Referenz / Kauf-Jahr). Vorher: (5.5, 2020.0).
+    assert csv_loaders.parse_range("5.5 (2020)") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 [2024]") == (5.5, 5.5)
+    # Katalog-/Referenz-Nummer nach Wert. Vorher: (2.65, 42.0).
+    assert csv_loaders.parse_range("2.65 (Ref 42)") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 (Nr. 42)") == (2.65, 2.65)
+    # Katalog-Nummer nach Range. Vorher: (5.0, 42.0).
+    assert csv_loaders.parse_range("5-7 (Nr. 42)") == (5.0, 7.0)
+    assert csv_loaders.parse_range("5-7 Mohs (siehe Ref. 42)") == (5.0, 7.0)
+    # Jahres-Annotation nach Range in eckigen Klammern. Vorher: (5.5, 2024.0).
+    assert csv_loaders.parse_range("5.5-7.0 [Verified 2024]") == (5.5, 7.0)
+    # Freitext-Annotation ohne Zahl (bleibt aus Symmetrie-Gruenden ebenfalls
+    # gestrippt, damit trailing-Freitext in Klammern kein Rest-Whitespace
+    # als Wert-Erweiterung anschleppt).
+    assert csv_loaders.parse_range("5.5 (Foto)") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 [verified]") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 {geerbt}") == (5.5, 5.5)
+    # Verschachtelte Klammern werden vom Innen-nach-Aussen aufgeloest.
+    assert csv_loaders.parse_range("5.5 (Foto (gut))") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5-7 [Range (Mohs) verified]") == (5.0, 7.0)
+    # Klammer-Freitext-Anhang bricht Uncertainty-Patterns; Fallback greift
+    # jetzt sauber mit Strip statt der zufaelligen Ref-Nr. als hi-Wert. Vorher:
+    # ``"5.5 ± 0.3 (Ref 42)"`` lieferte (5.5, 42.0) via nums=[5.5, 0.3, 42].
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Ref 42)") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5(3) (Ref 42)") == (5.5, 5.5)
+    # Regression-Anker: Wert *selbst* in Klammern bleibt unangetastet.
+    # Rueckfall-Schutz greift, weil nach dem Strip keine Ziffern mehr uebrig
+    # waeren - die Klammer wird als Wert-Traeger interpretiert.
+    assert csv_loaders.parse_range("(5-7)") == (5.0, 7.0)
+    assert csv_loaders.parse_range("(2.65)") == (2.65, 2.65)
+    # ``[5-7]`` als mathematisches Intervall mit ASCII-Bindestrich - der
+    # Komma-Trenner ``[5,7]`` bleibt bewusst ausgespart, weil er mit dem
+    # DE-Dezimal-Komma kollidiert (``5,7`` waere gleichzeitig "5 komma 7"
+    # als 5.7 und Zweier-Liste "5 und 7"); die Klammer-Umhuellung mit
+    # Bindestrich ist eindeutig.
+    assert csv_loaders.parse_range("[5-7]") == (5.0, 7.0)
+    assert csv_loaders.parse_range("{5-7}") == (5.0, 7.0)
+    # Regression-Anker: bereits vorhandene Grenzform-Tests bleiben unveraendert.
+    assert csv_loaders.parse_range("5.5 (3.0)") == (5.5, 5.5)   # inverted-Kollaps
+
+
 def test_parse_range_wissenschaftliche_notation():
     """Zahl-Token mit Exponent ``E±N`` wird als scientific-notation gelesen.
 
