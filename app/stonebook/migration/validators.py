@@ -909,10 +909,30 @@ def _normalize_season_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
     return _SEASON_MONTHS.get(key)
 # DMS: 46°30'15" N  /  7° 30' 0'' O  /  46°30'15.5"S
+#
+# Prime-Zeichen fuer Minuten (Einfach-Prime): ASCII-Apostroph ``'`` (U+0027),
+# echtes Prime ``′`` (U+2032, Unicode-Standard), und die typografischen Curly-
+# Quotes ``’`` (U+2019 right single) und ``‘`` (U+2018 left single). Die
+# Curly-Formen entstehen automatisch, wenn ein Sammler die Koordinate in
+# Word/Outlook/LibreOffice-Writer eingibt (Autoformat wandelt ``'`` -> ``’``)
+# oder aus einer PDF/DOCX-Quelle kopiert; bisher fielen alle typografisch
+# gesetzten DMS-Koordinaten stille auf None (das _DMS-Pattern kannte nur
+# ASCII-Apostroph und echtes Prime U+2032), obwohl die Curly-Form die de-facto
+# Notation in Word-basierten Dokumentationsketten ist.
+#
+# Double-Prime fuer Sekunden: ASCII-Anfuehrungszeichen ``"`` (U+0022), echtes
+# Double-Prime ``″`` (U+2033), Curly-Doubles ``”`` (U+201D right double) und
+# ``“`` (U+201C left double); zusaetzlich zwei aufeinander folgende Prime-
+# Zeichen (``''``, ``’’``, ``‘‘``, ``''`` u.a.), wie sie in Terminal-Ausgaben
+# und ASCII-only-Quellen ohne echten Double-Prime ueblich sind. Der Compound-
+# Fall wird durch ``[' ' ' ' ']{2}`` abgedeckt: irgend zwei aufeinanderfolgende
+# Einfach-Primes werden als Double interpretiert. Kollisionsfrei zu echten
+# Double-Primes durch die Alternation (``|``): die spezifische Doubles-Klasse
+# wird zuerst versucht.
 _DMS = re.compile(
     r"""(\d+(?:[.,]\d+)?)\s*°               # Grad
-        (?:\s*(\d+(?:[.,]\d+)?)\s*['′])?    # optional Minuten
-        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:["″]|''))?  # optional Sekunden
+        (?:\s*(\d+(?:[.,]\d+)?)\s*['′’‘])?    # optional Minuten (ASCII + prime + curly)
+        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:["″”“]|['′’‘]{2}))?  # optional Sekunden (double-prime + zwei Primes)
         \s*([NSEWOnsewo])                   # Himmelsrichtung
     """,
     re.VERBOSE,

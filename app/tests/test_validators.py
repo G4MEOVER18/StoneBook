@@ -2105,6 +2105,50 @@ def test_parse_coordinates_dms():
     assert round(lon, 4) == -7.5
 
 
+def test_parse_coordinates_dms_typografische_quotes():
+    """DMS mit typografischen Curly-Quotes (Word/Outlook-Autoformat).
+
+    Wenn ein Sammler die Koordinate in Word/LibreOffice-Writer/Outlook
+    eingibt, wandelt Autoformat automatisch ``'`` -> ``’`` (U+2019) und
+    ``"`` -> ``”`` (U+201D); dieselben Zeichen entstehen beim Kopieren
+    aus einer PDF/DOCX/HTML-Quelle mit Smart-Punctuation. Vor dieser
+    Erweiterung kannte das _DMS-Pattern nur ASCII-Apostroph und echtes
+    Prime (U+2032/U+2033), sodass jede Word-basierte Dokumentationskette
+    silenten Koordinaten-Datenverlust bei der Migration erzeugte.
+    """
+    # Right curly (Word-Standard-Autoformat: ' -> ’, " -> ”)
+    lat, lon = parse_coordinates("46°30’15” N, 7°30’0” E")
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+    # Left curly (kommt in aeltere DOCX/DTP-Quellen mit umgekehrter Curly-
+    # Konvention und in Zwischenablage-Kopien aus manchen PDFs vor)
+    lat, lon = parse_coordinates("46°30‘15“ N, 7°30‘0“ E")
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+    # Gemischt: Curly-Minuten + ASCII-Sekunden (haeufig, wenn nur die
+    # Einfach-Quote autoformatiert wurde und der Sammler die Sekunden
+    # mit Umschalt-2 nachtippte)
+    lat, lon = parse_coordinates("46°30’15\" N, 7°30’0\" E")
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+    # Zwei aufeinander folgende Curly-Prime-Zeichen als Sekunden-Ersatz
+    # (mirror der bestehenden ``''``-Konvention auf Curly-Achse)
+    lat, lon = parse_coordinates("46°30’15’’ N, 7°30’0’’ E")
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+    # Ohne Sekunden, nur Minuten mit Curly-Prime
+    lat, lon = parse_coordinates("46°30’ S, 7°30’ W")
+    assert round(lat, 4) == -46.5
+    assert round(lon, 4) == -7.5
+    # Bestehende ASCII- und U+2032/U+2033-Formen bleiben (kein Regress)
+    lat, lon = parse_coordinates('46°30\'15" N, 7°30\'0" E')
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+    lat, lon = parse_coordinates("46°30′15″ N, 7°30′0″ E")
+    assert round(lat, 4) == 46.5042
+    assert round(lon, 4) == 7.5
+
+
 def test_parse_coordinates_plus_prefix():
     """Explizit positives Vorzeichen (z.B. aus GPS-Exporten) wird akzeptiert."""
     assert parse_coordinates("+46.5, +7.5") == (46.5, 7.5)
