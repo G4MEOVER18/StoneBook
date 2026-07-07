@@ -1637,12 +1637,125 @@ def test_parse_iso_date_trailing_aera_marker():
     # Leading Aera-Form ("AD 1985") wird NICHT durch trailing-Strip erfasst -
     # der Regex verlangt \s+ vor der Aera-Angabe, damit "AD 1985" (leading)
     # nicht als "AD" + " 1985" (mit Ende-Anker) fehlgeleitet interpretiert wird.
-    # Leading-AD-Form bleibt in einer eigenen Erweiterung reserviert.
-    assert parse_iso_date("AD 1985") is None
+    # Sie wird stattdessen vom symmetrischen _LEADING_ERA_MARKER-Strip
+    # erfasst (siehe test_parse_iso_date_leading_aera_marker).
+    assert parse_iso_date("AD 1985") == "1985-01-01"
     # Underscore-Trenner in Filename-Artefakten ("Fund_AD_2024") bleibt None -
     # der Regex verlangt Whitespace vor der Aera-Angabe, damit Filesystem-
     # Segmente nicht versehentlich als Aera-Suffix gelesen werden.
     assert parse_iso_date("Fund_AD_2024") is None
+
+
+def test_parse_iso_date_leading_aera_marker():
+    """Leading Aera-Marker (DE/EN/Latein) - AD, A.D., CE, C.E., n. Chr., nach
+    Christus, BC, BCE, v. Chr., vor Christus - werden vom Anfang der Eingabe
+    abgestrippt, damit das Datum fuer die Parser-Kaskade zurueck bleibt.
+
+    Spiegelt :func:`test_parse_iso_date_trailing_aera_marker` auf die
+    Praefix-Achse: waehrend die Trailing-Form ("1985 AD") die im
+    wissenschaftlichen Diskurs typische Postfix-Setzung abdeckt, kommt die
+    Leading-Form ("AD 1985") in aelteren Museums-Etiketten mit lateinischer
+    Datierungs-Grammatik ("Anno Domini 1985" -> "AD 1985"), in englisch-
+    sprachigen Auktions-Katalogen und in akademischen Referenzen aus dem
+    19./20. Jhdt. vor. Vor dem Fix fielen alle Leading-Formen stille auf
+    None. Konzept identisch zur Trailing-Form: Strip + Rekursion, das
+    ISO-Datum-Output ist identisch zur reinen Form.
+    """
+    # Latein-/Englisch-Marker (AD / A.D. / A. D. / A D)
+    assert parse_iso_date("AD 1985") == "1985-01-01"
+    assert parse_iso_date("A.D. 1985") == "1985-01-01"
+    assert parse_iso_date("A. D. 1985") == "1985-01-01"
+    assert parse_iso_date("A D 1985") == "1985-01-01"
+    # Moderne akademische Konvention (CE / C.E. / Common Era)
+    assert parse_iso_date("CE 1985") == "1985-01-01"
+    assert parse_iso_date("C.E. 1985") == "1985-01-01"
+    assert parse_iso_date("C. E. 1985") == "1985-01-01"
+    # Deutsche Marker (n. Chr. / n.Chr. / n Chr. / nChr.)
+    assert parse_iso_date("n. Chr. 1985") == "1985-01-01"
+    assert parse_iso_date("n.Chr. 1985") == "1985-01-01"
+    assert parse_iso_date("n Chr. 1985") == "1985-01-01"
+    assert parse_iso_date("nChr. 1985") == "1985-01-01"
+    # Deutsche Vollform (nach Christus)
+    assert parse_iso_date("nach Christus 1985") == "1985-01-01"
+    # v. Chr. / vor Christus - Jahr bleibt der Anker; Range-Pruefung ent-
+    # scheidet ueber Gueltigkeit (1985 im Band -> "1985-01-01"; 500 aussen
+    # -> None). Spiegelt die Trailing-Form-Semantik.
+    assert parse_iso_date("v. Chr. 1985") == "1985-01-01"
+    assert parse_iso_date("v.Chr. 1985") == "1985-01-01"
+    assert parse_iso_date("vor Christus 1985") == "1985-01-01"
+    # BC / BCE / B.C. / B.C.E. - Latein-Aequivalent zu v. Chr.
+    assert parse_iso_date("BC 1985") == "1985-01-01"
+    assert parse_iso_date("B.C. 1985") == "1985-01-01"
+    assert parse_iso_date("BCE 1985") == "1985-01-01"
+    assert parse_iso_date("B.C.E. 1985") == "1985-01-01"
+    # BC/BCE/v. Chr. mit Jahr < 1800: Jahres-Range-Pruefung filtert
+    # transparent auf None (spiegelt "500" ohne Aera-Marker -> None und
+    # die Trailing-Form-Behandlung "500 BC" -> None).
+    assert parse_iso_date("BC 500") is None
+    assert parse_iso_date("BCE 500") is None
+    assert parse_iso_date("v. Chr. 500") is None
+    assert parse_iso_date("vor Christus 500") is None
+    # Kombiniert mit vollstaendigem Datum (Aera + Tag + Monat + Jahr)
+    assert parse_iso_date("AD 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("n. Chr. 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("CE 2024-06-13") == "2024-06-13"
+    assert parse_iso_date("n. Chr. 13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("AD 13 June 2024") == "2024-06-13"
+    # Kombiniert mit Jahrhundert-Notation (Arabisch und Roemisch)
+    assert parse_iso_date("AD 19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("n. Chr. 19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("AD 19th century") == "1800-01-01"
+    assert parse_iso_date("AD XIX. Jahrhundert") == "1800-01-01"
+    # Kombiniert mit Trailing-Aera-Marker (Strip erfolgt zweischichtig:
+    # erst Leading, dann Trailing im Rekursions-Aufruf). Semantisch redundant
+    # aber in geerbten Notizen mit doppelter Sicherheits-Aera-Setzung
+    # gelegentlich zu finden.
+    assert parse_iso_date("AD 1985 AD") == "1985-01-01"
+    assert parse_iso_date("n. Chr. 1985 n. Chr.") == "1985-01-01"
+    # Case-insensitive (Etiketten in verschiedenen Schreibungen)
+    assert parse_iso_date("ad 1985") == "1985-01-01"
+    assert parse_iso_date("Ad 1985") == "1985-01-01"
+    assert parse_iso_date("Ce 1985") == "1985-01-01"
+    assert parse_iso_date("N. CHR. 1985") == "1985-01-01"
+    assert parse_iso_date("bce 500") is None
+    # Bestehende Formen ohne Aera-Marker bleiben unveraendert (kein Regress)
+    assert parse_iso_date("1985") == "1985-01-01"
+    assert parse_iso_date("1985 AD") == "1985-01-01"
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("Sommer 1985") == "1985-06-01"
+    # Non-Aera-Praefix darf NICHT als Aera-Marker gedeutet werden
+    assert parse_iso_date("Alpha 1985") is None
+    assert parse_iso_date("Adventure 1985") is None
+    assert parse_iso_date("Certain 1985") is None
+    assert parse_iso_date("Adapter 1985") is None
+    # November beginnt mit "N" - darf nicht als n.Chr.-Kurzform gedeutet
+    # werden (der Regex verlangt "chr" nach "n", nicht "ovember").
+    assert parse_iso_date("November 1985") == "1985-11-01"
+    # Reine Aera-Markierung ohne Datum bleibt None (kein Freitext-Ratespiel;
+    # \s+ nach Marker verlangt ein Datum-Wort).
+    assert parse_iso_date("AD") is None
+    assert parse_iso_date("A.D.") is None
+    assert parse_iso_date("CE") is None
+    assert parse_iso_date("n. Chr.") is None
+    assert parse_iso_date("BCE") is None
+    # Aera-Marker OHNE Whitespace zu einem Datum ("AD1985") wird NICHT als
+    # Aera gedeutet - der Regex verlangt \s+ nach dem Marker, damit die
+    # Compact-Form nicht als Aera-Praefix fehlgeleitet wird.
+    assert parse_iso_date("AD1985") is None
+    # Boundary-Praefix ohne Christus-Marker ("vor 1985"/"nach 1985") bleibt
+    # unveraendert - _LEADING_ERA_MARKER verlangt obligatorisches "christus"/
+    # "chr" nach "vor"/"nach", damit reines "vor 1985" durch _BOUNDARY_PREFIX
+    # als Boundary erkannt wird (kein Konflikt zwischen den beiden Achsen).
+    assert parse_iso_date("vor 1985") == "1985-01-01"
+    assert parse_iso_date("nach 1985") == "1985-01-01"
+    # Underscore-Trenner in Filename-Artefakten ("AD_1985") bleibt None -
+    # der Regex verlangt Whitespace nach der Aera-Angabe, damit Filesystem-
+    # Segmente nicht versehentlich als Aera-Praefix gelesen werden.
+    assert parse_iso_date("AD_1985") is None
+    # Kombiniert mit Annaeherungs-/Klammer-Praefix (mehrschichtige Rekursion)
+    assert parse_iso_date("ca. AD 1985") == "1985-01-01"
+    assert parse_iso_date("(AD 1985)") == "1985-01-01"
 
 
 def test_parse_iso_date_iso_ordinaldatum():

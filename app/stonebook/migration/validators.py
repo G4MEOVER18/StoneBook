@@ -321,7 +321,8 @@ _TRAILING_PAREN_REMARK = re.compile(
 # vorzeitig konsumiert wird. AD/BC/CE nur mit obligatorischer Anwesenheit
 # eines Wortes vor der Aera-Angabe (dass \s+ mit mindestens einem Whitespace
 # vorangeht), damit z.B. "AD 1985" (leading-Form) nicht versehentlich als
-# alles-Aera gelesen wird - eine leading Aera-Form braucht eigene Behandlung.
+# alles-Aera gelesen wird - die leading-Form wird durch das symmetrische
+# :data:`_LEADING_ERA_MARKER` mit ``^`` und ``\s+`` am Ende erfasst.
 # Interne Whitespaces innerhalb der Aera-Angabe optional ("A.D.", "A D",
 # "A. D.") mit \s* zwischen den Buchstaben. Case-insensitive akzeptiert
 # (Etiketten in Grossbuchstaben/Kleinbuchstaben/Mischform sind alle in
@@ -337,6 +338,53 @@ _TRAILING_ERA_MARKER = re.compile(
     r"|b\.?\s*c\.?"            # BC / B.C. / B. C. / B C
     r"|c\.?\s*e\.?"            # CE / C.E. / C. E. / C E
     r")\s*$",
+    re.IGNORECASE
+)
+# Leading Aera-Marker (DE/EN/Latein) vor dem Datum: "AD 1985", "A.D. 1985",
+# "CE 1985", "n. Chr. 1985", "nach Christus 1985", "v. Chr. 500", "BCE 500".
+# Spiegelt :data:`_TRAILING_ERA_MARKER` auf die Praefix-Achse: waehrend die
+# Trailing-Form ("1985 AD") die im wissenschaftlichen Diskurs typische
+# Postfix-Setzung abdeckt, kommt die Leading-Form ("AD 1985") in aelteren
+# Museums-Etiketten mit lateinischer Datierungs-Grammatik ("Anno Domini
+# 1985" -> "AD 1985"), in englischsprachigen Auktions-Katalogen und in
+# akademischen Referenzen aus dem 19./20. Jhdt. vor, wo die Aera-Praefix-
+# Konvention ueblich war. Bisher fielen alle Leading-Formen stille auf None,
+# weil _TRAILING_ERA_MARKER strikt mit ``\s*$`` am Ende ankert (die
+# Position-Semantik der Trailing-Form) - aus einem typischen Etikett wie
+# "AD 1985" wurde silenter Funddatum-Datenverlust bei der Migration.
+#
+# Konzept identisch zu _TRAILING_ERA_MARKER: die Aera-Angabe ist semantische
+# Wert-Anmerkung ("welche Zeitrechnungs-Konvention"), keine Datums-
+# Modifikation - Strip + Rekursion, das ISO-Datum-Output ist identisch zur
+# reinen Form. AD/n. Chr./CE liegen im gueltigen 1800..2999-Band; BC/v. Chr./
+# BCE liegen ausserhalb (Jahres-Range-Pruefung filtert sie transparent auf
+# None, konsistent mit "500" -> None ohne Aera-Marker).
+#
+# Vor _BOUNDARY_PREFIX in parse_iso_date einsortiert (siehe dortigen Aufruf),
+# weil die Formen "vor Christus 1985" und "nach Christus 1985" mit "vor"/
+# "nach" beginnen - _BOUNDARY_PREFIX wuerde sonst nur "vor "/"nach "
+# strippen und "Christus 1985" als Rest liefern, der keine der Struktur-
+# Patterns matcht. Die Leading-Era-Pruefung braucht das obligatorische
+# "christus"/"chr" nach "vor"/"nach", sodass reines "vor 1985" ohne
+# Christus-Marker weiterhin durch _BOUNDARY_PREFIX (auch weiter unten in
+# der Kaskade) als Boundary-Praefix erkannt wird - kein Konflikt.
+#
+# ``\s+`` am Ende (statt ``$``-Anker) verlangt ein Datum-Wort nach der Aera-
+# Angabe, damit reines "AD" (ohne Datum) NICHT strippt und ueber die
+# Struktur-Patterns transparent auf None faellt (kein Freitext-Ratespiel).
+# BCE/B.C.E. wieder vor BC/B.C. wegen der Praefix-Praeferenz der Regex-
+# Alternation (spezifischer zuerst).
+_LEADING_ERA_MARKER = re.compile(
+    r"^(?:"
+    r"n\.?\s*chr\.?"           # n. Chr. / n.Chr. / n Chr. / nChr.
+    r"|nach\s+christus"        # nach Christus (Vollform)
+    r"|v\.?\s*chr\.?"          # v. Chr. / v.Chr. / v Chr. / vChr.
+    r"|vor\s+christus"         # vor Christus (Vollform)
+    r"|a\.?\s*d\.?"            # AD / A.D. / A. D. / A D
+    r"|b\.?\s*c\.?\s*e\.?"     # BCE / B.C.E. / B. C. E. (vor BC-Muster!)
+    r"|b\.?\s*c\.?"            # BC / B.C. / B. C. / B C
+    r"|c\.?\s*e\.?"            # CE / C.E. / C. E. / C E
+    r")\s+",
     re.IGNORECASE
 )
 # Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
@@ -1013,6 +1061,26 @@ def parse_iso_date(text) -> str | None:
     # Datum-Output bleibt identisch zur reinen Datums-Form.
     if _TEMPORAL_PREFIX.match(s):
         rest = _TEMPORAL_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_iso_date(rest)
+        return None
+    # Leading Aera-Marker abstreifen ("AD 1985" → "1985", "n. Chr. 1985"
+    # → "1985", "nach Christus 1985" → "1985", "BCE 500" → "500", "vor
+    # Christus 1985" → "1985"). Spiegelt _TRAILING_ERA_MARKER auf die
+    # Praefix-Achse (Anno-Domini-Grammatik, englische Auktions-Kataloge,
+    # akademische Referenzen). Vor _BOUNDARY_PREFIX einsortiert, weil die
+    # Formen "vor Christus 1985" und "nach Christus 1985" mit "vor"/"nach"
+    # beginnen und sonst nur die reine Praeposition strippen wuerden -
+    # _LEADING_ERA_MARKER verlangt das obligatorische "christus"/"chr"
+    # nach "vor"/"nach", sodass reines "vor 1985"/"nach 1985" ohne
+    # Christus-Marker unveraendert von _BOUNDARY_PREFIX gefangen wird
+    # (kein Konflikt, Reihenfolge ist Spezifisches-vor-Allgemeinem). Strip
+    # + Rekursion analog _APPROX_PREFIX: die Aera-Angabe ist semantische
+    # Wert-Anmerkung, keine Datums-Modifikation. BC/BCE/v. Chr. faellt
+    # nach Strip transparent durch die 1800..2999-Range-Pruefung auf None,
+    # konsistent mit der Trailing-Form.
+    if _LEADING_ERA_MARKER.match(s):
+        rest = _LEADING_ERA_MARKER.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_iso_date(rest)
         return None
