@@ -273,6 +273,73 @@ def test_parse_range_plus_minus_ascii_ersatzform():
     assert csv_loaders.parse_range("5.5 +/- 0.3 (Literatur)") == (5.5, 5.5)
 
 
+def test_parse_range_uncertainty_mit_trailing_einheit():
+    """Unsicherheits-Notation mit nachgestellter Einheit behaelt die publizierte Toleranz.
+
+    In mineralogischen Referenz-Tabellen ist die Kompakt- oder Langform *mit*
+    Einheit die uebliche Praxis: ``2.65 ± 0.05 g/cm³`` (Dichte-Feld mit SI-
+    Einheit inkl. Superscript-3), ``5.5 ± 0.3 Mohs`` (Haerte-Feld mit Skalen-
+    Name), ``100 ± 2 HV`` (Vickers-Haerte), ``-1.5 ± 0.3 °C`` (Temperatur).
+    Vor dem Fix brach die trailing Einheit den ``$``-Anker der Uncertainty-
+    Patterns und liess die Notation auf die generische Zahl-Extraktion
+    fallen: ``2.65 ± 0.05 g/cm³`` wurde als ``[2.65, 0.05]`` gelesen und
+    lieferte via ``if hi < lo``-Kollaps ``(2.65, 2.65)`` (Toleranz verloren);
+    ``2.65(5) g/cm³`` wurde als ``[2.65, 5]`` gelesen und lieferte semantisch
+    falsche ``(2.65, 5.0)`` (mineralogisch unsinniger Dichte-Range 2.65 bis
+    5.0 g/cm³ statt Toleranz 2.60 bis 2.70); ``5.5(3) Mohs`` fiel via
+    inverted-Range auf ``(5.5, 5.5)`` (Toleranz verloren). Fix relaxt das
+    ``$``-Ende beider Patterns auf einen Whitespace-getrennten Wort-Token-
+    Rest, der keine Klammern (schliesst ``(Literatur)``-Freitext-Anhaenge
+    strukturell aus) und keine Komma/Semikolon-Trenner erlaubt (schliesst
+    ``, siehe Nr. 42``-Listen aus, damit dortige Nummern nicht als
+    Range-Grenze fehlgelesen werden). Der erste Token-Buchstabe muss zudem
+    kein ASCII-Digit sein - damit fallen zufaellige nachgestellte Zahlen
+    (``5.5 ± 0.3 42``) auf die Zahl-Extraktion durch und werden nicht in
+    die Toleranz eingemischt.
+    """
+    # ± Langform mit SI-Einheit (Dichte-Feld). Vorher: (2.65, 2.65) via Kollaps.
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    # ± Langform mit Skalen-Name (Haerte-Feld). Vorher: (5.5, 5.5) via Kollaps.
+    assert csv_loaders.parse_range("5.5 ± 0.3 Mohs") == pytest.approx((5.2, 5.8))
+    # ± Langform mit Vickers-Haerte-Kuerzel (Zwei-Buchstaben-Unit).
+    assert csv_loaders.parse_range("100 ± 2 HV") == pytest.approx((98.0, 102.0))
+    # ± Langform mit Temperatur-Einheit (° als Superscript).
+    assert csv_loaders.parse_range("-1.5 ± 0.3 °C") == pytest.approx((-1.8, -1.2))
+    # ± Langform mit Prozent-Zeichen (Anteil-Feld, seltene Wahl).
+    assert csv_loaders.parse_range("50 ± 2 %") == pytest.approx((48.0, 52.0))
+    # ASCII-Ersatzform mit trailing Einheit (7-bit-Mail-Transport, LaTeX-Roh).
+    assert csv_loaders.parse_range("2.65 +/- 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5 +- 0.3 Mohs") == pytest.approx((5.2, 5.8))
+    # IUCr-Kompaktform mit SI-Einheit (Dichte-Feld). Vorher: (2.65, 5.0) semantisch falsch.
+    assert csv_loaders.parse_range("2.65(5) g/cm³") == pytest.approx((2.60, 2.70))
+    # IUCr-Kompaktform mit Skalen-Name (Haerte-Feld). Vorher: (5.5, 5.5) via Kollaps.
+    assert csv_loaders.parse_range("5.5(3) Mohs") == pytest.approx((5.2, 5.8))
+    # IUCr-Kompaktform mit Vickers-Kuerzel.
+    assert csv_loaders.parse_range("100(2) HV") == pytest.approx((98.0, 102.0))
+    # IUCr-Kompaktform mit Kristall-Achsen-Einheit (Angstroem in Roentgenstruktur-Reports).
+    assert csv_loaders.parse_range("12.345(67) Å") == pytest.approx((12.278, 12.412))
+    # DE-Komma-Dezimal mit trailing Einheit (deutschsprachige Publikationen).
+    assert csv_loaders.parse_range("2,65 ± 0,05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2,65(5) g/cm³") == pytest.approx((2.60, 2.70))
+    # Mehrere trailing Wort-Tokens (Einheit + Skalen-Zusatz).
+    assert csv_loaders.parse_range("5.5 ± 0.3 Mohs Haerte") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3) Mohs Haerte") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: Klammer-Freitext-Anhang bricht die Einheits-Toleranz
+    # strukturell (das Trailing-Pattern schliesst runde Klammern aus). Fallback
+    # auf Zahl-Extraktion liefert nur den Center, die publizierte Toleranz
+    # geht in diesem Fall bewusst verloren, damit ``(Literatur)``-Referenzen
+    # nicht als Unsicherheit fehlgelesen werden.
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur)") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5(3) (Literatur)") == (5.5, 5.5)
+    # Regression-Anker: Komma-Anhang bricht das Trailing-Pattern (schliesst
+    # ``, siehe Nr. 42``-Listen aus). Ohne diesen Ausschluss wuerde eine
+    # nachgestellte Referenz-Nummer als Range-Grenze fehlgelesen.
+    assert csv_loaders.parse_range("2.65 ± 0.05, siehe") == (2.65, 2.65)
+    # Regression-Anker: Trailing-Digit-Token faellt auf Zahl-Extraktion, damit
+    # zufaellige Zahlen nicht die Toleranz ueberschreiben.
+    assert csv_loaders.parse_range("5.5 ± 0.3 42") == (5.5, 42.0)
+
+
 def test_parse_range_wissenschaftliche_notation():
     """Zahl-Token mit Exponent ``E±N`` wird als scientific-notation gelesen.
 

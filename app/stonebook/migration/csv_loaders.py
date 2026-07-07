@@ -70,8 +70,25 @@ _NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)")
 # publizierte Toleranz ging stille verloren - unabhaengig davon, ob der
 # Sammler das ±-Zeichen zum Zeitpunkt der Notiz uebersetzen konnte oder
 # nicht. Alle drei Varianten loesen zu identischen Bereichs-Grenzen auf.
+#
+# Trailing-Einheits-Annotation (``2.65 ± 0.05 g/cm³``, ``5.5 ± 0.3 Mohs``,
+# ``100 ± 2 HV``, ``-1.5 ± 0.3 °C``) wird ueber :data:`_TRAILING_UNIT_TOKENS`
+# als Whitespace-getrennte Wort-Tokens toleriert, ohne die publizierte
+# Toleranz zu verwerfen. Ohne diese Toleranz fiel jede Notation mit
+# nachgestellter Einheit stille auf die Fallback-Zahl-Suche zurueck:
+# ``2.65 ± 0.05 g/cm³`` lieferte via ``if hi < lo``-Kollaps ``(2.65, 2.65)``
+# (Toleranz verloren), ``5.5 ± 0.3 Mohs`` lieferte ``(5.5, 5.5)`` (Toleranz
+# verloren) - trotz mineralogischer Praxis, den Wert samt Toleranz *und*
+# Einheit in einem Token zu notieren (Dichte-Feld: ``g/cm³``; Haerte-Feld:
+# ``Mohs`` / ``HV`` / ``HB``; thermische Felder: ``°C``, ``°F``). Klammer-
+# Anhaenge (``(Literatur)``, ``(Ref)``) bleiben ausgeschlossen und fallen
+# weiterhin auf die Zahl-Extraktion durch - die Einheits-Klasse
+# :data:`_TRAILING_UNIT_TOKENS` verlangt beim ersten Token einen Nicht-
+# Klammer-Nicht-Ziffer-Buchstaben und schliesst so runde/eckige/geschweifte
+# Klammern strukturell aus.
 _PLUS_MINUS_UNCERTAINTY = re.compile(
-    r"^\s*(-?\d+(?:[.,]\d+)?)\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)\s*$"
+    r"^\s*(-?\d+(?:[.,]\d+)?)\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)"
+    r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*\s*$"
 )
 
 # IUCr / kristallographische Kompakt-Unsicherheits-Notation ``N(M)`` - der
@@ -111,8 +128,21 @@ _PLUS_MINUS_UNCERTAINTY = re.compile(
 # Mineralogie, spiegelt die _PLUS_MINUS_UNCERTAINTY-Konvention); Klammer-
 # Ziffer-Gruppe muss aus reinen Dezimalziffern bestehen (keine Trenner
 # innerhalb, sonst wuerde ``5.5(1,2)`` als "1 bis 2 Toleranz" mehrdeutig).
+#
+# Trailing-Einheits-Annotation (``2.65(5) g/cm³``, ``5.5(3) Mohs``,
+# ``100(2) HV``) wird symmetrisch zur ±-Langform ueber Whitespace-getrennte
+# Wort-Tokens toleriert. Ohne diese Toleranz kollabierte die Kompaktform
+# bei nachgestellter Einheit auf die Fallback-Zahl-Suche und lieferte semantisch
+# falsche Ergebnisse: ``2.65(5) g/cm³`` wurde als ``[2.65, 5.0]`` erkannt und
+# lieferte ``(2.65, 5.0)`` (mineralogisch unsinniger Dichte-Range 2.65 bis 5.0
+# g/cm³ statt Toleranz 2.60 bis 2.70); ``5.5(3) Mohs`` fiel via inverted-Range-
+# Kollaps auf ``(5.5, 5.5)`` (Toleranz verloren). In mineralogischen Referenz-
+# Tabellen ist die Kompaktform *mit* Einheit die uebliche Praxis (Dichte:
+# ``g/cm³``; Haerte: ``Mohs``/``HV``/``HB``; Kristall-Achsen: ``Å``), daher
+# ist die Einheits-Toleranz genauso wichtig wie bei der ±-Langform.
 _PARENTHESIS_UNCERTAINTY = re.compile(
-    r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)\s*$"
+    r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)"
+    r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*\s*$"
 )
 
 # Eindeutig erkennbare Tausender-Strukturen (Komma+Punkt oder Punkt+Komma in einer Zahl,
