@@ -532,6 +532,131 @@ def test_parse_iso_date_jahrhundert_ungueltig():
     assert parse_iso_date("1985") == "1985-01-01"
 
 
+def test_parse_iso_date_roemisches_jahrhundert():
+    """Roemische Jahrhundert-Notation (XIX. Jahrhundert, XX. Jhdt., XXI century)
+    ergibt das Jahrhundert-Startjahr - Konvention identisch zur Arabisch-Notation.
+
+    Traditionelle Museums-Etiketten-Schreibweise, besonders in geerbten Sammlungen
+    mit europaeischer Provenienz (Italien, Osteuropa, Frankreich) und in aelteren
+    deutschen wissenschaftlichen Referenzen. Vor dem Fix fielen alle diese Formen
+    stille auf None. Spiegelt die bereits vorhandene Roemisch-Unterstuetzung fuer
+    Monate (I..XII in _MONTH_NAMES) auf die Jahrhundert-Achse.
+    """
+    # Deutsche Vollform Roemisch
+    assert parse_iso_date("XIX. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("XX. Jahrhundert") == "1900-01-01"
+    assert parse_iso_date("XXI. Jahrhundert") == "2000-01-01"
+    # Ohne Punkt oder Whitespace (Etiketten ohne strenge Grammatik)
+    assert parse_iso_date("XIX.Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("XIX Jahrhundert") == "1800-01-01"
+    # Deutsche Kurzformen (Jh., Jhdt., Jhrdt.) - identisch zur Arabisch-Notation
+    assert parse_iso_date("XIX. Jh.") == "1800-01-01"
+    assert parse_iso_date("XIX. Jh") == "1800-01-01"
+    assert parse_iso_date("XIX. Jhdt.") == "1800-01-01"
+    assert parse_iso_date("XIX. Jhrdt.") == "1800-01-01"
+    assert parse_iso_date("XX. Jhdt") == "1900-01-01"
+    # Englische Vollform Roemisch
+    assert parse_iso_date("XIX century") == "1800-01-01"
+    assert parse_iso_date("XX century") == "1900-01-01"
+    assert parse_iso_date("XXI century") == "2000-01-01"
+    # Englisch mit trailing-Punkt nach Roemisch-Zahl (Etiketten-Praxis)
+    assert parse_iso_date("XX. century") == "1900-01-01"
+    # Englische Kurzformen c./cent.
+    assert parse_iso_date("XX c.") == "1900-01-01"
+    assert parse_iso_date("XIX cent.") == "1800-01-01"
+    assert parse_iso_date("XXI c.") == "2000-01-01"
+    # Case-insensitive (Etiketten in Kleinbuchstaben und in Mischform)
+    assert parse_iso_date("xix. jahrhundert") == "1800-01-01"
+    assert parse_iso_date("xx. jhdt.") == "1900-01-01"
+    assert parse_iso_date("xix century") == "1800-01-01"
+    assert parse_iso_date("XIX. JAHRHUNDERT") == "1800-01-01"
+    # Trailing Satzzeichen (Fliesstext-Notation "Fund aus dem XIX. Jahrhundert.")
+    assert parse_iso_date("XIX. Jahrhundert.") == "1800-01-01"
+    assert parse_iso_date("XIX. Jh.,") == "1800-01-01"
+    # Umschliessende Klammern (zitierte Datierung)
+    assert parse_iso_date("(XIX. Jahrhundert)") == "1800-01-01"
+    # Rand-Grenzfall: XXX. Jahrhundert = 2900-01-01 (Obergrenze)
+    assert parse_iso_date("XXX. Jahrhundert") == "2900-01-01"
+
+
+def test_parse_iso_date_roemisches_jahrhundert_ungueltig():
+    """Ausserhalb 1800-2999-Band, non-kanonische Roemisch-Tokens oder
+    Kollisionen -> None. Spiegelt die Ungueltig-Semantik von
+    _CENTURY_DE/_EN auf die Roemisch-Achse.
+    """
+    # XVIII. Jahrhundert = 1700-1799, unter der 1800-Untergrenze
+    assert parse_iso_date("XVIII. Jahrhundert") is None
+    # I. bis IX. Jahrhundert = 0-899, weit unter Untergrenze
+    assert parse_iso_date("I. Jahrhundert") is None
+    assert parse_iso_date("IX. Jahrhundert") is None
+    # XXXI. + gaebe > 2999, aber XXXI ist nicht im Map (nur bis XXX)
+    assert parse_iso_date("XXXI. Jahrhundert") is None
+    # Non-kanonische Roemisch-Tokens (im Map nicht enthalten)
+    assert parse_iso_date("IIII. Jahrhundert") is None
+    assert parse_iso_date("VXV. Jahrhundert") is None
+    # Roemisch-Jahr-Form ohne Century-Suffix (MMXX = 2020) - keine Century
+    assert parse_iso_date("MMXX Jahrhundert") is None
+    # Ohne Wort-Suffix (reine Roemisch-Zahl mit / ohne Punkt)
+    assert parse_iso_date("XIX") is None
+    assert parse_iso_date("XIX.") is None
+    # Bestehende Arabisch-Century bleibt unangetastet (kein Regress)
+    assert parse_iso_date("19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19th century") == "1800-01-01"
+    # Bestehende Roemisch-Monate bleiben unangetastet (kein Regress)
+    assert parse_iso_date("13.VI.1985") == "1985-06-13"
+    assert parse_iso_date("VI 2024") == "2024-06-01"
+
+
+def test_parse_iso_date_roemisches_jahrhundert_relativ():
+    """Relative Position innerhalb eines Roemisch-adressierten Jahrhunderts
+    ('Mitte XIX. Jahrhundert', 'late XX century', 'Anfang XXI. Jhdt.').
+
+    Spiegelt _RELATIVE_CENTURY_DE/_EN auf die Roemisch-Achse - dieselben
+    Offset-Konventionen: Anfang/early=0, Mitte/mid=50, Ende/late=99.
+    """
+    # Deutsche Vollform
+    assert parse_iso_date("Anfang XIX. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("Mitte XIX. Jahrhundert") == "1850-01-01"
+    assert parse_iso_date("Ende XIX. Jahrhundert") == "1899-01-01"
+    assert parse_iso_date("Anfang XX. Jahrhundert") == "1900-01-01"
+    assert parse_iso_date("Mitte XX. Jahrhundert") == "1950-01-01"
+    assert parse_iso_date("Ende XX. Jahrhundert") == "1999-01-01"
+    assert parse_iso_date("Anfang XXI. Jahrhundert") == "2000-01-01"
+    # Deutsche Kurzformen (Jhdt./Jh./Jhrdt.)
+    assert parse_iso_date("Mitte XX. Jhdt.") == "1950-01-01"
+    assert parse_iso_date("Ende XIX. Jh.") == "1899-01-01"
+    assert parse_iso_date("Anfang XX. Jhrdt.") == "1900-01-01"
+    # Englische Vollform
+    assert parse_iso_date("early XIX century") == "1800-01-01"
+    assert parse_iso_date("mid XIX century") == "1850-01-01"
+    assert parse_iso_date("late XIX century") == "1899-01-01"
+    assert parse_iso_date("early XX century") == "1900-01-01"
+    assert parse_iso_date("mid XX century") == "1950-01-01"
+    assert parse_iso_date("late XX century") == "1999-01-01"
+    # Englische Kurzformen c./cent.
+    assert parse_iso_date("early XX c.") == "1900-01-01"
+    assert parse_iso_date("mid XX c.") == "1950-01-01"
+    assert parse_iso_date("late XX cent.") == "1999-01-01"
+    # Englische Bindestrich-Kompositum ("mid-XIX century" typische EN-Form)
+    assert parse_iso_date("mid-XIX century") == "1850-01-01"
+    assert parse_iso_date("late-XIX century") == "1899-01-01"
+    assert parse_iso_date("early-XX century") == "1900-01-01"
+    # Case-insensitive
+    assert parse_iso_date("ENDE XIX. JAHRHUNDERT") == "1899-01-01"
+    assert parse_iso_date("EARLY XX CENTURY") == "1900-01-01"
+    # Rand-Grenzfall: Ende XXX. Jahrhundert = 2999 (Obergrenze) muss noch matchen
+    assert parse_iso_date("Ende XXX. Jahrhundert") == "2999-01-01"
+    # Ungueltig-Faelle
+    # XVIII (1700er) mit Anfang/Mitte/Ende bleibt unter Untergrenze
+    assert parse_iso_date("Anfang XVIII. Jahrhundert") is None
+    assert parse_iso_date("Ende XVIII. Jahrhundert") is None
+    # Non-kanonisches Roemisch-Token
+    assert parse_iso_date("Mitte IIII. Jahrhundert") is None
+    # Reines Praefix ohne Century-Suffix
+    assert parse_iso_date("Anfang XIX") is None
+    assert parse_iso_date("Mitte XX") is None
+
+
 def test_parse_iso_date_relative_jahrhundert():
     """Relative Position innerhalb eines Jahrhunderts ('Mitte 19. Jahrhundert',
     'late 20th century', 'mid-19th c.') spiegelt _RELATIVE_DECADE auf die

@@ -638,6 +638,57 @@ _CENTURY_EN = re.compile(
     r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s+(?:century|cent\.?|c\.)\s*$",
     re.IGNORECASE,
 )
+# Roemische Zahlen fuer Jahrhundert-Notation (I..XXX = 1..30). Die traditionelle
+# Schreibweise auf alten Museums-Etiketten, Antiquariats-Katalogen, Provenienz-
+# Vermerken der Museums-Eingangsbuecher und akademischen/historischen/geologi-
+# schen Referenzen: "XIX. Jahrhundert" = 19. Jahrhundert = 1800er, "XX. Jhdt."
+# = 20. Jhdt. = 1900er, "XXI. Jhdt." = 21. Jhdt. = 2000er. Besonders verbreitet
+# in geerbten Sammlungen mit italienischer/osteuropaeischer/franzoesischer Pro-
+# venienz und in aelteren deutschen Notizen aus der ersten Haelfte des 20. Jhdt.,
+# wo die Roemisch-Notation im wissenschaftlichen Diskurs noch die Regel war.
+# Bisher fielen alle diese Formen stille auf None (die _CENTURY_DE/_EN-Patterns
+# akzeptieren nur ``\d{1,2}``), obwohl semantisch eindeutig - aus typischen
+# Museums-Etiketten mit Roemisch-Notation wurde silenter Funddatum-Datenverlust
+# bei der Migration.
+#
+# Spiegelt die bereits vorhandene Roemisch-Unterstuetzung fuer Monate (I..XII
+# in :data:`_MONTH_NAMES`) auf die Jahrhundert-Achse. Range I..XXX deckt Jahre
+# 100..3000 ab, was das gueltige 1800..2999-Band (Jahrhundert 19..30) mit
+# reichlich Puffer einschliesst - kleinere Werte (XVIII. Jhdt. = 1700..1799)
+# werden vom Pattern matched und dann durch die Jahres-Range-Pruefung
+# zurueckgewiesen (spiegelt die Arabisch-Notation "18. Jahrhundert" -> None,
+# konsistent mit der bestehenden Ungueltig-Semantik).
+_ROMAN_CENTURY_VALUES: dict[str, int] = {
+    "I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7,
+    "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12, "XIII": 13,
+    "XIV": 14, "XV": 15, "XVI": 16, "XVII": 17, "XVIII": 18, "XIX": 19,
+    "XX": 20, "XXI": 21, "XXII": 22, "XXIII": 23, "XXIV": 24, "XXV": 25,
+    "XXVI": 26, "XXVII": 27, "XXVIII": 28, "XXIX": 29, "XXX": 30,
+}
+# DE-Vollform ("XIX. Jahrhundert") und alle bereits fuer _CENTURY_DE gelisteten
+# Kurzformen (Jhdt./Jhrdt./Jh. etc.). Die Roemisch-Zeichen-Klasse ``[IVXLCM]``
+# ist bewusst permissiv (deckt auch nicht-kanonische Kombinationen wie ``IIII``
+# oder ``VXV`` ab): die Validierung erfolgt via :data:`_ROMAN_CENTURY_VALUES`-
+# Lookup, sodass nicht-kanonische Tokens auf None fallen. Ordinaler Punkt nach
+# der Roemisch-Zahl ("XIX.") ist im Deutschen ueblich (analog zu "19."), aber
+# auch die punktlose Form ("XIX Jahrhundert") kommt in Notizen ohne strenge
+# Grammatik vor. Kollisionsfrei zu _CENTURY_DE (\d{1,2} vs. [IVXLCM]+ sind
+# disjunkt), kollisionsfrei zu den Monat-Patterns (die Roemisch-Monate leben
+# in DAY_MONTH_YEAR/ENGLISH_MONTH_DAY_YEAR/MONTH_YEAR und verlangen dort
+# Ziffer-Nachbarn, waehrend das Century-Pattern ``$``-anker mit "Jahrhundert"-
+# Suffix verlangt).
+_CENTURY_ROMAN_DE = re.compile(
+    r"^\s*([IVXLCM]+)\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    re.IGNORECASE,
+)
+# EN: "XIX century", "XIX. century", "XX c." - kein Ordinalsuffix (st/nd/rd/th)
+# fuer Roemisch (die Ordinal-Suffixe gelten in EN nur fuer Arabisch: "19th",
+# nicht "XIXth"). Optionaler trailing-Punkt nach der Roemisch-Zahl ("XIX.")
+# deckt sowohl die DE-artige Etiketten-Praxis als auch die kompakte Form ab.
+_CENTURY_ROMAN_EN = re.compile(
+    r"^\s*([IVXLCM]+)\.?\s+(?:century|cent\.?|c\.)\s*$",
+    re.IGNORECASE,
+)
 
 # Relative Position innerhalb eines Jahrhunderts ("Anfang 19. Jahrhundert",
 # "Mitte 20. Jahrhundert", "Ende 19. Jhdt.", "early 19th century",
@@ -679,6 +730,26 @@ _RELATIVE_CENTURY_DE = re.compile(
 _RELATIVE_CENTURY_EN = re.compile(
     r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
     r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:century|cent\.?|c\.)\s*$",
+    re.IGNORECASE,
+)
+# Roemisch-Notation innerhalb der Relativen-Position-Struktur ("Mitte XIX.
+# Jahrhundert", "late XIX century", "Anfang XX. Jhdt."). Spiegelt
+# _RELATIVE_CENTURY_DE/_EN auf die Roemisch-Achse - dieselben sechs Praefix-
+# Schluesselwoerter, derselbe [-\s]+-Separator, aber Roemisch-Zahl statt
+# Arabisch. Kommt in geerbten Sammlungs-Notizen mit gemischter Roemisch-/
+# Arabisch-Datierungs-Praxis vor: der Vorbesitzer notierte etwa "Anfang XIX.
+# Jhdt." fuer eine Museums-Erwerbung im ersten Jahrzehnt des 19. Jhdt. Ohne
+# diese Notation fielen alle relativen Roemisch-Formen stille auf None,
+# obwohl semantisch eindeutig verortbar (Anfang -> 0, Mitte -> 50,
+# Ende -> 99 innerhalb des Roemisch-adressierten Jahrhunderts).
+_RELATIVE_CENTURY_ROMAN_DE = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
+    r"([IVXLCM]+)\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    re.IGNORECASE,
+)
+_RELATIVE_CENTURY_ROMAN_EN = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
+    r"([IVXLCM]+)\.?\s+(?:century|cent\.?|c\.)\s*$",
     re.IGNORECASE,
 )
 
@@ -953,6 +1024,23 @@ def parse_iso_date(text) -> str | None:
         if 1800 <= year <= 2999:
             return f"{year:04d}-01-01"
         return None
+    # Relative Roemisch-Jahrhundert-Notation ("Mitte XIX. Jahrhundert",
+    # "late XIX century", "Anfang XX. Jhdt."). Spiegelt _RELATIVE_CENTURY_DE/_EN
+    # auf die Roemisch-Achse - dieselben Offset-Konventionen (Anfang/early -> 0,
+    # Mitte/mid -> 50, Ende/late -> 99) auf ein Roemisch-adressiertes Jahrhundert.
+    # Vor der non-relative Roemisch-Century-Form geprueft, damit die Praefix-
+    # Form nicht durch das base Roman-Century-Pattern versucht wird. Nicht-
+    # kanonische Roemisch-Tokens (nicht im :data:`_ROMAN_CENTURY_VALUES`-Map)
+    # fallen auf None.
+    m = _RELATIVE_CENTURY_ROMAN_DE.match(s) or _RELATIVE_CENTURY_ROMAN_EN.match(s)
+    if m:
+        offset = _RELATIVE_CENTURY_OFFSETS[m.group(1).lower()]
+        century = _ROMAN_CENTURY_VALUES.get(m.group(2).upper())
+        if century is not None:
+            year = (century - 1) * 100 + offset
+            if 1800 <= year <= 2999:
+                return f"{year:04d}-01-01"
+        return None
     # Jahrhundert-Notation ("19. Jahrhundert", "19th century", "20. Jh."). Auf
     # das Jahrhundert-Startjahr abgebildet (Konvention analog Dekaden-Notation:
     # 19. Jahrhundert → 1800-01-01, spiegelt die "1980er → 1980-01-01"-Kette,
@@ -967,6 +1055,22 @@ def parse_iso_date(text) -> str | None:
         year = (century - 1) * 100
         if 1800 <= year <= 2999:
             return f"{year:04d}-01-01"
+        return None
+    # Roemisch-Jahrhundert-Notation ("XIX. Jahrhundert", "XX. Jhdt.",
+    # "XXI century"). Spiegelt _CENTURY_DE/_EN auf die Roemisch-Achse - traditio-
+    # nelle Museums-Etiketten-Praxis, besonders in geerbten Sammlungen mit
+    # europaeischer Provenienz. Konvention identisch zur Arabisch-Notation:
+    # Jahrhundert-Startjahr (XIX -> 1800-01-01). Non-kanonische Roemisch-Tokens
+    # fallen auf None (via :data:`_ROMAN_CENTURY_VALUES`-Lookup). Werte
+    # ausserhalb des 1800..2999-Bandes (XVIII. Jhdt. -> 1700 < 1800) werden wie
+    # bei der Arabisch-Notation zurueckgewiesen.
+    m = _CENTURY_ROMAN_DE.match(s) or _CENTURY_ROMAN_EN.match(s)
+    if m:
+        century = _ROMAN_CENTURY_VALUES.get(m.group(1).upper())
+        if century is not None:
+            year = (century - 1) * 100
+            if 1800 <= year <= 2999:
+                return f"{year:04d}-01-01"
         return None
     # ISO 8601 Ordinal-Datum (Tag-des-Jahres): "2024-165" / "2024165" (compact 7 Ziffern).
     # Vor _YEAR_MONTH geprueft, damit "2024-001" nicht versucht wird als YYYY-MM zu
