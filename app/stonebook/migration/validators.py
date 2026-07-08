@@ -53,8 +53,17 @@ _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 # Konvention: Dekaden-Start = Jahr selbst (1980er → 1980-01-01). Reichweite-Annotation
 # bleibt im Freitext (notizen). Zweistellige Kurzform "80er" ist mehrdeutig
 # (1880er vs 1980er) und wird bewusst nicht aufgeloest -- liefert None.
+# ``jahre(?:n)?`` deckt zusaetzlich zur Nominativ-/Akkusativ-Form ``Jahre``
+# auch die Dativ-Plural-Form ``Jahren`` ab, die in praepositionalen Wendungen
+# der Standard-Form entspricht: ``in den 1980er Jahren``, ``aus den 1990er
+# Jahren``, ``waehrend der 2000er Jahren``. Ohne das ``n``-Suffix fiel diese
+# haeufigste DE-Print-/Buch-Form still auf None, obwohl semantisch identisch
+# zur Nominativ-Variante ``1980er Jahre`` (Konvention: Dekaden-Start). Wird
+# nach _TEMPORAL_PREFIX geparst - ``in den 1980er Jahren`` strippt zuerst
+# ``in den `` via _TEMPORAL_PREFIX-Praeposition-plus-Artikel und uebergibt
+# ``1980er Jahren`` an _DECADE zur Auswertung.
 _DECADE = re.compile(
-    r"^\s*(\d{4})(?:[\- ]?(?:er|s))(?:\s+jahre)?\s*$",
+    r"^\s*(\d{4})(?:[\- ]?(?:er|s))(?:\s+jahren?)?\s*$",
     re.IGNORECASE,
 )
 # Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960", "1950 - 1960") -
@@ -926,9 +935,26 @@ _RELATIVE_DECADE_OFFSETS: dict[str, int] = {
     "mitte": 5, "mid": 5,
     "ende": 9, "late": 9,
 }
+# ``(?:der\s+)?`` deckt die DE-Genitiv-Artikel-Fueller-Form ab, die in
+# ganzen Saetzen der Standard ist: ``Anfang der 1980er (Jahre)``, ``Ende der
+# 1990er Jahren``, ``Mitte der 2000er``. Ohne den Artikel-Zweig fielen diese
+# extrem verbreiteten Print-/Buch-Formen still auf None (Regex verlangte den
+# Sprung direkt vom Positions-Wort auf den Dekaden-Anker: ``Anfang 1980er``),
+# obwohl semantisch identisch zur artikellosen Form (Konvention: Anfang→Jahr
+# 0 der Dekade, Mitte→Jahr 5, Ende→Jahr 9). Der Artikel-Zweig ist bewusst
+# nur fuer die DE-Keywords semantisch gemeint (``der`` ist DE-Genitiv-Femininum
+# Plural fuer ``die 1980er Jahre`` in der Genitiv-Rektion von ``Anfang/Mitte/
+# Ende``), matcht via case-insensitive Regex zwar auch nach EN-Keywords
+# (``early der 1980s``), das ist aber ein nicht-idiomatischer Fall, der in
+# der Praxis nicht auftritt und - selbst wenn - semantisch identisch zur
+# artikellosen Form auf den Dekaden-Anker abbildet (kein Datenverlust).
+# ``jahre(?:n)?`` deckt zusaetzlich die Dativ-Plural-Form ``Jahren`` ab,
+# spiegelt _DECADE auf die relative Positions-Achse (``Anfang der 1980er
+# Jahren`` ist selten, aber ``Ende der 1990er Jahren`` als Fund-Kontext-
+# Anmerkung kommt vor).
 _RELATIVE_DECADE = re.compile(
-    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+(\d{4})(?:[\- ]?(?:er|s))"
-    r"(?:\s+jahre)?\s*$",
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+(?:der\s+)?(\d{4})(?:[\- ]?(?:er|s))"
+    r"(?:\s+jahren?)?\s*$",
     re.IGNORECASE,
 )
 
