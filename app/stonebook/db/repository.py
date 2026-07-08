@@ -119,12 +119,30 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # in kleinen Karat-Portionen oben, faustgrosse Quarze/Calcite unten).
     # Komplementaer zu den drei Wert-Sichten: absolute Summe (gesamtwert_chf),
     # spezifische Massen-Dichte (dieses Feld) und spezifische Volumen-Dichte
-    # (waere Wert/Volumen, eigene Achse). Sortier-Frage "welches Stueck rentiert
-    # sich am meisten pro Gepaeck-Gramm bei Transport zur Boerse?" oder "welche
-    # Vitrinen-Plaetze traegt am meisten Versicherungswert pro Kilo?". NULL bei
-    # fehlender/Null-Masse (Gewicht_g IS NULL OR = 0) - die Division waere
-    # entweder undefined oder unendlich, spiegelt die NULL-an-Ende-Konvention.
+    # (Wert_pro_Volumen_chf_mm3, eigene Achse). Sortier-Frage "welches Stueck
+    # rentiert sich am meisten pro Gepaeck-Gramm bei Transport zur Boerse?" oder
+    # "welche Vitrinen-Plaetze traegt am meisten Versicherungswert pro Kilo?".
+    # NULL bei fehlender/Null-Masse (Gewicht_g IS NULL OR = 0) - die Division
+    # waere entweder undefined oder unendlich, spiegelt die NULL-an-Ende-Konvention.
     "Wert_pro_Gewicht_chf_g",
+    # Wert_pro_Volumen_chf_mm3 als spezifische Marktwert-Dichte je mm3 Bounding-
+    # Box (gesamtwert_chf / (Laenge_mm * Breite_mm * Hoehe_mm)). Spiegelt
+    # Wert_pro_Gewicht_chf_g auf die Volumen-Achse: waehrend die Massen-Dichte
+    # die Frage "welche Stuecke rentieren sich pro Gramm?" beantwortet (kritisch
+    # fuer Transport/Kurier), beantwortet die Volumen-Dichte "welche Stuecke
+    # rentieren sich pro Vitrinen-/Schubladen-Platz?" (kritisch fuer knappen
+    # Aufbewahrungs-Raum - Rubin-/Diamant-Splitter oben, faustgrosse Quarze
+    # unten). Bereits im Sortier-Achsen-Kommentar oben als "eigene Achse"
+    # angekuendigt und fuellt die dritte Wert-Sicht neben absoluter Summe
+    # (gesamtwert_chf) und Massen-Dichte (Wert_pro_Gewicht_chf_g).
+    # Der Nenner ist die axis-aligned Bounding-Box aus dem Volumen_mm3-Ausdruck;
+    # NULL bei fehlender/Null-Vermessung (mindestens eine Dimension NULL oder
+    # Produkt = 0) - die Division waere entweder undefined oder unendlich,
+    # spiegelt die NULL-an-Ende-Konvention. Sammler-Reihenfolgen: Diamant-
+    # Karat (~50-500 CHF/mm3) > Rubin-/Smaragd-Splitter (~5-50 CHF/mm3) >
+    # Sammler-Bergkristall (~0.01-0.1 CHF/mm3) > faustgrosses Handstueck
+    # (~0.001 CHF/mm3).
+    "Wert_pro_Volumen_chf_mm3",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
@@ -226,7 +244,8 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
 # Definition und Sortier-Definition).
 _COMPUTED_COLUMNS: frozenset[str] = frozenset(
     {"bilder", "gesamtwert_chf", "aliase", "analysen", "Volumen_mm3",
-     "Mohs_Haerte_Mitte", "Dichte_Mitte", "Wert_pro_Gewicht_chf_g"})
+     "Mohs_Haerte_Mitte", "Dichte_Mitte", "Wert_pro_Gewicht_chf_g",
+     "Wert_pro_Volumen_chf_mm3"})
 
 
 def _now() -> str:
@@ -428,6 +447,8 @@ class ObjectRepo:
                      wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
                      wert_pro_gewicht_max: float | None = None,
+                     wert_pro_volumen_min: float | None = None,
+                     wert_pro_volumen_max: float | None = None,
                      gewicht_min: float | None = None,
                      gewicht_max: float | None = None,
                      laenge_min: float | None = None,
@@ -485,7 +506,14 @@ class ObjectRepo:
                     / 2.0) AS Dichte_Mitte,
                    (CASE WHEN o.Gewicht_g IS NULL OR o.Gewicht_g = 0 THEN NULL
                          ELSE {wert_sql} * 1.0 / o.Gewicht_g END)
-                    AS Wert_pro_Gewicht_chf_g
+                    AS Wert_pro_Gewicht_chf_g,
+                   (CASE WHEN o.Laenge_mm IS NULL OR o.Breite_mm IS NULL
+                              OR o.Hoehe_mm IS NULL
+                              OR (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) = 0
+                         THEN NULL
+                         ELSE {wert_sql} * 1.0
+                              / (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) END)
+                    AS Wert_pro_Volumen_chf_mm3
             FROM objects o
         """
         where, params = [], []
@@ -1359,6 +1387,39 @@ class ObjectRepo:
                 f"(CASE WHEN o.Gewicht_g IS NULL OR o.Gewicht_g = 0 THEN NULL "
                 f"ELSE {wert_sql} * 1.0 / o.Gewicht_g END) <= ?")
             params.append(float(wert_pro_gewicht_max))
+        # Wert_pro_Volumen-Filter als Filter-Ebenen-Pendant zur Wert_pro_Volumen_chf_mm3-
+        # Sortier-Achse: spezifische Marktwert-Dichte (CHF/mm3) als Bereichs-Grenze.
+        # Sammler-Frage: "welche Stuecke rentieren sich pro Vitrinen-mm3 ueberhaupt
+        # (>= 0.01 CHF/mm3, sonst frisst der Aufbewahrungs-Platz den Ertrag)?"
+        # oder "welche sind potentielle Karat-Kandidaten (>= 1 CHF/mm3, typisch
+        # fuer Rubin-/Smaragd-/Diamant-Splitter)?". Spiegelt wert_pro_gewicht_min/
+        # max auf die Volumen-Achse: derselbe CASE-WHEN-Ausdruck wie in der
+        # SELECT-Liste (der Zaehler {wert_sql}, der Nenner Laenge*Breite*Hoehe mit
+        # NULL-/Null-Guard fuer alle drei Achsen), damit der Filter exakt mit der
+        # Sortier-Spalte uebereinstimmt (Sortier-nach-Wert_pro_Volumen_chf_mm3 +
+        # Filter wert_pro_volumen_min=1.0 selektieren dieselbe Zahlen-Domain,
+        # kein Drift zwischen Filter- und Sortier-Definition). NULL-Semantik der
+        # Sortier-Achse spiegelt sich auch hier: mindestens eine fehlende Dimension
+        # oder Null-Produkt laesst die CASE-Expression NULL werden, und NULL >= X
+        # / NULL <= X sind beide NULL == FALSE - solche Objekte fallen implizit
+        # aus dem Filter, spiegelt die volumen_-/wert_pro_gewicht_-/mohs_-/dichte_-
+        # Konvention.
+        if wert_pro_volumen_min is not None:
+            where.append(
+                f"(CASE WHEN o.Laenge_mm IS NULL OR o.Breite_mm IS NULL "
+                f"OR o.Hoehe_mm IS NULL "
+                f"OR (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) = 0 THEN NULL "
+                f"ELSE {wert_sql} * 1.0 "
+                f"/ (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) END) >= ?")
+            params.append(float(wert_pro_volumen_min))
+        if wert_pro_volumen_max is not None:
+            where.append(
+                f"(CASE WHEN o.Laenge_mm IS NULL OR o.Breite_mm IS NULL "
+                f"OR o.Hoehe_mm IS NULL "
+                f"OR (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) = 0 THEN NULL "
+                f"ELSE {wert_sql} * 1.0 "
+                f"/ (o.Laenge_mm * o.Breite_mm * o.Hoehe_mm) END) <= ?")
+            params.append(float(wert_pro_volumen_max))
         if gewicht_min is not None:
             where.append("o.Gewicht_g >= ?")
             params.append(float(gewicht_min))
