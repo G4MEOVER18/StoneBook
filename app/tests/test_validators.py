@@ -901,10 +901,48 @@ def test_parse_iso_date_mehrjahres_spanne_wortform_ungueltig():
     assert parse_iso_date("1950to1960") is None
     # Unbekanntes Schluesselwort
     assert parse_iso_date("1950 oder 1960") is None
-    # 'zwischen 1950 und 1960' braucht eine andere Pattern-Struktur und ist
-    # bewusst nicht abgedeckt (das Wort 'zwischen' allein ist kein Range-
-    # Separator zwischen zwei Jahren, sondern ein Praefix vor dem ersten).
-    assert parse_iso_date("zwischen 1950 und 1960") is None
+
+
+def test_parse_iso_date_mehrjahres_spanne_zwischen():
+    """Umschliessende Range-Form 'zwischen X und Y' / 'between X and Y'
+    spiegelt _YEAR_RANGE_WORD auf die bilaterale Konjunktions-Notation
+    (Startjahr als ISO-Datum)."""
+    # Deutsche Form (typisch in geerbten Sammlungs-Tagebuechern, wenn der
+    # Vorbesitzer die Spanne nicht praezise datieren konnte)
+    assert parse_iso_date("zwischen 1950 und 1960") == "1950-01-01"
+    assert parse_iso_date("zwischen 1985 und 1990") == "1985-01-01"
+    assert parse_iso_date("zwischen 2000 und 2024") == "2000-01-01"
+    # Englische Form (Auktionskataloge, Provenienz-Notizen aus EN-Quellen)
+    assert parse_iso_date("between 1950 and 1960") == "1950-01-01"
+    assert parse_iso_date("between 1985 and 1990") == "1985-01-01"
+    # Case-insensitiv (Caps-Lock-Notizen, Titel-Case aus Word-Autoformat)
+    assert parse_iso_date("ZWISCHEN 1985 UND 1990") == "1985-01-01"
+    assert parse_iso_date("Between 1985 And 1990") == "1985-01-01"
+    # Inverted Spanne (Tippfehler) liefert das erste Jahr, spiegelt
+    # _YEAR_RANGE / _YEAR_RANGE_WORD
+    assert parse_iso_date("zwischen 1990 und 1985") == "1990-01-01"
+    # Whitespace-Toleranz (mehrfache Leerzeichen, Trim)
+    assert parse_iso_date("  zwischen  1985  und  1990  ") == "1985-01-01"
+    # Kombination mit bestehenden Praefixen ueber Rekursion
+    assert parse_iso_date("ca. zwischen 1985 und 1990") == "1985-01-01"
+    assert parse_iso_date("(zwischen 1985 und 1990)") == "1985-01-01"
+    assert parse_iso_date("zwischen 1985 und 1990.") == "1985-01-01"
+
+
+def test_parse_iso_date_mehrjahres_spanne_zwischen_ungueltig():
+    """Jahr ausserhalb [1800, 2999], fehlende Konjunktion oder fehlender
+    Whitespace → None."""
+    # Ohne Whitespace zwischen Schluesselwoertern kein Match
+    assert parse_iso_date("zwischen1985und1990") is None
+    # Nur ein Jahr (fehlende Konjunktion/rechtes Jahr)
+    assert parse_iso_date("zwischen 1985") is None
+    # Nur die Konjunktion ohne 'zwischen'/'between' (nicht die Wort-Form
+    # von _YEAR_RANGE_WORD, das nur bis/to/till/until kennt)
+    assert parse_iso_date("1985 und 1990") is None
+    assert parse_iso_date("1985 and 1990") is None
+    # Jahr ausserhalb [1800, 2999]
+    assert parse_iso_date("zwischen 1500 und 1600") is None
+    assert parse_iso_date("between 1800 and 3000") is None
 
 
 def test_parse_iso_date_quartale():

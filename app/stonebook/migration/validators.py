@@ -95,6 +95,25 @@ _YEAR_RANGE_WORD = re.compile(
     r"^\s*(\d{4})\s+(?:bis|to|till|until)\s+(\d{4})\s*$",
     re.IGNORECASE,
 )
+# Umschliessende Range-Form "zwischen X und Y" / "between X and Y" - spiegelt
+# _YEAR_RANGE_WORD auf die bilaterale Konjunktions-Notation. In geerbten
+# Sammlungs-Notizen die haeufigste Form, wenn der Vorbesitzer den Fund-Zeitraum
+# nicht praezise datieren konnte, aber die grobe Spanne angeben wollte
+# ("zwischen 1985 und 1990 im Aaregebiet gefunden", "between 1950 and 1960
+# purchased from a Swiss dealer") - ohne Match fielen alle Formen still auf
+# None, obwohl beide Jahre eindeutig lesbar sind. Konvention identisch zu
+# _YEAR_RANGE / _YEAR_RANGE_WORD: Startjahr als ISO-Datum (Spanne-Start),
+# inverted Spanne ("zwischen 1990 und 1985", Tippfehler) liefert das erste
+# Jahr. Mindestens ein Whitespace jeweils rund um "zwischen"/"between" und
+# um "und"/"and", damit "zwischen1985und1990" (extrem unkonventionell) kein
+# Match wird; die Wort-Form lebt von der natuerlichen Satzform. Kollisionsfrei
+# zu _YEAR_RANGE_WORD (der beginnt mit vier Ziffern, hier beginnt der Match
+# mit "zwischen"/"between") und zu allen anderen Datumsformen (keine andere
+# Form beginnt mit "zwischen"/"between").
+_YEAR_RANGE_BETWEEN = re.compile(
+    r"^\s*(?:zwischen|between)\s+(\d{4})\s+(?:und|and)\s+(\d{4})\s*$",
+    re.IGNORECASE,
+)
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
@@ -1310,6 +1329,15 @@ def parse_iso_date(text) -> str | None:
     # Spiegelt _YEAR_RANGE auf die natuerliche Satz-Notation und folgt
     # exakt derselben Konvention (Startjahr als ISO-Datum).
     m = _YEAR_RANGE_WORD.match(s)
+    if m:
+        year_start, year_end = int(m.group(1)), int(m.group(2))
+        if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
+            return f"{year_start:04d}-01-01"
+        return None
+    # Umschliessende Range-Form ("zwischen 1985 und 1990", "between 1950 and
+    # 1960"). Spiegelt _YEAR_RANGE_WORD auf die bilaterale Konjunktions-
+    # Notation und folgt exakt derselben Konvention (Startjahr als ISO-Datum).
+    m = _YEAR_RANGE_BETWEEN.match(s)
     if m:
         year_start, year_end = int(m.group(1)), int(m.group(2))
         if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
