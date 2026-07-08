@@ -534,6 +534,95 @@ def test_parse_range_schweizer_apostroph_tausender():
     assert csv_loaders.parse_range("1’000") == (1000.0, 1000.0)
 
 
+def test_parse_range_einheit_mit_hochgestellter_ascii_ziffer():
+    """SI-Einheiten mit ASCII-Superskript-Ersatz (``cm3``/``m2``/``s2``/``cm^3``)
+    duerfen die Ziffer im Einheiten-Suffix nicht als Range-Grenze anschleppen.
+
+    In geerbten Sammlungs-Notizen sehr verbreitet, wenn Autor/Tool kein
+    Unicode-Superskript zur Verfuegung hatte: Excel-CSV-Exporte ohne
+    Unicode-Codepage, Terminal-/Log-Ausgaben (ASCII-only), LaTeX-Roh-Exporte
+    ohne ``\\textsuperscript``, alte Sammlungs-DB-Formate mit 7-bit-ASCII
+    und Foto-EXIF-Kommentare aus Kameras ohne Unicode-Support schreiben
+    ``g/cm³`` als ``g/cm3`` (Ziffer statt ³ U+00B3) bzw. als ``g/cm^3`` mit
+    Caret als Superskript-Marker (LaTeX-/Math-Konvention). Bisher fiel die
+    Einheits-Ziffer als eigenstaendiger Zahl-Token in nums auf und produzierte
+    mineralogisch unsinnige Bereiche:
+
+    * ``"2.65 g/cm3"``  -> (2.65, 3.0)  (3 aus ``cm3`` als Range-hi statt Einheit)
+    * ``"2.65 kg/m3"``  -> (2.65, 3.0)  (3 aus ``m3`` als Range-hi)
+    * ``"2.65 g/cm^3"`` -> (2.65, 3.0)  (Caret-Superskript-Form, gleiche Fehl-Lese)
+    * ``"5-7 g/cm3"``   -> (5.0, 5.0)   (nums=[5,7,3], hi=3<lo=5 -> Kollaps, Range verloren)
+    * ``"9.81 m/s2"``   -> (9.81, 9.81) (zufaellig richtig, weil hi<lo-Kollaps)
+
+    Bei der Migration aus ASCII-only-Mineralogie-Notizen entstand damit
+    silenter Wert-/Range-Datenverlust: kleine Bereiche mit hi=Ziffer-aus-
+    Einheit wurden auf den Center kollabiert (Range verloren), grosse
+    Werte mit ni-Ziffer-aus-Einheit > Center wurden als semantisch falscher
+    Range gelesen (unsinnige mineralogische Interpretation).
+
+    Der Fix ergaenzt ``_NUM_RE`` um ein negatives Lookbehind ``(?<![A-Za-z^])``,
+    das die generische Zahl-Extraktion an Positionen blockiert, an denen die
+    Zahl direkt nach einem Buchstaben oder Caret steht - die typische
+    Einheiten-Suffix-Signatur. Kollisionsfrei zu scientific notation
+    (``1e3``/``1.5e-3`` matchen als Ganz-Token, das Lookbehind pruefft nur
+    das fuehrende Digit, nicht das ``e`` innerhalb des Tokens) und zu
+    Leading-Dot-Dezimals (``.5`` matcht ueber die ``\\.\\d+``-Alternante,
+    Lookbehind gilt vor dem ``.``).
+
+    Bezeichner-Positionen (``Sample3``/``Mineral2``/``B12``) sind eine
+    natuerliche Nebenwirkung: dort ist die Zahl Teil des Namens (Sample-
+    Nummer, Chargen-Marker, Katalog-Bezeichner), nicht eine Messgroesse -
+    dropen ist semantisch korrekt, spiegelt die Strip-Konvention von
+    :func:`_strip_bracketed_annotations` auf die Bezeichner-Achse.
+    """
+    # Dichte-Einheit mit ASCII-Superskript-Ersatz (die haeufigste Notation
+    # in ASCII-only-Mineralogie-Kontexten). Vorher: (2.65, 3.0).
+    assert csv_loaders.parse_range("2.65 g/cm3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 kg/m3") == (2.65, 2.65)
+    # Caret-Superskript-Form (LaTeX-/Math-Konvention). Vorher: (2.65, 3.0).
+    assert csv_loaders.parse_range("2.65 g/cm^3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 kg/m^3") == (2.65, 2.65)
+    # Range mit Einheit am Ende: die Einheits-Ziffer darf den echten Range
+    # weder als hi ueberschreiben noch via hi<lo-Kollaps auf den Center
+    # zusammenziehen. Vorher: (5.0, 5.0) via nums=[5,7,3] und hi=3<lo=5.
+    assert csv_loaders.parse_range("5-7 g/cm3") == (5.0, 7.0)
+    assert csv_loaders.parse_range("5-7 g/cm^3") == (5.0, 7.0)
+    # Andere physikalische Einheiten mit ASCII-Superskript (Flaeche, Zeit,
+    # Beschleunigung, Volumen). Vorher: alle Faelle brachten via hi<lo-Kollaps
+    # zufaellig den Center-Wert doppelt zurueck (aber semantisch: Ziffer
+    # aus Einheit war als Range-Grenze gemeint - Silent-Drop der Semantik).
+    assert csv_loaders.parse_range("9.81 m/s2") == (9.81, 9.81)
+    assert csv_loaders.parse_range("100 mm2") == (100.0, 100.0)
+    assert csv_loaders.parse_range("50 cm3") == (50.0, 50.0)
+    # Bezeichner-Zahlen (Sample/Chargen-Marker vor dem Wert): die Zahl im
+    # Bezeichner-Praefix wird nicht als Range-Grenze fehlgelesen. Vorher:
+    # ``"Sample3 test 2.65"`` -> (3.0, 3.0) via hi<lo-Kollaps, Wert 2.65
+    # ging verloren. ``"Mineral2 test 5.5"`` -> (2.0, 5.5) semantisch falscher
+    # Range 2 bis 5.5.
+    assert csv_loaders.parse_range("Sample3 test 2.65") == (2.65, 2.65)
+    assert csv_loaders.parse_range("Mineral2 5.5") == (5.5, 5.5)
+    # Unicode-Superskript-Form (bereits richtig, Regression-Anker): ``g/cm³``
+    # (U+00B3) enthaelt kein ASCII-Digit und war schon vor dem Fix korrekt.
+    assert csv_loaders.parse_range("2.65 g/cm³") == (2.65, 2.65)
+    assert csv_loaders.parse_range("5-7 g/cm³") == (5.0, 7.0)
+    # Regression-Anker: scientific notation bleibt Ganz-Token, weil das
+    # Lookbehind nur die erste Ziffer prueft und ``1e3`` als eine Zahl mit
+    # ``1`` am Anfang (nach ``\\s``/Start, nicht nach Buchstabe) matcht.
+    assert csv_loaders.parse_range("1e3") == (1000.0, 1000.0)
+    assert csv_loaders.parse_range("1.5e-3") == (0.0015, 0.0015)
+    assert csv_loaders.parse_range(".5e-3") == (0.0005, 0.0005)
+    # Regression-Anker: Leading-Dot-Dezimals matchen ueber die ``\\.\\d+``-
+    # Alternante, das Lookbehind gilt vor dem ``.`` und laesst den Match zu.
+    assert csv_loaders.parse_range(".5") == (0.5, 0.5)
+    assert csv_loaders.parse_range(".5 mm") == (0.5, 0.5)
+    # Regression-Anker: alle bereits geprueften Notations-Klassen bleiben
+    # unveraendert - der Fix beruehrt nur die generische Fallback-Extraktion.
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
+    assert csv_loaders.parse_range("1'000.00") == (1000.0, 1000.0)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data

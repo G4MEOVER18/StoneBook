@@ -63,7 +63,49 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 # leeren Werts vor dem Komma sein wie in ``,5`` = zweiter Teil von ``5,5``);
 # US-Konvention kennt kein leading-Komma-Dezimal, und Excel-DE schreibt ``0,5``
 # statt ``,5``.
-_NUM_RE = re.compile(r"(\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)")
+#
+# Negatives Lookbehind ``(?<![A-Za-z^])`` schuetzt vor der Fehl-Lese der
+# hochgestellt-Ersatz-Ziffer in SI-Einheiten: ``cm3``/``m2``/``s2`` sowie die
+# ASCII-Caret-Variante ``cm^3``/``m^2``/``s^2`` sind der uebliche Weg, hoch-
+# gestellte Ziffern in reinem ASCII zu notieren (Excel-CSV-Exporte, Terminal-
+# /Log-Ausgaben, geerbte Sammlungs-Notizen mit 7-bit-ASCII-Codepage, LaTeX-
+# Roh-Exporte ohne ``\textsuperscript`` und Foto-EXIF-Kommentare aus Kameras
+# ohne Unicode-Support). Ohne dieses Lookbehind fiel die Einheits-Ziffer als
+# eigenstaendiger Zahl-Token in nums auf und produzierte mineralogisch
+# unsinnige Bereiche: ``"2.65 g/cm3"`` lieferte (2.65, 3.0) statt (2.65, 2.65)
+# (die 3 aus ``cm3`` als Range-hi fehlgelesen), ``"5-7 g/cm3"`` lieferte
+# (5.0, 5.0) via ``if hi < lo``-Kollaps (nums = [5, 7, 3], hi=3, lo=5 → (5,5),
+# Range verloren), ``"2.65 kg/m3"`` lieferte (2.65, 3.0). Bei der Migration
+# aus Mineralogie-Publikationen ohne Unicode-Superskript (die aeltere Print-
+# Katalog-Praxis oder ASCII-only-Sammlungs-DB-Formate) entstand damit silen-
+# ter Range-/Punkt-Wert-Datenverlust. Die Unicode-Superskript-Variante
+# ``g/cm³`` (U+00B3) ist bereits korrekt, weil ``³`` kein ASCII-Digit ist
+# und daher gar nicht in ``_NUM_RE`` matcht - der Fix schliesst nur die
+# ASCII-Fallback-Lücke.
+#
+# Semantische Reichweite spiegelt die _strip_bracketed_annotations-Konvention:
+# Zahlen, die semantisch an Metadaten (Einheit, Bezeichner) gebunden sind,
+# duerfen nicht als Wert-Bereichsgrenze gelesen werden. Der Lookbehind blockiert
+# ausserdem in Bezeichner-Positionen wie ``Sample3``/``Mineral2``/``B12``, wo
+# die Zahl Teil des Namens ist und keine Messgroesse - typisch fuer Katalog-/
+# Chargen-Bezeichner in geerbten Excel-Kopien mit einer Wert-Spalte, in der
+# Sammler zusaetzlich zum Wert einen Sample-Namen notiert haben ("Sample3
+# 2.65 g/cm³" → nur 2.65 ist die Dichte, die 3 in Sample3 ist Sample-Nummer).
+# Reines ``e5`` (kein Vorzeichen, kein Mantisse-Teil) verliert das Match, was
+# konsistent mit der scientific-notation-Semantik ist: ``e5`` allein ist keine
+# gueltige Zahl, sondern ein defekter Exponent-Token; ``5e3`` bleibt korrekt
+# ein Ganz-Token (das ``e`` sitzt zwischen zwei Ziffern, nicht am Anfang).
+#
+# Kollisionsfrei zu scientific notation: ``1e3`` / ``1.5e-3`` matcht als
+# Ganz-Token ueber die Alternante ``\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?`` und der
+# Lookbehind checkt vor dem fuehrenden Digit, nicht vor dem ``e`` - Publikations-
+# Notation aus wissenschaftlichen Quellen bleibt unangetastet. Kollisionsfrei
+# zur DMS-Koordinaten-Extraktion in :mod:`stonebook.migration.validators`, weil
+# dort ein eigener Parser mit expliziten ``°``/``'``/``"``-Ankern zum Einsatz
+# kommt - die Fallback-Zahl-Extraktion via ``_NUM_RE`` gilt hier nicht.
+_NUM_RE = re.compile(
+    r"(?<![A-Za-z^])(\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)"
+)
 
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
