@@ -1079,6 +1079,52 @@ _DMS_COLON = re.compile(
     """,
     re.VERBOSE,
 )
+# DMS-Notation mit ASCII-Buchstaben-Markern statt der typografischen Symbole
+# ° / ' / ": ``46d30m15sN``, ``46d 30m 15s N``, ``46deg30min15secN``, ``46deg
+# 30min 15sec N``, ``46.5d N`` (nur Grad), ``46d 30.5m N`` (Grad + dezimale
+# Minuten). Sehr verbreitet in Consumer-GPS-Geraete-Ausgaben (Garmin, TomTom),
+# NMEA-/exiftool-ASCII-Dumps und aelteren Typewriter-/Text-Notationen, die
+# die ° / ' / " -Symbole nicht auf Standard-Tastaturen erzeugen koennen und
+# darum auf die ASCII-Ersatz-Konvention d/m/s zurueckgreifen. Auch in
+# handgeschriebenen Sammler-Notizen aus dem GPS-Boersen-Jahrzehnt (~2000-2015)
+# taucht das Format regelmaessig auf, weil GPS-Empfaenger die Koordinaten in
+# der d/m/s-Form auf dem Display anzeigten und der Sammler den Display-Text
+# 1:1 abgeschrieben hat. Bisher fielen alle Formen mit Buchstaben-Markern
+# still auf None (die _DMS-Regex verlangt strikt ° / ' / "-Symbole, die
+# _DMS_COLON verlangt strikt Doppelpunkte); typische GPS-Log-Zeilen wie
+# ``46d30m15sN 7d30m0sE`` wurden zum silenten Koordinaten-Datenverlust bei
+# der Migration.
+#
+# Vollform ``deg``/``min``/``sec`` und Kurzform ``d``/``m``/``s`` beide
+# erlaubt (case-insensitive), optional mit Trailing-Punkt (``46d.30m.15s.N``
+# aus Notationen mit Punkt-Trenner). Sekunden und Minuten sind optional
+# (analog _DMS): reine Grad-Form ``46d N`` und Grad+Minuten-Form
+# ``46d 30m N`` bleiben gueltig. Die Himmelsrichtung am Ende ist obligatorisch,
+# weil sie den letzten Buchstaben-Marker eindeutig als Direction abgrenzt
+# (ohne Direction waere ``46d30m15s`` semantisch nicht eindeutig als
+# Koordinate erkennbar, siehe _DMS_COLON-Kommentar). Grad/Minuten/Sekunden-
+# Werte akzeptieren dezimale Nachkomma-Stellen mit Punkt oder Komma-Trenner
+# (``46.5d N``, ``46d 30,5m N``) symmetrisch zu _DMS.
+#
+# Vor _DMS_COLON eingeordnet: kollisionsfrei (Colon-Form verlangt ``:``, hier
+# ist ``d``/``m``/``s``), aber die Buchstaben-Form ist spezifischer im Sinne
+# der zeichen-basierten Konvention und liest sich in der Reihenfolge d ->
+# colon -> ° natuerlicher (zunehmende typografische Spezialisierung).
+# Kollisionsfrei zu _DMS (° / ' / "), _COORD_LABEL (dort werden nur Vor-Datums-
+# Bezeichner wie ``lat=`` gestrippt, keine In-Zahl-Marker), _DECIMAL_PAIR (das
+# den ``d``-Marker nicht kennt und darum das Buchstaben-Format nicht als
+# gueltiges Zahl-Paar erkennt) und _SUFFIX_PAIR_NO_SEP (das eine reine
+# Zahl+Richtung-Form erwartet, keine Zwischen-Marker). Spiegelt die Struktur
+# von _DMS/_DMS_COLON (4 Capture-Gruppen: Grad, Minuten, Sekunden, Richtung),
+# damit _dms_to_decimal ohne Anpassung funktioniert.
+_DMS_LETTERS = re.compile(
+    r"""(\d+(?:[.,]\d+)?)\s*(?:deg|d)\.?              # Grad + d/deg
+        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:min|m)\.?)?      # optional Minuten + m/min
+        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:sec|s)\.?)?      # optional Sekunden + s/sec
+        \s*([NSEWOnsewo])                             # obligatorische Himmelsrichtung
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 _DECIMAL_PAIR = re.compile(
     # Tab in der Separator-Klasse deckt TSV-Exporte (Tab-getrennte Excel-/
     # GPS-Tools) ab: "46.5\t7.5" ist dort verbreitet, aber bisher fiel die
@@ -1784,6 +1830,19 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         a = _dms_to_decimal(*dms_hits[0])
         b = _dms_to_decimal(*dms_hits[1])
         lat, lon = _orient(a, dms_hits[0][3], b, dms_hits[1][3])
+        return _validate(lat, lon)
+
+    # DMS-Notation mit ASCII-Buchstaben-Markern ("46d30m15sN", "46deg30min15secN")
+    # aus Consumer-GPS-Displays und Typewriter-Notation ohne ° / ' / ". Vor
+    # _DMS_COLON und _PREFIX_PAIR/_DECIMAL_PAIR geprueft, damit die drei
+    # Buchstaben-getrennten Zahlen nicht vorzeitig als (Grad, naechste Zahl)-
+    # Paar interpretiert werden. Spiegelt die _DMS-Logik (findall,
+    # _dms_to_decimal, _orient) auf die Buchstaben-Variante.
+    dms_letters_hits = _DMS_LETTERS.findall(s)
+    if len(dms_letters_hits) >= 2:
+        a = _dms_to_decimal(*dms_letters_hits[0])
+        b = _dms_to_decimal(*dms_letters_hits[1])
+        lat, lon = _orient(a, dms_letters_hits[0][3], b, dms_letters_hits[1][3])
         return _validate(lat, lon)
 
     # Colon-separierte DMS-Notation ohne ° / ' / "-Symbole ("46:30:15 N").

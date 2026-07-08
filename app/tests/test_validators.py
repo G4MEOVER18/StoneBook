@@ -2631,6 +2631,85 @@ def test_parse_coordinates_colon_dms():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_dms_letter_markers():
+    """DMS-Notation mit ASCII-Buchstaben-Markern ("46d30m15sN", "46deg30min15secN").
+
+    Sehr verbreitet in Consumer-GPS-Geraete-Ausgaben (Garmin, TomTom),
+    NMEA-/exiftool-ASCII-Dumps und Typewriter-Notation, die ° / ' / " nicht
+    auf Standard-Tastaturen erzeugen koennen. Auch in handgeschriebenen
+    Sammler-Notizen aus dem GPS-Boersen-Jahrzehnt (~2000-2015), wo der
+    Sammler den Display-Text 1:1 abgeschrieben hat.
+    """
+    # Kompakt-Form ohne Whitespace (klassischer GPS-Display-Text)
+    assert parse_coordinates("46d30m15sN 7d30m0sE") == (46.5 + 15/3600, 7.5)
+    # Mit Whitespace zwischen den Komponenten
+    assert parse_coordinates("46d 30m 15s N, 7d 30m 0s E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Vollform deg/min/sec
+    assert parse_coordinates("46deg30min15secN 7deg30min0secE") == (
+        46.5 + 15/3600, 7.5,
+    )
+    assert parse_coordinates("46deg 30min 15sec N, 7deg 30min 0sec E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Uppercase-Marker
+    assert parse_coordinates("46D30M15SN 7D30M0SE") == (46.5 + 15/3600, 7.5)
+    # Reine Grad-Form (kein M/S)
+    assert parse_coordinates("46d N, 7d E") == (46.0, 7.0)
+    # Dezimale Grad
+    assert parse_coordinates("46.5d N 7.5d E") == (46.5, 7.5)
+    # Grad + Minuten ohne Sekunden
+    assert parse_coordinates("46d 30m N, 7d 30m E") == (46.5, 7.5)
+    # Dezimale Minuten
+    lat, lon = parse_coordinates("46d 30.5m N, 7d 30.5m E")
+    assert abs(lat - (46 + 30.5/60)) < 1e-9
+    assert abs(lon - (7 + 30.5/60)) < 1e-9
+    # DE-Komma-Dezimal in Grad
+    assert parse_coordinates("46,5d N 7,5d E") == (46.5, 7.5)
+    # DE-Komma-Dezimal in Sekunden
+    lat, lon = parse_coordinates("46d 30m 15,5s N, 7d 30m 0s E")
+    assert abs(lat - (46.5 + 15.5/3600)) < 1e-9
+    # Suedhalbkugel / Westhalbkugel (S auch als Sekunden-Marker moeglich,
+    # aber die trailing-Direction-Grammatik greift trotzdem sauber)
+    lat, lon = parse_coordinates("46d 30m 15s S, 7d 30m 0s W")
+    assert abs(lat - -(46.5 + 15/3600)) < 1e-9
+    assert lon == -7.5
+    # Deutsche O = Ost
+    assert parse_coordinates("46d 30m 0s N, 7d 30m 0s O") == (46.5, 7.5)
+    # Punkt nach Marker ("46d.30m.15s.N" aus Notationen mit Punkt-Trenner)
+    assert parse_coordinates("46d.30m.15s.N 7d.30m.0s.E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Verschiedene Pair-Separatoren
+    assert parse_coordinates("46d 30m 15s N; 7d 30m 0s E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    assert parse_coordinates("46d 30m 15s N / 7d 30m 0s E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Mit umschliessenden Klammern
+    assert parse_coordinates("(46d 30m 15s N, 7d 30m 0s E)") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Mit Coord-Labels
+    assert parse_coordinates(
+        "Lat: 46d 30m 15s N, Lon: 7d 30m 0s E") == (46.5 + 15/3600, 7.5)
+    # Nur ein Koordinaten-Hit -> None (halbe Koordinate ist nichts wert)
+    assert parse_coordinates("46d 30m 15s N") is None
+    # Out-of-Range bleibt None
+    assert parse_coordinates("95d N, 7d E") is None
+    assert parse_coordinates("46d N, 200d E") is None
+    # Bestehende DMS-Form mit ° / ' / " bleibt unveraendert (kein Regress)
+    assert parse_coordinates("46° 30' 15\" N, 7° 30' 0\" E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Bestehende Colon-DMS bleibt unveraendert (kein Regress)
+    assert parse_coordinates("46:30:15 N, 7:30:0 E") == (46.5 + 15/3600, 7.5)
+    # Bestehende dezimale Form bleibt unveraendert (kein Regress)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_invalid():
     assert parse_coordinates("") is None
     assert parse_coordinates(None) is None
