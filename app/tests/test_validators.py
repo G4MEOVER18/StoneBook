@@ -385,8 +385,11 @@ def test_parse_iso_date_wahrscheinlichkeits_praefix():
     assert parse_iso_date("wahrscheinlich") is None
     assert parse_iso_date("perhaps abc") is None
     assert parse_iso_date("evtl. 1700") is None  # ausserhalb 1800-2999
-    # Nicht als Praefix (mittendrin) - keine Strippung
-    assert parse_iso_date("1985 wahrscheinlich") is None
+    # Trailing-Form ("1985 wahrscheinlich") wird durch das symmetrische
+    # :data:`_TRAILING_APPROX_SUFFIX` erfasst - siehe
+    # :func:`test_parse_iso_date_trailing_annaeherungs_suffix` fuer die
+    # volle Trailing-Wortliste und Notations-Palette.
+    assert parse_iso_date("1985 wahrscheinlich") == "1985-01-01"
     # Bestehende Praefixe unveraendert (kein Regress)
     assert parse_iso_date("ca. 1985") == "1985-01-01"
     assert parse_iso_date("vermutlich 1985") == "1985-01-01"
@@ -1948,6 +1951,117 @@ def test_parse_iso_date_leading_aera_marker():
     # Kombiniert mit Annaeherungs-/Klammer-Praefix (mehrschichtige Rekursion)
     assert parse_iso_date("ca. AD 1985") == "1985-01-01"
     assert parse_iso_date("(AD 1985)") == "1985-01-01"
+
+
+def test_parse_iso_date_trailing_annaeherungs_suffix():
+    """Trailing Annaeherungs-Suffix (DE/EN) - ca./circa/approx./approximately/
+    estimated/est./around/about/roughly/etwa/vermutlich/schaetzungsweise/
+    ungefaehr/wahrscheinlich/moeglicherweise/evtl./eventuell/perhaps/possibly/
+    maybe - wird vom Ende der Eingabe abgestrippt, damit das Datum fuer die
+    Parser-Kaskade zurueck bleibt.
+
+    Spiegelt :func:`test_parse_iso_date_annaeherungs_praefix` /
+    :func:`test_parse_iso_date_annaeherungs_praefix_erweitert` /
+    :func:`test_parse_iso_date_wahrscheinlichkeits_praefix` auf die Suffix-
+    Achse: waehrend die Leading-Form ("ca. 1985", "vermutlich 2020") die im
+    wissenschaftlichen Diskurs typische Praefix-Setzung abdeckt, kommt die
+    Trailing-Form ("1985 ca.", "2020 vermutlich", "Juni 2020 ungefaehr") in
+    geerbten Sammlungs-Notizen und Etiketten verbreitet vor, in denen der
+    Vorbesitzer das Datum voranstellt und den Praezisions-Marker nachtraeglich
+    anfuegt. Vor dem Fix fielen alle Trailing-Formen stille auf None (das
+    Datum-Feld verlor den Bezug, obwohl das Jahr eindeutig lesbar ist).
+    Konzept identisch zur Leading-Form: Strip + Rekursion, das ISO-Datum-
+    Output ist identisch zur reinen Form; die Praezisions-Angabe ist
+    semantische Wert-Anmerkung und bleibt im Freitext (notizen).
+    """
+    # Kurzform-DE/EN-Marker mit Punkt (haeufigste Etikett-Praxis)
+    assert parse_iso_date("1985 ca.") == "1985-01-01"
+    assert parse_iso_date("1985 ca") == "1985-01-01"
+    assert parse_iso_date("2020 circa") == "2020-01-01"
+    assert parse_iso_date("2024 approx.") == "2024-01-01"
+    assert parse_iso_date("2024 approx") == "2024-01-01"
+    assert parse_iso_date("1995 approximately") == "1995-01-01"
+    assert parse_iso_date("1995 around") == "1995-01-01"
+    assert parse_iso_date("2010 about") == "2010-01-01"
+    assert parse_iso_date("1985 roughly") == "1985-01-01"
+    assert parse_iso_date("1985 estimated") == "1985-01-01"
+    assert parse_iso_date("1985 est.") == "1985-01-01"
+    # Deutsche Wortformen (Praezision und Wahrscheinlichkeit)
+    assert parse_iso_date("2020 etwa") == "2020-01-01"
+    assert parse_iso_date("1985 vermutlich") == "1985-01-01"
+    assert parse_iso_date("1985 schaetzungsweise") == "1985-01-01"
+    assert parse_iso_date("1985 schätzungsweise") == "1985-01-01"
+    assert parse_iso_date("1985 ungefaehr") == "1985-01-01"
+    assert parse_iso_date("1985 ungefähr") == "1985-01-01"
+    assert parse_iso_date("1985 wahrscheinlich") == "1985-01-01"
+    assert parse_iso_date("1985 moeglicherweise") == "1985-01-01"
+    assert parse_iso_date("1985 möglicherweise") == "1985-01-01"
+    assert parse_iso_date("1985 evtl.") == "1985-01-01"
+    assert parse_iso_date("1985 evtl") == "1985-01-01"
+    assert parse_iso_date("1985 eventuell") == "1985-01-01"
+    # Englische Wahrscheinlichkeits-Wortformen
+    assert parse_iso_date("1985 perhaps") == "1985-01-01"
+    assert parse_iso_date("1985 possibly") == "1985-01-01"
+    assert parse_iso_date("1985 maybe") == "1985-01-01"
+    # Kombiniert mit vollstaendigem Datum (Tag + Monat + Jahr + Suffix)
+    assert parse_iso_date("13.06.2024 ca.") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 vermutlich") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 approx") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024 ca.") == "2024-06-13"
+    assert parse_iso_date("13 June 2024 estimated") == "2024-06-13"
+    # Kombiniert mit Monatsname (Praezisions-Marker nach "Monat Jahr")
+    assert parse_iso_date("Juni 2020 ca.") == "2020-06-01"
+    assert parse_iso_date("June 2020 approx") == "2020-06-01"
+    assert parse_iso_date("Juni 2020 ungefaehr") == "2020-06-01"
+    # Kombiniert mit Jahreszeit + Jahr
+    assert parse_iso_date("Sommer 1985 ca.") == "1985-06-01"
+    assert parse_iso_date("Winter 2023 vermutlich") == "2023-12-01"
+    # Case-insensitive (Etiketten in Grossbuchstaben/Mixed-Case)
+    assert parse_iso_date("1985 CA.") == "1985-01-01"
+    assert parse_iso_date("1985 Circa") == "1985-01-01"
+    assert parse_iso_date("2020 VERMUTLICH") == "2020-01-01"
+    assert parse_iso_date("1985 Estimated") == "1985-01-01"
+    # Kombiniert mit Trailing-Aera-Marker (Strip erfolgt zweischichtig:
+    # erst Aera, dann Praezisions-Marker im Rekursions-Aufruf). In der Praxis
+    # eine Ueber-Sicherheits-Notation ("Jahr AD, aber Genauigkeit unsicher").
+    assert parse_iso_date("1985 AD ca.") == "1985-01-01"
+    assert parse_iso_date("1985 n. Chr. vermutlich") == "1985-01-01"
+    # Kombiniert mit Trailing-Satzzeichen (Praezisions-Marker vor dem
+    # Satzzeichen faellt via Rekursion nach dem Punkt-Strip): "1985 ca.!" ->
+    # "1985 ca." -> "1985" -> "1985-01-01". Auch "1985 estimated!" -> "1985".
+    assert parse_iso_date("1985 estimated!") == "1985-01-01"
+    # Kombiniert mit Leading-Praefix (mehrschichtige Rekursion): sinnfrei
+    # aber unschaedlich - jede Rekursions-Ebene strippt einen Marker.
+    assert parse_iso_date("ca. 1985 ca.") == "1985-01-01"
+    assert parse_iso_date("vermutlich 1985 vermutlich") == "1985-01-01"
+    # Bestehende Formen ohne Suffix bleiben unveraendert (kein Regress)
+    assert parse_iso_date("1985") == "1985-01-01"
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("vermutlich 1985") == "1985-01-01"
+    assert parse_iso_date("Juni 2020") == "2020-06-01"
+    # Non-Marker-Suffix darf NICHT als Praezisions-Marker gedeutet werden
+    assert parse_iso_date("1985 Museum") is None
+    assert parse_iso_date("1985 gefunden") is None
+    assert parse_iso_date("2024-06-13 Foto") is None
+    # Reiner Marker ohne Datum bleibt None (kein Freitext-Ratespiel)
+    assert parse_iso_date("ca.") is None
+    assert parse_iso_date("circa") is None
+    assert parse_iso_date("vermutlich") is None
+    # "um"/"gegen" NICHT als Trailing-Marker (nur Leading gelistet, siehe
+    # _TRAILING_APPROX_SUFFIX-Kommentar): am Zeilenende in Sammler-Notizen
+    # tragen sie ueberwiegend Praeposition-Bedeutung ("Foto 1985 um 14 Uhr",
+    # "Foto 1985 gegen Norden"), nicht Praezisions-Bedeutung. Wenn der Rest-
+    # String durch das Strippen nicht matcht, faellt die Eingabe auf None.
+    assert parse_iso_date("1985 um") is None
+    assert parse_iso_date("1985 gegen") is None
+    # Suffix ohne Whitespace davor ("1985ca.") wird NICHT gestrippt - der
+    # Regex verlangt \s+ vor dem Suffix, damit Compact-Formen wie "1985ca"
+    # nicht versehentlich als Marker-Suffix gelesen werden (waere in
+    # Sammler-Etiketten ohnehin extrem unkonventionell, weil Whitespace vor
+    # dem Marker die Standard-Notations-Konvention ist).
+    assert parse_iso_date("1985ca.") is None
+    # Underscore-Trenner in Filename-Artefakten ("1985_ca") bleibt None
+    assert parse_iso_date("1985_ca") is None
 
 
 def test_parse_iso_date_iso_ordinaldatum():

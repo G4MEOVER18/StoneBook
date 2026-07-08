@@ -476,6 +476,54 @@ _LEADING_ERA_MARKER = re.compile(
     r")\s+",
     re.IGNORECASE
 )
+# Trailing Annaeherungs-Suffix (DE/EN) - spiegelt :data:`_APPROX_PREFIX` auf die
+# Suffix-Achse: waehrend die Leading-Form ("ca. 1985", "circa 2020") die im
+# wissenschaftlichen Diskurs typische Praefix-Setzung abdeckt, kommt die
+# Trailing-Form ("1985 ca.", "2020 circa", "13.06.2024 vermutlich", "Juni 2020
+# ungefaehr", "1985 wahrscheinlich") in geerbten Sammlungs-Notizen sehr
+# verbreitet vor: Etiketten und Tagebuch-Eintraege, in denen der Vorbesitzer
+# das Datum voranstellt und den Praezisions-Marker nachtraeglich anfuegt,
+# oft nach spaeterer Nachpruefung ("Fund 1985 ca. - Katalog-Recherche 2010
+# ergab kein exaktes Datum"). Bisher fielen alle Trailing-Formen stille auf
+# None, weil _APPROX_PREFIX strikt mit ``^`` ankerkt (die Position-Semantik
+# der Leading-Form) - aus einem typischen Etikett wie "1985 ca." wurde
+# silenter Funddatum-Datenverlust bei der Migration.
+#
+# Konzept identisch zu _APPROX_PREFIX / _TRAILING_ERA_MARKER: die Praezisions-
+# Angabe ist semantische Wert-Anmerkung ("welche Verlaesslichkeit"), keine
+# Datums-Modifikation - Strip + Rekursion, das ISO-Datum-Output ist identisch
+# zur reinen Form. Wortliste spiegelt _APPROX_PREFIX ohne die stark
+# ambivalenten Kurzformen "um"/"gegen" (die sowohl als Praeposition wie als
+# temporaler Konnektor auftauchen und am Zeilenende in Sammler-Notizen fast
+# nur die Praepositions-Bedeutung tragen ("Foto 1985 um 14 Uhr" - hier ist
+# "um" eine Uhrzeit-Praeposition, kein Naeherungsmarker) und die typografischen
+# Approximations-Symbole ``~``/``≈`` (die als Trailing-Marker in Sammler-
+# Notizen nicht ueblich sind - sie stehen konventionell nur vor dem Wert
+# als Approximations-Marker, spiegelt die Konvention der mathematischen und
+# LaTeX-Notation).
+#
+# ``\s+`` am Anfang (statt ``$``-Anker allein) verlangt einen Whitespace vor
+# dem Suffix, damit "ca. 1985" (leading) NICHT versehentlich als "ca. 1985"
+# ohne Whitespace-Trenner am Ende passt und "ca." als Suffix konsumiert wird
+# (waere im gestrippten Rest "ca." isoliert, matcht ohnehin keine Datums-
+# Struktur, ist aber sauberer via Whitespace-Grenze). Case-insensitive spiegelt
+# _APPROX_PREFIX. Vor _TRAILING_TIME einsortiert, damit "1985 ca." vor der
+# Zeit-Strip-Kaskade den Praezisions-Marker sauber verliert (die Punkt-am-Ende
+# aus "ca." wuerde sonst durch _TRAILING_PUNCT gestrippt und "1985 ca" bliebe
+# als Rest, der keine Struktur matcht).
+_TRAILING_APPROX_SUFFIX = re.compile(
+    r"\s+(?:"
+    r"ca\.?|circa|approx\.?|approximately"
+    r"|around|about|roughly|estimated|est\."
+    r"|etwa|vermutlich"
+    r"|sch[äa]tzungsweise|schaetzungsweise"
+    r"|ungef[äa]hr|ungefaehr"
+    r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
+    r"|evtl\.?|eventuell"
+    r"|perhaps|possibly|maybe"
+    r")\s*$",
+    re.IGNORECASE,
+)
 # Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
 # "(2024)", "[2024-06-13]", '"13. Juni 2024"', '„Sommer 1985"'.
 # Genau ein Paar wird gestrippt; danach Re-Parsing per Rekursion.
@@ -1606,6 +1654,18 @@ def parse_iso_date(text) -> str | None:
     # 1800..2999-Range-Pruefung transparent auf None gefiltert (kein zusaetz-
     # licher BC-Sonderpfad noetig; spiegelt "500" -> None ohne Aera-Marker).
     stripped = _TRAILING_ERA_MARKER.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # Trailing Annaeherungs-Suffix abstreifen ("1985 ca.", "2020 circa",
+    # "13.06.2024 vermutlich", "Juni 2020 ungefaehr", "1985 wahrscheinlich").
+    # Spiegelt :data:`_APPROX_PREFIX` auf die Suffix-Achse (siehe dortiges
+    # Kommentar-Block fuer die Wortliste). Nach _TRAILING_ERA_MARKER
+    # einsortiert, weil "1985 AD ca." (Aera + Praezisions-Marker) zuerst
+    # den Aera-Suffix aufloesen soll ("1985 ca." als Rest) und die Praezision
+    # in der Rekursion faellt. Strip + Rekursion analog _TRAILING_ERA_MARKER:
+    # der Praezisions-Marker ist semantische Wert-Anmerkung, keine Datums-
+    # Modifikation.
+    stripped = _TRAILING_APPROX_SUFFIX.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
