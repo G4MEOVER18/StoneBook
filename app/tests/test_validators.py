@@ -212,6 +212,130 @@ def test_parse_iso_date_named_timezones():
     assert parse_iso_date("2024-06-13T10:00:00 X") is None
 
 
+def test_parse_iso_date_standalone_trailing_tz():
+    """Standalone-Trailing-Zeitzone ohne Zeitanteil ("2024-06-13 UTC",
+    "13.06.2024 CET", "Juni 2020 MEZ", "2024-06-13Z") wird vom Ende
+    abgestrippt, damit der reine Datumsanteil fuer die Parser-Kaskade
+    zurueckbleibt.
+
+    Spiegelt :func:`test_parse_iso_date_named_timezones` (Date+Time+TZ)
+    auf die Date-Only-Achse: wenn keine Zeit angehaengt ist, greift
+    :data:`stonebook.migration.validators._TRAILING_TIME` nicht
+    (das Time-Muster verlangt ``T14:30``), und die reine TZ-Abkuerzung
+    fiel bisher stille auf None. Typische Datenquellen mit Date-Only-TZ-
+    Suffix sind System-Logs mit Datum-Rotation, Foto-Metadaten-Exporte
+    in denen der TZ-Marker aus einer Datetime-Zelle in ein reines Datum-
+    Feld ueberlaeuft, und Sammler-Notizen mit TZ als Kontext-Anmerkung
+    neben dem Fund-Datum ("13.06.2024 MEZ").
+
+    Konzept identisch zur Time+TZ-Form:  die TZ-Angabe ist semantische
+    Wert-Anmerkung ("in welcher Zeitzone wurde das Datum notiert"),
+    keine Datums-Modifikation - Strip + Rekursion, das ISO-Datum-Output
+    ist identisch zur reinen Form.
+    """
+    # Universelle Zeit (Z-Compact ohne Trenner, spiegelt ISO 8601 Zulu-
+    # Konvention fuer Datetime; UTC/GMT/UT verlangen Whitespace-Trenner
+    # als Sammler-Notations-Konvention).
+    assert parse_iso_date("2024-06-13Z") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 Z") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UTC") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UT") == "2024-06-13"
+    # Europa (CET, MEZ, MESZ, CEST + westeuropaeisch WET/WEST + osteuropaeisch
+    # EET/EEST + britische Sommerzeit BST)
+    assert parse_iso_date("2024-06-13 CET") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 CEST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 MEZ") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 MESZ") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 WET") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 WEST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 EET") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 EEST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 BST") == "2024-06-13"
+    # Nordamerika (EST/EDT, CST/CDT, MST/MDT, PST/PDT + Alaska + Hawaii)
+    assert parse_iso_date("2024-06-13 EST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 EDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 CST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 CDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 MST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 MDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 PST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 PDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 AKST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 AKDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 HST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 HDT") == "2024-06-13"
+    # Asien-Pazifik
+    assert parse_iso_date("2024-06-13 JST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 KST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 IST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 HKT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 SGT") == "2024-06-13"
+    # Ozeanien
+    assert parse_iso_date("2024-06-13 AEST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 AEDT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 NZST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 NZDT") == "2024-06-13"
+    # Suedamerika/Afrika
+    assert parse_iso_date("2024-06-13 BRT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 SAST") == "2024-06-13"
+    # DE-Format + Date-Only-TZ (Sammler-Notiz mit MEZ als Kontext-Anmerkung)
+    assert parse_iso_date("13.06.2024 UTC") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 CET") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 MEZ") == "2024-06-13"
+    # Monatsname + Jahr + TZ (Log-Rotation-Datum ohne genauen Tag)
+    assert parse_iso_date("Juni 2020 MEZ") == "2020-06-01"
+    assert parse_iso_date("June 2020 UTC") == "2020-06-01"
+    # Jahr allein + TZ (grobstes Log-Rotations-Datum)
+    assert parse_iso_date("1985 UTC") == "1985-01-01"
+    assert parse_iso_date("2024 CET") == "2024-01-01"
+    # Kombiniert mit trailing Klammer-Annotation ("(Foto)"): erst wird die
+    # Klammer via _TRAILING_PAREN_REMARK gestrippt, dann in der Rekursion
+    # die TZ - beide Marker sind unabhaengige Kontext-Anmerkungen.
+    assert parse_iso_date("2024-06-13 UTC (Foto)") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 CET [verified]") == "2024-06-13"
+    # Kombiniert mit trailing Aera-Marker (Museums-Etikett mit Zeitrechnungs-
+    # Anker und TZ-Kontext)
+    assert parse_iso_date("1985 AD UTC") == "1985-01-01"
+    assert parse_iso_date("1985 n. Chr. CET") == "1985-01-01"
+    # Kombiniert mit trailing Annaeherungs-Suffix
+    assert parse_iso_date("1985 ca. UTC") == "1985-01-01"
+    assert parse_iso_date("2020 vermutlich MEZ") == "2020-01-01"
+    # Kein Regress: Date+Time+TZ-Formen fallen weiterhin durch die
+    # :data:`_TRAILING_TIME`-Kaskade und liefern das reine Datum.
+    assert parse_iso_date("2024-06-13T14:30 UTC") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30 CEST") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T00:00:00Z") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T00:00:00+02:00") == "2024-06-13"
+    # Kein Regress: Datum ohne TZ bleibt unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("1985") == "1985-01-01"
+    # Kleinbuchstaben-Suffix darf NICHT als TZ interpretiert werden
+    # (Grossbuchstaben-Konvention der IANA-/CLDR-Abkuerzungen).
+    assert parse_iso_date("2024-06-13 utc") is None
+    assert parse_iso_date("2024-06-13 cet") is None
+    assert parse_iso_date("2024-06-13 z") is None
+    # Mixed-Case-Suffix ebenfalls nicht
+    assert parse_iso_date("2024-06-13 UTc") is None
+    assert parse_iso_date("2024-06-13 Cet") is None
+    # Nicht-TZ-Suffix (aus Sammler-Notation) darf NICHT als TZ interpretiert
+    # werden - Whitelist-Ansatz verhindert False-Positives auf legitime
+    # 2-5-Buchstaben-Suffixe ohne TZ-Semantik.
+    assert parse_iso_date("2024-06-13 REF") is None
+    assert parse_iso_date("2024-06-13 EOD") is None
+    assert parse_iso_date("2024-06-13 CH") is None
+    assert parse_iso_date("2024-06-13 FOTO") is None
+    # Suffix ohne Whitespace-Trenner fuer nicht-Z-Marker matcht nicht (nur
+    # ``Z`` darf compact ans Datum haengen als ISO 8601 Zulu-Konvention)
+    assert parse_iso_date("2024-06-13UTC") is None
+    assert parse_iso_date("2024-06-13CET") is None
+    # Reine TZ ohne Datum bleibt None (kein Freitext-Ratespiel)
+    assert parse_iso_date("UTC") is None
+    assert parse_iso_date("Z") is None
+    assert parse_iso_date("CET") is None
+
+
 def test_parse_iso_date_deutsche_zeitangaben():
     """DE-Datum mit Zeit (Excel/Logbuch) - Zeitanteil wird ignoriert."""
     assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"

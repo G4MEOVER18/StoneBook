@@ -303,6 +303,65 @@ _TRAILING_TIME = re.compile(
     r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2}|\s+[A-Z]{2,5})?\s*$"
 )
+# Standalone-Trailing-Zeitzone ohne Zeitanteil ("2024-06-13 UTC", "1985 GMT",
+# "13.06.2024 CET", "Juni 2020 MEZ", "2024-06-13Z"). Spiegelt die TZ-Suffix-
+# Konvention von :data:`_TRAILING_TIME` auf die Date-Only-Achse: wenn keine
+# Zeit angehaengt ist, greift _TRAILING_TIME nicht (das Time-Muster verlangt
+# ``T14:30``), und die reine TZ-Abkuerzung faellt bisher stille auf None,
+# obwohl das Datum eindeutig lesbar ist. Typische Datenquellen mit
+# Date-Only-TZ-Suffix sind System-Logs mit Datum-Rotation ("stone.2024-06-13.UTC.log"),
+# Foto-Metadaten-Exporte, in denen der TZ-Marker aus einer Datetime-Zelle in
+# ein reines Datum-Feld ueberlaeuft ("photo taken 2024-06-13 UTC"), und
+# Sammler-Notizen, in denen die TZ als Kontext-Anmerkung neben dem Fund-Datum
+# steht ("13.06.2024 MEZ, Kohler-Aar-Fund"). Bisher war das reiner Silent-
+# Funddatum-Datenverlust bei der Migration.
+#
+# Konzept identisch zu :data:`_TRAILING_ERA_MARKER` / :data:`_TRAILING_APPROX_SUFFIX`:
+# die TZ-Angabe ist semantische Wert-Anmerkung ("in welcher Zeitzone wurde
+# das Datum notiert"), keine Datums-Modifikation - Strip + Rekursion, das
+# ISO-Datum-Output ist identisch zur reinen Form. Der TZ-Marker gehoert
+# konzeptionell in die notizen-Spalte, nicht in das ISO-Datum selbst.
+#
+# Wortliste: explizite Whitelist der gaengigsten IANA-/CLDR-Abkuerzungen
+# statt der ``[A-Z]{2,5}``-Klasse aus :data:`_TRAILING_TIME` - fuer Date-Only
+# ist die False-Positive-Gefahr hoeher, weil kein Zeit-Anker die TZ-Bedeutung
+# stuetzt. Der Whitelist-Ansatz vermeidet Kollisionen mit legitimen 2-5-
+# Buchstaben-Suffixen aus Sammlungs-Notizen ("2024 REF", "2024 EOD", "1985 CH"),
+# die keine TZ-Semantik tragen. Umfasst:
+# - Universelle Zeit: Z (Zulu, ISO 8601-Standard-Suffix fuer UTC), UTC, GMT, UT
+# - Europa: CET, CEST, MEZ, MESZ, WET, WEST, EET, EEST, BST (British Summer)
+# - Nordamerika: EST, EDT, CST, CDT, MST, MDT, PST, PDT, AKST, AKDT, HST, HDT
+# - Asien-Pazifik: JST, KST, IST, HKT, SGT, PHT, ICT, MYT, WIB, WIT, WITA
+# - Ozeanien: AEST, AEDT, ACST, ACDT, AWST, AWDT, NZST, NZDT
+# - Suedamerika/Afrika: BRT, ART, CLT, ARS, EAT, SAST, WAT, CAT
+#
+# ``Z`` (Zulu) darf direkt an der Zahl haengen (``2024-06-13Z``, ISO 8601-
+# Konvention fuer Zulu-Suffix ohne Zeit), alle anderen Marker verlangen einen
+# Whitespace-Trenner (Sammler-Notation-Konvention: ``2024-06-13 UTC``, nicht
+# ``2024-06-13UTC``). Case-sensitive: nur Grossbuchstaben, damit zufaellige
+# Kleinbuchstaben-Suffixe ("2024 utc", "13.06.2024 cet") als Freitext-Notiz
+# gewertet werden und nicht als TZ-Marker (Grossbuchstaben-Konvention der
+# IANA-/CLDR-Abkuerzungen).
+#
+# Vor :data:`_TRAILING_PAREN_REMARK` einsortiert, damit
+# ``2024-06-13 UTC (Foto)`` erst die Klammer verliert und dann in der
+# Rekursion die TZ - beide Marker sind unabhaengige Kontext-Anmerkungen.
+# Nach :data:`_TRAILING_TIME` einsortiert, damit
+# ``2024-06-13T14:30 UTC`` (Date+Time+TZ) den kompletten Zeit+TZ-Block via
+# _TRAILING_TIME strippt und die Date-Only-Variante nur den Rest-Fall
+# behandelt.
+_TRAILING_TZ_STANDALONE = re.compile(
+    r"(?:"
+    r"Z"
+    r"|\s+(?:UTC|GMT|UT"
+    r"|CET|CEST|MEZ|MESZ|WET|WEST|EET|EEST|BST"
+    r"|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AKST|AKDT|HST|HDT"
+    r"|JST|KST|IST|HKT|SGT|PHT|ICT|MYT|WIB|WIT|WITA"
+    r"|AEST|AEDT|ACST|ACDT|AWST|AWDT|NZST|NZDT"
+    r"|BRT|ART|CLT|ARS|EAT|SAST|WAT|CAT"
+    r")"
+    r")\s*$"
+)
 # Trailing-Satzzeichen ("2024-06-13.", "1985!", "13. Juni 2024;").
 # Geerbte Sammlungs-Notizen sind oft ganze Saetze mit Datum am Ende; das Punkt-
 # /Doppelpunkt-Suffix gehoert nicht zum Datum selbst und wird vor dem Re-Parsing
@@ -1717,6 +1776,19 @@ def parse_iso_date(text) -> str | None:
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
     # Faengt nicht-ISO-Eingaben wie "13.06.2024 14:30" oder "13. Juni 2024 10:00" ab.
     stripped = _TRAILING_TIME.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # Standalone-Trailing-Zeitzone ohne Zeitanteil ("2024-06-13 UTC",
+    # "13.06.2024 CET", "Juni 2020 MEZ", "2024-06-13Z"). Nach
+    # :data:`_TRAILING_TIME` einsortiert, damit Date+Time+TZ-Formen
+    # ("2024-06-13T14:30 UTC") den kompletten Zeit+TZ-Block via
+    # _TRAILING_TIME strippen und der Standalone-Strip nur die Date-Only-
+    # Variante uebernimmt. Strip + Rekursion analog _TRAILING_ERA_MARKER /
+    # _TRAILING_APPROX_SUFFIX: die TZ-Angabe ist semantische Wert-Anmerkung,
+    # keine Datums-Modifikation. Siehe :data:`_TRAILING_TZ_STANDALONE` fuer
+    # die Whitelist und den Whitespace-Trenner-Regel (nur ``Z`` darf compact
+    # ans Datum haengen).
+    stripped = _TRAILING_TZ_STANDALONE.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     # Trailing parenthesized Annotation abstreifen ("13.06.2024 (Foto)",
