@@ -299,6 +299,119 @@ _BRACKETED_SQUARE = re.compile(r"\[[^\[\]]*\]")
 _BRACKETED_CURLY = re.compile(r"\{[^{}]*\}")
 _HAS_DIGIT = re.compile(r"\d")
 
+# Unicode-Vulgar-Fraktionen (U+00BC/U+00BD/U+00BE und U+2150-U+215E) auf ihre
+# Dezimal-Aequivalente abbilden. In der Mineralogie ist die Halbschritt-
+# Notation ``5½`` bei Mohs-Haerte-Angaben die klassische Referenz-Tabellen-
+# Form (Mohs-Skala misst in Halbschritten zwischen Ganzzahl-Referenzmineralen:
+# 5½ = zwischen Apatit und Orthoklas, 6½ = zwischen Orthoklas und Quarz),
+# und ¼/¾-Notation kommt in Groessen-/Gewichts-Angaben aeltere Sammlungs-
+# Karten und in imperialen Einheiten-Notationen vor. ⅛/⅜/⅝/⅞-Notation ist
+# typisch fuer feinere Groessen-Rasterungen (Sieb-Rueckstands-Tabellen,
+# Kristall-Achsen-Zerlegungen). Die 1/3-/1/5-/1/6-/1/7-/1/9-/1/10-Reihen
+# sind seltener, aber in ISO-31-0 und wissenschaftlichen Publikationen
+# spec-konform enthalten und werden symmetrisch zur Standard-Achse
+# unterstuetzt.
+#
+# Bisher fielen alle Formen mit Unicode-Vulgar-Fraktion auf einen stille
+# Fraktions-Datenverlust: ``5½`` wurde als ``[5]`` gelesen (die ½-Char
+# faellt nicht in ``_NUM_RE``) und lieferte (5.0, 5.0) statt (5.5, 5.5);
+# der publizierte Halbschritt der Mohs-Skala ging verloren und die
+# Sortier-/Vergleichs-Reihenfolge stimmte nicht mehr mit der Referenz-
+# Tabelle ueberein. Standalone ``¼`` lieferte ``(None, None)`` (keine
+# Zahl gefunden), obwohl der Wert eindeutig 0.25 ist. Bei der Migration
+# aus mineralogischen Referenz-Tabellen und aus Sammler-Notizen, die
+# aus Word/LibreOffice-Writer/PDF-/HTML-Quellen mit typografisch sauber
+# gesetzten Unicode-Fraktionen stammen (Word-Autoformat wandelt ``1/2``
+# und ``1/4`` beim Eintippen automatisch zu ½/¼; DOCX-/PDF-Exporte und
+# LaTeX-Ausgaben nutzen die Unicode-Formen als Standard), entstand
+# damit silent Wert-Datenverlust.
+#
+# Die Fraktions-Dezimalen sind die Nachkomma-Ziffern *ohne* fuehrende
+# ``0.`` - werden je nach Kontext an Ganzzahl-Vorstand (Mixed-Form
+# ``5½`` -> ``5.5``) oder an ``"0"`` (Standalone-Form ``½`` -> ``0.5``)
+# konkateniert. Fuer die periodischen Bruchteile (⅓ = 0.333..., ⅔ = 0.667...,
+# ⅐ = 0.142..., ⅑ = 0.111..., ⅙ = 0.167..., ⅚ = 0.833...) werden 12
+# signifikante Nachkomma-Stellen verwendet - genug, um den IEEE-754-double-
+# Praezisionsbereich sauber abzubilden (mantisse ~15-17 Stellen), ohne
+# runde Zahlen kuenstlich zu verlaengern. ⅔ wird auf ``0.666666666667``
+# gerundet (letzte Ziffer nach oben, um den Rundungs-Fehler zur
+# mathematischen 2/3 zu minimieren).
+_VULGAR_FRACTION_DECIMALS: dict[str, str] = {
+    "¼": "25",              # ¼ = 1/4
+    "½": "5",               # ½ = 1/2
+    "¾": "75",              # ¾ = 3/4
+    "⅐": "142857142857",    # ⅐ = 1/7
+    "⅑": "111111111111",    # ⅑ = 1/9
+    "⅒": "1",               # ⅒ = 1/10
+    "⅓": "333333333333",    # ⅓ = 1/3
+    "⅔": "666666666667",    # ⅔ = 2/3
+    "⅕": "2",               # ⅕ = 1/5
+    "⅖": "4",               # ⅖ = 2/5
+    "⅗": "6",               # ⅗ = 3/5
+    "⅘": "8",               # ⅘ = 4/5
+    "⅙": "166666666667",    # ⅙ = 1/6
+    "⅚": "833333333333",    # ⅚ = 5/6
+    "⅛": "125",             # ⅛ = 1/8
+    "⅜": "375",             # ⅜ = 3/8
+    "⅝": "625",             # ⅝ = 5/8
+    "⅞": "875",             # ⅞ = 7/8
+}
+_VULGAR_FRACTION_CLASS = "[" + "".join(_VULGAR_FRACTION_DECIMALS) + "]"
+
+# Mixed-Form-Regex ``(Ganzzahl)(optional Whitespace)(Fraktion)`` -> ``Ganzzahl.Dez``.
+# Lookbehind spiegelt die _NUM_RE-Konvention: keine Substitution nach Buchstaben
+# (``cm3½`` bleibt unangetastet, weil die 3 Teil der SI-Einheit ist, nicht Teil
+# der Wert-Zahl), nach Caret (``m^3½`` genauso), nach Punkt/Komma (``5.5½``
+# waere ein defekter Dezimal-Mixed-Form-Anhang, unklare Semantik - besser
+# unangetastet lassen als kuenstlich zu ``5.5.5`` zu erweitern) und nach einer
+# anderen Ziffer (``123½`` matcht als komplette Zahl "123", nicht nur "23";
+# ``\d+`` ist greedy, aber der Lookbehind auf die *erste* Ziffer schuetzt vor
+# Mitte-der-Zahl-Positionen). Whitespace-Trennung zwischen Ganzzahl und
+# Fraktion (``5 ½``, ``5\xa0½``) erlaubt, weil in Print-/Katalog-Formen mit
+# typografisch sauberem Halbschritt-Space (NBSP, thin space) die Konvention
+# gaengig ist. Kollisionsfreiheit zur wissenschaftlichen Notation ``5e½``:
+# nach der Ganzzahl-Extraktion ``\d+`` sitzt der Cursor auf dem ``e``, dann
+# ``\s*`` matcht 0 Zeichen, dann Fraktion - aber next char ist ``e``, keine
+# Fraktion; kein Match. ``5e½`` bleibt unveraendert.
+_MIXED_FRACTION_RE = re.compile(
+    rf"(?<![A-Za-z^.,\d])(\d+)\s*({_VULGAR_FRACTION_CLASS})"
+)
+# Standalone-Form-Regex einzelne Fraktion ohne vorangehende Ganzzahl -> ``0.Dez``.
+# Lookbehind ``(?<![A-Za-z\d])`` schuetzt vor Bezeichner-Kontexten (``Sample½``
+# bleibt Bezeichner, keine kuenstliche 0.5-Interpretation) und vor der Nach-
+# Mixed-Form-Position (der ``5`` in ``5½`` wurde in sub1 bereits konsumiert -
+# aber Sicherheitsnetz fuer den ``0.5`` nach ``5½``-Substitution: nach sub1 ist
+# der String ``5.5``, die ``.5`` steht nach der ``5.`` und der Lookbehind
+# blockiert die Fraktion, waere sie noch da). Auch nach einem Ziffer-nach-Fraktion-
+# Kontext wie ``½5`` blockiert der nicht-Standalone-Kontext nicht (die Fraktion
+# ist am Anfang, kein Digit davor), sub2 wuerde matchen: ``½5`` -> ``0.55``. Das
+# ist eine seltene Grenzform (typografisch ungewoehnliche Wert-Notation),
+# semantisch tolerabel als Verwechslung mit einer verdrehten Mixed-Form.
+_STANDALONE_FRACTION_RE = re.compile(
+    rf"(?<![A-Za-z\d])({_VULGAR_FRACTION_CLASS})"
+)
+
+
+def _normalize_vulgar_fractions(s: str) -> str:
+    """Ersetzt Unicode-Vulgar-Fraktionen durch ihre Dezimal-Aequivalente.
+
+    Mixed-Form ``5½``/``5\xa0½`` wird zu ``5.5``; standalone ``½`` wird
+    zu ``0.5``. Wird in :func:`parse_range` *vor* der generischen Zahl-
+    Extraktion aufgerufen, damit die publizierten Halbschritt-/Viertel-/
+    Achtel-Werte aus mineralogischen Referenz-Tabellen (Mohs-Haerte,
+    Groessen-/Gewichts-Fraktionen, Sieb-Rueckstaende) nicht stille
+    verloren gehen. Siehe :data:`_VULGAR_FRACTION_DECIMALS` fuer die
+    vollstaendige Zeichen-Tabelle und die Rundungs-Konvention der
+    periodischen Bruchteile.
+    """
+    s = _MIXED_FRACTION_RE.sub(
+        lambda m: f"{m.group(1)}.{_VULGAR_FRACTION_DECIMALS[m.group(2)]}", s
+    )
+    s = _STANDALONE_FRACTION_RE.sub(
+        lambda m: f"0.{_VULGAR_FRACTION_DECIMALS[m.group(1)]}", s
+    )
+    return s
+
 
 def _strip_bracketed_annotations(s: str) -> str:
     """Entfernt runde/eckige/geschweifte Klammer-Annotationen inklusive Nest.
@@ -393,6 +506,12 @@ def parse_range(text) -> tuple[float | None, float | None]:
     (0.0005, 0.0005)) - US-Konvention und wissenschaftliche Publikationen
     ohne leading zero (siehe :data:`_NUM_RE`).
 
+    Unicode-Vulgar-Fraktionen (¼/½/¾ und U+2150-U+215E) werden vor der
+    Zahl-Extraktion in Dezimal-Aequivalente umgesetzt: Mixed-Form
+    ``'5½'`` → (5.5, 5.5) (Mohs-Halbschritt der Referenz-Tabelle),
+    Standalone ``'¼'`` → (0.25, 0.25), Range ``'5½-7'`` → (5.5, 7.0).
+    Siehe :func:`_normalize_vulgar_fractions` fuer Details.
+
     Nicht-endliche Werte (Overflow der scientific-notation zu ``+inf`` /
     ``-inf`` sowie ``NaN`` aus arithmetischer Verkettung wie ``inf - inf``
     in Uncertainty-Zweigen) fallen auf ``(None, None)`` zurueck. Ein
@@ -412,6 +531,20 @@ def parse_range(text) -> tuple[float | None, float | None]:
     if text is None:
         return None, None
     s = normalize_numeric_locale(str(text))
+    # Unicode-Vulgar-Fraktionen (¼/½/¾ und U+2150-U+215E) vor allen weiteren
+    # Zweigen normalisieren: die Fraktion ist ein Wert-Bestandteil, kein
+    # Separator - Mixed-Form ``5½`` -> ``5.5``, Standalone ``½`` -> ``0.5``.
+    # Vor den Uncertainty-Zweigen platziert, damit ``5½ ± 0.3`` als
+    # ``5.5 ± 0.3`` in den ±-Zweig faellt und die publizierte Toleranz auf
+    # den vollen Halbschritt-Wert (5.2, 5.8) auswertet (statt (5.2, 5.8)
+    # mit fehlgelesenem Center 5.0 zu (4.7, 5.3)). Vor der Klammer-
+    # Annotations-Strip platziert, damit ein Halbschritt-Wert vor der
+    # Annotations-Klammer wie ``5½ (Ref)`` als ``5.5 (Ref)`` weiter geht
+    # und der Klammer-Strip auf das Standard-Pattern greifen kann. Siehe
+    # :func:`_normalize_vulgar_fractions` fuer Details zu Mixed-/Standalone-
+    # Regex und den Kollisions-Schutz gegen SI-Einheiten-Position (``cm3½``
+    # bleibt unangetastet, weil die 3 Teil der Einheit ist, nicht der Wert).
+    s = _normalize_vulgar_fractions(s)
     # ``N ± M``-Notation vor der generischen Zahlen-Extraktion pruefen: die
     # Toleranz ist strukturell an das Zentrum gebunden, nicht ein zweiter
     # unabhaengiger Wert. Ohne diesen Zweig wuerde ``5.5 ± 0.3`` als

@@ -674,6 +674,119 @@ def test_parse_range_einheit_mit_hochgestellter_ascii_ziffer():
     assert csv_loaders.parse_range("1'000.00") == (1000.0, 1000.0)
 
 
+def test_parse_range_unicode_vulgar_fraktionen():
+    """Unicode-Vulgar-Fraktionen (¼/½/¾ und U+2150-U+215E) werden als Wert
+    aufgeloest statt still verworfen.
+
+    In mineralogischen Referenz-Tabellen ist die Mohs-Halbschritt-Notation
+    ``5½`` der klassische Weg, die Haerte zwischen zwei Ganzzahl-
+    Referenzmineralen zu notieren (5½ = zwischen Apatit und Orthoklas,
+    6½ = zwischen Orthoklas und Quarz), und ¼/¾/⅛-Notation kommt in
+    Groessen-/Gewichts-Fraktionen aeltere Sammler-Karten und in
+    imperialen Einheiten (``3¼ inch``) vor. Vor dieser Erweiterung fiel
+    ``5½`` auf ``[5]`` und lieferte (5.0, 5.0) statt (5.5, 5.5) - der
+    publizierte Halbschritt der Mohs-Skala ging silent verloren und die
+    Sortier-/Vergleichs-Reihenfolge stimmte nicht mehr mit der Referenz-
+    Tabelle ueberein; standalone ``¼`` lieferte (None, None) - Wert-
+    Datenverlust bei jeder Migration aus Word/LibreOffice/PDF-Quellen mit
+    typografisch sauber gesetzten Unicode-Fraktionen.
+    """
+    # Mixed-Form Mohs-Halbschritt (die haeufigste Notation in Referenz-
+    # Tabellen; vor dem Fix: (5.0, 5.0), Halbschritt still verloren).
+    assert csv_loaders.parse_range("5½") == (5.5, 5.5)
+    assert csv_loaders.parse_range("6½") == (6.5, 6.5)
+    # Mixed-Form mit Whitespace-Trenner (Print-/Katalog-Form mit typo-
+    # grafisch sauberem Halbschritt-Space; auch NBSP und schmales NBSP).
+    assert csv_loaders.parse_range("5 ½") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5\xa0½") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5 ½") == (5.5, 5.5)
+    # Mixed-Form mit Viertel- und Dreiviertel-Fraktion (imperiale Einheiten,
+    # aeltere Groessen-Notation in Sammler-Karten).
+    assert csv_loaders.parse_range("3¼") == (3.25, 3.25)
+    assert csv_loaders.parse_range("6¾") == (6.75, 6.75)
+    # Mixed-Form mit Achtel-Fraktion (Sieb-Rueckstands-Rasterung, feinere
+    # imperiale Notation).
+    assert csv_loaders.parse_range("2⅛") == (2.125, 2.125)
+    assert csv_loaders.parse_range("1⅜") == (1.375, 1.375)
+    assert csv_loaders.parse_range("4⅝") == (4.625, 4.625)
+    assert csv_loaders.parse_range("3⅞") == (3.875, 3.875)
+    # Standalone-Form (Wert < 1 ohne Ganzzahl-Vorstand); vor dem Fix:
+    # (None, None), Wert komplett verloren.
+    assert csv_loaders.parse_range("¼") == (0.25, 0.25)
+    assert csv_loaders.parse_range("½") == (0.5, 0.5)
+    assert csv_loaders.parse_range("¾") == (0.75, 0.75)
+    assert csv_loaders.parse_range("⅕") == (0.2, 0.2)
+    assert csv_loaders.parse_range("⅖") == (0.4, 0.4)
+    assert csv_loaders.parse_range("⅗") == (0.6, 0.6)
+    assert csv_loaders.parse_range("⅘") == (0.8, 0.8)
+    assert csv_loaders.parse_range("⅛") == (0.125, 0.125)
+    assert csv_loaders.parse_range("⅜") == (0.375, 0.375)
+    assert csv_loaders.parse_range("⅝") == (0.625, 0.625)
+    assert csv_loaders.parse_range("⅞") == (0.875, 0.875)
+    assert csv_loaders.parse_range("⅒") == (0.1, 0.1)
+    # Periodische Fraktionen (⅓/⅔/⅙/⅚/⅐/⅑) - 12 signifikante Nachkomma-
+    # Stellen decken den IEEE-754-double-Praezisionsbereich sauber ab.
+    assert csv_loaders.parse_range("⅓") == pytest.approx((1 / 3, 1 / 3), rel=1e-11)
+    assert csv_loaders.parse_range("⅔") == pytest.approx((2 / 3, 2 / 3), rel=1e-11)
+    assert csv_loaders.parse_range("⅙") == pytest.approx((1 / 6, 1 / 6), rel=1e-11)
+    assert csv_loaders.parse_range("⅚") == pytest.approx((5 / 6, 5 / 6), rel=1e-11)
+    assert csv_loaders.parse_range("⅐") == pytest.approx((1 / 7, 1 / 7), rel=1e-11)
+    assert csv_loaders.parse_range("⅑") == pytest.approx((1 / 9, 1 / 9), rel=1e-11)
+    # Range-Formen mit Mixed-Fraktion auf beiden Seiten (Mohs-Bereich
+    # zwischen zwei Halbschritt-Werten) - die haeufigste Referenz-Tabellen-
+    # Notation fuer variabel-haertige Minerale.
+    assert csv_loaders.parse_range("5½-6½") == (5.5, 6.5)
+    assert csv_loaders.parse_range("5½ - 6½") == (5.5, 6.5)
+    assert csv_loaders.parse_range("5 ½ – 6 ½") == (5.5, 6.5)  # En-Dash Print-Form
+    # Range mit Mixed-Fraktion und Ganzzahl gemischt.
+    assert csv_loaders.parse_range("5½-7") == (5.5, 7.0)
+    assert csv_loaders.parse_range("5-6½") == (5.0, 6.5)
+    # Kombination mit Uncertainty-Zweig: die Fraktions-Normalisierung
+    # greift *vor* der Uncertainty-Erkennung, damit ``5½ ± 0.3`` als
+    # ``5.5 ± 0.3`` korrekt als publizierte Toleranz auf den Halbschritt-
+    # Wert auswertet (statt Center 5.0 zu (4.7, 5.3)).
+    assert csv_loaders.parse_range("5½ ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5½(3)") == pytest.approx((5.2, 5.8))
+    # Kombination mit Trailing-Einheit: die Fraktion wird zum Wert-
+    # Vorstand normalisiert, die nachfolgende Einheit bleibt Whitespace-
+    # getrennter Wort-Token (kein Match im Zahl-Extraktor).
+    assert csv_loaders.parse_range("5½ Mohs") == (5.5, 5.5)
+    assert csv_loaders.parse_range("2¾ g/cm³") == (2.75, 2.75)
+    assert csv_loaders.parse_range("3¼ inch") == (3.25, 3.25)
+    # Kombination mit Klammer-Annotation: die Fraktion wird normalisiert,
+    # dann strippt der Klammer-Strip die Annotation vor der Zahl-
+    # Extraktion (spiegelt _strip_bracketed_annotations auf die Fraktions-
+    # Achse).
+    assert csv_loaders.parse_range("5½ (Ref)") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5½ [Foto]") == (5.5, 5.5)
+    # Kollisions-Schutz gegen SI-Einheiten-Position: ``cm3½`` bleibt
+    # unangetastet, weil die 3 durch das _NUM_RE-Lookbehind als Teil der
+    # Einheit erkannt wird und das Mixed-Fraktion-Lookbehind zusaetzlich
+    # den Letter-Kontext blockiert (die Fraktion darf nicht mit einer
+    # Einheiten-Ziffer als vermeintlichem Ganzzahl-Vorstand kombiniert
+    # werden). Ohne diesen Schutz wuerde ``cm3½`` zu ``cm3.5`` und der
+    # (unerwuenschte) Match wuerde 3.5 als Wert liefern.
+    assert csv_loaders.parse_range("cm3½") == (None, None)
+    assert csv_loaders.parse_range("m^3½") == (None, None)
+    # Kollisions-Schutz gegen Bezeichner-Position: ``Sample½`` bleibt
+    # unangetastet (kein Wert, sondern Katalog-Bezeichner mit typografischer
+    # Fraktion) - spiegelt die _NUM_RE-Bezeichner-Konvention.
+    assert csv_loaders.parse_range("Sample½") == (None, None)
+    # Defekte Dezimal-Fraktions-Verkettung: ``5.5½`` ist semantisch
+    # unklar (soll das 5.5+0.5=6.0 oder ein Tippfehler sein?), besser
+    # unangetastet lassen als kuenstlich zu ``5.5.5`` zu erweitern. Das
+    # Fraktions-Lookbehind blockiert nach ``.`` und ``,``, sodass nur die
+    # ``5.5`` als Wert-Token extrahiert wird.
+    assert csv_loaders.parse_range("5.5½") == (5.5, 5.5)
+    # Locale-Konsistenz: DE-Komma-Dezimal am Vorstand ist keine gueltige
+    # Mixed-Form; die Fraktion faellt auf Standalone zurueck. ``5,5½``
+    # wird zu ``5,50.5`` erweitert - der Zahl-Extraktor liest ``5,5`` als
+    # DE-Dezimal und ``0.5`` als zweiten Wert. Range zaehlt nach
+    # Zahl-Reihenfolge; Ergebnis (5.5, 5.5) via hi<lo-Kollaps, konsistent
+    # mit der Standard-DE-Konvention.
+    assert csv_loaders.parse_range("5,5½") == (5.5, 5.5)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data
