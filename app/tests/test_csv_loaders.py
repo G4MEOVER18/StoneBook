@@ -787,6 +787,146 @@ def test_parse_range_unicode_vulgar_fraktionen():
     assert csv_loaders.parse_range("5,5½") == (5.5, 5.5)
 
 
+def test_parse_range_ascii_mixed_fraktionen():
+    """ASCII-Mixed-Fraktion ``\\d+\\s+\\d+/\\d+`` wird als Wert aufgeloest statt still
+    als Range-/Ratio-Fragmentliste zerlegt.
+
+    Spiegelt die Unicode-Vulgar-Fraktions-Normalisierung
+    (:func:`_normalize_vulgar_fractions`) auf die Plain-ASCII-Achse - typische
+    Notation aus Typewriter-/Terminal-Notizen, aus geerbten Textdatei-
+    Sammlungen (RTF/TXT ohne Autoformat-Konvertierung zu ½/¼) und aus
+    handschriftlich abgeschriebenen Mohs-Haerte-Werten, bei denen der Autor
+    den Halbschritt als ``5 1/2`` statt ``5½`` notiert. Vor dieser
+    Erweiterung fiel ``5 1/2`` auf ``[5, 1, 2]`` und lieferte via inverted-
+    Range-Kollaps ``(5.0, 5.0)`` - der Mohs-Halbschritt ging silent
+    verloren; ``5 1/2 - 6 1/2`` lieferte via [5, 1, 2, 6, 1, 2] den
+    semantisch falschen Range ``(5.0, 6.0)`` (beide Halbschritte verloren);
+    ``5 3/4 Mohs`` lieferte ``(3.0, 4.0)`` (Ganzzahl-Vorstand verworfen).
+    """
+    # Mohs-Halbschritt (der klassische Anwendungsfall - haeufigste ASCII-
+    # Notation in Typewriter-/Plain-Text-Sammler-Notizen; vor dem Fix
+    # (5.0, 5.0), Halbschritt still verloren).
+    assert csv_loaders.parse_range("5 1/2") == (5.5, 5.5)
+    assert csv_loaders.parse_range("6 1/2") == (6.5, 6.5)
+    # Viertel-/Dreiviertel-Fraktion (imperiale Groessen-/Gewicht-Angaben,
+    # aeltere Sammler-Karten).
+    assert csv_loaders.parse_range("3 1/4") == (3.25, 3.25)
+    assert csv_loaders.parse_range("6 3/4") == (6.75, 6.75)
+    # Achtel-Fraktion (Sieb-Rueckstands-Rasterung, feinere imperiale
+    # Notation).
+    assert csv_loaders.parse_range("2 1/8") == (2.125, 2.125)
+    assert csv_loaders.parse_range("1 3/8") == (1.375, 1.375)
+    assert csv_loaders.parse_range("4 5/8") == (4.625, 4.625)
+    assert csv_loaders.parse_range("3 7/8") == (3.875, 3.875)
+    # Sechzehntel-Fraktion (Bohrdurchmesser-Notation, feine imperiale
+    # Rasterung).
+    assert csv_loaders.parse_range("5 1/16") == pytest.approx((5.0625, 5.0625))
+    assert csv_loaders.parse_range("5 15/16") == (5.9375, 5.9375)
+    # Metrische Tenth-Fraktion.
+    assert csv_loaders.parse_range("5 3/10") == (5.3, 5.3)
+    # Periodische Fraktionen (⅓/⅔/⅙/⅚) - 12 signifikante Nachkomma-Stellen
+    # decken den IEEE-754-double-Praezisionsbereich sauber ab (spiegelt die
+    # Konvention der Unicode-Vulgar-Fraktions-Normalisierung).
+    assert csv_loaders.parse_range("5 1/3") == pytest.approx(
+        (5 + 1 / 3, 5 + 1 / 3), rel=1e-11
+    )
+    assert csv_loaders.parse_range("5 2/3") == pytest.approx(
+        (5 + 2 / 3, 5 + 2 / 3), rel=1e-11
+    )
+    assert csv_loaders.parse_range("5 1/6") == pytest.approx(
+        (5 + 1 / 6, 5 + 1 / 6), rel=1e-11
+    )
+    # Whitespace-Varianten: einfaches Leerzeichen, NBSP (U+00A0), schmales
+    # NBSP (U+202F) - typografische Print-Formen mit sauberem Halbschritt-
+    # Space.
+    assert csv_loaders.parse_range("5\xa01/2") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5 1/2") == (5.5, 5.5)
+    # Range-Formen mit Mixed-Fraktion auf beiden Seiten (Mohs-Bereich
+    # zwischen zwei Halbschritt-Werten) - die haeufigste Referenz-Tabellen-
+    # Notation fuer variabel-haertige Minerale in Plain-Text-Quellen.
+    assert csv_loaders.parse_range("5 1/2 - 6 1/2") == (5.5, 6.5)
+    assert csv_loaders.parse_range("5 1/2-6 1/2") == (5.5, 6.5)
+    assert csv_loaders.parse_range("5 1/2 – 6 1/2") == (5.5, 6.5)  # En-Dash
+    # Range mit Mixed-Fraktion und Ganzzahl gemischt.
+    assert csv_loaders.parse_range("5 1/2 - 7") == (5.5, 7.0)
+    assert csv_loaders.parse_range("5 - 6 1/2") == (5.0, 6.5)
+    # Kombination mit Uncertainty-Zweig: die Fraktions-Normalisierung
+    # greift *vor* der Uncertainty-Erkennung, damit ``5 1/2 ± 0.3`` als
+    # ``5.5 ± 0.3`` korrekt als publizierte Toleranz auf den Halbschritt-
+    # Wert auswertet (statt Center 5.0 zu (4.7, 5.3)).
+    assert csv_loaders.parse_range("5 1/2 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5 1/2(3)") == pytest.approx((5.2, 5.8))
+    # Kombination mit Trailing-Einheit: die Fraktion wird zum Wert-
+    # Vorstand normalisiert, die nachfolgende Einheit bleibt Whitespace-
+    # getrennter Wort-Token (kein Match im Zahl-Extraktor).
+    assert csv_loaders.parse_range("5 1/2 Mohs") == (5.5, 5.5)
+    assert csv_loaders.parse_range("2 3/4 g/cm³") == (2.75, 2.75)
+    assert csv_loaders.parse_range("3 1/4 inch") == (3.25, 3.25)
+    # Kombination mit Klammer-Annotation: die Fraktion wird normalisiert,
+    # dann strippt der Klammer-Strip die Annotation vor der Zahl-
+    # Extraktion.
+    assert csv_loaders.parse_range("5 1/2 (Ref)") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5 1/2 [Foto]") == (5.5, 5.5)
+
+
+def test_parse_range_ascii_mixed_fraktionen_ungueltig():
+    """Sicherheitsschranken der ASCII-Mixed-Fraktions-Normalisierung:
+    Denominator-Whitelist, Proper-Fraktion-Check, Lookbehind/Lookahead-Schutz.
+
+    ASCII-Mixed-Fraktion ist strukturell mehrdeutig - im Gegensatz zur
+    Unicode-Vulgar-Fraktion ``½`` (eindeutiges Wert-Zeichen) kann
+    ``1/2`` als Ratio, Datums-Fragment (6/2024) oder Katalog-Nummer
+    (Nr. 3 von 42) auftreten. Die Whitelist auf mineralogische/imperiale
+    Standard-Nenner {2,3,4,5,6,8,10,16,32} und der Proper-Fraktion-Check
+    (Zaehler < Nenner) filtern die semantisch mehrdeutigen Kombinationen.
+    """
+    # Denominator ausserhalb der Whitelist: Datums-Fragment mit Nenner
+    # 1985/2020/2024 (Jahr) faellt auf keine Substitution zurueck -
+    # die generische Zahl-Extraktion greift und liefert die einzelnen
+    # Tokens. ``5 6/2024`` (Tag/Monat/Jahr-Fragment) -> [5, 6, 2024].
+    assert csv_loaders.parse_range("5 1/1985") == (5.0, 1985.0)
+    assert csv_loaders.parse_range("5 6/2024") == (5.0, 2024.0)
+    # Nenner 12 (Monatszahl) ist bewusst ausserhalb der Whitelist - eine
+    # 12tel-Fraktion ist mineralogisch unueblich und die Kollision mit
+    # Monats-Notation zu wichtig. ``5 3/12`` bleibt Range-/Fragment-
+    # Interpretation [5, 3, 12].
+    assert csv_loaders.parse_range("5 1/12") == (5.0, 12.0)
+    assert csv_loaders.parse_range("5 3/12") == (5.0, 12.0)
+    # Nenner 100 (Katalog-Nummer ``N von 100``) ist bewusst ausserhalb -
+    # ``5 42/100`` bleibt Range-/Fragment-Interpretation [5, 42, 100].
+    assert csv_loaders.parse_range("5 42/100") == (5.0, 100.0)
+    # Improper Fraktion (Zaehler >= Nenner) faellt auf keine Substitution
+    # zurueck - ``5 5/2`` waere semantisch mehrdeutig (Ratio 5:2, verkuerzte
+    # Range-Notation), besser unangetastet.
+    assert csv_loaders.parse_range("5 5/2") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5 3/3") == (5.0, 5.0)
+    # Kollisions-Schutz gegen Einheiten-Position: der Ganzzahl-Vorstand
+    # darf nicht mit einer Einheiten-Ziffer als vermeintlichem Wert-Anker
+    # kombiniert werden. ``cm3 1/2`` (SI-Einheit ``cm³`` als ``cm3``-ASCII)
+    # bleibt in der Einheiten-Semantik - der Wert-Anker ist die Einheit,
+    # nicht der 3-Suffix.
+    assert csv_loaders.parse_range("m^3 1/2") == (1.0, 2.0)
+    # Kollisions-Schutz gegen greedy-Uebergreifen: eine anschliessende
+    # ``/\d``-Sequenz (Datum-Kette ``5 3/4/2020``) blockiert den Match via
+    # Lookahead - die Fraktion ist strukturell nicht abgeschlossen und
+    # koennte Teil eines Datums-Fragments sein.
+    assert csv_loaders.parse_range("5 3/4/2020") == (5.0, 2020.0)
+    # Standalone-Fraktion ohne Ganzzahl-Vorstand (``1/2``, ``3/4``) faellt
+    # bewusst *nicht* auf 0.5/0.75, sondern bleibt Range-Interpretation
+    # [1, 2] / [3, 4] - die Mehrdeutigkeit zwischen Fraktion, Ratio,
+    # Einheiten-Nenner und Range ist ohne Ganzzahl-Vorstand zu gross;
+    # die Unicode-Standalone-Form ``½``/``¾`` bleibt hier die stabile
+    # Alternative, wenn der Autor die Fraktion eindeutig meint.
+    assert csv_loaders.parse_range("1/2") == (1.0, 2.0)
+    assert csv_loaders.parse_range("3/4") == (3.0, 4.0)
+    # Regression-Anker: die bestehende Uncertainty-/Range-Semantik ohne
+    # Mixed-Fraktion bleibt unangetastet.
+    assert csv_loaders.parse_range("5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data

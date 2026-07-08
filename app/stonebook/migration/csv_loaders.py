@@ -413,6 +413,118 @@ def _normalize_vulgar_fractions(s: str) -> str:
     return s
 
 
+# ASCII-Mixed-Fraktion (Ganzzahl + Whitespace + Zaehler/Nenner) auf Dezimal-
+# Aequivalent abbilden. Spiegelt die Unicode-Vulgar-Fraktions-Normalisierung
+# (:func:`_normalize_vulgar_fractions`) auf die Plain-ASCII-Achse - typische
+# Notation aus Typewriter-/Terminal-Notizen, aus geerbten Textdatei-
+# Sammlungen (RTF/TXT ohne Autoformat-Konvertierung zu ½/¼) und aus
+# handschriftlich abgeschriebenen Mohs-Haerte-Werten, bei denen der Autor
+# den Halbschritt als ``5 1/2`` statt ``5½`` notiert. In der Mineralogie
+# ist die Halbschritt-Notation die Referenz-Tabellen-Konvention (Mohs misst
+# zwischen Ganzzahl-Referenzmineralen); in imperialen Groessen-/Gewicht-
+# Angaben ist ``5 3/4 inch``/``2 1/8 g`` die uebliche Feiner-Rasterung.
+#
+# Bisher fielen alle Mixed-Formen still auf einen Fraktions-Datenverlust
+# via generischer Zahl-Extraktion: ``5 1/2`` wurde als ``[5, 1, 2]`` gelesen
+# und lieferte via ``if hi < lo``-Fallback ``(5.0, 5.0)`` (der Halbschritt
+# ging verloren, die Mohs-Referenz-Reihenfolge stimmte nicht mit der
+# Tabelle ueberein); ``5 3/4 - 7 1/2`` lieferte via [5, 3, 4, 7, 1, 2] den
+# semantisch falschen Range ``(5.0, 7.0)`` (beide Halbschritte verloren);
+# ``5 3/4 Mohs`` lieferte ``(3.0, 4.0)`` als Range der Fraktion (Wert der
+# Ganzzahl verworfen). Bei der Migration aus geerbten Textdatei-Sammlungen
+# entstand damit silent Wert-Datenverlust in der Haerte-/Dichte-/Groessen-
+# Achse.
+#
+# Sicherheitsschranken:
+#
+# * Nur Whitespace-getrennte Mixed-Form ``\d+\s+\d+/\d+`` - ohne Whitespace-
+#   Trenner (``5/2``) ist die Notation semantisch mehrdeutig (Range 5-2,
+#   Ratio 5:2, Fraktion 2.5, Einheit ``g/cm2``) und faellt unangetastet
+#   auf die generische Zahl-Extraktion zurueck. Der Whitespace zwischen
+#   Ganzzahl-Vorstand und Fraktion ist die stabile Abgrenzung zur Ratio-/
+#   Einheiten-Notation.
+# * Nur *proper* Fraktionen (Zaehler < Nenner) - improper Formen wie
+#   ``5/2`` als Fraktion (2.5) sind in Sammler-Notizen semantisch mehr-
+#   deutig und bleiben unangetastet.
+# * Erlaubte Nenner :data:`_ASCII_FRACTION_ALLOWED_DENOMINATORS` -
+#   {2, 3, 4, 5, 6, 8, 10, 16, 32} deckt die typischen mineralogischen
+#   und imperialen Fraktions-Klassen ab (Halbschritt-Mohs, Viertel-/
+#   Achtel-/Sechzehntel-/Zweiundreissigstel-Imperial, Tenth-Metrik,
+#   Drittel/Sechstel-ISO). Denominatoren ausserhalb dieser Menge fallen
+#   auf keine Substitution zurueck und schuetzen vor Kollisionen mit
+#   Datums-Fragmenten (Tag/Monat-Notation ``6/1985`` mit Nenner 1985,
+#   Kalender-Notation ``6 6/2024`` mit Nenner 2024), Katalog-/Referenz-
+#   Nummern (``5 42/100`` mit Nenner 100 als "42 von 100") und mit
+#   ratio-Konvention (``5 3/12`` als "3 zu 12" ohne Fraktion-Semantik).
+# * Lookbehind ``(?<![A-Za-z^.,\d])`` blockiert nach Buchstaben (``cm2 1/2``
+#   bleibt Einheiten-Kontext), nach Caret (``m^3 1/2``), nach Punkt/
+#   Komma (``5.5 1/2`` ist semantisch unklar) und nach anderer Ziffer
+#   (Sicherheitsnetz gegen greedy-Match-Ueberreichweite). Spiegelt die
+#   :data:`_MIXED_FRACTION_RE`-Konvention der Unicode-Achse.
+# * Lookahead ``(?!/\d)`` blockiert vor einer weiteren ``/\d``-Gruppe
+#   (Datum-Fragment ``5 6/1985/2000`` matcht sonst ``5 6/1985`` und
+#   liefert ``5.<invalid>`` - wenn 1985 nicht im Allow-Set ist, wird der
+#   Match verworfen; aber die Lookahead-Bedingung stoppt den Match schon
+#   in der Vorabpruefung). Auch fuer Ratio-Ketten wie ``5 1/2/3``
+#   praktisch (unklare Semantik, besser unangetastet).
+#
+# Ergebnis: ``5 1/2`` -> ``5.5`` (Mohs-Halbschritt), ``5 3/4`` -> ``5.75``
+# (imperialer Dreiviertel-Wert), ``5 1/3`` -> ``5.333333333333`` (periodische
+# Fraktion mit 12 signifikanten Nachkomma-Stellen), ``5 15/16`` -> ``5.9375``
+# (imperialer Sechzehntel-Wert), Range ``5 1/2 - 6 1/2`` -> ``5.5 - 6.5``
+# und (5.5, 6.5), Uncertainty ``5 1/2 ± 0.3`` -> ``5.5 ± 0.3`` und
+# (5.2, 5.8), Trailing-Einheit ``5 3/4 Mohs`` -> ``5.75 Mohs`` und
+# (5.75, 5.75).
+_ASCII_FRACTION_ALLOWED_DENOMINATORS: frozenset[int] = frozenset(
+    {2, 3, 4, 5, 6, 8, 10, 16, 32}
+)
+_ASCII_MIXED_FRACTION_RE = re.compile(
+    r"(?<![A-Za-z^.,\d])(\d+)\s+(\d+)/(\d+)(?!/?\d)"
+)
+
+
+def _ascii_mixed_fraction_replace(m: re.Match) -> str:
+    """Callback fuer :data:`_ASCII_MIXED_FRACTION_RE`: Mixed-Form -> Dezimal.
+
+    Denominator-Whitelist :data:`_ASCII_FRACTION_ALLOWED_DENOMINATORS` und
+    Proper-Fraktions-Check (Zaehler < Nenner) filtern semantisch mehr-
+    deutige Kombinationen (Datum-/Katalog-/Ratio-Fragmente). Bei Filter-
+    Miss wird der Original-Match unveraendert zurueckgegeben - die
+    generische Zahl-Extraktion nimmt dann die einzelnen Tokens.
+
+    12 signifikante Nachkomma-Stellen fuer periodische Fraktionen (1/3,
+    2/3, 1/6, 5/6) decken den IEEE-754-double-Praezisionsbereich sauber
+    ab und terminieren die Dezimal-Repraesentation bei Bruchteilen mit
+    endlicher Basis-10-Entwicklung (1/2, 1/4, 3/4, 1/8, 3/8, ...) via
+    Trailing-Zero-Strip.
+    """
+    integer, num, denom = m.group(1), int(m.group(2)), int(m.group(3))
+    if denom not in _ASCII_FRACTION_ALLOWED_DENOMINATORS or num >= denom:
+        return m.group(0)
+    frac = num / denom
+    frac_str = f"{frac:.12f}".rstrip("0").rstrip(".")
+    if frac_str.startswith("0."):
+        frac_str = frac_str[2:]
+    elif frac_str == "0":
+        return m.group(0)
+    return f"{integer}.{frac_str}"
+
+
+def _normalize_ascii_mixed_fractions(s: str) -> str:
+    """Ersetzt ASCII-Mixed-Fraktionen ``\\d+\\s+\\d+/\\d+`` durch Dezimal-Aequivalente.
+
+    ``5 1/2`` -> ``5.5``, ``5 3/4`` -> ``5.75``, ``2 1/8`` -> ``2.125``.
+    Wird in :func:`parse_range` *nach* der Unicode-Fraktions-Normalisierung
+    und *vor* der Uncertainty-Erkennung aufgerufen, damit die publizierten
+    Halbschritt-/Viertel-/Achtel-Werte aus Plain-Text-Referenz-Tabellen
+    (Typewriter-Notizen, TXT-Sammler-Karten, ASCII-Mail-Exporte) nicht
+    stille verloren gehen. Siehe :data:`_ASCII_MIXED_FRACTION_RE` und
+    :func:`_ascii_mixed_fraction_replace` fuer die Sicherheitsschranken
+    (Denominator-Whitelist, Proper-Fraktion, Lookbehind/Lookahead-Schutz).
+    """
+    return _ASCII_MIXED_FRACTION_RE.sub(_ascii_mixed_fraction_replace, s)
+
+
 def _strip_bracketed_annotations(s: str) -> str:
     """Entfernt runde/eckige/geschweifte Klammer-Annotationen inklusive Nest.
 
@@ -545,6 +657,19 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # Regex und den Kollisions-Schutz gegen SI-Einheiten-Position (``cm3½``
     # bleibt unangetastet, weil die 3 Teil der Einheit ist, nicht der Wert).
     s = _normalize_vulgar_fractions(s)
+    # ASCII-Mixed-Fraktion ``\d+\s+\d+/\d+`` (Ganzzahl + Whitespace + Zaehler/
+    # Nenner) auf Dezimal-Aequivalent abbilden: ``5 1/2`` -> ``5.5``, ``5 3/4``
+    # -> ``5.75``, ``2 1/8`` -> ``2.125``. Spiegelt die Unicode-Vulgar-Fraktions-
+    # Normalisierung auf die Plain-ASCII-Achse fuer typische Notation aus
+    # Typewriter-/Terminal-Notizen, aus geerbten Textdatei-Sammlungen (RTF/TXT
+    # ohne Autoformat-Konvertierung zu ½/¼) und aus handschriftlich
+    # abgeschriebenen Mohs-Haerte-Werten. Nach _normalize_vulgar_fractions
+    # einsortiert (Unicode-Formen zuerst - eindeutigere Semantik), vor den
+    # Uncertainty-Zweigen einsortiert (damit ``5 1/2 ± 0.3`` als ``5.5 ± 0.3``
+    # in den ±-Zweig faellt). Denominator-Whitelist und Proper-Fraktion-Check
+    # schuetzen vor Datums-/Katalog-/Ratio-Fragmenten - siehe
+    # :func:`_normalize_ascii_mixed_fractions` fuer Details.
+    s = _normalize_ascii_mixed_fractions(s)
     # ``N ± M``-Notation vor der generischen Zahlen-Extraktion pruefen: die
     # Toleranz ist strukturell an das Zentrum gebunden, nicht ein zweiter
     # unabhaengiger Wert. Ohne diesen Zweig wuerde ``5.5 ± 0.3`` als
