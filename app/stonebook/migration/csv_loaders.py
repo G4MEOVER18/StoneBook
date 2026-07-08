@@ -46,7 +46,24 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 # sondern die gesamte Notation getrennt vom Exponent notieren (etwa
 # ``2.65e0 ± 5e-2`` wuerde in einer Publikation als ``2.65(5)e0`` geschrieben,
 # nicht als Kombination beider Notationen im gleichen Token).
-_NUM_RE = re.compile(r"(\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)")
+#
+# Erste Alternante ``\.\d+`` fängt Leading-Dot-Dezimals wie ``.5`` / ``.05`` /
+# ``.5e-3`` (US-typografische Konvention "no leading zero" und wissenschaftliche
+# Publikationen mit Punkt-Dezimal ohne fuehrende Null). Ohne diese Alternante
+# fiele der Punkt aus dem Match und die Ziffernfolge dahinter wurde als eigene
+# Ganzzahl gelesen: ``.5`` lieferte ``[5]`` -> (5.0, 5.0) statt (0.5, 0.5),
+# ``.5-.7`` lieferte ``[5, 7]`` -> (5.0, 7.0) statt (0.5, 0.7), und
+# ``.5e-3`` (Absorptions-/Kalibrier-Wert in Publikationen ohne fuehrende Null)
+# lieferte ``[5, 3]`` -> ueber hi<lo-Fallback (5.0, 5.0) statt (0.0005, 0.0005).
+# Bei der Migration aus US-/englischsprachigen Sammlungs-Notizen und aus
+# LaTeX-/PDF-Publikationen ohne fuehrende Null entstand damit stille
+# Groessenordnungs-Verluste bei allen kleinen Werten (Mikroskopie-Messwerte,
+# Foliendicken, Feinkorn-Groessen). Nur Punkt als Leading-Dezimal, nicht Komma:
+# leading ``,5`` waere in DE-Locale mehrdeutig (koennte Range-Separator eines
+# leeren Werts vor dem Komma sein wie in ``,5`` = zweiter Teil von ``5,5``);
+# US-Konvention kennt kein leading-Komma-Dezimal, und Excel-DE schreibt ``0,5``
+# statt ``,5``.
+_NUM_RE = re.compile(r"(\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)")
 
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
@@ -327,6 +344,11 @@ def parse_range(text) -> tuple[float | None, float | None]:
     (``'1.5e-3'`` → (0.0015, 0.0015), ``'1e3'`` → (1000.0, 1000.0)); ohne
     Exponent-Auswertung wuerden Absorptions-/Kalibrier-Werte aus
     Publikationen auf ihre Mantisse kollabieren (siehe :data:`_NUM_RE`).
+
+    Leading-Dot-Dezimals ohne fuehrende Null werden als Wert < 1 gelesen
+    (``'.5'`` → (0.5, 0.5), ``'.5-.7'`` → (0.5, 0.7), ``'.5e-3'`` →
+    (0.0005, 0.0005)) - US-Konvention und wissenschaftliche Publikationen
+    ohne leading zero (siehe :data:`_NUM_RE`).
     """
     if text is None:
         return None, None

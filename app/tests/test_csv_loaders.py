@@ -475,6 +475,54 @@ def test_parse_range_wissenschaftliche_notation():
     assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
 
 
+def test_parse_range_leading_dot_dezimal():
+    """Leading-Dot-Dezimals ``.5`` / ``.05`` / ``.5e-3`` werden als Wert < 1 gelesen.
+
+    US-typografische Konvention "no leading zero" und wissenschaftliche
+    Publikationen ohne fuehrende Null (LaTeX/PDF-Roh-Export, Print-Kataloge,
+    NIST-CODATA-Auszuege). Vor dem Fix fiel der Punkt aus dem Match des
+    generischen Zahl-Token-Regex und die Ziffernfolge dahinter wurde als eigene
+    Ganzzahl gelesen: ``.5`` lieferte (5.0, 5.0) statt (0.5, 0.5) (Faktor 10
+    zu gross), ``.5-.7`` lieferte (5.0, 7.0) statt (0.5, 0.7), ``.5e-3`` (kleiner
+    Absorptions-/Kalibrier-Wert in Publikationen ohne fuehrende Null) lieferte
+    ueber Zwei-Zahl-Zerlegung ``[5, 3]`` und hi<lo-Fallback (5.0, 5.0) statt
+    (0.0005, 0.0005) - Faktor 10.000 zu gross. Bei der Migration aus US-/
+    englischsprachigen Sammlungs-Notizen und aus LaTeX-Publikationen ohne
+    fuehrende Null entstand damit silenter Groessenordnungs-Verlust bei
+    kleinen Werten (Mikroskopie-Messwerte, Foliendicken, Feinkorn-Groessen).
+    """
+    # Punktwert ohne fuehrende Null (typisch US/Print).
+    assert csv_loaders.parse_range(".5") == (0.5, 0.5)
+    assert csv_loaders.parse_range(".05") == (0.05, 0.05)
+    assert csv_loaders.parse_range(".005") == (0.005, 0.005)
+    # Range ohne fuehrende Nullen auf beiden Seiten.
+    assert csv_loaders.parse_range(".5-.7") == (0.5, 0.7)
+    assert csv_loaders.parse_range(".5 - .7") == (0.5, 0.7)
+    # Gemischt: leading-dot links, normale Zahl rechts (und umgekehrt).
+    assert csv_loaders.parse_range(".5-7") == (0.5, 7.0)
+    # Scientific notation ohne fuehrende Null - Absorptions-/Kalibrier-Werte
+    # in Publikationen (``.5e-3`` = 5e-4 = 0.0005).
+    assert csv_loaders.parse_range(".5e-3") == (0.0005, 0.0005)
+    assert csv_loaders.parse_range(".5E+3") == (500.0, 500.0)
+    # Freitext-Praefix (z.B. Annaeherungs-Marker) vor leading-dot.
+    assert csv_loaders.parse_range("ca. .5") == (0.5, 0.5)
+    # Freitext-Suffix (Einheit) nach leading-dot - Einheit hat keine
+    # Zahlen, damit die Groessenordnung erhalten bleibt.
+    assert csv_loaders.parse_range(".5 mm") == (0.5, 0.5)
+    assert csv_loaders.parse_range(".05 g") == (0.05, 0.05)
+    # Regression-Anker: normale Werte (mit fuehrender Null) bleiben
+    # unveraendert, damit die neue Alternante die bestehende Konvention
+    # nicht umschreibt.
+    assert csv_loaders.parse_range("0.5") == (0.5, 0.5)
+    assert csv_loaders.parse_range("0.5-0.7") == (0.5, 0.7)
+    # Regression-Anker: leading-Komma (``,5`` alleinstehend) wird NICHT
+    # als Dezimal interpretiert - waere in DE-Locale mehrdeutig; US-
+    # Konvention kennt kein leading-Komma-Dezimal, und Excel-DE schreibt
+    # ``0,5`` mit fuehrender Null. Der String faellt auf die generische
+    # Zahl-Suche zurueck, findet die ``5`` als eigenstaendige Ganzzahl.
+    assert csv_loaders.parse_range(",5") == (5.0, 5.0)
+
+
 def test_parse_range_schweizer_apostroph_tausender():
     """Schweizer Tausendertrenner ''' wird ignoriert (CHF-Betraege aus Excel)."""
     # Ohne Fix waere "1'000.00" als (1, 0) gelesen worden.
