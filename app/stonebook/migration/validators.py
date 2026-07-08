@@ -610,8 +610,7 @@ _YEAR_MONTH_NAME_DAY = re.compile(
 
 # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024", "Frühjahr 2020").
 # Konvention: meteorologischer Saison-Start im genannten Jahr (Maerz/Juni/Sep/Dez).
-# Winter wird auf Dezember desselben Jahres gelegt; "Winter 1999/2000" o.ae. werden
-# bewusst nicht aufgeloest (Mehrdeutigkeit) und fallen auf None.
+# Winter wird auf Dezember desselben Jahres gelegt.
 _SEASON_MONTHS: dict[str, int] = {
     "fruehling": 3, "fruehjahr": 3, "spring": 3,
     "sommer": 6, "summer": 6,
@@ -620,6 +619,37 @@ _SEASON_MONTHS: dict[str, int] = {
 }
 _SEASON_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]?\s*(\d{4})\s*$",
+)
+# Winter-Cross-Year-Notation ("Winter 2023/2024", "Winter 2023/24", "Winter
+# 1999-2000", "Winter 2023-24") - sehr verbreitet in Sammlungs-Notizen und
+# Foto-Captions, wenn der Fund oder die Aktivitaet in die Winter-Saison faellt,
+# die per Konvention zwei Kalenderjahre umschliesst (Dezember - Februar).
+# Ohne diese Notation fielen alle Formen mit Doppel-Jahr-Notation stille auf
+# None, obwohl "Winter YYYY/YYYY+1" die de-facto Konvention fuer den Winter-
+# Zeitraum in Wetter-/Klima-Kontexten und Sammler-Etiketten ist ("Winter
+# 2023/24 in den Schweizer Alpen gefunden", "Wintersaison 2023/2024",
+# "collected winter 2023-24 from a Swiss dealer").
+#
+# Konvention: Winter-Startmonat ist Dezember des ersten Jahres (spiegelt
+# _SEASON_MONTHS["winter"] = 12 und die bereits fuer "Winter YYYY" (ohne
+# Cross-Year-Notation) gelieferte YYYY-12-01-Semantik). Zwei-Ziffer-Kurzform
+# im zweiten Jahr ("2023/24" statt "2023/2024") wird auf das benachbarte
+# Jahrhundert des ersten Jahres normalisiert: 2023 + 24 -> 2024 (nicht 1924).
+# Semantische Konsistenz-Pruefung: das zweite Jahr muss exakt das erste Jahr
+# plus 1 sein (typische Winter-Semantik); alle anderen Kombinationen fallen
+# auf None (Tippfehler oder falsche Interpretation als Jahres-Range statt
+# Winter-Range).
+#
+# Nur "winter"/"Winter" wird akzeptiert - die uebrigen Saisons (Fruehling,
+# Sommer, Herbst) enden natuerlicherweise innerhalb eines Kalenderjahres und
+# haben keine Cross-Year-Notation im gaengigen Sprachgebrauch. Slash und
+# Bindestrich als Trenner symmetrisch zur bereits vorhandenen _YEAR_RANGE-
+# Konvention ("1999/2000" und "1999-2000" beide erlaubt). Vor _SEASON_YEAR
+# geprueft, weil das Basis-Pattern nur eine 4-Ziffer-Jahres-Zahl akzeptiert
+# und die Doppel-Jahr-Form (4/4 oder 4/2 Ziffern) strukturell disjunkt ist.
+_SEASON_CROSS_YEAR = re.compile(
+    r"^\s*(winter)\.?\s*[, ]?\s*(\d{4})\s*[/\-–—]\s*(\d{4}|\d{2})\s*$",
+    re.IGNORECASE,
 )
 
 # Quartal + Jahr ("Q1 2024", "Q3/1985", "1. Quartal 2024", "3. Quarter 1985",
@@ -1532,6 +1562,26 @@ def parse_iso_date(text) -> str | None:
         year = int(m.group(2))
         if 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # Winter-Cross-Year-Notation ("Winter 2023/2024", "Winter 2023/24",
+    # "Winter 1999-2000", "Winter 2023-24"). Vor _SEASON_YEAR geprueft, weil
+    # die Doppel-Jahr-Form dem Basis-Pattern (nur eine 4-Ziffer-Zahl) strukturell
+    # unbekannt ist und ohne Sonderpfad still auf None faellt. Konvention:
+    # Dezember des ersten Jahres (spiegelt _SEASON_MONTHS["winter"] = 12);
+    # semantische Konsistenz-Pruefung stellt sicher, dass das zweite Jahr
+    # exakt das erste Jahr plus 1 ist (typische Winter-Saison-Semantik).
+    m = _SEASON_CROSS_YEAR.match(s)
+    if m:
+        year_start = int(m.group(2))
+        year_end_raw = m.group(3)
+        if len(year_end_raw) == 2:
+            year_end = (year_start // 100) * 100 + int(year_end_raw)
+            if year_end <= year_start:
+                year_end += 100
+        else:
+            year_end = int(year_end_raw)
+        if 1800 <= year_start <= 2999 and year_end == year_start + 1:
+            return f"{year_start:04d}-12-01"
+        return None
     # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024"): meteorologischer
     # Saison-Start im genannten Jahr. Ueber denselben _MONTH_YEAR-Regex
     # gepatched, damit "Juni 2024" (Monat) Vorrang vor Seasons hat.

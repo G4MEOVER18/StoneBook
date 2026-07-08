@@ -1121,8 +1121,75 @@ def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Sommer 1700") is None    # ausserhalb 1800-2999
     assert parse_iso_date("Foosaison 2020") is None  # kein bekannter Saison-Name
     assert parse_iso_date("Spring") is None          # Jahreszeit ohne Jahr
-    # "Winter 1999/2000" ist mehrdeutig (Jahreswechsel) → bewusst nicht parsen
-    assert parse_iso_date("Winter 1999/2000") is None
+
+
+def test_parse_iso_date_winter_cross_year():
+    """Winter-Cross-Year-Notation ("Winter YYYY/YYYY+1", "Winter YYYY/YY",
+    "Winter YYYY-YYYY+1"): sehr verbreitet in Sammlungs-Notizen und Foto-
+    Captions, wenn Fund/Aktivitaet in die Winter-Saison faellt, die per
+    Konvention zwei Kalenderjahre umschliesst (Dezember-Februar). Ohne diese
+    Notation fiel jede Form mit Doppel-Jahr auf None, obwohl "Winter
+    YYYY/YYYY+1" die de-facto Konvention in Wetter-/Klima-Kontexten und
+    Sammler-Etiketten ist. Konvention: Dezember des ersten Jahres (spiegelt
+    _SEASON_MONTHS["winter"] = 12 und die bereits gelieferte YYYY-12-01-
+    Semantik fuer "Winter YYYY" ohne Cross-Year-Notation).
+    """
+    # Vollstaendige 4/4-Ziffer-Form mit Slash-Trenner
+    assert parse_iso_date("Winter 2023/2024") == "2023-12-01"
+    assert parse_iso_date("Winter 1999/2000") == "1999-12-01"
+    assert parse_iso_date("Winter 2098/2099") == "2098-12-01"
+    # Kurzform mit 2-Ziffer-Ende (2023/24) - haeufigste Notation in
+    # Sammlungs-Notizen und Wettersaison-Berichten
+    assert parse_iso_date("Winter 2023/24") == "2023-12-01"
+    assert parse_iso_date("Winter 2000/01") == "2000-12-01"
+    # Jahrhundert-Boundary-Form 2099/00 (Kurzform) - der (year_start // 100)
+    # * 100 + int(year_end_raw)-Fall mit year_end_raw = 00 muss +100 kompen-
+    # sieren, damit 2099/00 -> 2100 (nicht 2000) als semantische Nachfolge
+    # gelesen wird
+    assert parse_iso_date("Winter 2099/00") == "2099-12-01"
+    # Bindestrich-Trenner symmetrisch zu Slash (analog _YEAR_RANGE-Konvention)
+    assert parse_iso_date("Winter 1999-2000") == "1999-12-01"
+    assert parse_iso_date("Winter 2023-24") == "2023-12-01"
+    # En-Dash/Em-Dash (typografische Print-Notation aus Word-Autoformat und
+    # LaTeX-Exporten)
+    assert parse_iso_date("Winter 2023–2024") == "2023-12-01"
+    assert parse_iso_date("Winter 2023—2024") == "2023-12-01"
+    # Whitespace um den Trenner (Word-Autoformat setzt oft Leerzeichen um
+    # den Bindestrich in Range-Notationen)
+    assert parse_iso_date("Winter 2023 / 2024") == "2023-12-01"
+    assert parse_iso_date("Winter 2023 - 2024") == "2023-12-01"
+    # Case-Insensitivitaet
+    assert parse_iso_date("winter 2023/24") == "2023-12-01"
+    assert parse_iso_date("WINTER 2023/2024") == "2023-12-01"
+    # Regression: "Winter YYYY" (Single-Year, ohne Cross-Year-Notation)
+    # bleibt unveraendert - dieselbe YYYY-12-01-Semantik
+    assert parse_iso_date("Winter 2023") == "2023-12-01"
+    assert parse_iso_date("winter 2023") == "2023-12-01"
+    # Regression: andere Saisons ohne Cross-Year bleiben unveraendert
+    assert parse_iso_date("Sommer 2023") == "2023-06-01"
+    assert parse_iso_date("Fruehling 2024") == "2024-03-01"
+
+
+def test_parse_iso_date_winter_cross_year_ungueltig():
+    """Winter-Cross-Year-Notation: semantische Konsistenz-Pruefung und
+    Whitelist auf 'winter'. Nicht-konsekutive Jahres-Paare, nicht-Winter-
+    Saisons und Werte ausserhalb des 1800..2999-Bandes werden zurueckgewiesen.
+    """
+    # Nicht-konsekutive Jahres-Paare (semantische Winter-Saison verlangt
+    # exakt year_end == year_start + 1)
+    assert parse_iso_date("Winter 2023/2025") is None
+    assert parse_iso_date("Winter 2023/22") is None
+    assert parse_iso_date("Winter 2023-2030") is None
+    # Nur "winter" akzeptiert Cross-Year - die uebrigen Saisons enden
+    # natuerlicherweise innerhalb eines Kalenderjahres
+    assert parse_iso_date("Sommer 2023/2024") is None
+    assert parse_iso_date("Summer 2023/2024") is None
+    assert parse_iso_date("Fruehling 2023/2024") is None
+    assert parse_iso_date("Spring 2023/2024") is None
+    assert parse_iso_date("Herbst 2023/2024") is None
+    assert parse_iso_date("Autumn 2023/2024") is None
+    # Jahr ausserhalb [1800, 2999]
+    assert parse_iso_date("Winter 1799/1800") is None
 
 
 def test_parse_iso_date_numerisches_monat_jahr():
