@@ -475,6 +475,57 @@ def test_parse_range_wissenschaftliche_notation():
     assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
 
 
+def test_parse_range_scientific_notation_overflow():
+    """Overflow der Exponent-Notation (``1e400`` -> ``inf``) faellt auf ``(None, None)``.
+
+    ``float()`` konvertiert Mantissen jenseits des IEEE-754-Bereichs
+    (rund ``1.7976931348623157e+308``) stille zu ``+inf``/``-inf`` und
+    ``inf ± inf`` bzw. ``inf - inf`` zu ``NaN``. Ohne Filter wanderten
+    diese Werte transparent als vermeintlich gueltige Bereichsgrenzen in
+    die Numeric-Felder (Wert_CHF, Gewicht_g, Dichte, Haerte) und
+    korrumpierten stille alle nachgelagerten Operationen: SUM/AVG in der
+    Statistik lieferten ``inf``, Sortierung nach Wert setzt den
+    Overflow-Datensatz endlos an die Spitze, JSON-Export via
+    ``json.dumps`` mit ``allow_nan=False`` verweigert die Serialisierung
+    (Backup-CLI wuerde brechen) und ``allow_nan=True`` schreibt das
+    JSON-spec-widrige Literal ``Infinity``. Vor dem Fix lieferte
+    ``'1e400'`` -> ``(inf, inf)``, ``'1e400 ± 0.1'`` -> ``(inf, inf)`` und
+    ``'5.5 - 1e400'`` -> ``(5.5, inf)``.
+
+    Semantisch ist ein Token, das float nicht darstellen kann, aequivalent
+    zu "kein gueltiger Wert" - konsistent mit der bestehenden ``(None,
+    None)``-Rueckgabe fuer leere/nicht-parsbare Eingaben. Bei gemischten
+    Ranges (endlich + overflow) bleibt der endliche Teil als (n, n)
+    erhalten, damit die endliche Halb-Information nicht mit-verworfen
+    wird.
+    """
+    # Reiner Overflow: das einzige Token ueberlaeuft, keine Zahl uebrig.
+    assert csv_loaders.parse_range("1e400") == (None, None)
+    assert csv_loaders.parse_range("1E400") == (None, None)
+    assert csv_loaders.parse_range("2.5e999") == (None, None)
+    # Explizit negativer Overflow (typografisch selten, aber float()-symmetrisch).
+    assert csv_loaders.parse_range("-1e400") == (None, None)
+    # Beide Range-Seiten ueberlaufen -> keine endliche Grenze uebrig.
+    assert csv_loaders.parse_range("1e400 - 5e400") == (None, None)
+    # Gemischt: nur eine Seite ueberlaeuft; die endliche Halb-Info bleibt
+    # als Punkt-Wert erhalten (via inverted-range-Fallback nach der
+    # finite-Filter-Reduktion).
+    assert csv_loaders.parse_range("5.5 - 1e400") == (5.5, 5.5)
+    assert csv_loaders.parse_range("1e400 - 5.5") == (5.5, 5.5)
+    # Uncertainty-Zweige mit Overflow-Center: arithmetische Verkettung
+    # (``inf ± tol`` bzw. ``inf(2)``) liefert ``inf``/``NaN``, wird
+    # via ``_finite_pair`` auf ``(None, None)`` gemappt.
+    assert csv_loaders.parse_range("1e400 ± 1e400") == (None, None)
+    # Regression-Anker: normale scientific notation innerhalb des
+    # float-Bereichs bleibt unveraendert (die Filter greift nur bei
+    # Overflow, nicht bei allen Werten mit Exponent).
+    assert csv_loaders.parse_range("4.5e9") == (4.5e9, 4.5e9)
+    assert csv_loaders.parse_range("2.5e-19") == (2.5e-19, 2.5e-19)
+    # Underflow zu subnormal/0.0 bleibt endlich und wird NICHT gefiltert -
+    # 0 ist ein legitimer Zahl-Wert (Nullpunkt), im Gegensatz zu inf.
+    assert csv_loaders.parse_range("1e-400") == (0.0, 0.0)
+
+
 def test_parse_range_leading_dot_dezimal():
     """Leading-Dot-Dezimals ``.5`` / ``.05`` / ``.5e-3`` werden als Wert < 1 gelesen.
 

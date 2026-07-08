@@ -1,6 +1,7 @@
 """Loader für die drei historischen CSV-Formate → Standard-Felddicts."""
 import csv
 import io
+import math
 import re
 from pathlib import Path
 
@@ -391,6 +392,22 @@ def parse_range(text) -> tuple[float | None, float | None]:
     (``'.5'`` → (0.5, 0.5), ``'.5-.7'`` → (0.5, 0.7), ``'.5e-3'`` →
     (0.0005, 0.0005)) - US-Konvention und wissenschaftliche Publikationen
     ohne leading zero (siehe :data:`_NUM_RE`).
+
+    Nicht-endliche Werte (Overflow der scientific-notation zu ``+inf`` /
+    ``-inf`` sowie ``NaN`` aus arithmetischer Verkettung wie ``inf - inf``
+    in Uncertainty-Zweigen) fallen auf ``(None, None)`` zurueck. Ein
+    Token wie ``'1e400'`` wuerde sonst via ``float()`` transparent zu
+    ``inf`` konvertiert und als vermeintlich gueltige Bereichsgrenze in
+    Numeric-Felder wandern; ``inf`` in einem CHF-/Gewicht-/Dichte-Feld
+    korrumpiert stille jede nachgelagerte SUM/AVG-Aggregation (Statistik-
+    Report), verletzt die JSON-Spec (``json.dumps`` mit
+    ``allow_nan=False`` verweigert ``inf``, der Standard-Export
+    schreibt das nicht-standardkonforme Literal ``Infinity``) und
+    verzerrt Vergleichs-/Sortier-Reihenfolgen ("groesste 10 Objekte"
+    zeigt endlos den einen ueberlaufenen Wert). Semantisch ist ein
+    Token, das float nicht darstellen kann, aequivalent zu "kein
+    gueltiger Wert" - konsistent mit der bestehenden None-Rueckgabe fuer
+    leere/nicht-parsbare Eingaben.
     """
     if text is None:
         return None, None
@@ -404,7 +421,7 @@ def parse_range(text) -> tuple[float | None, float | None]:
     if m:
         center = float(m.group(1).replace(",", "."))
         tol = float(m.group(2).replace(",", "."))
-        return center - tol, center + tol
+        return _finite_pair(center - tol, center + tol)
     # Kompakt-Unsicherheits-Notation ``N(M)`` (IUCr-Standard) vor der
     # generischen Zahlen-Extraktion pruefen: ohne diesen Zweig wuerde
     # ``5.5(3)`` als ``[5.5, 3.0]`` erkannt und via ``if hi < lo`` auf
@@ -422,7 +439,7 @@ def parse_range(text) -> tuple[float | None, float | None]:
         center = float(center_str)
         n_decimals = len(center_str.split(".", 1)[1]) if "." in center_str else 0
         tol = int(m.group(2)) / (10 ** n_decimals)
-        return center - tol, center + tol
+        return _finite_pair(center - tol, center + tol)
     # Klammer-Annotation vor der generischen Zahl-Extraktion strippen: Sammler-
     # Notizen setzen Foto-/Katalog-/Referenz-Marker (``(Nr. 42)``, ``(2020)``,
     # ``[verified]``, ``{geerbt}``) rein zusaetzlich zum Wert, oft mit einer
@@ -431,12 +448,41 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # (5.5, 5.5)). Siehe :func:`_strip_bracketed_annotations` fuer Details
     # zur Nest-Aufloesung und dem Rueckfall-Schutz bei Wert-in-Klammern.
     s = _strip_bracketed_annotations(s)
-    nums = [float(n.replace(",", ".")) for n in _NUM_RE.findall(s)]
+    # Nicht-endliche Tokens (``1e400`` -> ``inf`` via ``float()``-Overflow)
+    # aus der Zahl-Menge vor der lo/hi-Auswahl filtern: sonst wuerde
+    # ``'1e400'`` als ``(inf, inf)`` und ``'5.5 - 1e400'`` als ``(5.5, inf)``
+    # in Numeric-Felder wandern und alle nachgelagerten Aggregationen /
+    # Sortierungen / JSON-Exporte korrumpieren. Der Filter greift *nach* der
+    # bracketed-annotation-Strip (damit ein overflow-Token in einer
+    # Annotation - selten, aber theoretisch moeglich - dieselbe Behandlung
+    # wie eine Katalog-Nummer erhaelt: raus aus der Wert-Menge). Fallback
+    # auf ``(None, None)`` wenn *alle* Tokens ueberlaufen sind, spiegelt die
+    # "keine Zahl gefunden"-Semantik von leerem Eingabe-Text.
+    nums = [
+        f for f in (float(n.replace(",", ".")) for n in _NUM_RE.findall(s))
+        if math.isfinite(f)
+    ]
     if not nums:
         return None, None
     lo, hi = nums[0], nums[-1]
     if hi < lo:
         return lo, lo
+    return lo, hi
+
+
+def _finite_pair(lo: float, hi: float) -> tuple[float | None, float | None]:
+    """Gibt ``(lo, hi)`` nur zurueck, wenn beide Werte endlich sind, sonst ``(None, None)``.
+
+    Schutzt die Uncertainty-Zweige (``_PLUS_MINUS_UNCERTAINTY``,
+    ``_PARENTHESIS_UNCERTAINTY``) vor arithmetischer Overflow-/NaN-
+    Verkettung: ``float("1e400") ± 0.1`` liefert ``(inf, inf)``, und
+    ``float("1e400") ± float("1e400")`` liefert ``(nan, nan)`` (via
+    ``inf - inf``) - beide Formen sind semantisch "kein gueltiger
+    Wert" und werden konsistent zur restlichen Filter-Kette (siehe
+    :func:`parse_range`) auf ``(None, None)`` gemappt.
+    """
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        return None, None
     return lo, hi
 
 
