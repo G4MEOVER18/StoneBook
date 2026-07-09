@@ -82,8 +82,24 @@ _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 # (``1980-ern``, ``1980 ern`` sind selten aber spec-konform); nach dem
 # Suffix darf optional ``jahre(?:n)?`` folgen (redundant zur substantivierten
 # Form aber unschaedlich, spiegelt die uebrigen Suffix-Zweige).
+#
+# Trenner zwischen ``er``/``ern``/``s`` und dem optionalen ``jahre(?:n)?``-
+# Trailer als ``[-\s]+`` deckt auch die hyphenierte Kompositum-Form
+# ``1980er-Jahre`` / ``1980er-Jahren`` ab, die neben der artikellosen
+# Standard-Form ``1980er Jahre`` als offizielle Duden-alternative Schreibweise
+# gilt (Zusammenschreibung der aus Ziffer + er-Suffix + Substantiv
+# gebildeten Zeit-Bezeichnung). In DE-Publikationen und Sammler-Notizen
+# sehr verbreitet ("die 1980er-Jahre", "in den 1990er-Jahren", "spaete
+# 2000er-Jahre") - vor der Erweiterung fielen alle Bindestrich-Kompositum-
+# Formen still auf None, weil der Trenner obligatorisches Whitespace
+# verlangte. Semantisch identisch zur getrennten Schreibweise (Konvention:
+# Dekaden-Start). Der Zeichenklasse ``[-\s]+`` erlaubt beliebige Kombina-
+# tionen aus Bindestrich(en) und Whitespace, sodass auch die zusammen-
+# gesetzte Form ``1980-er-Jahre`` (Bindestrich sowohl vor dem er-Suffix
+# als auch vor dem Jahre-Trailer, seltene aber vorkommende typografische
+# Praxis in Print-Katalogen) aufgeloest wird.
 _DECADE = re.compile(
-    r"^\s*(\d{4})(?:[\- ]?(?:ern|er|s))(?:\s+jahren?)?\s*$",
+    r"^\s*(\d{4})(?:[\- ]?(?:ern|er|s))(?:[-\s]+jahren?)?\s*$",
     re.IGNORECASE,
 )
 # Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960", "1950 - 1960") -
@@ -1210,7 +1226,14 @@ _RELATIVE_DECADE = re.compile(
     r"|fr(?:üh|ueh)(?:e|em|en|er|es)"
     r"|sp(?:ät|aet)(?:e|em|en|er|es))"
     r"[-\s]+(?:der\s+)?(\d{4})(?:[\- ]?(?:ern|er|s))"
-    r"(?:\s+jahren?)?\s*$",
+    # Trenner zwischen Dekaden-Suffix und optionalem ``jahre(?:n)?``-Trailer
+    # als ``[-\s]+`` (analog zu _DECADE), damit die hyphenierte Kompositum-
+    # Form ``Anfang der 1980er-Jahre`` / ``mid-1990er-Jahren`` / ``spaete
+    # 2000er-Jahre`` erkannt wird (Duden-alternative Zusammenschreibung, in
+    # DE-Publikationen sehr verbreitet). Ohne den Bindestrich-Zweig fielen
+    # alle Relativ-Positions-Formen mit hyphenierten Trailer still auf
+    # None, obwohl semantisch identisch zur getrennten Schreibweise.
+    r"(?:[-\s]+jahren?)?\s*$",
     re.IGNORECASE,
 )
 

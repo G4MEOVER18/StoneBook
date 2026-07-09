@@ -842,6 +842,71 @@ def test_parse_iso_date_jahrzehnt_dativ_plural_substantiviert():
     assert parse_iso_date("1980er Jahre") == "1980-01-01"
 
 
+def test_parse_iso_date_jahrzehnt_hyphen_kompositum():
+    """Hyphenierte Kompositum-Form der Dekaden-Notation ('1980er-Jahre',
+    '1990er-Jahren') wird semantisch identisch zur getrennten Schreibweise
+    ('1980er Jahre') auf den Dekaden-Anker gemappt.
+
+    Duden erkennt neben der getrennten Standard-Form ``die 1980er Jahre``
+    auch die Zusammenschreibung ``die 1980er-Jahre`` als offizielle
+    alternative Notation an. In DE-Publikationen, Print-Katalogen und
+    Sammler-Notizen sehr verbreitet (Wikipedia-Artikel typischer Musik-/
+    Kultur-Themen der Dekade nutzen die Bindestrich-Form, ebenso viele
+    Buch-Titel wie "Musik der 1980er-Jahre"). Bisher fiel diese
+    orthografisch korrekte Kompositum-Form still auf None, obwohl
+    semantisch identisch zur getrennten Form.
+
+    Konvention: Dekaden-Start (spiegelt die uebrigen Formen). Beide
+    Dekaden-Suffix-Varianten (DE ``er``/``ern`` und EN ``s``) und alle
+    Trailer-Kasus-Varianten (Nominativ ``Jahre``, Dativ ``Jahren``)
+    werden akzeptiert.
+    """
+    # Direkt hyphenierte Kompositum-Form (Duden-alternative Zusammenschreibung)
+    assert parse_iso_date("1980er-Jahre") == "1980-01-01"
+    assert parse_iso_date("1990er-Jahre") == "1990-01-01"
+    assert parse_iso_date("2000er-Jahre") == "2000-01-01"
+    # Dativ-Plural mit hyphenierter Kompositum-Form
+    assert parse_iso_date("1980er-Jahren") == "1980-01-01"
+    assert parse_iso_date("1990er-Jahren") == "1990-01-01"
+    # Doppel-Bindestrich (Bindestrich vor er-Suffix UND vor Jahre-Trailer)
+    assert parse_iso_date("1980-er-Jahre") == "1980-01-01"
+    assert parse_iso_date("1990-er-Jahren") == "1990-01-01"
+    # Case-insensitive
+    assert parse_iso_date("1980ER-JAHRE") == "1980-01-01"
+    assert parse_iso_date("1980er-jahre") == "1980-01-01"
+    # In Kombination mit _TEMPORAL_PREFIX (Standard-praepositionale Wendung
+    # "in den 1980er-Jahren" = Praeposition "in" + Artikel "den" + hyphenierte Dekade)
+    assert parse_iso_date("in den 1980er-Jahren") == "1980-01-01"
+    assert parse_iso_date("in den 1990er-Jahren") == "1990-01-01"
+    assert parse_iso_date("aus den 2000er-Jahren") == "2000-01-01"
+    # Mit Annaeherungspraefix (Verkettung ueber Rekursion)
+    assert parse_iso_date("ca. 1980er-Jahre") == "1980-01-01"
+    assert parse_iso_date("circa 1990er-Jahren") == "1990-01-01"
+    # Mit trailing Satzzeichen
+    assert parse_iso_date("1980er-Jahre.") == "1980-01-01"
+    # Kombiniert mit DE-Adjektiv-Relativposition (frueh/spaet + hyphenierte Kompositum-Form)
+    assert parse_iso_date("die fruehen 1980er-Jahre") == "1980-01-01"
+    assert parse_iso_date("die spaeten 1990er-Jahren") == "1999-01-01"
+    assert parse_iso_date("frueh 1980er-Jahre") is None  # Adjektiv-Endung obligatorisch
+    # Kombiniert mit Anfang/Mitte/Ende + hyphenierte Kompositum-Form
+    assert parse_iso_date("Anfang der 1980er-Jahre") == "1980-01-01"
+    assert parse_iso_date("Mitte der 1990er-Jahre") == "1995-01-01"
+    assert parse_iso_date("Ende der 2000er-Jahre") == "2009-01-01"
+    # Kombiniert mit EN-Relativposition + hyphenierte Kompositum-Form (Mischform,
+    # in bilingualen Sammlungs-Notizen vorkommend)
+    assert parse_iso_date("mid-1990er-Jahre") == "1995-01-01"
+    assert parse_iso_date("late 2000er-Jahren") == "2009-01-01"
+    # Regression-Anker: getrennte Standard-Form und artikellose Nominativ-Form
+    # bleiben unveraendert
+    assert parse_iso_date("1980er Jahre") == "1980-01-01"
+    assert parse_iso_date("1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("1980er") == "1980-01-01"
+    assert parse_iso_date("1980-er") == "1980-01-01"
+    # Out-of-Range bleibt ausgeschlossen
+    assert parse_iso_date("1700er-Jahre") is None
+    assert parse_iso_date("3000er-Jahre") is None
+
+
 def test_parse_iso_date_jahrhundert():
     """Jahrhundert-Notation (DE/EN) ergibt das Jahrhundert-Startjahr.
 
