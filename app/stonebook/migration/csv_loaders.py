@@ -146,9 +146,35 @@ _NUM_RE = re.compile(
 # :data:`_TRAILING_UNIT_TOKENS` verlangt beim ersten Token einen Nicht-
 # Klammer-Nicht-Ziffer-Buchstaben und schliesst so runde/eckige/geschweifte
 # Klammern strukturell aus.
+# Trailing-Bracket-Annotations-Zweig ``(?:\s*[(\[{][^()\[\]{}]*[)\]}])*``
+# nach der Einheit-Wort-Sequenz - deckt die typische Kombination "Wert +
+# Toleranz + Einheit + Freitext-Klammer-Annotation" ab, die in publizierten
+# mineralogischen Referenz-Tabellen der Standard ist ("2.65 ± 0.05 g/cm³
+# (Literatur)", "5.5 ± 0.3 Mohs [Ref 42]", "100 ± 2 HV {IUCr}"). Bisher
+# fiel diese verbreitete Notation still auf einen Toleranz-Verlust durch:
+# das Regex ankert auf ``\s*$``, aber die Trailing-Klammer-Annotation blockte
+# das End-Anker-Matching (die Einheits-Wort-Sequenz stoppt vor der Klammer,
+# weil das erste Klammer-Zeichen in der [^\s\d(){}\[\],;]-Ausschluss-Klasse
+# liegt), sodass "2.65 ± 0.05 g/cm³ (Literatur)" auf die Fallback-Zahl-
+# Extraktion durchfiel und die publizierte Toleranz stille auf (2.65, 2.65)
+# kollabierte. Bei der Migration aus wissenschaftlichen Publikationen und
+# Datenbank-Exporten, die Wert-mit-Toleranz-mit-Einheit-mit-Referenz-
+# Annotation als kanonische Zeile schreiben, entstand damit silenter
+# Praezisions-Datenverlust auf jeder Dichte-/Haerte-/Wert-Achse mit Literatur-
+# Verweis.
+#
+# Der neue Zweig matcht null oder mehr Klammer-Gruppen (rund/eckig/geschweift),
+# jede mit optionalem Whitespace davor und beliebigem Inner-Content (ausser
+# den drei Klammer-Zeichen selbst) - single-level, keine Verschachtelung.
+# Nested Klammern (``(Foto (gut))``) sind in Wert-Feld-Annotationen sehr
+# selten; falls sie auftreten, faellt die Klammer auf die Zahl-Extraktion
+# durch, was Rueckwaerts-kompatibel mit dem alten Verhalten ist. Die drei
+# Klammer-Typen sind symmetrisch behandelt, spiegelt die Konvention der
+# :func:`_strip_bracketed_annotations`-Helper.
 _PLUS_MINUS_UNCERTAINTY = re.compile(
     r"^\s*(-?\d+(?:[.,]\d+)?)\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)"
-    r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*\s*$"
+    r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
+    r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
 )
 
 # IUCr / kristallographische Kompakt-Unsicherheits-Notation ``N(M)`` - der
@@ -200,9 +226,23 @@ _PLUS_MINUS_UNCERTAINTY = re.compile(
 # Tabellen ist die Kompaktform *mit* Einheit die uebliche Praxis (Dichte:
 # ``g/cm³``; Haerte: ``Mohs``/``HV``/``HB``; Kristall-Achsen: ``Å``), daher
 # ist die Einheits-Toleranz genauso wichtig wie bei der ±-Langform.
+# Trailing-Bracket-Annotations-Zweig symmetrisch zur _PLUS_MINUS_UNCERTAINTY-
+# Erweiterung (siehe Kommentar dort fuer Details zur Motivation, zur single-
+# level-Konvention und zur symmetrischen Klammer-Typen-Behandlung). Deckt
+# hier die IUCr-Kompaktform-plus-Referenz-Annotation ab ("2.65(5) g/cm³
+# (Literatur)", "5.5(3) Mohs [Ref 42]", "12.345(67) K [NIST-CODATA-2018]") -
+# in publizierten Kristallographie-/Mineralogie-Tabellen die kanonische
+# Zeilenform (Wert-mit-Kompakt-Toleranz + Einheit + Literatur-Referenz).
+# Bisher fiel diese Kombination still auf einen Praezisions-Verlust durch
+# (analog _PLUS_MINUS_UNCERTAINTY): die Trailing-Klammer-Annotation blockte
+# das End-Anker-Matching, "2.65(5) g/cm³ (Literatur)" fiel auf die Fallback-
+# Zahl-Extraktion mit (2.65, 2.65)-Kollaps (Toleranz verloren) oder auf
+# einen semantisch falschen Range durch, wenn die Annotation eine hoehere
+# Zahl enthielt (2.65, ..., > 2.65).
 _PARENTHESIS_UNCERTAINTY = re.compile(
     r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)"
-    r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*\s*$"
+    r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
+    r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
 )
 
 # Eindeutig erkennbare Tausender-Strukturen (Komma+Punkt oder Punkt+Komma in einer Zahl,

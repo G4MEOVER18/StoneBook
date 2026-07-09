@@ -113,8 +113,11 @@ def test_parse_range_klammer_unsicherheit():
     # (echte Annotations-Klammern wie "1.5 (Literatur)" duerfen nicht als
     # Unsicherheit interpretiert werden); Fallback auf Zahl-Extraktion.
     assert csv_loaders.parse_range("5.5 (3)") == (5.5, 5.5)
-    # Freitext-Anhang bricht das $-Anker-Pattern; Fallback liefert nur Center.
-    assert csv_loaders.parse_range("5.5(3) (Literatur)") == (5.5, 5.5)
+    # Freitext-Klammer-Annotation NACH IUCr-Kompaktform (durch Whitespace
+    # getrennt) wird jetzt toleriert - die Trailing-Klammer-Erweiterung des
+    # Uncertainty-Patterns matcht die publizierte Wert-mit-Toleranz-mit-
+    # Referenz-Notation als kanonische Publikations-Zeilenform.
+    assert csv_loaders.parse_range("5.5(3) (Literatur)") == pytest.approx((5.2, 5.8))
     # Ganzzahliger Wert mit einstelliger Toleranz (haeufig in NIST-Tabellen).
     assert csv_loaders.parse_range("50(1)") == pytest.approx((49.0, 51.0))
     # Toleranz-Klammer allein (ohne Center) bleibt Standard-Fallback.
@@ -234,10 +237,14 @@ def test_parse_range_plus_minus_unsicherheit():
     # Toleranz = 0 kollabiert auf Punkt-Wert (Publikationen ohne dokumentierte
     # Unsicherheit notieren manchmal explizit ± 0 als "exakt gemessen").
     assert csv_loaders.parse_range("5.5 ± 0") == (5.5, 5.5)
-    # Freitext-Anhang bricht das Pattern; Fallback auf Zahl-Extraktion liefert
-    # nur den Center (Toleranz wird ohne strikten Pattern-Match nicht gesondert
-    # ausgewertet).
-    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur)") == (5.5, 5.5)
+    # Freitext-Klammer-Annotation nach Uncertainty wird jetzt toleriert - die
+    # Trailing-Klammer-Erweiterung des Patterns matcht die publizierte
+    # Wert-mit-Toleranz-mit-Referenz-Notation ("5.5 ± 0.3 (Literatur)",
+    # "5.5 ± 0.3 [Ref]", "5.5 ± 0.3 {IUCr}") als kanonische Publikations-
+    # Zeilenform. Vor der Erweiterung fielen alle diese Formen auf den
+    # Fallback-Zahl-Extraktions-Kollaps (5.5, 5.5), obwohl die publizierte
+    # Toleranz die intendierten Grenzen (5.2, 5.8) explizit setzt.
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur)") == pytest.approx((5.2, 5.8))
     # Ohne Center (nur Toleranz) bleibt das alte Verhalten: eine Zahl.
     assert csv_loaders.parse_range("± 0.5") == (0.5, 0.5)
 
@@ -269,8 +276,9 @@ def test_parse_range_plus_minus_ascii_ersatzform():
     assert csv_loaders.parse_range("2,65 +/- 0,05") == pytest.approx((2.60, 2.70))
     # Negativer Center - spiegelt die ±-Konvention
     assert csv_loaders.parse_range("-1.5 +/- 0.3") == pytest.approx((-1.8, -1.2))
-    # Freitext-Anhang: Fallback greift, spiegelt die ±-Konvention
-    assert csv_loaders.parse_range("5.5 +/- 0.3 (Literatur)") == (5.5, 5.5)
+    # Freitext-Klammer-Annotation nach Uncertainty wird jetzt toleriert -
+    # spiegelt die ±-Erweiterung auf die ASCII-Ersatzformen (+/- und +-).
+    assert csv_loaders.parse_range("5.5 +/- 0.3 (Literatur)") == pytest.approx((5.2, 5.8))
 
 
 def test_parse_range_uncertainty_mit_trailing_einheit():
@@ -289,10 +297,13 @@ def test_parse_range_uncertainty_mit_trailing_einheit():
     5.0 g/cm³ statt Toleranz 2.60 bis 2.70); ``5.5(3) Mohs`` fiel via
     inverted-Range auf ``(5.5, 5.5)`` (Toleranz verloren). Fix relaxt das
     ``$``-Ende beider Patterns auf einen Whitespace-getrennten Wort-Token-
-    Rest, der keine Klammern (schliesst ``(Literatur)``-Freitext-Anhaenge
-    strukturell aus) und keine Komma/Semikolon-Trenner erlaubt (schliesst
-    ``, siehe Nr. 42``-Listen aus, damit dortige Nummern nicht als
-    Range-Grenze fehlgelesen werden). Der erste Token-Buchstabe muss zudem
+    Rest, plus optionale Trailing-Klammer-Annotationen (rund/eckig/geschweift,
+    single-level), damit die publizierte Kombination "Wert + Toleranz +
+    Einheit + Literatur-/Katalog-Referenz" als kanonische Publikations-
+    Zeilenform erhalten bleibt. Komma/Semikolon-Trenner ausserhalb der
+    Klammer-Annotationen sind weiter ausgeschlossen (schliesst ``, siehe
+    Nr. 42``-Listen aus, damit dortige Nummern nicht als Range-Grenze
+    fehlgelesen werden). Der erste Token-Buchstabe im Einheiten-Wort muss
     kein ASCII-Digit sein - damit fallen zufaellige nachgestellte Zahlen
     (``5.5 ± 0.3 42``) auf die Zahl-Extraktion durch und werden nicht in
     die Toleranz eingemischt.
@@ -324,13 +335,21 @@ def test_parse_range_uncertainty_mit_trailing_einheit():
     # Mehrere trailing Wort-Tokens (Einheit + Skalen-Zusatz).
     assert csv_loaders.parse_range("5.5 ± 0.3 Mohs Haerte") == pytest.approx((5.2, 5.8))
     assert csv_loaders.parse_range("5.5(3) Mohs Haerte") == pytest.approx((5.2, 5.8))
-    # Regression-Anker: Klammer-Freitext-Anhang bricht die Einheits-Toleranz
-    # strukturell (das Trailing-Pattern schliesst runde Klammern aus). Fallback
-    # auf Zahl-Extraktion liefert nur den Center, die publizierte Toleranz
-    # geht in diesem Fall bewusst verloren, damit ``(Literatur)``-Referenzen
-    # nicht als Unsicherheit fehlgelesen werden.
-    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur)") == (5.5, 5.5)
-    assert csv_loaders.parse_range("5.5(3) (Literatur)") == (5.5, 5.5)
+    # Klammer-Freitext-Anhang nach Uncertainty (mit oder ohne Einheit dazwischen)
+    # wird jetzt toleriert - die Trailing-Klammer-Erweiterung des Patterns
+    # matcht die publizierte Wert-mit-Toleranz-mit-Einheit-mit-Referenz-Notation
+    # als kanonische Publikations-Zeilenform. Die publizierte Toleranz bleibt
+    # erhalten, spiegelt die _PLUS_MINUS_UNCERTAINTY-/_PARENTHESIS_UNCERTAINTY-
+    # Grundsemantik auf die reale IUCr-/NIST-Publikations-Praxis, in der Wert
+    # + Toleranz + Einheit + Literatur-Verweis eine einzige Tabellen-Zeile
+    # bilden.
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3) (Literatur)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³ (Literatur)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65(5) g/cm³ (Literatur)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5 ± 0.3 Mohs [Ref]") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3) Mohs [Ref]") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("12.345(67) K [NIST-CODATA-2018]") == pytest.approx((12.278, 12.412))
     # Regression-Anker: Komma-Anhang bricht das Trailing-Pattern (schliesst
     # ``, siehe Nr. 42``-Listen aus). Ohne diesen Ausschluss wuerde eine
     # nachgestellte Referenz-Nummer als Range-Grenze fehlgelesen.
@@ -388,11 +407,16 @@ def test_parse_range_klammer_annotation_wird_nicht_als_range_gelesen():
     # Verschachtelte Klammern werden vom Innen-nach-Aussen aufgeloest.
     assert csv_loaders.parse_range("5.5 (Foto (gut))") == (5.5, 5.5)
     assert csv_loaders.parse_range("5-7 [Range (Mohs) verified]") == (5.0, 7.0)
-    # Klammer-Freitext-Anhang bricht Uncertainty-Patterns; Fallback greift
-    # jetzt sauber mit Strip statt der zufaelligen Ref-Nr. als hi-Wert. Vorher:
-    # ``"5.5 ± 0.3 (Ref 42)"`` lieferte (5.5, 42.0) via nums=[5.5, 0.3, 42].
-    assert csv_loaders.parse_range("5.5 ± 0.3 (Ref 42)") == (5.5, 5.5)
-    assert csv_loaders.parse_range("5.5(3) (Ref 42)") == (5.5, 5.5)
+    # Klammer-Freitext-Anhang nach Uncertainty wird jetzt vom erweiterten
+    # Uncertainty-Pattern direkt matched (Trailing-Klammer-Erweiterung), sodass
+    # die publizierte Toleranz erhalten bleibt. Vorher: die Klammer blockte
+    # das End-Anker-Matching, und der Fallback lieferte via Strip nur den
+    # Center ("5.5 ± 0.3 (Ref 42)" -> (5.5, 5.5)); mit der Erweiterung matcht
+    # die Klammer-Annotation als Trailing-Zweig und die Toleranz-Grenzen
+    # bleiben erhalten ((5.2, 5.8) fuer die ±-Form, (5.2, 5.8) fuer die
+    # IUCr-Kompaktform).
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Ref 42)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3) (Ref 42)") == pytest.approx((5.2, 5.8))
     # Regression-Anker: Wert *selbst* in Klammern bleibt unangetastet.
     # Rueckfall-Schutz greift, weil nach dem Strip keine Ziffern mehr uebrig
     # waeren - die Klammer wird als Wert-Traeger interpretiert.
