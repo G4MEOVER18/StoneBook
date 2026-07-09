@@ -494,6 +494,100 @@ def test_parse_iso_date_annaeherungs_praefix_ungefaehr():
     assert parse_iso_date("schaetzungsweise 1985") == "1985-01-01"
 
 
+def test_parse_iso_date_annaeherungs_praefix_geschaetzt():
+    """``geschätzt``/``geschaetzt`` als Praefix (Past-Partizip-Form).
+
+    Erweitert :data:`_APPROX_PREFIX` um die DE-Past-Partizip-Form der
+    Schaetzung, die semantisch identisch zum bereits gelisteten adverbialen
+    ``sch[äa]tzungsweise`` ist, aber in Sammler-Notizen oft die verkuerzte
+    Alternative bildet ("Erwerb geschätzt 1985", "Fundzeitpunkt geschaetzt
+    Juni 2024"). Vor dem Fix fielen alle Praefix-Formen mit dieser Marke
+    still auf None, obwohl die identische EN-Past-Partizip-Form
+    ``estimated`` (spiegelt exakt dieselbe Grammatik) bereits erkannt wurde
+    - eine DE/EN-Asymmetrie im Past-Partizip-Register. Umlaut- und ae-
+    Transliterations-Variante parallel wie bei ``ungef[äa]hr`` /
+    ``sch[äa]tzungsweise``.
+    """
+    # DE-Umlaut-Form (Standard-Schreibweise auf sauber gesetzten Etiketten)
+    assert parse_iso_date("geschätzt 1985") == "1985-01-01"
+    assert parse_iso_date("geschätzt 2020") == "2020-01-01"
+    # ae-Transliteration (Legacy-CSV-Exporte, ASCII-only-Tools)
+    assert parse_iso_date("geschaetzt 1985") == "1985-01-01"
+    assert parse_iso_date("geschaetzt 2020") == "2020-01-01"
+    # Case-insensitive (Museums-Etiketten in Grossbuchstaben/Mischform)
+    assert parse_iso_date("GESCHÄTZT 1985") == "1985-01-01"
+    assert parse_iso_date("Geschätzt 1985") == "1985-01-01"
+    assert parse_iso_date("GESCHAETZT 1985") == "1985-01-01"
+    # Praefix + vollstaendiges Datum (Rekursion greift durch)
+    assert parse_iso_date("geschätzt 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("geschätzt Juni 2024") == "2024-06-01"
+    assert parse_iso_date("geschaetzt 2024-06-13") == "2024-06-13"
+    # Praefix + Dekaden/Saison/Jahrhundert (rekursive Aufloesung)
+    assert parse_iso_date("geschätzt 1980er") == "1980-01-01"
+    assert parse_iso_date("geschätzt Sommer 1985") == "1985-06-01"
+    # Verkettet mit anderen Praefixen (Rekursion loest sie sequentiell auf)
+    assert parse_iso_date("geschätzt ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. geschätzt 1985") == "1985-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("geschätzt") is None
+    assert parse_iso_date("geschaetzt") is None
+    assert parse_iso_date("geschätzt abc") is None
+    assert parse_iso_date("geschätzt 1700") is None  # ausserhalb 1800-2999
+    # Kein False-Positive fuer aehnlich beginnende Woerter - der Praefix muss
+    # durch \s+ vom Rest getrennt sein und exakt eines der Alternate-Woerter
+    # matchen.
+    assert parse_iso_date("geschätzterweise 1985") is None
+    assert parse_iso_date("geschätzten 1985") is None
+    # Bestehende Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("schaetzungsweise 1985") == "1985-01-01"
+    assert parse_iso_date("ungefähr 1985") == "1985-01-01"
+    assert parse_iso_date("estimated 1985") == "1985-01-01"
+
+
+def test_parse_iso_date_annaeherungs_suffix_geschaetzt():
+    """``geschätzt``/``geschaetzt`` als Trailing-Suffix (Past-Partizip-Form).
+
+    Spiegelt :func:`test_parse_iso_date_annaeherungs_praefix_geschaetzt` auf
+    die Suffix-Achse: ``_TRAILING_APPROX_SUFFIX`` bekommt denselben Past-
+    Partizip-Eintrag als DE-Standardform der Schaetzung. In Sammler-Etiketten
+    tritt die Trailing-Form ("1985 geschätzt", "Fund Juni 2024 geschaetzt")
+    ebenso oft auf wie die Praefix-Form; die DE/EN-Symmetrie zu ``estimated``
+    (bereits gelistet) wird damit auf beiden Achsen konsistent.
+    """
+    # DE-Umlaut- und ae-Transliteration
+    assert parse_iso_date("1985 geschätzt") == "1985-01-01"
+    assert parse_iso_date("1985 geschaetzt") == "1985-01-01"
+    assert parse_iso_date("2020 geschätzt") == "2020-01-01"
+    # Case-insensitive
+    assert parse_iso_date("1985 GESCHÄTZT") == "1985-01-01"
+    assert parse_iso_date("1985 Geschätzt") == "1985-01-01"
+    assert parse_iso_date("1985 GESCHAETZT") == "1985-01-01"
+    # Kombiniert mit vollstaendigem Datum
+    assert parse_iso_date("13.06.2024 geschätzt") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 geschaetzt") == "2024-06-13"
+    assert parse_iso_date("Juni 2020 geschätzt") == "2020-06-01"
+    assert parse_iso_date("Juni 2020 geschaetzt") == "2020-06-01"
+    # Kombiniert mit Saison + Jahr
+    assert parse_iso_date("Sommer 1985 geschätzt") == "1985-06-01"
+    assert parse_iso_date("Winter 2023 geschaetzt") == "2023-12-01"
+    # Mehrschichtige Rekursion (sinnfrei, aber unschaedlich)
+    assert parse_iso_date("ca. 1985 geschätzt") == "1985-01-01"
+    assert parse_iso_date("geschätzt 1985 geschätzt") == "1985-01-01"
+    # Reiner Marker ohne Datum bleibt None
+    assert parse_iso_date("geschätzt") is None
+    assert parse_iso_date("geschaetzt") is None
+    # Suffix ohne Whitespace davor wird NICHT gestrippt (spiegelt die
+    # \s+-Grenze aller Suffix-Eintraege)
+    assert parse_iso_date("1985geschätzt") is None
+    # Bestehende Suffixe unveraendert (kein Regress)
+    assert parse_iso_date("1985 ca.") == "1985-01-01"
+    assert parse_iso_date("1985 schaetzungsweise") == "1985-01-01"
+    assert parse_iso_date("1985 ungefähr") == "1985-01-01"
+    assert parse_iso_date("1985 estimated") == "1985-01-01"
+
+
 def test_parse_iso_date_annaeherungs_symbol():
     """Tilde (``~``) und Almost-Equal (``≈``) als Annaeherungs-Symbol vor dem Datum."""
     # Tilde - typografisch knappe Notation aus Tabellen-Captions / Foto-EXIF

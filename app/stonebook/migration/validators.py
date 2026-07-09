@@ -197,6 +197,18 @@ _APPROX_PREFIX = re.compile(
     # ("<Datum> ungefähr <Kontext>") bevorzugte. Umlaut- und Transliterations-
     # Variante spiegelt die schaetzungsweise-Konvention.
     r"|ungef[äa]hr|ungefaehr"
+    # Past-Partizip ``geschätzt``/``geschaetzt`` als adverbiale Praezisions-
+    # Marke ("geschätzt 1985", "geschaetzt Juni 2024"). Spiegelt die
+    # adverbiale Form ``sch[äa]tzungsweise``/``schaetzungsweise`` bereits im
+    # Pattern und ist in DE-Sammler-/Museums-Notizen oft die verkuerzte
+    # Alternative ("Erwerb geschätzt 1985", "Fundzeitpunkt geschaetzt Juni
+    # 2024"). Vor dem Fix fielen alle Praefix-Formen mit dieser Marke
+    # stille auf None, obwohl die identische EN-Form ``estimated`` (Past-
+    # Partizip, identische Grammatik) bereits erkannt wurde - eine DE/EN-
+    # Asymmetrie im Past-Partizip-Register. Umlaut- und ASCII-Trans-
+    # literations-Variante parallel wie bei den uebrigen Vokabeln (Windows-
+    # CP1252/Excel-DE nativ vs. 7-bit-ASCII-Notizen).
+    r"|gesch[äa]tzt|geschaetzt"
     # Wahrscheinlichkeits-/Vermutungs-Marker (DE)
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
@@ -693,6 +705,13 @@ _TRAILING_APPROX_SUFFIX = re.compile(
     r"|etwa|vermutlich"
     r"|sch[äa]tzungsweise|schaetzungsweise"
     r"|ungef[äa]hr|ungefaehr"
+    # Past-Partizip ``geschätzt``/``geschaetzt`` als Trailing-Praezisions-
+    # Marke ("1985 geschätzt", "Juni 2024 geschaetzt"). Spiegelt den
+    # gleichnamigen Eintrag in :data:`_APPROX_PREFIX` auf die Suffix-Achse;
+    # DE/EN-Symmetrie zu ``estimated`` (Past-Partizip, bereits gelistet)
+    # und Halbdopplung zur adverbialen Form ``sch[äa]tzungsweise`` als
+    # verkuerzte Sammler-Notiz-Variante.
+    r"|gesch[äa]tzt|geschaetzt"
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
     r"|perhaps|possibly|maybe"
