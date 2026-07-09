@@ -1526,6 +1526,32 @@ _DMS_LETTERS = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# Prefix-DMS-Notation: Himmelsrichtung VOR den Grad-/Minuten-/Sekunden-Zahlen
+# ("N 46° 30' 15\" E 7° 30' 0\""). Spiegelt die _DMS-Struktur (deg°, opt min',
+# opt sec") auf die Prefix-Reihenfolge - Standard in aeltere Marine-/Luftfahrt-
+# und einigen GPS-Tool-Formaten (NMEA-Konvertierungen, exiftool GPS-Output
+# mit Direction-First, Wikipedia-Koordinaten-Vorlagen in EN "N 46°30′15″
+# E 7°30′0″"), sowie in geerbten Sammlungs-Etiketten mit englischer Notations-
+# Konvention. Bisher fielen alle Prefix-DMS-Formen stille auf falsche Werte:
+# _DMS.findall verlangt die Richtung am Ende und lieferte 0 Hits, _PREFIX_PAIR
+# akzeptiert das ° optional und griff mit den ersten beiden Zahlen statt mit
+# den vollen DMS-Anteilen (``N 46° 30' 15\" E 7° 30' 0\"`` wurde als
+# (46.0, 30.0) gelesen - Minuten und Sekunden gingen verloren). Der Fix
+# spiegelt _DMS mit der Direction-First-Reihenfolge: Direction obligatorisch,
+# Grad+°obligatorisch (schuetzt vor Kollision mit reiner Prefix-Decimal-
+# Notation ``N 46.5 E 7.5``, die weiterhin von _PREFIX_PAIR behandelt wird),
+# Minuten und Sekunden optional. Wird vor _PREFIX_PAIR (und nach _DMS_COLON)
+# geprueft, damit die spezifischere DMS-Struktur den zu-greedy-_PREFIX_PAIR-
+# Match ueberholt. Capture-Reihenfolge (dir, deg, min, sec) muss beim Aufruf
+# von _dms_to_decimal(deg, min, sec, dir) umsortiert werden.
+_DMS_PREFIX = re.compile(
+    r"""([NSEWOnsewo])                          # Himmelsrichtung (obligatorisch, vorne)
+        \s*(\d+(?:[.,]\d+)?)\s*°                # Grad + obligatorisches °
+        (?:\s*(\d+(?:[.,]\d+)?)\s*['′])?        # optional Minuten
+        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:["″]|''))? # optional Sekunden
+    """,
+    re.VERBOSE,
+)
 _DECIMAL_PAIR = re.compile(
     # Tab in der Separator-Klasse deckt TSV-Exporte (Tab-getrennte Excel-/
     # GPS-Tools) ab: "46.5\t7.5" ist dort verbreitet, aber bisher fiel die
@@ -2360,6 +2386,21 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         a = _dms_to_decimal(*dms_colon_hits[0])
         b = _dms_to_decimal(*dms_colon_hits[1])
         lat, lon = _orient(a, dms_colon_hits[0][3], b, dms_colon_hits[1][3])
+        return _validate(lat, lon)
+
+    # Prefix-DMS-Notation ("N 46° 30' 15\" E 7° 30' 0\""). Vor _PREFIX_PAIR
+    # gepruft, damit die spezifischere DMS-Struktur den zu-greedy-Match des
+    # decimal-Prefix-Patterns ueberholt (dieses wuerde nur (Direction+Deg)
+    # matchen und Minuten/Sekunden ignorieren). Capture-Reihenfolge im Pattern
+    # ist (dir, deg, min, sec) - umsortieren zu (deg, min, sec, dir) fuer den
+    # _dms_to_decimal-Aufruf.
+    dms_prefix_hits = _DMS_PREFIX.findall(s)
+    if len(dms_prefix_hits) >= 2:
+        d1, deg1, min1, sec1 = dms_prefix_hits[0]
+        d2, deg2, min2, sec2 = dms_prefix_hits[1]
+        a = _dms_to_decimal(deg1, min1, sec1, d1)
+        b = _dms_to_decimal(deg2, min2, sec2, d2)
+        lat, lon = _orient(a, d1, b, d2)
         return _validate(lat, lon)
 
     m = _PREFIX_PAIR.search(s)

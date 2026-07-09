@@ -3893,3 +3893,74 @@ def test_parse_coordinates_ampersand_separator():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5; 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_prefix_dms():
+    """Prefix-DMS-Notation: Himmelsrichtung VOR den Grad-/Minuten-/Sekunden-Zahlen.
+
+    Standard-Notation in aelteren Marine-/Luftfahrt-Formaten, in einigen
+    GPS-Tool-Exporten (NMEA-Konvertierungen, exiftool-GPS-Output mit
+    Direction-First) und in Wikipedia-Koordinaten-Vorlagen der englischen
+    Sprachversion ("N 46°30′15″ E 7°30′0″"). Vor dem Fix fielen alle Prefix-
+    DMS-Formen still auf falsche Werte: _DMS.findall verlangte die Richtung
+    am Ende und lieferte 0 Hits, und _PREFIX_PAIR akzeptierte das ° optional
+    und griff nur mit den ersten beiden Zahlen (``N 46° 30' 15"`` wurde als
+    (46.0, 30.0) gelesen - Minuten und Sekunden gingen verloren).
+    """
+    expected_lat = 46.5 + 15 / 3600
+    # Standard-Form mit Whitespace zwischen Richtung, Grad, Minuten, Sekunden
+    lat, lon = parse_coordinates("N 46° 30' 15\" E 7° 30' 0\"")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # Compact-Form ohne Whitespace zwischen Richtung und Zahlen
+    lat, lon = parse_coordinates("N46°30'15\"E7°30'0\"")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # Dezimal-Minuten-Variante (Grad + Dezimal-Minuten, keine Sekunden)
+    lat, lon = parse_coordinates("N 46° 30.25' E 7° 30.0'")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # Suedhalbkugel / Westhalbkugel
+    lat, lon = parse_coordinates("S 46° 30' 15\" W 7° 30' 0\"")
+    assert abs(lat - -expected_lat) < 1e-9
+    assert lon == -7.5
+    # Reihenfolge lon, lat (Prefix-Direction reorientiert korrekt via _orient)
+    lat, lon = parse_coordinates("E 7° 30' 0\" N 46° 30' 15\"")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # O = Ost (deutsche Notation)
+    lat, lon = parse_coordinates("N 46° 30' 15\" O 7° 30' 0\"")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # Case-insensitive
+    lat, lon = parse_coordinates("n 46° 30' 15\" e 7° 30' 0\"")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # Vollnamen der Himmelsrichtungen werden vorher auf N/O normalisiert
+    lat, lon = parse_coordinates("Nord 46° 30' 15\" Ost 7° 30' 0\"")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # Typografische Minuten-/Sekunden-Zeichen (′ U+2032, ″ U+2033) - Wikipedia-
+    # Konvention in Koordinaten-Vorlagen.
+    lat, lon = parse_coordinates("N 46°30′15″ E 7°30′0″")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.5
+    # DE-Komma-Dezimal in den Sekunden
+    lat, lon = parse_coordinates("N 46° 30' 15,5\" E 7° 30' 0\"")
+    assert abs(lat - (46.5 + 15.5 / 3600)) < 1e-9
+    assert lon == 7.5
+    # Nur Grad + Richtung ohne Minuten/Sekunden (degenerierter Fall, gleicher
+    # Wert wie via _PREFIX_PAIR)
+    assert parse_coordinates("N 46.5° E 7.5°") == (46.5, 7.5)
+    # Out-of-Range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("N 100° 30' 15\" E 7° 30' 0\"") is None
+    assert parse_coordinates("N 46° 30' 15\" E 200° 30' 0\"") is None
+    # Regress: bestehende Suffix-DMS-Form bleibt unveraendert
+    assert parse_coordinates("46° 30' 15\" N, 7° 30' 0\" E") == (
+        46.5 + 15 / 3600, 7.5,
+    )
+    # Regress: Prefix-Decimal ohne ° weiter via _PREFIX_PAIR
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("N 46.5 E 7.5") == (46.5, 7.5)
+    # Regress: dezimale Form weiter unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
