@@ -734,6 +734,82 @@ _TRAILING_APPROX_SUFFIX = re.compile(
     r")\s*$",
     re.IGNORECASE,
 )
+# Trailing "und folgende Jahre"-Suffix (DE-Bibliografie-/Zitat-Standard "ff."
+# und "f."). In geerbten Sammlungs-/Museums-Notizen und in akademischen
+# Referenzen sehr verbreitet, um eine offene Jahres-Spanne knapp zu markieren:
+# ``1985 ff.`` (= 1985 und 2+ folgende Jahre), ``1985 f.`` (= 1985 und 1
+# folgendes Jahr). Herkunft aus der klassischen Zitier-Praxis (Duden K104,
+# DIN 1505, Bibliografie-Guides der grossen Universitaets-Bibliotheken) und
+# in Museums-Etiketten fuer Erwerbs-/Bearbeitungs-Zeitraeume ohne festes
+# End-Datum ("Sammlung Meier, 1985ff." = ab 1985 laufend erweitert). Bisher
+# fielen alle Formen still auf None: die Marker ``f``/``ff`` sind kein
+# Datums-Bestandteil und fielen nicht in eine der Struktur-Patterns; Rest
+# nach der 4-Ziffer-Zahl blockte das ``$``-Anker-Matching von :data:`_YEAR_ONLY`.
+# Semantik analog zu :data:`_YEAR_RANGE` / :data:`_YEAR_RANGE_WORD` /
+# :data:`_YEAR_RANGE_BETWEEN`: das Startjahr wird als ISO-Datum ausgegeben
+# (Spanne-Start, Konvention identisch zu ``1985-1990`` -> ``1985-01-01``).
+# Die Info "und folgende" ist semantische Wert-Anmerkung ("offenes End-Datum")
+# und keine Datums-Modifikation - der bekannte Anker ist das Start-Jahr, das
+# nachgelagerte "und folgende" bleibt im Freitext (notizen).
+#
+# Konzept identisch zu :data:`_TRAILING_APPROX_SUFFIX` / :data:`_TRAILING_ERA_MARKER`:
+# Strip + Rekursion, das eigentliche Parsen des Rest-Datums erledigt
+# parse_iso_date via Rekursion. Verkettung mit anderen Suffix-/Praefix-
+# Formen funktioniert transparent ("1985 ff., geschaetzt" wird via
+# _TRAILING_APPROX_SUFFIX auf "1985 ff., " reduziert, via _TRAILING_PUNCT
+# auf "1985 ff", via _TRAILING_FOLLOWING_SUFFIX auf "1985" und final via
+# _YEAR_ONLY auf "1985-01-01").
+#
+# Zwei Positions-Klassen fuer den Trenner vor dem Marker:
+#   * ``\s+`` deckt die Standard-Notation mit Leerzeichen ab ("1985 ff.",
+#     "1985 f.", "Juni 2024 ff.") - typisch fuer typografisch sauber
+#     gesetzte Museums-Etiketten und akademische Referenzen mit Punkt-
+#     nach-Abkuerzung-Konvention.
+#   * ``(?<=\d)`` deckt die Kompakt-Notation ohne Leerzeichen ab
+#     ("1985ff", "1985ff.", "1985f", "1985f.") - typisch fuer knappe
+#     Sammler-Karteikarten-Notizen und Tabellen-Cell-Eintraege mit
+#     Platz-Ersparnis, wo der Sammler den Trenner weglaesst und den
+#     Marker direkt an das Jahr klebt. Das Lookbehind auf eine Ziffer
+#     schuetzt vor Match-Positionen mitten in Woertern ("Auffall" endet
+#     mit "l", nicht "f", also kein Match; "1985f" endet mit "f" nach
+#     einer Ziffer, also Match).
+#
+# ``ff?`` matcht sowohl die Einfachform (``f`` = "und 1 folgendes Jahr")
+# als auch die Doppelform (``ff`` = "und 2+ folgende Jahre"); beide sind
+# semantisch aequivalent fuer die ISO-Datums-Auswertung (Start-Jahr).
+# ``\.?`` deckt die Abkuerzungs-Punkt-Konvention der DIN 5008-/DUDEN-
+# Praxis ab (``ff.`` mit Punkt ist der Standard, ``ff`` ohne Punkt ist
+# in Kurzsatz-Notizen ueblich). ``\s*$`` blockt False-Positives im Wort-
+# Inneren: der Marker muss am Zeilenende stehen, sonst waere die Marke
+# semantisch nicht als "und folgende" lesbar.
+#
+# Case-insensitive spiegelt die Konvention der uebrigen Trailing-Suffixes
+# (Museums-Etiketten in Grossbuchstaben, Mischform-Notationen aus
+# handschriftlichen Vorbesitzer-Notizen).
+#
+# Kollisionsfreiheit zu bestehenden Patterns:
+# * :data:`_TRAILING_APPROX_SUFFIX`: alle dortigen Marker sind Voll-Woerter
+#   ohne Kollision mit ``f``/``ff`` (das kuerzeste Wort ist ``ca``, 2 Zeichen,
+#   aber nicht "f").
+# * :data:`_TRAILING_ERA_MARKER`: die Aera-Markiernug ("n. Chr.", "AD", "BC",
+#   "BCE", "CE") kollidiert nicht mit "f"/"ff".
+# * Monatsnamen und ihre Kurzformen: Kein Monatsname endet auf einem
+#   einzelnen "f" oder "ff" (Feb/Sep/Jan/Jun etc. enden auf andere
+#   Buchstaben). Die Roemische Notation (I..XII) enthaelt kein "f".
+# * :data:`_YEAR_ONLY`, :data:`_YEAR_RANGE`, :data:`_DECADE`, etc.: alle
+#   Patterns matchen strikt Ziffern-basierte Strukturen ohne Buchstaben-
+#   Suffix. Ein wortbestandhaltiger Rest wird durch das Strip
+#   transparenter gemacht, nicht verdeckt.
+# * Datums-Tokens mit direkter Ziffer-Buchstaben-Nachbarschaft (etwa
+#   Kompakt-Formen wie "202412"): das Lookbehind matcht auf die letzte
+#   Ziffer - aber die letzte Ziffer wird nicht konsumiert, sodass die
+#   Struktur-Patterns (_COMPACT_YEAR_MONTH, %Y%m%d, ISO_ORDINAL) weiter
+#   greifen koennen. Der Strip greift nur, wenn nach der Ziffer wirklich
+#   ein ``f``/``ff`` steht.
+_TRAILING_FOLLOWING_SUFFIX = re.compile(
+    r"(?:\s+|(?<=\d))ff?\.?\s*$",
+    re.IGNORECASE,
+)
 # Umschliessende Klammern/Anfuehrungszeichen aus zitierten Datumsangaben:
 # "(2024)", "[2024-06-13]", '"13. Juni 2024"', '„Sommer 1985"'.
 # Genau ein Paar wird gestrippt; danach Re-Parsing per Rekursion.
@@ -2231,6 +2307,21 @@ def parse_iso_date(text) -> str | None:
     # der Praezisions-Marker ist semantische Wert-Anmerkung, keine Datums-
     # Modifikation.
     stripped = _TRAILING_APPROX_SUFFIX.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # Trailing "und folgende Jahre"-Suffix abstreifen ("1985 ff.", "1985 f.",
+    # "1985ff", "Juni 2024 ff.", "13.06.2024 ff."). DE-Bibliografie-/Zitat-
+    # Standard fuer offene Jahres-Spannen; semantisch aequivalent zu
+    # :data:`_YEAR_RANGE` (Startjahr als ISO-Anker, "und folgende" bleibt im
+    # Freitext). Nach :data:`_TRAILING_APPROX_SUFFIX` einsortiert, weil
+    # kombinierte Formen wie "1985 ff. ca." zuerst den Praezisions-Marker
+    # aufloesen sollen ("1985 ff." als Rest) und die "und folgende"-Marke
+    # in der naechsten Rekursion faellt. Strip + Rekursion analog
+    # :data:`_TRAILING_APPROX_SUFFIX`: der "und folgende"-Marker ist
+    # semantische Wert-Anmerkung, keine Datums-Modifikation. Siehe
+    # :data:`_TRAILING_FOLLOWING_SUFFIX` fuer die Kompakt-/Whitespace-
+    # Positions-Klassen und die Kollisionsfreiheits-Analyse.
+    stripped = _TRAILING_FOLLOWING_SUFFIX.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.

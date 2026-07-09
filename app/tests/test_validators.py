@@ -588,6 +588,87 @@ def test_parse_iso_date_annaeherungs_suffix_geschaetzt():
     assert parse_iso_date("1985 estimated") == "1985-01-01"
 
 
+def test_parse_iso_date_folgende_jahre_suffix():
+    """Trailing "und folgende Jahre"-Suffix (DE-Bibliografie-/Zitat-Standard).
+
+    ``1985 ff.`` = "1985 und zwei oder mehr folgende Jahre"; ``1985 f.`` =
+    "1985 und ein folgendes Jahr". Herkunft aus der klassischen Zitier-Praxis
+    (Duden K104, DIN 1505, Bibliografie-Guides der Universitaets-Bibliotheken)
+    und in Museums-Etiketten fuer Erwerbs-/Bearbeitungs-Zeitraeume ohne festes
+    End-Datum ("Sammlung Meier, 1985ff." = ab 1985 laufend erweitert).
+    Konvention identisch zu :data:`_YEAR_RANGE` / :data:`_YEAR_RANGE_WORD` /
+    :data:`_YEAR_RANGE_BETWEEN` - Startjahr als ISO-Datum, "und folgende"
+    bleibt semantische Wert-Anmerkung im Freitext.
+    """
+    # ff.-Form mit Whitespace + Punkt (Duden/DIN 5008-Standard)
+    assert parse_iso_date("1985 ff.") == "1985-01-01"
+    assert parse_iso_date("2020 ff.") == "2020-01-01"
+    # ff-Form ohne Punkt (Kurzsatz-Notizen)
+    assert parse_iso_date("1985 ff") == "1985-01-01"
+    # Kompakt-Form ohne Whitespace (Karteikarten-/Tabellen-Cell-Notation)
+    assert parse_iso_date("1985ff") == "1985-01-01"
+    assert parse_iso_date("1985ff.") == "1985-01-01"
+    # f.-Form: "und ein folgendes Jahr" - semantisch aequivalent fuer die
+    # ISO-Auswertung (Start-Jahr)
+    assert parse_iso_date("1985 f.") == "1985-01-01"
+    assert parse_iso_date("1985 f") == "1985-01-01"
+    assert parse_iso_date("1985f.") == "1985-01-01"
+    assert parse_iso_date("1985f") == "1985-01-01"
+    # Case-insensitive (Museums-Etiketten in Grossbuchstaben/Mischform)
+    assert parse_iso_date("1985 FF.") == "1985-01-01"
+    assert parse_iso_date("1985FF") == "1985-01-01"
+    assert parse_iso_date("1985 F.") == "1985-01-01"
+    # Kombiniert mit vollstaendigem Datum (Monat/Tag bleibt erhalten -
+    # "Sammlung Meier ab Juni 2024 laufend erweitert")
+    assert parse_iso_date("Juni 2024 ff.") == "2024-06-01"
+    assert parse_iso_date("13.06.2024 ff.") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 ff.") == "2024-06-13"
+    assert parse_iso_date("2024-06 ff.") == "2024-06-01"
+    # Kombiniert mit Saison/Dekade/Jahrhundert (rekursive Aufloesung nach Strip)
+    assert parse_iso_date("Sommer 1985 ff.") == "1985-06-01"
+    assert parse_iso_date("1980er ff.") == "1980-01-01"
+    # Verkettet mit anderen Suffix-/Praefix-Formen (Rekursion loest sie
+    # sequentiell auf)
+    assert parse_iso_date("ca. 1985 ff.") == "1985-01-01"
+    assert parse_iso_date("1985 ff. ca.") == "1985-01-01"
+    assert parse_iso_date("1985 ff, geschätzt") == "1985-01-01"
+    assert parse_iso_date("ungefähr 1985 ff.") == "1985-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("ff") is None
+    assert parse_iso_date("ff.") is None
+    assert parse_iso_date("f.") is None
+    assert parse_iso_date("1700 ff.") is None  # ausserhalb 1800-2999
+    assert parse_iso_date("abc ff.") is None
+    # Kein False-Positive fuer Woerter, die mit "f"/"ff" enden aber keinen
+    # Zitat-Marker meinen. Das Lookbehind (?<=\d) und der \s+-Zweig blocken
+    # Wort-Bestandteil-Positionen: "Auffall" endet auf "l" (kein Match);
+    # "fest", "auf" haben zwar "f" am Ende bzw. Anfang, aber keiner Ziffer
+    # davor - Match auf "1985 fest" wuerde das f am Wort-Ende erwarten,
+    # die Datei-Struktur endet aber mit "t", kein Match.
+    assert parse_iso_date("1985 fest") is None
+    assert parse_iso_date("1985 auf") is None
+    assert parse_iso_date("1985 Auffall") is None
+    # Kein Ziffer-vor-Marker beim Kompakt-Zweig ohne Ziffer davor
+    assert parse_iso_date("Sample f.") is None
+    # Datums-Fund mit Wort das auf f endet, aber ohne Ziffer davor:
+    # weder \s+ff?$ noch (?<=\d)ff?$ matcht - kein False-Strip
+    assert parse_iso_date("Auf 1985") is None
+    # Bestehende Suffixe unveraendert (kein Regress)
+    assert parse_iso_date("1985 ca.") == "1985-01-01"
+    assert parse_iso_date("1985 schaetzungsweise") == "1985-01-01"
+    assert parse_iso_date("1985 ungefähr") == "1985-01-01"
+    assert parse_iso_date("1985 estimated") == "1985-01-01"
+    assert parse_iso_date("1985 geschätzt") == "1985-01-01"
+    # Bestehende Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    # Bestehende Range-Formen unveraendert (kein Regress) - "und folgende"
+    # ist der offene End-Datum-Pendant zur festen Range-Form
+    assert parse_iso_date("1985-1990") == "1985-01-01"
+    assert parse_iso_date("1985 bis 1990") == "1985-01-01"
+    assert parse_iso_date("zwischen 1985 und 1990") == "1985-01-01"
+
+
 def test_parse_iso_date_annaeherungs_symbol():
     """Tilde (``~``) und Almost-Equal (``≈``) als Annaeherungs-Symbol vor dem Datum."""
     # Tilde - typografisch knappe Notation aus Tabellen-Captions / Foto-EXIF
