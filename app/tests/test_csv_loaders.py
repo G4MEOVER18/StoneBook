@@ -951,6 +951,128 @@ def test_parse_range_ascii_mixed_fraktionen_ungueltig():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_negatives_vorzeichen():
+    """Fuehrendes Minus-Vorzeichen wird als negatives Signum an die folgende Zahl
+    gebunden, ohne die bestehende Range-Separator-Semantik zu beruehren.
+
+    Vor dem Fix verwarf die generische Zahl-Extraktion (siehe :data:`_NUM_RE`)
+    still jedes fuehrende ASCII-Minus-Vorzeichen, weil das Regex nur den
+    Ziffernteil einfing:
+
+    * ``"-5.5"``      -> ``[5.5]``       -> (5.5, 5.5)    (Vorzeichen verloren)
+    * ``"-10 - -5"``  -> ``[10, 5]``     -> (10.0, 10.0)  (beide Vorzeichen verloren + inverted-Kollaps)
+    * ``"-10 - 5"``   -> ``[10, 5]``     -> (10.0, 10.0)  (linkes Vorzeichen verloren + inverted-Kollaps)
+    * ``"ca. -5.5"``  -> ``[5.5]``       -> (5.5, 5.5)    (Vorzeichen verloren nach Freitext-Praefix)
+    * ``"-10,5–-5,5"``-> ``[10.5, 5.5]`` -> (10.5, 10.5)  (DE-Komma + en-dash, beide Vorzeichen verloren)
+
+    Bei der Migration aus Cryo-Mineralogie-Notizen (Frost-/Eis-Kristall-
+    Sammlungen mit Temperatur-Bereichen unter 0 °C), Bergbau-/Tektonik-
+    Tiefen-Berichten (negative Meereshoehe als Kristall-Fundort), Isotopen-
+    Fraktionierungs-Daten (δ¹³C, δ¹⁸O in ‰ - typisch negativ fuer viele
+    Karbonate/Silikate), thermischen Ausdehnungs-Koeffizienten (β < 0 bei
+    einigen Kristall-Klassen wie Quarz alpha-beta-Uebergang) oder aus
+    Vergleichs-Deltas (``Δn`` in Doppelbrechungs-Tabellen) entstand damit
+    silenter Vorzeichen-Datenverlust auf jedem Numeric-Feld, das Nullpunkt-
+    negative Werte tragen kann. Im schlimmsten Fall (symmetrischer negativer
+    Range) wurden die absoluten Werte gespiegelt (10.0 statt -10.0) - eine
+    Vorzeichen-Inversion, die mineralogisch/physikalisch nicht auffaellt,
+    aber die publizierte Temperatur- oder Isotopen-Achse komplett verwirft.
+
+    Der Fix erweitert ``_NUM_RE`` um eine optionale Sign-Alternante
+    ``(?:(?<![\\d.])-)?`` vor dem Digit-Teil - das Minus wird nur an
+    Positionen als Vorzeichen gebunden, an denen das VOR dem Minus stehende
+    Zeichen weder Digit noch Dezimalpunkt ist. Dadurch bleibt die bestehende
+    Range-Separator-Semantik unangetastet: in ``"5-7"`` und ``"5.5-7.0"``
+    steht ein Digit unmittelbar vor dem Minus, der Sign-Match blockt via
+    ``(?<![\\d.])`` und der Hyphen bleibt Range-Trenner. Nur wenn das
+    Zeichen vor dem Minus ein Whitespace, Start-of-String, Klammer-Rand,
+    anderer Dash-Typ (en-/em-dash) oder anderes Non-Digit-Separator-Zeichen
+    (``=``, ``:``, ``/``, ``&``, ``,``) ist, wird der Minus als Vorzeichen
+    interpretiert - genau die Positionen, an denen ein Minus semantisch
+    kein Range-Separator sein kann.
+    """
+    # Einzelwert negativ - klassischer Cryo-Temperatur-Wert oder Isotopen-
+    # Fraktionierung.
+    assert csv_loaders.parse_range("-5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("-10") == (-10.0, -10.0)
+    assert csv_loaders.parse_range("-0.5") == (-0.5, -0.5)
+    # Symmetrischer negativer Range mit ASCII-Hyphen als Range-Separator
+    # zwischen zwei negativen Bounds - typisch fuer Cryo-Temperatur-Fenster
+    # ("-10 - -5 °C") oder Isotopen-Delta-Bereiche.
+    assert csv_loaders.parse_range("-10 - -5") == (-10.0, -5.0)
+    assert csv_loaders.parse_range("-10--5") == (-10.0, -5.0)
+    # En-dash (U+2013) und em-dash (U+2014) als Range-Separator zwischen zwei
+    # negativen Bounds - typografisch sauber gesetzte Print-/PDF-Publikationen
+    # verwenden en-dash statt ASCII-Hyphen fuer Bereichs-Notation.
+    assert csv_loaders.parse_range("-10 – -5") == (-10.0, -5.0)
+    assert csv_loaders.parse_range("-10 — -5") == (-10.0, -5.0)
+    # Vorzeichen-gemischter Range (negativ zu positiv) - typisch fuer
+    # Temperatur-Fenster ueber den Nullpunkt hinweg ("-10 bis +5 °C").
+    assert csv_loaders.parse_range("-10 - 5") == (-10.0, 5.0)
+    assert csv_loaders.parse_range("-10–5") == (-10.0, 5.0)
+    # Freitext-Praefix (Annaeherungs-Marker) vor negativem Wert - der Wert
+    # muss trotz Praefix sein Vorzeichen behalten.
+    assert csv_loaders.parse_range("ca. -5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("circa -5.5") == (-5.5, -5.5)
+    # DE-Komma-Dezimal mit negativem Vorzeichen - deutsche Publikationen und
+    # Excel-DE-Auto-Format schreiben ``-2,65`` mit Komma-Dezimal.
+    assert csv_loaders.parse_range("-2,65") == (-2.65, -2.65)
+    assert csv_loaders.parse_range("-10,5 - -5,5") == (-10.5, -5.5)
+    assert csv_loaders.parse_range("-10,5–-5,5") == (-10.5, -5.5)
+    # Trailing-Einheit nach negativem Wert - die Einheit hat keine Zahlen,
+    # damit die Groessenordnung erhalten bleibt.
+    assert csv_loaders.parse_range("-5.5 °C") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("-10 - -5 °C") == (-10.0, -5.0)
+    # Scientific notation mit negativem Vorzeichen an der Mantisse - typisch
+    # fuer sub-Einheiten-Groessen im negativen Bereich (thermische
+    # Ausdehnungs-Koeffizienten, Absorptions-Deltas).
+    assert csv_loaders.parse_range("-1.5e-3") == (-0.0015, -0.0015)
+    assert csv_loaders.parse_range("-1e3") == (-1000.0, -1000.0)
+    # Leading-Dot-Dezimal mit negativem Vorzeichen (``-.5`` = -0.5, US-
+    # Konvention "no leading zero" mit Minus-Praefix).
+    assert csv_loaders.parse_range("-.5") == (-0.5, -0.5)
+    assert csv_loaders.parse_range("-.5-.7") == (-0.5, 0.7)
+    # Negativer Wert mit Uncertainty-Langform (``-1.5 ± 0.3``) - der
+    # bestehende _PLUS_MINUS_UNCERTAINTY-Zweig faengt den Fall bereits, hier
+    # als Regression-Anker fuer die Prioritaets-Reihenfolge (Uncertainty vor
+    # generischer Zahl-Extraktion).
+    assert csv_loaders.parse_range("-1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    # Regression-Anker: die bestehende Range-Separator-Semantik bleibt
+    # unveraendert - in ``"5-7"`` steht Digit vor Minus, der Sign-Match
+    # blockt und der Hyphen bleibt Range-Trenner.
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("5.5-7.0") == (5.5, 7.0)
+    assert csv_loaders.parse_range("5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5.5") == (5.5, 5.5)
+    # Regression-Anker: Leading-Dot-Dezimal ohne Vorzeichen bleibt
+    # unveraendert.
+    assert csv_loaders.parse_range(".5") == (0.5, 0.5)
+    assert csv_loaders.parse_range(".5-.7") == (0.5, 0.7)
+    # Regression-Anker: Freitext-Praefix ohne Vorzeichen bleibt unveraendert
+    # (der optional-sign-Zweig blockt korrekt bei Nicht-Minus-Praefix).
+    assert csv_loaders.parse_range("ca. 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("ca. 2.65") == (2.65, 2.65)
+    # Regression-Anker: scientific notation ohne Vorzeichen bleibt
+    # unveraendert (der Exponent-``-`` bleibt Teil des Ganz-Tokens).
+    assert csv_loaders.parse_range("1e-3") == (0.001, 0.001)
+    assert csv_loaders.parse_range("1.5e-3") == (0.0015, 0.0015)
+    # Regression-Anker: SI-Einheit-Suffix mit ASCII-Superskript (``cm3``,
+    # ``m^3``) blockt die Ziffer im Suffix - Buchstabe/Caret vor Digit
+    # trifft den bestehenden ``(?<![A-Za-z^])``-Lookbehind, das neue
+    # Sign-Lookbehind ist eine unabhaengige Schicht.
+    assert csv_loaders.parse_range("2.65 g/cm3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("-2.65 g/cm3") == (-2.65, -2.65)
+    # Regression-Anker: inverted-Range-Kollaps bleibt aktiv, wenn der
+    # negative hi arithmetisch kleiner als der negative lo ist
+    # (Tippfehler-Robustheit spiegelt die positive Konvention).
+    assert csv_loaders.parse_range("-5 - -10") == (-5.0, -5.0)
+    # Regression-Anker: Klammer-Annotation nach negativem Wert wird
+    # gestrippt und die Annotations-Zahl darf nicht als Range-Grenze
+    # fehlgelesen werden.
+    assert csv_loaders.parse_range("-5.5 (Ref 42)") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("-10 - -5 [Nr. 42]") == (-10.0, -5.0)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data

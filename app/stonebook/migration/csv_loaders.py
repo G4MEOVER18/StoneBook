@@ -104,8 +104,40 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 # zur DMS-Koordinaten-Extraktion in :mod:`stonebook.migration.validators`, weil
 # dort ein eigener Parser mit expliziten ``°``/``'``/``"``-Ankern zum Einsatz
 # kommt - die Fallback-Zahl-Extraktion via ``_NUM_RE`` gilt hier nicht.
+#
+# Optionales fuehrendes Minus-Vorzeichen ``(?:(?<![\d.])-)?`` bindet den ASCII-
+# Hyphen als Vorzeichen an die folgende Zahl, aber nur wenn das Zeichen VOR
+# dem Hyphen kein Digit und kein Dezimalpunkt ist - also nur an Positionen,
+# an denen ein ``-`` semantisch ein Vorzeichen sein kann (String-Anfang,
+# Whitespace, andere Nicht-Zahl-Separatoren wie ``=``, ``:``, Klammer-
+# Rand, andere Dash-Varianten). Bei Digit-vor-Hyphen wie in ``5.5-7.0`` oder
+# ``5-7`` (Range-Notation) blockt der Lookbehind das Sign-Match und der
+# Hyphen bleibt Range-Separator - die bestehende Range-Semantik bleibt
+# unveraendert. Vor dem Fix verwarf die Zahl-Extraktion still jedes fuehrende
+# Minus-Zeichen und lieferte ``"-5.5"`` als ``(5.5, 5.5)`` (Vorzeichen
+# verloren), ``"-10 - -5"`` (typische Temperatur- oder Tiefen-Range in
+# Cryo-/Bergbau-Kontext) als ``[10, 5]`` mit inverted-Range-Kollaps
+# ``(10.0, 10.0)`` (beide Vorzeichen verloren, semantisch komplett falsch:
+# Kryo-Temperatur -10 bis -5 °C wurde als Werte 10 zu 10 gelesen), ``"-10 -
+# 5"`` (Vorzeichen-gemischter Range) analog. Beim Import aus Cryo-
+# Mineralogie-Notizen (Frost-/Eis-Kristall-Sammlungen), Bergbau-/Tektonik-
+# Tiefen-Berichten (negative Meereshoehe), Isotopen-Fraktionierungs-Werten
+# (δ¹³C, δ¹⁸O in ‰ - typisch negativ) oder thermischen Ausdehnungs-
+# Koeffizienten (β < 0 bei einigen Kristall-Klassen) entstand damit silen-
+# ter Vorzeichen-Datenverlust auf jedem Numeric-Feld, das Nullpunkt-negative
+# Werte tragen kann. Der Lookbehind ``(?<![\d.])`` erfasst genau die Positionen,
+# an denen ``-`` unzweideutig Vorzeichen ist; die typografischen Minus-Varianten
+# (en-dash U+2013, em-dash U+2014, minus U+2212) bleiben Range-Separatoren
+# (das Sign-Match ist ASCII-only) - fuer die spezifische Minus-Zeichen-
+# Vorzeichen-Rolle (U+2212 aus Print-Katalogen) waere eine eigene Norma-
+# lisierung noetig (spiegelt den ``parse_coordinates``-Preprocess-Ansatz),
+# ist hier aber ausserhalb des ASCII-Fallback-Umfangs.
 _NUM_RE = re.compile(
-    r"(?<![A-Za-z^])(\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)"
+    r"(?<![A-Za-z^])"
+    r"("
+    r"(?:(?<![\d.])-)?"
+    r"(?:\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)"
+    r")"
 )
 
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
