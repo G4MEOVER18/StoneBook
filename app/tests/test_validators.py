@@ -995,6 +995,99 @@ def test_parse_iso_date_relative_dekade_genitiv_artikel():
     assert parse_iso_date("Mitte 1990er Jahre") == "1995-01-01"
 
 
+def test_parse_iso_date_relative_dekade_de_adjektiv_form():
+    """DE-Adjektiv-Form der Dekaden-Position ('fruehe(n) 1980er',
+    'spaete(n) 1990er Jahren') wird semantisch identisch zur Substantiv-Form
+    ('Anfang 1980er', 'Ende 1990er') und zur EN-Form ('early 1980s',
+    'late 1990s') auf den Dekaden-Anker gemappt.
+
+    Sehr verbreitet in geerbten DE-Sammler-/Museums-Notizen, weil die
+    Adjektiv-Form die grammatikalisch flektierte Standard-Notation innerhalb
+    eines Satzes ist ("Fund aus den fruehen 1980er Jahren", "Nachlass aus
+    spaeten 1990ern", "die spaete 2000er Sammlung"). Vor der Erweiterung
+    fielen alle DE-Adjektiv-Formen still auf None, obwohl EN-Aequivalent
+    (early/mid/late) und DE-Substantiv-Aequivalent (Anfang/Mitte/Ende)
+    beide bereits auf denselben Dekaden-Anker abgebildet wurden.
+
+    Konvention symmetrisch zur Substantiv-Form: fruehe → Jahr 0 der Dekade
+    (spiegelt Anfang), spaete → Jahr 9 (spiegelt Ende). Alle 5 Kasus-
+    Endungen der DE-Adjektiv-Deklination (-e/-em/-en/-er/-es) werden
+    akzeptiert, damit Nominativ/Genitiv/Dativ/Akkusativ in beiden
+    Deklinationsklassen (schwach mit Artikel, stark ohne Artikel) matchen.
+    Umlaut-Form (früh/spät) und ASCII-transliterierte Form (frueh/spaet)
+    beide praxisrelevant und symmetrisch akzeptiert.
+    """
+    # Umlaut-Form (früh/spät): Standard-DE-Print-/Excel-Notation
+    assert parse_iso_date("frühe 1980er") == "1980-01-01"
+    assert parse_iso_date("frühen 1980er") == "1980-01-01"
+    assert parse_iso_date("frühes 1980er") == "1980-01-01"
+    assert parse_iso_date("späte 1990er") == "1999-01-01"
+    assert parse_iso_date("späten 1990er") == "1999-01-01"
+    # ASCII-transliterierte Form (frueh/spaet): geerbte 7-bit-Notizen /
+    # Terminal-Tools ohne Umlaut-Support
+    assert parse_iso_date("fruehe 1980er") == "1980-01-01"
+    assert parse_iso_date("fruehen 1980er") == "1980-01-01"
+    assert parse_iso_date("spaete 1990er") == "1999-01-01"
+    assert parse_iso_date("spaeten 1990er") == "1999-01-01"
+    # Mit "Jahre"/"Jahren"-Trailer (Standard-Print-Form in vollstaendigen Saetzen)
+    assert parse_iso_date("frühe 1980er Jahre") == "1980-01-01"
+    assert parse_iso_date("frühen 1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("spaeten 1990er Jahren") == "1999-01-01"
+    assert parse_iso_date("fruehen 2000er Jahre") == "2000-01-01"
+    # Mit Leading-Artikel (Nominativ/Akkusativ Plural: "die spaeten 1990er",
+    # Genitiv Plural: "der fruehen 1980er Jahre", Dativ Plural: "den fruehen
+    # 1980er Jahren"). Der Artikel steht direkt am Anfang ohne Praeposition.
+    assert parse_iso_date("die frühen 1980er") == "1980-01-01"
+    assert parse_iso_date("die spaeten 1990er") == "1999-01-01"
+    assert parse_iso_date("der frühen 1980er Jahre") == "1980-01-01"
+    assert parse_iso_date("die fruehen 2000er Jahre") == "2000-01-01"
+    # In Kombination mit _TEMPORAL_PREFIX ("in den", "von den") wird die
+    # Praeposition + Artikel zuerst gestrippt, bevor die Adjektiv-Form
+    # gematcht wird.
+    assert parse_iso_date("in den frühen 1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("von den fruehen 2000er Jahren") == "2000-01-01"
+    # Case-insensitive (Titel-Case, Grosschreibung als Satz-Anfang)
+    assert parse_iso_date("Frühe 1980er") == "1980-01-01"
+    assert parse_iso_date("FRÜHE 1980ER") == "1980-01-01"
+    assert parse_iso_date("SPAETE 1990ER") == "1999-01-01"
+    # Kombination mit Annaeherungspraefix (Verkettung ueber Rekursion)
+    assert parse_iso_date("ca. frühe 1980er") == "1980-01-01"
+    assert parse_iso_date("circa spaete 1990er Jahre") == "1999-01-01"
+    # Kombination mit umschliessenden Klammern
+    assert parse_iso_date("(frühe 1980er)") == "1980-01-01"
+    assert parse_iso_date("(die spaeten 1990er Jahre)") == "1999-01-01"
+
+
+def test_parse_iso_date_relative_dekade_de_adjektiv_form_ungueltig():
+    """DE-Adjektiv-Form ohne Kasus-Endung (nur Wurzel ``frueh``/``spaet``)
+    oder mit unbekanntem Adjektiv (``mittel``, ``jung``, ``alt``) faellt auf None.
+
+    Sicherheits-Anker gegen ueberdehnbaren Match: nur die grammatikalisch
+    korrekte Adjektiv-Form (Wurzel + Kasus-Endung) matcht, damit die Wurzel
+    allein (``frueh 1980er``) und semantisch aehnliche, aber nicht in den
+    Position-Offset-Kanon einsortierbare Adjektive (``mittel``, ``jung``,
+    ``alt``) nicht kuenstlich auf einen Dekaden-Anker abgebildet werden.
+    """
+    # Reine Wurzel ohne Adjektiv-Endung (grammatikalisch inkorrekt)
+    assert parse_iso_date("frueh 1980er") is None
+    assert parse_iso_date("spaet 1990er") is None
+    assert parse_iso_date("früh 1980er") is None
+    assert parse_iso_date("spät 1990er") is None
+    # Unbekannte Adjektive (kein Offset-Mapping in der Position-Achse)
+    assert parse_iso_date("mittlere 1980er") is None
+    assert parse_iso_date("junge 1990er") is None
+    assert parse_iso_date("alte 1980er") is None
+    # Kombination mit ungueltiger Dekade (out-of-range) faellt weiterhin auf None
+    assert parse_iso_date("frühe 1700er") is None
+    assert parse_iso_date("spaete 3000er") is None
+    # Regression-Anker: Substantiv-Form (Anfang/Ende) bleibt unveraendert
+    assert parse_iso_date("Anfang 1980er") == "1980-01-01"
+    assert parse_iso_date("Ende 1990er") == "1999-01-01"
+    # Regression-Anker: EN-Form (early/late) bleibt unveraendert
+    assert parse_iso_date("early 1980s") == "1980-01-01"
+    assert parse_iso_date("late 1990s") == "1999-01-01"
+
+
 def test_parse_iso_date_jahrzehnt_dativ_plural():
     """Dativ-Plural-Form 'Jahren' der Dekaden-Notation ('1980er Jahren',
     'in den 1990er Jahren') wird semantisch identisch zur Nominativ-Form

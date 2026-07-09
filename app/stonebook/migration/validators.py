@@ -959,6 +959,29 @@ _RELATIVE_DECADE_OFFSETS: dict[str, int] = {
     "mitte": 5, "mid": 5,
     "ende": 9, "late": 9,
 }
+# DE-Adjektiv-Praefix-Formen ("frueh(e|en|er|em|es)" / "spaet(e|en|er|em|es)"
+# samt Umlaut-Varianten "frueh"/"spaet" und "früh"/"spät") auf die Dekaden-
+# Offsets von "Anfang" (0) und "Ende" (9) mappen. Sehr verbreitet in DE-
+# Sammler-/Museums-Notizen, weil "frueh(e|n) 1980er" bzw. "spaete(n) 1990er"
+# die grammatikalisch flektierten Adjektiv-Formen des Positionsworts sind
+# (weak/strong declension: "die fruehen 1980er Jahre" mit Artikel = weak
+# Plural-Endung -en; "fruehe 1980er Jahre" ohne Artikel = strong Plural-
+# Endung -e; die volle Kasus-Palette -e/-en/-er/-em/-es deckt Nom./Gen./
+# Dat./Akk. inkl. Genitiv-Kombinationen wie "der fruehen 1980er Jahre"
+# ab). Semantisch identisch zur bereits erfassten "Anfang/Mitte/Ende
+# 1980er"-Form und zur EN-"early/mid/late 1980s"-Achse - vor der Erweiterung
+# fielen die DE-Adjektiv-Formen still auf None, obwohl EN-Aequivalent und
+# DE-Substantiv-Aequivalent aufgeloest wurden. Aus geerbten Sammlungs-
+# Beschreibungen ("Fund aus den fruehen 1980er Jahren", "Nachlass aus
+# spaeten 1990ern") entstand damit silenter Funddatum-Datenverlust.
+# Umlaut- und ASCII-transliterierte Formen (früh/frueh, spät/spaet) sind
+# beide praxisrelevant: Windows-CP1252/Excel-DE speichert Umlaute nativ,
+# aeltere ASCII-only-Notizen und Import aus Terminal-Tools mit 7-bit-
+# Codepage transliterieren zu ue/ae.
+_RELATIVE_DECADE_ADJECTIVE_OFFSETS: tuple[tuple[str, int], ...] = (
+    ("früh", 0), ("frueh", 0),
+    ("spät", 9), ("spaet", 9),
+)
 # ``(?:der\s+)?`` deckt die DE-Genitiv-Artikel-Fueller-Form ab, die in
 # ganzen Saetzen der Standard ist: ``Anfang der 1980er (Jahre)``, ``Ende der
 # 1990er Jahren``, ``Mitte der 2000er``. Ohne den Artikel-Zweig fielen diese
@@ -976,11 +999,58 @@ _RELATIVE_DECADE_OFFSETS: dict[str, int] = {
 # spiegelt _DECADE auf die relative Positions-Achse (``Anfang der 1980er
 # Jahren`` ist selten, aber ``Ende der 1990er Jahren`` als Fund-Kontext-
 # Anmerkung kommt vor).
+#
+# ``(?:(?:die|der|den|dem|das)\s+)?`` als optionaler Leading-Artikel deckt
+# die Nominativ-/Akkusativ-/Genitiv-/Dativ-Konstruktionen mit vor der Position
+# stehendem definitem Artikel ab: ``die fruehen 1980er``, ``der fruehen
+# 1980er Jahre``, ``den fruehen 1980ern``. Ohne diese Praefix-Klausel fielen
+# die Formen still auf None, obwohl der Rest-String semantisch identisch zur
+# artikellosen ``fruehe 1980er``-Form ist. Der ``_TEMPORAL_PREFIX`` strippt
+# ``in/im/vom/von/am/on + optional Artikel`` schon vor diesem Pattern - der
+# hier hinzugefuegte Artikel-Zweig deckt den Fall ab, dass der Artikel *ohne*
+# Praeposition am Anfang steht (Nominativ als Satz-Subjekt: ``Die fruehen
+# 1980er waren...``, oder direkt aus einer Tabellen-Zeile: ``die fruehen
+# 1980er``).
+#
+# Die zwei DE-Adjektiv-Alternanten ``fr(?:üh|ueh)(?:e|em|en|er|es)`` und
+# ``sp(?:ät|aet)(?:e|em|en|er|es)`` verlangen zwingend eine Adjektiv-Endung
+# (mindestens einen Buchstaben aus e/em/en/er/es), damit die reine Root-Form
+# ``frueh 1980er`` (grammatikalisch inkorrekt, Sammler-Praxis ohne Adjektiv-
+# Deklination) nicht matcht und die Praezisions-Semantik erhalten bleibt.
+# Die Endungs-Menge deckt die Standard-DE-Adjektiv-Deklinationsklassen ab
+# (schwache Deklination mit Artikel: -en; starke Deklination ohne Artikel:
+# -e/-es/-em/-er). Umlaut- und ASCII-transliterierte Formen (frueh/früh,
+# spaet/spät) sind beide praxisrelevant und werden ueber die (?:üh|ueh)/
+# (?:ät|aet)-Alternanten symmetrisch akzeptiert.
 _RELATIVE_DECADE = re.compile(
-    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+(?:der\s+)?(\d{4})(?:[\- ]?(?:er|s))"
+    r"^\s*(?:(?:die|der|den|dem|das)\s+)?"
+    r"(Anfang|Mitte|Ende|early|mid|late"
+    r"|fr(?:üh|ueh)(?:e|em|en|er|es)"
+    r"|sp(?:ät|aet)(?:e|em|en|er|es))"
+    r"[-\s]+(?:der\s+)?(\d{4})(?:[\- ]?(?:er|s))"
     r"(?:\s+jahren?)?\s*$",
     re.IGNORECASE,
 )
+
+
+def _relative_decade_offset(raw: str) -> int | None:
+    """Ordnet ein Positions-Keyword (inkl. DE-Adjektiv-Endung) einem Dekaden-Offset zu.
+
+    Nutzt die Basis-Map :data:`_RELATIVE_DECADE_OFFSETS` fuer die kanonischen
+    Substantiv-Formen (``anfang``, ``mitte``, ``ende``, ``early``, ``mid``,
+    ``late``) und die Praefix-Map :data:`_RELATIVE_DECADE_ADJECTIVE_OFFSETS`
+    fuer die DE-Adjektiv-Deklinationen (``frueh(e|en|er|em|es)``,
+    ``spaet(e|en|er|em|es)`` samt Umlaut-Varianten ``früh``/``spät``). Bei
+    einem Match auf eine Adjektiv-Wurzel wird der zugeordnete Offset
+    zurueckgegeben, unabhaengig von der konkreten Kasus-Endung.
+    """
+    key = raw.lower()
+    if key in _RELATIVE_DECADE_OFFSETS:
+        return _RELATIVE_DECADE_OFFSETS[key]
+    for prefix, offset in _RELATIVE_DECADE_ADJECTIVE_OFFSETS:
+        if key.startswith(prefix):
+            return offset
+    return None
 
 # Jahrhundert-Notation (DE/EN) - in geerbten Sammlungs-Notizen die uebliche
 # Grobdatierung fuer Museums-Eingaenge und Provenienz-Vermerke ("Fund aus dem
@@ -1818,7 +1888,9 @@ def parse_iso_date(text) -> str | None:
     # Konvention: Anfang→Jahr 0 der Dekade, Mitte→Jahr 5, Ende→Jahr 9.
     m = _RELATIVE_DECADE.match(s)
     if m:
-        offset = _RELATIVE_DECADE_OFFSETS[m.group(1).lower()]
+        offset = _relative_decade_offset(m.group(1))
+        if offset is None:
+            return None
         decade_anchor = int(m.group(2))
         if 1800 <= decade_anchor <= 2999:
             return f"{decade_anchor + offset:04d}-01-01"
