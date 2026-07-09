@@ -1307,10 +1307,27 @@ _DMS = re.compile(
 # gelesen wurde - silenter Koordinaten-Datenverlust). Wird vor _DMS gepruft
 # (kollisionsfrei: _DMS verlangt °, colon-DMS verbietet es), damit die Reihen-
 # folge dem Spezifischen-vor-Allgemeinen-Prinzip folgt.
+#
+# Sekunden-Komponente ist optional gemacht ``(?:\s*:\s*(\d+(?:[.,]\d+)?))?``,
+# damit die Grad+Minuten-only-Form ``46:30 N`` (ein Doppelpunkt statt zwei)
+# auch matcht - sehr verbreitet in Consumer-GPS-Displays, die bei zoom-out
+# nur die zwei signifikanten Positionen anzeigen, sowie in
+# maritimen/Aviatik-Log-Zeilen mit Sekunden = 0 (die dann bewusst weggelassen
+# werden). Bisher fiel diese Form still auf einen falschen Wert durch:
+# ``46:30 N, 7:45 E`` trifft _DMS_COLON nicht (nur ein Doppelpunkt statt zwei),
+# faellt auf _DECIMAL_PAIR-Fallback, der die letzten zwei Zahlen (30 und 7)
+# als Koordinaten-Paar erkennt - die Grad-Anteile 46 und 45 werden ignoriert
+# und der Sammler sieht ``(30.0, 7.0)`` statt der intendierten (46.5, 7.75).
+# Die Kollisions-Grenze zu Zeit-Notation bleibt durch die obligatorische
+# Himmelsrichtung am Ende gewahrt: ``14:30 Uhr`` ist keine Koordinate, ``14:30
+# N`` ist ambig (praktisch aber unueblich als Uhrzeit - Uhrzeiten haben kein
+# ``N`` als Suffix). Spiegelt die _DMS-Konvention, in der Minuten und Sekunden
+# beide optional sind (dort deckt es die reine Grad-Form ``46° N`` und die
+# Grad+Minuten-Form ``46°30' N`` ab).
 _DMS_COLON = re.compile(
     r"""(\d+(?:[.,]\d+)?)\s*:               # Grad + Doppelpunkt
-        \s*(\d+(?:[.,]\d+)?)\s*:            # Minuten + Doppelpunkt
-        \s*(\d+(?:[.,]\d+)?)                # Sekunden (Dezimalpunkt/Komma erlaubt)
+        \s*(\d+(?:[.,]\d+)?)                # Minuten
+        (?:\s*:\s*(\d+(?:[.,]\d+)?))?       # optionale Sekunden (Doppelpunkt + Zahl)
         \s*([NSEWOnsewo])                   # obligatorische Himmelsrichtung
     """,
     re.VERBOSE,

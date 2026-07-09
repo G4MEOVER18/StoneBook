@@ -3291,6 +3291,64 @@ def test_parse_coordinates_colon_dms():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_colon_dm_ohne_sekunden():
+    """Colon-Grad-Minuten-Form ohne Sekunden: '46:30 N, 7:45 E' (Consumer-
+    GPS-Display bei zoom-out, maritime Log-Zeilen mit Sekunden = 0).
+
+    Spiegelt die _DMS-Konvention (Minuten und Sekunden beide optional) auf
+    die colon-lose Variante: sekunden-lose Form ``46:30 N`` mappt auf
+    46 + 30/60 = 46.5 (Grad + Minutenanteil). Bisher fiel diese Form auf
+    einen falschen Wert durch: das _DMS_COLON-Pattern verlangte drei Zahlen
+    mit zwei Doppelpunkten (deg:min:sec), sodass die zwei-Zahlen-Form ``46:30
+    N, 7:45 E`` durch fiel und die _DECIMAL_PAIR-Fallback-Extraktion nur die
+    letzten zwei Zahlen (30 und 7) als Koordinaten-Paar erkannte - die Grad-
+    Anteile 46 und 45 wurden ignoriert und der Sammler sah ``(30.0, 7.0)``
+    statt der intendierten ``(46.5, 7.75)``. Aus Consumer-GPS-Displays und
+    maritimen Log-Zeilen mit sekunden-frei angezeigten Positionen entstand
+    damit silenter Koordinaten-Datenverlust.
+    """
+    # Standard mit Whitespace zwischen Minuten und Richtung
+    assert parse_coordinates("46:30 N, 7:45 E") == (46.5, 7.75)
+    # Ohne Whitespace zwischen Minuten und Richtung
+    assert parse_coordinates("46:30N,7:45E") == (46.5, 7.75)
+    # Verschiedene Pair-Separatoren
+    assert parse_coordinates("46:30 N 7:45 E") == (46.5, 7.75)
+    assert parse_coordinates("46:30 N; 7:45 E") == (46.5, 7.75)
+    assert parse_coordinates("46:30 N / 7:45 E") == (46.5, 7.75)
+    # Dezimal-Minuten (Punkt oder Komma)
+    lat, lon = parse_coordinates("46:30.5 N, 7:45.5 E")
+    assert abs(lat - (46 + 30.5/60)) < 1e-9
+    assert abs(lon - (7 + 45.5/60)) < 1e-9
+    lat, lon = parse_coordinates("46:30,5 N, 7:45,5 E")
+    assert abs(lat - (46 + 30.5/60)) < 1e-9
+    assert abs(lon - (7 + 45.5/60)) < 1e-9
+    # Suedhalbkugel / Westhalbkugel
+    assert parse_coordinates("46:30 S, 7:45 W") == (-46.5, -7.75)
+    # O = Ost (deutsche Notation)
+    assert parse_coordinates("46:30 N, 7:45 O") == (46.5, 7.75)
+    # Case-insensitive Richtung
+    assert parse_coordinates("46:30 n, 7:45 e") == (46.5, 7.75)
+    # Null-gepolsterte Minuten (semantisch die reine Grad-Form)
+    assert parse_coordinates("46:00 N, 7:00 E") == (46.0, 7.0)
+    # Out-of-Range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("100:30 N, 7:45 E") is None
+    assert parse_coordinates("46:30 N, 200:45 E") is None
+    # Reine Zeit-Notation ohne Richtung bleibt None (Kollisions-Schutz gilt
+    # weiterhin: die Himmelsrichtung ist obligatorisch)
+    assert parse_coordinates("14:30") is None
+    # Regression-Anker: DMS mit Sekunden (drei Zahlen) bleibt unveraendert
+    assert parse_coordinates("46:30:15 N, 7:30:0 E") == (46.5 + 15/3600, 7.5)
+    assert parse_coordinates("46:30:15.5 N, 7:30:0 E") == (
+        46.5 + 15.5/3600, 7.5,
+    )
+    # Regression-Anker: DMS mit ° / ' / " bleibt unveraendert
+    assert parse_coordinates("46° 30' 15\" N, 7° 30' 0\" E") == (
+        46.5 + 15/3600, 7.5,
+    )
+    # Regression-Anker: dezimale Form bleibt unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_dms_letter_markers():
     """DMS-Notation mit ASCII-Buchstaben-Markern ("46d30m15sN", "46deg30min15secN").
 
