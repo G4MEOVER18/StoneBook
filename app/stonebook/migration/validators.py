@@ -219,15 +219,36 @@ _APPROX_PREFIX = re.compile(
 # durch wiederholte Rekursion ("im ca. Sommer 1985" → "ca. Sommer 1985" → "Sommer
 # 1985" → "1985-06-01"). Nach _WEEKDAY_PREFIX einsortiert, damit "Donnerstag, im
 # Juni 2024" zuerst den Wochentag und dann die Praeposition strippt.
+# Praeposition ``aus`` (DE-Herkunft/Provenienz-Standard: "aus dem Jahr 1985",
+# "aus den 1980er Jahren", "aus dem 19. Jahrhundert") deckt die haeufigste
+# DE-Herkunfts-Formulierung in Sammler-/Museums-Notizen ab. In der ererbten
+# Katalog-Praxis notieren Vorbesitzer die Provenienz eines Stuecks fast immer
+# mit ``aus`` + Zeitangabe ("Stueck aus der Nachkriegs-Sammlung, aus dem
+# Jahr 1962", "Fund aus den 1980ern Alpen-Exkursionen"). Bisher fielen alle
+# Formen mit ``aus``-Praefix still auf None, obwohl die Datums-Bedeutung
+# selbst identisch zur reinen Form ist - die Praeposition ist reines Satz-
+# Gluekel, keine Datums-Modifikation. Spiegelt das ``im/in/am/vom/von/on``-
+# Konzept auf die Herkunfts-Achse; die Rekursions-Kette in parse_iso_date
+# erledigt die eigentliche Datums-Auswertung nach dem Strip.
+#
+# Praeposition ``waehrend`` / ``während`` (DE-Genitiv/Dativ-Zeitspanne:
+# "waehrend des Jahres 1985", "waehrend 1985", "waehrend der 1980er Jahre")
+# und EN ``during`` decken die zeitspannen-Herkunfts-Formulierung ab - typisch
+# in narrativen Tagebuch-/Reise-Notizen ("waehrend meines Aufenthaltes in
+# 1985 gefunden", "during the 1985 summer expedition"). Symmetrisch zu ``aus``
+# behandelt: reines Satz-Gluekel, Datums-Bedeutung identisch zur reinen Form.
+# Umlaut- (``während``) und ASCII-transliterierte Form (``waehrend``) beide
+# praxisrelevant (Windows-CP1252/Excel-DE nativ, 7-bit-ASCII-Notizen
+# transliterieren).
 _TEMPORAL_PREFIX = re.compile(
     r"^(?:"
     # Praeposition + optional Artikel + optional "Jahr"-Wort + Whitespace
-    r"(?:im|in|am|vom|von|on)\s+"
-    r"(?:(?:dem|den|der|the)\s+)?"
-    r"(?:(?:jahr|jahre|jahren|year)\s+)?"
+    r"(?:im|in|am|vom|von|on|aus|w[äa]hrend|waehrend|during)\s+"
+    r"(?:(?:dem|den|der|des|the)\s+)?"
+    r"(?:(?:jahr|jahre|jahres|jahren|year)\s+)?"
     r"|"
     # Nur "Jahr"-Wort ohne Praeposition (Listen-/Tabellen-Stil)
-    r"(?:jahr|jahre|jahren|year)\s+"
+    r"(?:jahr|jahre|jahres|jahren|year)\s+"
     r")",
     re.IGNORECASE,
 )

@@ -1663,6 +1663,97 @@ def test_parse_iso_date_temporale_praeposition():
     assert parse_iso_date("13.06.2024") == "2024-06-13"
 
 
+def test_parse_iso_date_temporale_praeposition_herkunft_und_zeitspanne():
+    """Herkunfts-Praeposition ``aus`` (DE) und Zeitspannen-Praeposition
+    ``waehrend``/``während`` (DE) / ``during`` (EN) vor dem Datum werden
+    gestrippt.
+
+    Spiegelt das ``im/in/am/vom/von/on``-Konzept auf die Herkunfts- und
+    Zeitspannen-Achse; die Praeposition ist Satz-Gluekel, keine Datums-
+    Modifikation - das ISO-Datum-Output ist identisch zur reinen Form.
+    In geerbten Sammler-/Museums-Notizen die haeufigste DE-Provenienz-
+    /Zeitspannen-Formulierung ("Stueck aus dem Jahr 1985", "aus den 1980ern",
+    "aus dem 19. Jahrhundert", "waehrend des Jahres 1985 gefunden",
+    "during the 1985 expedition"). Bisher fielen alle Formen mit diesen
+    Praepositionen still auf None, obwohl die Datums-Bedeutung selbst
+    identisch zur reinen Form ist.
+    """
+    # DE "aus" + Jahr
+    assert parse_iso_date("aus 1985") == "1985-01-01"
+    assert parse_iso_date("Aus 1985") == "1985-01-01"
+    # DE "aus dem Jahr" - klassische Provenienz-Formulierung
+    assert parse_iso_date("aus dem Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("Aus dem Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("aus dem Jahre 1985") == "1985-01-01"
+    # DE "aus des Jahres" (Genitiv, formeller Museums-Katalog-Stil)
+    assert parse_iso_date("aus des Jahres 1985") == "1985-01-01"
+    # DE "aus den Jahren" (Plural fuer Range-Notation)
+    assert parse_iso_date("aus den Jahren 1985-1990") == "1985-01-01"
+    # DE "aus" + Dekaden-Notation (Standard-praepositionale Wendung)
+    assert parse_iso_date("aus den 1980ern") == "1980-01-01"
+    assert parse_iso_date("aus den 1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("aus den 1990er Jahren") == "1990-01-01"
+    # DE "aus" + Jahrhundert
+    assert parse_iso_date("aus dem 19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("aus dem 20. Jhdt.") == "1900-01-01"
+    # DE "aus" + DE-Adjektiv-Form der Dekaden-Position (Verkettung)
+    assert parse_iso_date("aus den fruehen 1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("aus der spaeten 1990er") == "1999-01-01"
+    # DE "aus" + Monat + Jahr
+    assert parse_iso_date("aus dem Juni 2024") == "2024-06-01"
+    # DE "waehrend" (ASCII-transliteriert) + Jahr
+    assert parse_iso_date("waehrend 1985") == "1985-01-01"
+    assert parse_iso_date("Waehrend 1985") == "1985-01-01"
+    # DE "während" (Umlaut) + Jahr
+    assert parse_iso_date("während 1985") == "1985-01-01"
+    assert parse_iso_date("Während 1985") == "1985-01-01"
+    # DE "waehrend des Jahres" - klassische Zeitspannen-Formulierung
+    assert parse_iso_date("waehrend des Jahres 1985") == "1985-01-01"
+    assert parse_iso_date("während des Jahres 1985") == "1985-01-01"
+    # DE "waehrend der 1980er Jahre" (Genitiv-Rektion)
+    assert parse_iso_date("waehrend der 1980er Jahre") == "1980-01-01"
+    assert parse_iso_date("während der 1990er Jahre") == "1990-01-01"
+    # EN "during" + Jahr
+    assert parse_iso_date("during 1985") == "1985-01-01"
+    assert parse_iso_date("During 1985") == "1985-01-01"
+    # EN "during the" + Jahrzehnt
+    assert parse_iso_date("during the 1980s") == "1980-01-01"
+    assert parse_iso_date("during the 1990s") == "1990-01-01"
+    # EN "during the year"
+    assert parse_iso_date("during the year 1985") == "1985-01-01"
+    # Case-insensitive (DE/EN gemischt)
+    assert parse_iso_date("AUS DEM JAHR 1985") == "1985-01-01"
+    assert parse_iso_date("WAEHREND 1985") == "1985-01-01"
+    assert parse_iso_date("DURING 1985") == "1985-01-01"
+    # Verkettete Praefixe (rekursive Strippung)
+    assert parse_iso_date("aus ca. 1985") == "1985-01-01"
+    assert parse_iso_date("waehrend ca. 1985") == "1985-01-01"
+    # Wortanfang muss exakt sein - kein Anschneiden laengerer Worte
+    # ("ausgehend", "ausbruch", "auslaufend" beginnen mit "aus", aber ohne
+    # Whitespace-Trenner zum naechsten Wort matcht das Pattern nicht)
+    assert parse_iso_date("ausgehend von 1985") is None
+    assert parse_iso_date("auslaufend 1985") is None
+    assert parse_iso_date("ausbruchsjahr 1985") is None
+    # ("waehrenddessen", "duringtime" wuerden analog nicht matchen; aber
+    # da diese Woerter unueblich sind, hier nur die realistischen)
+    # Praefix ohne Inhalt / mit ungueltigem Rest → None
+    assert parse_iso_date("aus") is None
+    assert parse_iso_date("waehrend") is None
+    assert parse_iso_date("during") is None
+    assert parse_iso_date("aus abc") is None
+    # Praefix vor Jahr ausserhalb 1800-2999 → None
+    assert parse_iso_date("aus 1700") is None
+    assert parse_iso_date("aus dem Jahr 1700") is None
+    assert parse_iso_date("during 1700") is None
+    # Bestehende Praepositionen ohne aus/waehrend/during bleiben unveraendert
+    # (Regression-Anker)
+    assert parse_iso_date("im Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("vom 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("on June 13, 2024") == "2024-06-13"
+    assert parse_iso_date("von 1985") == "1985-01-01"
+    assert parse_iso_date("Jahr 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_boundary_praefix():
     """Boundary-/Richtungs-Praefix (vor/nach/before/after/pre-/post-) wird gestrippt.
 
