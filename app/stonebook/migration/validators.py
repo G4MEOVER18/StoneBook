@@ -294,8 +294,22 @@ _TEMPORAL_PREFIX = re.compile(
 # wie "vorheriger", "Nachmittag", "preset", "posten": ausgeschlossen, weil
 # der trailing ``[-\s]+`` ein echtes Wort-Ende verlangt - "vorhin 1985"
 # matchet nicht, weil nach "vor" kein Whitespace/Bindestrich kommt.
+#
+# Erweiterte DE-Adverb-Formen ``spaetestens``/``spätestens`` (spiegelt ``vor``
+# als semantische Obergrenze, "das Jahr ist das spaeteste Datum") und
+# ``fruehestens``/``frühestens`` (spiegelt ``nach`` als semantische Unter-
+# grenze, "das Jahr ist das frueheste Datum") decken die haeufigste DE-
+# Sammler-/Museums-Notiz-Praxis fuer weiche Grenz-Datierungen ab: "Fund
+# spaetestens 1985 in die Sammlung aufgenommen", "Provenienz frühestens
+# 1990". Semantisch identisch zu vor/nach - der Grenzwert ist der bekannte
+# Anker, die Richtung bleibt im Freitext (notizen). Umlaut- und ae-Trans-
+# literation parallel wie bei den uebrigen Vokabeln (siehe :data:`_APPROX_PREFIX`
+# ``ungef[äa]hr|ungefaehr``, :data:`_RELATIVE_DECADE_ADJECTIVE_OFFSETS``
+# ``spaet``/``spät``/``frueh``/``früh``). Wortende-Zwang ``[-\s]+`` erhaelt
+# sich - "spätestensvor 1985" (ohne Whitespace) matchet nicht, "spätestens-
+# 1985" (Bindestrich statt Whitespace) matchet symmetrisch zu ``pre-1985``.
 _BOUNDARY_PREFIX = re.compile(
-    r"^(?:vor|nach|before|after|pre|post)[-\s]+",
+    r"^(?:vor|nach|sp[äa]testens|spaetestens|fr[üu]hestens|fruehestens|before|after|pre|post)[-\s]+",
     re.IGNORECASE,
 )
 # Unidirektionale Range-Praefix (DE/EN) vor dem Datum: "ab 1985", "seit 1985",

@@ -1883,6 +1883,61 @@ def test_parse_iso_date_boundary_praefix():
     assert parse_iso_date("im Juni 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_boundary_praefix_spaetestens_fruehestens():
+    """DE-Adverb-Formen ``spaetestens``/``spätestens`` und ``fruehestens``/``frühestens``.
+
+    Spiegelt das ``vor``/``nach``-Verhalten auf die semantisch identischen DE-
+    Adverb-Formen: ``spätestens 1985`` ist die weiche Obergrenze ("das Jahr
+    ist das spaeteste Datum", semantisch == ``vor 1985``), ``frühestens 1985``
+    die weiche Untergrenze (semantisch == ``nach 1985``). Verbreitet in
+    Sammler-Notizen zu Grenz-Datierungen. Deckt Umlaut- und ae/ue-Trans-
+    literation ab (Encoding-Robustheit fuer ASCII-only-Tools und Legacy-CSV).
+    """
+    # DE Umlaut-Standardform
+    assert parse_iso_date("spätestens 1985") == "1985-01-01"
+    assert parse_iso_date("frühestens 1985") == "1985-01-01"
+    # ae/ue-Transliteration (ASCII-only-Fallback)
+    assert parse_iso_date("spaetestens 1985") == "1985-01-01"
+    assert parse_iso_date("fruehestens 1985") == "1985-01-01"
+    # Case-insensitive (Etiketten in Grossbuchstaben, Satzanfang mit Grossbuchstabe)
+    assert parse_iso_date("Spätestens 1985") == "1985-01-01"
+    assert parse_iso_date("FRÜHESTENS 1985") == "1985-01-01"
+    assert parse_iso_date("SPAETESTENS 2024") == "2024-01-01"
+    assert parse_iso_date("Fruehestens 2024") == "2024-01-01"
+    # Adverb-Praefix + alle Datums-Untertypen (rekursiv, spiegelt vor/nach)
+    assert parse_iso_date("spätestens Juni 2024") == "2024-06-01"
+    assert parse_iso_date("frühestens 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("spätestens 1980er") == "1980-01-01"
+    assert parse_iso_date("frühestens Sommer 1985") == "1985-06-01"
+    assert parse_iso_date("spaetestens 2024-06-13") == "2024-06-13"
+    # Bindestrich-Variante symmetrisch zu pre-/post-Formen
+    assert parse_iso_date("spätestens-1985") == "1985-01-01"
+    assert parse_iso_date("frühestens-2024") == "2024-01-01"
+    # Verkettung mit anderen Praefixen (rekursive Strippung)
+    assert parse_iso_date("spätestens ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. spätestens 1985") == "1985-01-01"
+    assert parse_iso_date("frühestens circa Juni 2024") == "2024-06-01"
+    # Adverb + temporale Praeposition (semantisch redundant, unschaedlich)
+    assert parse_iso_date("spätestens im Juni 2024") == "2024-06-01"
+    assert parse_iso_date("frühestens im Jahr 1985") == "1985-01-01"
+    # Praefix ohne Inhalt / mit ungueltigem Rest → None
+    assert parse_iso_date("spätestens") is None
+    assert parse_iso_date("frühestens") is None
+    assert parse_iso_date("spätestens abc") is None
+    # Praefix vor Jahr ausserhalb 1800-2999 → None
+    assert parse_iso_date("spätestens 1700") is None
+    assert parse_iso_date("frühestens 3000") is None
+    # Wortende-Zwang: kein Anschneiden laengerer Worte, kein direktes Anhaengen
+    assert parse_iso_date("spätestenswolke 1985") is None
+    assert parse_iso_date("spätestensvor 1985") is None
+    assert parse_iso_date("fruehestensx 1985") is None
+    # Regression-Anker: bestehende Boundary-Praefixe bleiben unveraendert
+    assert parse_iso_date("vor 1985") == "1985-01-01"
+    assert parse_iso_date("nach 1985") == "1985-01-01"
+    assert parse_iso_date("before 1985") == "1985-01-01"
+    assert parse_iso_date("pre-1985") == "1985-01-01"
+
+
 def test_parse_iso_date_range_praefix():
     """Unidirektionaler Range-Praefix (ab/seit/bis/from/since/until/till) wird gestrippt.
 
