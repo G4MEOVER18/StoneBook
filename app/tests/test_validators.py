@@ -1908,6 +1908,63 @@ def test_parse_iso_date_range_praefix():
     assert parse_iso_date("im Juni 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_range_praefix_mit_artikel_und_jahr_wort():
+    """Range-Praefix (ab/seit/bis/from/since/until/till) + optionaler Artikel
+    + optionales Jahr-Wort werden gestrippt.
+
+    Spiegelt das _TEMPORAL_PREFIX-Konzept (Praeposition + Artikel + Jahr-Wort
+    als reines Satz-Gluekel) auf die unidirektionalen Spannen-Marker. Sehr
+    verbreitet in geerbten Sammler-/Museums-Notizen mit vollstaendigem
+    Satzbau ("Sammlung seit dem Jahr 1985", "Fundort ab dem 1980er Jahren",
+    "Sammlung since the year 1985", "from the 1980s"). Bisher fielen alle
+    Formen mit Artikel-Zwischenwort still auf None, obwohl semantisch
+    identisch zur artikellosen Form ("seit 1985") - das Jahr ist der
+    bekannte Anker, der Artikel-Zwischen-Teil ist reines grammatikalisches
+    Gluekel.
+    """
+    # DE "seit/ab/bis" + Artikel + Jahr-Wort + Jahr (klassische Genitiv-/
+    # Dativ-Rektion in Museums-Katalog-Vermerken)
+    assert parse_iso_date("seit dem Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("ab dem Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("bis dem Jahr 1985") == "1985-01-01"
+    # DE "seit/ab" + Artikel + Dekaden-Notation (mit Adjektiv-/Substantiv-Form)
+    assert parse_iso_date("seit den 1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("seit den 1980ern") == "1980-01-01"
+    assert parse_iso_date("ab den 1980ern") == "1980-01-01"
+    assert parse_iso_date("bis den 1990ern") == "1990-01-01"
+    # DE "seit" + Genitiv-Artikel (formeller Museums-Katalog-Stil)
+    assert parse_iso_date("seit des Jahres 1985") == "1985-01-01"
+    # DE Kombination mit Adjektiv-Form der Dekaden-Position (Verkettung)
+    assert parse_iso_date("seit den fruehen 1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("ab den spaeten 1990ern") == "1999-01-01"
+    # EN "since/from/until/till" + Artikel + Jahr-Wort + Jahr
+    assert parse_iso_date("since the year 1985") == "1985-01-01"
+    assert parse_iso_date("from the year 1985") == "1985-01-01"
+    assert parse_iso_date("until the year 1985") == "1985-01-01"
+    # EN "since/from/until" + Artikel + Jahrzehnt
+    assert parse_iso_date("since the 1980s") == "1980-01-01"
+    assert parse_iso_date("from the 1980s") == "1980-01-01"
+    assert parse_iso_date("until the 1990s") == "1990-01-01"
+    assert parse_iso_date("till the 1990s") == "1990-01-01"
+    # Case-insensitive
+    assert parse_iso_date("SEIT DEM JAHR 1985") == "1985-01-01"
+    assert parse_iso_date("SINCE THE YEAR 1985") == "1985-01-01"
+    # Praefix + Artikel ohne gueltigen Datums-Rest → None (Wort statt Jahr)
+    assert parse_iso_date("seit dem Fund 1985") is None
+    assert parse_iso_date("ab dem Katalog 1985") is None
+    # Regression-Anker: artikellose Formen bleiben unveraendert
+    assert parse_iso_date("seit 1985") == "1985-01-01"
+    assert parse_iso_date("ab 1985") == "1985-01-01"
+    assert parse_iso_date("bis 1985") == "1985-01-01"
+    assert parse_iso_date("from 1985") == "1985-01-01"
+    assert parse_iso_date("since 1985") == "1985-01-01"
+    assert parse_iso_date("until 1985") == "1985-01-01"
+    # Regression-Anker: "1985 bis 1990" (bis als Range-Trenner) bleibt
+    # unveraendert - der ^-Anker in _RANGE_PREFIX schliesst Kollision mit
+    # _YEAR_RANGE_WORD aus
+    assert parse_iso_date("1985 bis 1990") == "1985-01-01"
+
+
 def test_parse_iso_date_bindestrich_separator_mit_monatsname():
     """Bindestrich als Separator zwischen Tag/Monatsname/Jahr (Oracle/Log-Exporte)."""
     # DD-MMM-YYYY (Oracle-Default-Format)

@@ -317,8 +317,24 @@ _BOUNDARY_PREFIX = re.compile(
 # "abgesehen", "seitlich", "seitens", "bissel", "fromage", "sincerely",
 # "tilltrigger": ausgeschlossen durch das trailing ``\s+`` (Wort-Ende-
 # Pruefung).
+# Optionaler Artikel + optional Jahr-Wort nach der Praeposition, symmetrisch
+# zu _TEMPORAL_PREFIX. Deckt Formen mit Artikel-Rektion ab: "seit dem Jahr
+# 1985" (Dativ), "ab dem Jahr 1985" (Dativ), "bis zum Jahr 1985" (nicht
+# gedeckt, Kontraktion "zum" waere separate Alternante), "seit den 1980er
+# Jahren" (Dativ Plural, sehr verbreitet in Kollektions-/Museums-Provenienz-
+# Vermerken), "seit den 1980ern" (substantivierte Dativ Plural-Kurzform),
+# "since the year 1985" (EN Standard-Form), "from the 1980s", "until the
+# 1990s". Bisher fielen alle Formen mit Artikel-Zwischenwort still auf None,
+# obwohl semantisch identisch zur artikellosen Form ("seit 1985"): das Jahr
+# ist der bekannte Anker, der Artikel-Zwischen-Teil ist reines grammatika-
+# lisches Gluekel und wird beim Strippen wie in _TEMPORAL_PREFIX identisch
+# behandelt. Aus geerbten Sammler-/Museums-Notizen mit vollstaendigem
+# Satzbau entstand damit silenter Funddatum-Datenverlust, obwohl das
+# Datum selbst eindeutig ist.
 _RANGE_PREFIX = re.compile(
-    r"^(?:ab|seit|bis|from|since|until|till)\s+",
+    r"^(?:ab|seit|bis|from|since|until|till)\s+"
+    r"(?:(?:dem|den|der|des|the)\s+)?"
+    r"(?:(?:jahr|jahre|jahres|jahren|year)\s+)?",
     re.IGNORECASE,
 )
 # Wochentag-Praefix wie in Foto-Captions / EXIF-Datetimes / Tagebucheintraegen
