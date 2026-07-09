@@ -468,10 +468,11 @@ def _strip_trailing_balanced_bracket(s: str) -> str | None:
 # gestrippt, Datum bleibt unveraendert) auf die Suffix-Achse: die Aera-
 # Angabe ist semantische Wert-Anmerkung ("welche Zeitrechnungs-Konvention"),
 # keine Datums-Modifikation - das ISO-Datum-Output ist identisch zur reinen
-# Form. AD/n. Chr./CE liegen im gueltigen 1800..2999-Band; BC/v. Chr./BCE
-# liegen ausserhalb (Jahres-Range-Pruefung filtert sie transparent auf None,
-# konsistent mit "500" -> None ohne Aera-Marker). Strip + Rekursion analog
-# _TRAILING_TIME/_TRAILING_PAREN_REMARK/_TRAILING_PUNCT.
+# Form. AD/n. Chr./CE/u. Z. liegen im gueltigen 1800..2999-Band; BC/v. Chr./
+# BCE/v. u. Z. liegen ausserhalb (Jahres-Range-Pruefung filtert sie
+# transparent auf None, konsistent mit "500" -> None ohne Aera-Marker).
+# Strip + Rekursion analog _TRAILING_TIME/_TRAILING_PAREN_REMARK/
+# _TRAILING_PUNCT.
 #
 # BCE-Muster (b\.?\s*c\.?\s*e\.?) vor dem BC-Muster (b\.?\s*c\.?), damit
 # die spezifischere 3-Buchstaben-Form nicht durch das kuerzere BC-Pattern
@@ -484,6 +485,25 @@ def _strip_trailing_balanced_bracket(s: str) -> str | None:
 # "A. D.") mit \s* zwischen den Buchstaben. Case-insensitive akzeptiert
 # (Etiketten in Grossbuchstaben/Kleinbuchstaben/Mischform sind alle in
 # geerbten Sammlungs-Notizen zu finden).
+#
+# DDR-/moderne konfessionsneutrale DE-Aera-Notation "u. Z." (unserer
+# Zeitrechnung, CE-Aequivalent) und "v. u. Z." (vor unserer Zeitrechnung,
+# BCE-Aequivalent). Standard-Konvention der DDR-Fachliteratur (Deutsche
+# Akademie der Wissenschaften Berlin, ost-deutsche archaeologische und
+# mineralogische Publikationen bis 1990) und in der modernen sekulaeren
+# DE-Wissenschaftssprache verbreitet, wo Autoren die christlich-konfessio-
+# nelle "n. Chr."-Notation durch die neutrale Aera-Angabe ersetzen (analog
+# zur englischsprachigen CE/BCE-Konvention, die "AD/BC" ablost). Kommt in
+# geerbten Sammlungen mit ost-deutscher Provenienz und in aelteren
+# Referenzen aus DDR-Museums-Eingangsbuechern vor; auch in modernen
+# westdeutschen Publikationen mit dezidiert neutraler Datumsangabe. Ohne
+# diese Alternation fielen typische Etiketten wie "500 v. u. Z." oder
+# "1985 u. Z." stille auf None, obwohl semantisch identisch zur bereits
+# unterstuetzten CE/BCE- und n. Chr./v. Chr.-Notation. Die v. u. Z.-Form
+# (drei Token) muss VOR der u. Z.-Form (zwei Token) alterniert werden -
+# spiegelt die BCE-vor-BC-Reihenfolge, sonst konsumiert die u. Z.-Alter-
+# nation nur den "u. Z."-Anteil und laesst "v." als trailing zurueck, was
+# nach dem _TRAILING_PUNCT-Strip zu "1985 v" fuehrt (nicht parsierbar).
 _TRAILING_ERA_MARKER = re.compile(
     r"\s+(?:"
     r"n\.?\s*chr\.?"           # n. Chr. / n.Chr. / n Chr. / nChr.
@@ -494,6 +514,10 @@ _TRAILING_ERA_MARKER = re.compile(
     r"|b\.?\s*c\.?\s*e\.?"     # BCE / B.C.E. / B. C. E. (vor BC-Muster!)
     r"|b\.?\s*c\.?"            # BC / B.C. / B. C. / B C
     r"|c\.?\s*e\.?"            # CE / C.E. / C. E. / C E
+    r"|v\.?\s*u\.?\s*z\.?"     # v. u. Z. / v.u.Z. / vuZ (vor u.Z.-Muster!)
+    r"|vor\s+unserer\s+zeitrechnung"  # vor unserer Zeitrechnung (Vollform)
+    r"|u\.?\s*z\.?"            # u. Z. / u.Z. / u Z / uZ
+    r"|unserer\s+zeitrechnung"  # unserer Zeitrechnung (Vollform)
     r")\s*$",
     re.IGNORECASE
 )

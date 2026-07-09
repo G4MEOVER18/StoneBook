@@ -2255,6 +2255,70 @@ def test_parse_iso_date_trailing_annaeherungs_suffix():
     assert parse_iso_date("1985_ca") is None
 
 
+def test_parse_iso_date_trailing_aera_marker_uz_vuz():
+    """DDR-/moderne konfessionsneutrale Aera-Notation "u. Z." / "v. u. Z."
+    wird als trailing Aera-Marker abgestrippt, spiegelt CE/BCE-Semantik.
+
+    Standard-Konvention der DDR-Fachliteratur (Akademie-Publikationen bis
+    1990) und in der modernen sekulaeren DE-Wissenschaftssprache verbreitet,
+    wo die christlich-konfessionelle n. Chr./v. Chr.-Notation durch die
+    neutrale Aera-Angabe ersetzt wird. Vor dem Fix fielen alle Formen stille
+    auf None, obwohl semantisch identisch zur bereits unterstuetzten
+    CE/BCE- und n. Chr./v. Chr.-Notation.
+    """
+    # u. Z. Kurzform (unserer Zeitrechnung, CE-Aequivalent)
+    assert parse_iso_date("1985 u. Z.") == "1985-01-01"
+    assert parse_iso_date("1985 u.Z.") == "1985-01-01"
+    assert parse_iso_date("1985 u Z") == "1985-01-01"
+    assert parse_iso_date("1985 uZ") == "1985-01-01"
+    assert parse_iso_date("1985 u. z.") == "1985-01-01"
+    # u. Z. Vollform (unserer Zeitrechnung)
+    assert parse_iso_date("1985 unserer Zeitrechnung") == "1985-01-01"
+    # v. u. Z. Kurzform (vor unserer Zeitrechnung, BCE-Aequivalent).
+    # Wird wie CE-Aequivalent gelesen; Range-Pruefung filtert Werte < 1800
+    # transparent auf None (spiegelt "500 BCE" -> None ohne Aera-Marker).
+    assert parse_iso_date("1985 v. u. Z.") == "1985-01-01"
+    assert parse_iso_date("1985 v.u.Z.") == "1985-01-01"
+    assert parse_iso_date("1985 v u Z") == "1985-01-01"
+    assert parse_iso_date("1985 vuZ") == "1985-01-01"
+    # v. u. Z. Vollform (vor unserer Zeitrechnung)
+    assert parse_iso_date("1985 vor unserer Zeitrechnung") == "1985-01-01"
+    # BCE-Aequivalent-Verhalten: Jahre < 1800 fallen auf None (Range-Pruefung)
+    assert parse_iso_date("500 v. u. Z.") is None
+    assert parse_iso_date("500 v.u.Z.") is None
+    assert parse_iso_date("500 vor unserer Zeitrechnung") is None
+    # Case-insensitive (Etiketten in verschiedenen Schreibungen)
+    assert parse_iso_date("1985 U. Z.") == "1985-01-01"
+    assert parse_iso_date("1985 V. U. Z.") == "1985-01-01"
+    assert parse_iso_date("1985 U.Z.") == "1985-01-01"
+    # Kombiniert mit vollstaendigem Datum (Tag + Monat + Jahr + Marker)
+    assert parse_iso_date("13.06.2024 u. Z.") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 u.Z.") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024 unserer Zeitrechnung") == "2024-06-13"
+    # Kombiniert mit Jahrhundert-Notation (Arabisch und Roemisch)
+    assert parse_iso_date("19. Jahrhundert u. Z.") == "1800-01-01"
+    assert parse_iso_date("XIX. Jahrhundert u. Z.") == "1800-01-01"
+    # Reihenfolge-Anker: v. u. Z. muss VOR u. Z. alterniert werden. Sonst
+    # wuerde u. Z. nur den "u. Z."-Anteil konsumieren und "v." als trailing
+    # zurueck lassen, was nach _TRAILING_PUNCT-Strip zu "1985 v" fuehrt.
+    assert parse_iso_date("1985 v. u. Z.") == "1985-01-01"
+    # Reine Aera-Markierung ohne Datum bleibt None
+    assert parse_iso_date("u. Z.") is None
+    assert parse_iso_date("v. u. Z.") is None
+    assert parse_iso_date("unserer Zeitrechnung") is None
+    # Nicht-Aera-Suffix darf NICHT als u. Z.-Marker gedeutet werden (kein
+    # Regress: das u/z-Pattern darf nur mit Punkt-/Whitespace-Trennung
+    # matchen, nicht als Teil eines Wortes)
+    assert parse_iso_date("1985 uZahn") is None
+    assert parse_iso_date("1985 zeitrechnung") is None
+    # Bestehende Aera-Marker bleiben unveraendert (kein Regress zu n. Chr./AD/CE)
+    assert parse_iso_date("1985 n. Chr.") == "1985-01-01"
+    assert parse_iso_date("1985 AD") == "1985-01-01"
+    assert parse_iso_date("1985 CE") == "1985-01-01"
+    assert parse_iso_date("500 v. Chr.") is None
+    assert parse_iso_date("500 BCE") is None
+
+
 def test_parse_iso_date_iso_ordinaldatum():
     """ISO 8601 Ordinal-Datum (Tag des Jahres) wird auf das Kalenderdatum projeziert."""
     # ISO-Standard mit Bindestrich
