@@ -1,3 +1,5 @@
+import pytest
+
 from stonebook.migration.validators import parse_coordinates, parse_iso_date
 
 
@@ -2653,6 +2655,118 @@ def test_parse_coordinates_iso6709_compact_decimal():
     # Decimal mit Vorzeichen UND DMS-Markern wird NICHT als ISO 6709 interpretiert
     # (das ^...$-Anker laesst zusaetzliche Tokens nicht zu) - faellt zurueck
     # auf das _DECIMAL_PAIR/_PREFIX_PAIR-Verhalten ohne stille Doppeldeutung.
+
+
+def test_parse_coordinates_iso6709_compact_dm():
+    """ISO 6709 Compact-DM-Form: ``+DDMM+DDDMM/`` (Grad + Minuten, ohne Trenner).
+
+    Der ISO-6709-Standard fixiert die Ziffernbreite je Position: Lat = 2
+    Grad-Ziffern + 2 Minuten-Ziffern (Gesamt 4 Ganzzahl-Ziffern), Lon = 3
+    Grad-Ziffern + 2 Minuten-Ziffern (Gesamt 5 Ganzzahl-Ziffern); die zwei
+    Vorzeichen zwischen den Zahlen dienen als impliziter Separator, die feste
+    Ziffernbreite disambiguiert vom Compact-Decimal-Fall (1-2/1-3 Ganzzahl-
+    Ziffern). Vor dieser Erweiterung fielen alle DM-Compact-Formen still auf
+    None (weder _DECIMAL_PAIR noch _ISO6709_COMPACT_DECIMAL noch _PREFIX_PAIR/
+    _SUFFIX_PAIR_NO_SEP passen).
+    """
+    # Standard-Form mit Trailing-Slash (spec-konform): 46°30' N,  7°45' E
+    assert parse_coordinates("+4630+00745/") == (46.5, 7.75)
+    # Ohne Trailing-Slash (einzelne Koordinate)
+    assert parse_coordinates("+4630+00745") == (46.5, 7.75)
+    # Negative Lat (Suedhalbkugel) + negative Lon (Westhalbkugel)
+    assert parse_coordinates("-4630-00745/") == (-46.5, -7.75)
+    assert parse_coordinates("-4630-00745") == (-46.5, -7.75)
+    # Gemischte Vorzeichen
+    assert parse_coordinates("-4630+00745") == (-46.5, 7.75)
+    assert parse_coordinates("+4630-00745") == (46.5, -7.75)
+    # Dezimal-Minuten: 46°30.5' N -> 46 + 30.5/60 = 46.5083...
+    lat, lon = parse_coordinates("+4630.5+00745.5/")
+    assert lat == pytest.approx(46.5083333, abs=1e-6)
+    assert lon == pytest.approx(7.7583333, abs=1e-6)
+    # ISO 6709 fixiert '.' als Dezimaltrenner - Komma-Notation kollidiert mit dem
+    # _DECIMAL_PAIR-Separator und wird bewusst nicht als Compact-DM interpretiert.
+    # Null-Koordinaten (Aequator/Greenwich)
+    assert parse_coordinates("+0000+00000") == (0.0, 0.0)
+    assert parse_coordinates("-0000-00000") == (0.0, 0.0)
+    # Ganzzahl-Minuten am Rand: 89°59' N, 179°59' E ist noch gueltig
+    lat, lon = parse_coordinates("+8959+17959/")
+    assert lat == pytest.approx(89.9833333, abs=1e-6)
+    assert lon == pytest.approx(179.9833333, abs=1e-6)
+    # Whitespace um den ganzen Ausdruck ist toleriert
+    assert parse_coordinates("  +4630+00745/  ") == (46.5, 7.75)
+    # Out-of-Range durch ueberlaufende Minuten (Minuten > 60 machen Wert > Grad+1)
+    # +9199+18099: Lat = 91 + 99/60 = 92.65 (>90), Lon = 180 + 99/60 = 181.65 (>180)
+    assert parse_coordinates("+9199+18099/") is None
+    # Regression: bestehende Compact-Decimal-Form bleibt unveraendert
+    assert parse_coordinates("+46.5+7.5") == (46.5, 7.5)
+    assert parse_coordinates("+46.5+007.5/") == (46.5, 7.5)
+
+
+def test_parse_coordinates_iso6709_compact_dms():
+    """ISO 6709 Compact-DMS-Form: ``+DDMMSS+DDDMMSS/`` (Grad + Min + Sek, ohne Trenner).
+
+    Erweiterung des Compact-DM auf die Sekunden-Achse: Lat = 2+2+2 = 6 Ganzzahl-
+    Ziffern, Lon = 3+2+2 = 7 Ganzzahl-Ziffern. Dezimalstellen (optional) haengen
+    an den Sekunden. Verbreitet in exiftool-XMP-GPS-Exporten, Wikipedia-Geo-
+    Microformat und GML-/KML-Formaten mit hoher Genauigkeit.
+    """
+    # Standard-Form: 46°30'15" N, 7°45'0" E
+    lat, lon = parse_coordinates("+463015+0074500/")
+    assert lat == pytest.approx(46.504166667, abs=1e-6)
+    assert lon == pytest.approx(7.75, abs=1e-6)
+    # Ohne Trailing-Slash
+    lat, lon = parse_coordinates("+463015+0074500")
+    assert lat == pytest.approx(46.504166667, abs=1e-6)
+    assert lon == pytest.approx(7.75, abs=1e-6)
+    # Negative Vorzeichen (Sued/West)
+    lat, lon = parse_coordinates("-463015-0074500/")
+    assert lat == pytest.approx(-46.504166667, abs=1e-6)
+    assert lon == pytest.approx(-7.75, abs=1e-6)
+    # Dezimal-Sekunden (hohe Genauigkeit): 15.5 Sek -> +0.5/3600
+    lat, lon = parse_coordinates("+463015.5+0074500.5/")
+    assert lat == pytest.approx(46.504305556, abs=1e-6)
+    assert lon == pytest.approx(7.750138889, abs=1e-6)
+    # ISO 6709 fixiert '.' als Dezimaltrenner (Komma-Notation kollidiert mit
+    # dem _DECIMAL_PAIR-Separator und wird nicht als Compact-DMS interpretiert).
+    # Null-Koordinaten (Aequator/Greenwich)
+    assert parse_coordinates("+000000+0000000") == (0.0, 0.0)
+    assert parse_coordinates("-000000-0000000") == (0.0, 0.0)
+    # Whitespace um den ganzen Ausdruck ist toleriert
+    lat, lon = parse_coordinates("  +463015+0074500/  ")
+    assert lat == pytest.approx(46.504166667, abs=1e-6)
+    # Out-of-Range: ueberlaufende Sekunden
+    # +919999+1809999: Lat = 91 + 99/60 + 99/3600 = 92.6775 (>90)
+    assert parse_coordinates("+919999+1809999/") is None
+    # Regression: Compact-Decimal-Form bleibt unveraendert
+    assert parse_coordinates("+46.5+7.5") == (46.5, 7.5)
+    # Regression: Compact-DM-Form bleibt unveraendert
+    assert parse_coordinates("+4630+00745/") == (46.5, 7.75)
+
+
+def test_parse_coordinates_iso6709_compact_ambiguity():
+    """Ziffernbreite disambiguiert die drei Compact-Formen (Decimal/DM/DMS).
+
+    Die drei ISO-6709-Compact-Formen sind ueber die Ganzzahl-Ziffernbreite
+    strukturell disjunkt:
+      - 1-2 Ziffern Lat / 1-3 Ziffern Lon = Compact-Decimal (``+46+7``, ``+46.5+7.5``)
+      - 4 Ziffern Lat  / 5 Ziffern Lon    = Compact-DM (``+4630+00745``)
+      - 6 Ziffern Lat  / 7 Ziffern Lon    = Compact-DMS (``+463015+0074500``)
+
+    Zwischenformen (3+4, 5+6, 7+8) matchen bewusst *keine* der Klassen und
+    fallen auf None - jeder Compact-Match muss die Positions-Konvention exakt
+    respektieren.
+    """
+    # 3-digit Lat ist keine der drei Formen -> None
+    assert parse_coordinates("+463+0074") is None
+    # 5-digit Lat / 6-digit Lon (zwischen DM und DMS) -> None
+    assert parse_coordinates("+46301+007450") is None
+    # 7-digit Lat / 8-digit Lon (jenseits DMS) -> None
+    assert parse_coordinates("+4630150+00745000") is None
+    # Regression: normale Formen alle drei greifen
+    assert parse_coordinates("+46+7") == (46.0, 7.0)         # Compact-Decimal
+    assert parse_coordinates("+4630+00745") == (46.5, 7.75)  # Compact-DM
+    lat, lon = parse_coordinates("+463015+0074500")           # Compact-DMS
+    assert lat == pytest.approx(46.504166667, abs=1e-6)
 
 
 def test_parse_coordinates_typografisches_minus():

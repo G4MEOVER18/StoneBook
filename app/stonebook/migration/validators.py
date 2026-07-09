@@ -1286,6 +1286,73 @@ _ISO6709_COMPACT_DECIMAL = re.compile(
     """,
     re.VERBOSE,
 )
+# ISO 6709 Compact-DM-Form: ``+DDMM+DDDMM/`` bzw. ``+DDMM.MM+DDDMM.MM/`` -
+# Grad + Minuten ohne Trenner, Dezimalstellen (optional) haengen an den Minuten.
+# ISO 6709 fixes die Ziffernbreite je Position: Lat = 2 Ziffern Grad + 2 Ziffern
+# Minuten (Gesamt 4 Ganzzahl-Ziffern), Lon = 3 Ziffern Grad + 2 Ziffern Minuten
+# (Gesamt 5 Ganzzahl-Ziffern). Die zwei Vorzeichen dienen als impliziter Separator
+# zwischen Lat und Lon (dieselbe Konvention wie _ISO6709_COMPACT_DECIMAL) - der
+# einzige strukturelle Unterschied ist die Ziffernbreite der Ganzzahl-Vorstand-
+# Gruppe (4/5 statt 1-2/1-3), die den Format-Modus eindeutig macht:
+#
+#   ``+4630+00745/``       -> 46°30' N,  7°45' E
+#   ``+4630.5+00745.5/``   -> 46°30.5' N, 7°45.5' E   (Dezimal-Minuten)
+#   ``-4630-00745``        -> 46°30' S,  7°45' W    (ohne Trailing-Slash)
+#
+# Verbreitet in KML-Placemark-Koordinaten (die KML-Coordinates-Notation zieht
+# aus ISO 6709 die kompakte Form), in GeoRSS-Feeds mit ``georss:point`` und
+# in Marine-/Luftfahrt-NMEA-Konvertierungen. Bisher fielen alle DM-Formen
+# stille auf None: _DECIMAL_PAIR verlangt einen Separator [\ t,;/&] zwischen
+# den zwei Zahlen (den die compact-Form nicht hat), _ISO6709_COMPACT_DECIMAL
+# limitiert die Ganzzahl-Ziffernbreite via \d{1,2}/\d{1,3} (4/5 Ziffern
+# matchen nicht), _PREFIX_PAIR/_SUFFIX_PAIR_NO_SEP verlangen Richtungs-
+# Buchstaben statt Vorzeichen. Aus KML-/GeoRSS-Captions entstand damit
+# silenter Koordinaten-Datenverlust bei der Migration.
+#
+# Vor _ISO6709_COMPACT_DMS eingeordnet und *nach* _ISO6709_COMPACT_DECIMAL
+# (dessen 1-2/1-3-Ganzzahl-Klasse strukturell disjunkt zu den 4/5-Klassen
+# hier ist - kein Konflikt). Der DMS-Pattern liegt danach mit 6/7 Ziffern
+# und ist ebenfalls disjunkt, sodass die drei Compact-Formen in der Reihen-
+# folge Dezimal(1-2/1-3) -> DM(4/5) -> DMS(6/7) kollisionsfrei greifen.
+# Anker-basierter Match (^...$) macht das Pattern restriktiv: nur exakt die
+# compact-Form ohne zusaetzliche Tokens davor/danach greift.
+_ISO6709_COMPACT_DM = re.compile(
+    r"""^\s*
+        ([+-])(\d{2})(\d{2}(?:[.,]\d+)?)    # Lat: Vorzeichen, 2 Grad, 2 Min(.frac)
+        ([+-])(\d{3})(\d{2}(?:[.,]\d+)?)    # Lon: Vorzeichen, 3 Grad, 2 Min(.frac)
+        /?\s*$                              # optionaler ISO-6709-Format-Trenner
+    """,
+    re.VERBOSE,
+)
+# ISO 6709 Compact-DMS-Form: ``+DDMMSS+DDDMMSS/`` bzw. ``+DDMMSS.SS+DDDMMSS.SS/``
+# - Grad + Minuten + Sekunden ohne Trenner, Dezimalstellen (optional) haengen
+# an den Sekunden. Ziffernbreite: Lat = 2+2+2 = 6 Ganzzahl-Ziffern, Lon =
+# 3+2+2 = 7 Ganzzahl-Ziffern. Wie beim DM-Pattern dienen die zwei Vorzeichen
+# als impliziter Separator; die Ziffernbreite disambiguiert Compact-DMS von
+# Compact-DM und Compact-Decimal.
+#
+#   ``+463015+0074500/``          -> 46°30'15" N,  7°45'00" E
+#   ``+463015.5+0074500.5/``      -> 46°30'15.5" N, 7°45'00.5" E (Dezimal-Sekunden)
+#   ``-463015-0074500``           -> 46°30'15" S,  7°45'00" W  (ohne Trailing-Slash)
+#
+# Verbreitet in exiftool-XMP-GPS-Exporten (viele Kamera-Tools schreiben die
+# EXIF-GPSPosition-Struktur als ISO-6709-Compact-DMS in den XMP-Sidecar-
+# Metadaten), in Wikipedia-Geo-Microformat (HTML5 ``<span class="geo">``),
+# und in GML-/KML-Formaten mit hoher Genauigkeit. Bisher fielen alle DMS-
+# Formen stille auf None (dieselbe Kette wie beim DM-Kommentar).
+#
+# Reihenfolge: nach _ISO6709_COMPACT_DECIMAL/_ISO6709_COMPACT_DM eingeordnet,
+# aber die drei Klassen sind ueber die Ganzzahl-Ziffernbreite (1-2/1-3 vs.
+# 4/5 vs. 6/7) strukturell disjunkt - Reihenfolge ist semantisch egal,
+# nur der Konvention "spezifischer zuerst" folgend.
+_ISO6709_COMPACT_DMS = re.compile(
+    r"""^\s*
+        ([+-])(\d{2})(\d{2})(\d{2}(?:[.,]\d+)?) # Lat: Vorzeichen, 2 Grad, 2 Min, 2 Sek(.frac)
+        ([+-])(\d{3})(\d{2})(\d{2}(?:[.,]\d+)?) # Lon: Vorzeichen, 3 Grad, 2 Min, 2 Sek(.frac)
+        /?\s*$                                   # optionaler ISO-6709-Format-Trenner
+    """,
+    re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -1994,6 +2061,39 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     if m:
         lat = _to_float(m.group(1))
         lon = _to_float(m.group(2))
+        return _validate(lat, lon)
+
+    # ISO 6709 Compact-DMS-Form: "+463015+0074500/", "+463015.5+0074500.5".
+    # Grad+Minuten+Sekunden ohne Trenner - die feste Ziffernbreite (2+2+2 fuer
+    # Lat, 3+2+2 fuer Lon) disambiguiert vom Compact-Decimal-Fall (1-2/1-3
+    # Ganzzahl-Ziffern) und vom Compact-DM-Fall (2+2 / 3+2 = 4/5 Ziffern).
+    # Vor _ISO6709_COMPACT_DM geprueft, weil die 6/7-Ziffer-Klasse spezifischer
+    # ist (mehr Positions-Zwang) und den Standard-"spezifischer zuerst"-Ansatz
+    # spiegelt - obwohl die drei Ziffernbreite-Klassen strukturell disjunkt
+    # sind und die Reihenfolge semantisch keinen Unterschied macht.
+    m = _ISO6709_COMPACT_DMS.match(s)
+    if m:
+        s_lat, deg_lat, min_lat, sec_lat = m.group(1), m.group(2), m.group(3), m.group(4)
+        s_lon, deg_lon, min_lon, sec_lon = m.group(5), m.group(6), m.group(7), m.group(8)
+        lat = (_to_float(deg_lat) + _to_float(min_lat) / 60
+               + _to_float(sec_lat) / 3600) * (-1 if s_lat == "-" else 1)
+        lon = (_to_float(deg_lon) + _to_float(min_lon) / 60
+               + _to_float(sec_lon) / 3600) * (-1 if s_lon == "-" else 1)
+        return _validate(lat, lon)
+
+    # ISO 6709 Compact-DM-Form: "+4630+00745/", "+4630.5+00745.5".
+    # Grad+Minuten ohne Trenner - 4 Ganzzahl-Ziffern Lat / 5 Ganzzahl-Ziffern
+    # Lon (2+2 / 3+2). Disjunkt zu Compact-Decimal (1-2/1-3) und Compact-DMS
+    # (6/7). Letzter Versuch der Compact-Kette; nur explizit fehlerfreier DM-
+    # Match darf zu einem Ergebnis fuehren, sonst None.
+    m = _ISO6709_COMPACT_DM.match(s)
+    if m:
+        s_lat, deg_lat, min_lat = m.group(1), m.group(2), m.group(3)
+        s_lon, deg_lon, min_lon = m.group(4), m.group(5), m.group(6)
+        lat = (_to_float(deg_lat) + _to_float(min_lat) / 60
+               ) * (-1 if s_lat == "-" else 1)
+        lon = (_to_float(deg_lon) + _to_float(min_lon) / 60
+               ) * (-1 if s_lon == "-" else 1)
         return _validate(lat, lon)
 
     return None
