@@ -445,6 +445,93 @@ def test_parse_range_uncertainty_mit_prozent_und_promille():
     assert csv_loaders.parse_range("2.65(5) wt%") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_uncertainty_mit_direkt_anhaengender_einheit():
+    """Unsicherheits-Notation mit direkt (ohne Whitespace) anhaengender Einheit
+    behaelt die publizierte Toleranz.
+
+    In Mineralogie-/Physik-Publikationen, in Excel-CSV-Exporten aus geerbten
+    Sammler-Etiketten und in Foto-EXIF-Kommentaren ist die Space-lose Notation
+    zwischen Zahl und Einheit sehr verbreitet: ``5.5mm`` (Kristall-Groesse),
+    ``2.65g/cm³`` (Dichte), ``100HV`` (Vickers-Haerte), ``12.345K`` (Temperatur).
+    Vor dem Fix brach die direkt anhaengende SI-Einheit den ``$``-Anker beider
+    Uncertainty-Patterns: der Trailing-Unit-Zweig verlangte obligatorisches
+    ``\\s+`` VOR dem ersten Einheiten-Token, sodass ``5.5 ± 0.3mm`` durch das
+    fehlende Whitespace zwischen ``0.3`` und ``mm`` auf die Fallback-Zahl-
+    Extraktion durchfiel und via ``[5.5, 0.3]``-inverted-range auf ``(5.5,
+    5.5)`` kollabierte (Toleranz verloren); ``5.5mm ± 0.3mm`` fiel auf
+    ``[5.5, 0.3]``-Kollaps ``(5.5, 5.5)``; ``2.65(5)g/cm³`` fiel auf
+    ``[2.65, 5]`` → ``(2.65, 5.0)`` semantisch falsch. Fix ergaenzt in beiden
+    Uncertainty-Patterns eine optionale direkt-anhaengende Einheiten-Token-
+    Alternante ``(?:[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?`` hinter Center und
+    Toleranz-Zahl. Die Alternante muss mit einem Buchstaben (ASCII a-z / A-Z
+    plus SI-Standard-Zeichen Å/Ω/µ/°) STARTEN - damit blockt sie nicht die
+    ±-Alternante, die mit ``±``/``+/-``/``+-`` beginnt, und kollidiert nicht
+    mit den Bracket-Klammern ``(``/``[``/``{``.
+    """
+    # ±-Langform mit direkt anhaengender Einheit an Toleranz.
+    # Vorher: (5.5, 5.5) via ``[5.5, 0.3]``-inverted-range-Kollaps.
+    assert csv_loaders.parse_range("5.5 ± 0.3mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3g") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65 ± 0.05g/cm3") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65 ± 0.05g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65 ± 0.05g/cm^3") == pytest.approx((2.60, 2.70))
+    # ±-Langform mit direkt anhaengender Einheit an Center (Wert-Einheit + Toleranz).
+    assert csv_loaders.parse_range("5.5mm ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5g ± 0.3") == pytest.approx((5.2, 5.8))
+    # ±-Langform mit direkt anhaengender Einheit an Center UND Toleranz
+    # (redundante aber verbreitete Publikations-Notation).
+    assert csv_loaders.parse_range("5.5mm ± 0.3mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5g ± 0.3g") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65g/cm3 ± 0.05g/cm3") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65g/cm³ ± 0.05g/cm³") == pytest.approx((2.60, 2.70))
+    # ±-ASCII-Ersatzform mit direkt anhaengender Einheit.
+    assert csv_loaders.parse_range("5.5 +/- 0.3mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 +- 0.3mm") == pytest.approx((5.2, 5.8))
+    # ±-Langform mit SI-Standard-Sonder-Zeichen (Å, Ω, µ, °).
+    assert csv_loaders.parse_range("12.345 ± 0.067K") == pytest.approx((12.278, 12.412))
+    assert csv_loaders.parse_range("12.345Å ± 0.067Å") == pytest.approx((12.278, 12.412))
+    # IUCr-Kompaktform mit direkt anhaengender Einheit.
+    # Vorher: (5.5, 5.5) via inverted-Range-Kollaps.
+    assert csv_loaders.parse_range("5.5(3)mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5)g") == pytest.approx((2.60, 2.70))
+    # IUCr-Kompaktform mit direkt anhaengender SI-Einheit.
+    # Vorher: (2.65, 5.0) semantisch falsch.
+    assert csv_loaders.parse_range("2.65(5)g/cm3") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65(5)g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65(5)g/cm^3") == pytest.approx((2.60, 2.70))
+    # IUCr-Kompaktform mit Vickers-Kuerzel direkt anhaengend.
+    assert csv_loaders.parse_range("100(2)HV") == pytest.approx((98.0, 102.0))
+    # IUCr-Kompaktform mit Angstroem direkt anhaengend.
+    assert csv_loaders.parse_range("12.345(67)Å") == pytest.approx((12.278, 12.412))
+    # DE-Komma-Dezimal mit direkt anhaengender Einheit.
+    assert csv_loaders.parse_range("5,5 ± 0,3mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2,65 ± 0,05g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2,65(5)g/cm³") == pytest.approx((2.60, 2.70))
+    # Kombination direkt-anhaengende Einheit + Trailing-Klammer-Annotation.
+    assert csv_loaders.parse_range("2.65 ± 0.05g/cm³ (Literatur)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65(5)g/cm³ [Ref]") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5(3)mm (Foto)") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: Uncertainty mit Whitespace-getrennter Einheit
+    # unveraendert (der neue direkt-anhaengende Alternate blockiert die
+    # Trailing-Unit-Sequenz nicht).
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5(3) Mohs") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("12.345(67) Å") == pytest.approx((12.278, 12.412))
+    # Regression-Anker: Uncertainty OHNE Einheit funktioniert unveraendert.
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: ``%``/``‰`` direkt anhaengend bleibt via
+    # ``(?:\\s*[%‰])?``-Alternante erkannt (nicht via der neuen Buchstaben-
+    # basierten Direct-Attach-Alternante).
+    assert csv_loaders.parse_range("5.5 ± 0.3%") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)%") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("-15.5 ± 0.5‰") == pytest.approx((-16.0, -15.0))
+    # Regression-Anker: Komma-Anhang und Trailing-Digit-Token bleiben Range-
+    # Grenze (nicht in die Toleranz eingemischt).
+    assert csv_loaders.parse_range("5.5 ± 0.3, siehe") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 ± 0.3 42") == (5.5, 42.0)
+
+
 def test_parse_range_klammer_annotation_wird_nicht_als_range_gelesen():
     """Klammer-umschlossene Freitext-Anhaenge sind Annotation, nicht Range-Grenze.
 

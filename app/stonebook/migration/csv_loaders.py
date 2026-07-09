@@ -203,8 +203,41 @@ _NUM_RE = re.compile(
 # durch, was Rueckwaerts-kompatibel mit dem alten Verhalten ist. Die drei
 # Klammer-Typen sind symmetrisch behandelt, spiegelt die Konvention der
 # :func:`_strip_bracketed_annotations`-Helper.
+#
+# Direkt-anhaengende Einheiten-Alternante
+# ``(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?`` nach Center und
+# Toleranz-Zahl - deckt die publizierte Notation ohne Whitespace zwischen
+# Zahl und Einheit ab, die in Mineralogie-/Physik-Publikationen und Excel-
+# CSV-Exporten aus geerbten Sammler-Etiketten sehr verbreitet ist:
+# ``5.5mm`` (Kristall-Groesse), ``2.65g/cm³`` (Dichte), ``100HV`` (Vickers-
+# Haerte), ``12.345K`` (Temperatur). Vor dem Fix verlangte der Trailing-Unit-
+# Zweig obligatorisches ``\s+`` VOR dem ersten Einheiten-Token, sodass
+# ``5.5 ± 0.3mm`` durch das fehlende Whitespace zwischen ``0.3`` und ``mm``
+# auf die Fallback-Zahl-Extraktion durchfiel und via ``[5.5, 0.3]``-inverted-
+# range auf ``(5.5, 5.5)`` kollabierte (Toleranz verloren); analog fielen
+# ``5.5mm ± 0.3``, ``5.5mm ± 0.3mm``, ``2.65 ± 0.05g/cm³`` und ``2.65(5)g``
+# auf Kollaps oder semantisch falsche Range-Werte. Bei der Migration aus
+# solchen Quellen entstand silenter Praezisions-Datenverlust auf jeder Wert-
+# Achse mit direkt anhaengender Einheit.
+#
+# Das Alternate startet mit einem Buchstaben (ASCII a-z/A-Z plus SI-Standard-
+# Zeichen Å/Ω/µ/°) und fuehrt fort mit Buchstaben, Ziffern und den SI-
+# typischen Sonderzeichen ``/``, ``^``, ``³``, ``²`` (fuer zusammengesetzte
+# Einheiten wie ``g/cm³``, ``m/s²``, ``cm^3``). Das Start-Muss-Sein-Buchstabe
+# blockt die Alternante an Positionen, an denen ± oder Ziffer folgt - keine
+# Kollision mit der ±/Klammer-Alternate der Uncertainty-Struktur. Das
+# negative Lookahead ``(?![eE][+-]?\d)`` schuetzt vor Kollision mit
+# wissenschaftlicher Notation: ``1e400 ± 1e400`` (Overflow-Range) darf NICHT
+# als "Center=1 mit Einheit ``e400`` plus/minus 1 mit Einheit ``e400``"
+# gelesen werden - das ``e`` gefolgt von Ziffern ist Exponent-Marker, keine
+# SI-Einheit. Ohne den Lookahead wuerden alle scientific-notation-Overflow-
+# Tokens faelschlich in die Uncertainty-Struktur eingemischt und die
+# nachgelagerte ``_finite_pair``-Overflow-Behandlung ueberschrieben.
 _PLUS_MINUS_UNCERTAINTY = re.compile(
-    r"^\s*(-?\d+(?:[.,]\d+)?)(?:\s*[%‰])?\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
+    r"^\s*(-?\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
+    r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
+    r"\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
+    r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
     r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
 )
@@ -273,6 +306,7 @@ _PLUS_MINUS_UNCERTAINTY = re.compile(
 # Zahl enthielt (2.65, ..., > 2.65).
 _PARENTHESIS_UNCERTAINTY = re.compile(
     r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)(?:\s*[%‰])?"
+    r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
     r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
 )
