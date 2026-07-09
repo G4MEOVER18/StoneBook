@@ -3131,6 +3131,64 @@ def test_parse_iso_date_year_first_saison_ungueltig():
     assert parse_iso_date("2024-Dezember") == "2024-12-01"
 
 
+def test_parse_iso_date_compact_yyyymm():
+    """Compact YYYYMM-Form ohne Trenner: '202406' -> 2024-06-01.
+
+    Deckt Datei-/Ordner-Namen aus Foto-/Sammlungs-Archiven ('photos_202406/',
+    'log_202406.txt', 'backup_202406.tar.gz'), Buchhaltungs-Perioden-Stempel,
+    monatliche Batch-/Backup-Rotation-Skripten und Foto-EXIF-Auto-Renamer
+    (Sony/Canon Kamera-Software YYYYMM-Ordner-Praefix) ab. Vorher fielen
+    diese Formen entweder auf ein semantisch falsches Datum (das
+    ``%Y%m%d``-Format matcht per Python-strptime-Greedy-Verhalten auch
+    6-Ziffer-Inputs: '202412' wurde zu '2024-01-02' statt '2024-12-01')
+    oder auf None (bei ungueltiger 5. Ziffer als Tag)."""
+    # Alle Monate 01..12
+    assert parse_iso_date("202401") == "2024-01-01"
+    assert parse_iso_date("202402") == "2024-02-01"
+    assert parse_iso_date("202403") == "2024-03-01"
+    assert parse_iso_date("202404") == "2024-04-01"
+    assert parse_iso_date("202405") == "2024-05-01"
+    assert parse_iso_date("202406") == "2024-06-01"
+    assert parse_iso_date("202407") == "2024-07-01"
+    assert parse_iso_date("202408") == "2024-08-01"
+    assert parse_iso_date("202409") == "2024-09-01"
+    assert parse_iso_date("202410") == "2024-10-01"
+    assert parse_iso_date("202411") == "2024-11-01"
+    assert parse_iso_date("202412") == "2024-12-01"
+    # Verschiedene Jahre am Rand des zulaessigen Bereichs
+    assert parse_iso_date("180001") == "1800-01-01"
+    assert parse_iso_date("299912") == "2999-12-01"
+    assert parse_iso_date("199912") == "1999-12-01"
+    assert parse_iso_date("198506") == "1985-06-01"
+    # Leading/Trailing Whitespace
+    assert parse_iso_date("  202406  ") == "2024-06-01"
+    assert parse_iso_date("\t202406\n") == "2024-06-01"
+
+
+def test_parse_iso_date_compact_yyyymm_ungueltig():
+    """Compact YYYYMM mit ungueltigen Werten faellt auf None (blockiert
+    die %Y%m%d-Greedy-Interpretation im nachfolgenden strptime-Loop)."""
+    # Ungueltiger Monat (00, 13, 99)
+    assert parse_iso_date("202400") is None
+    assert parse_iso_date("202413") is None
+    assert parse_iso_date("202499") is None
+    # Jahr ausserhalb 1800..2999
+    assert parse_iso_date("170006") is None
+    assert parse_iso_date("179906") is None  # 1799 knapp ausserhalb
+    assert parse_iso_date("300006") is None  # 3000 knapp ausserhalb
+    assert parse_iso_date("999999") is None
+    # Falsche Laenge (5 oder 7 Ziffern - kein YYYYMM)
+    assert parse_iso_date("20240") is None
+    assert parse_iso_date("2024") == "2024-01-01"  # 4 Ziffern = _YEAR_ONLY
+    # Regression: 8-Ziffer-YYYYMMDD bleibt korrekt
+    assert parse_iso_date("20240613") == "2024-06-13"
+    # Regression: 7-Ziffer-YYYYDDD (ISO-Ordinal) bleibt korrekt
+    assert parse_iso_date("2024165") == "2024-06-13"
+    # Regression: hyphenierte Form bleibt korrekt
+    assert parse_iso_date("2024-06") == "2024-06-01"
+    assert parse_iso_date("2024-06-01") == "2024-06-01"
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

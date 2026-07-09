@@ -1031,6 +1031,50 @@ _ISO_ORDINAL_DATE = re.compile(
     r"^\s*(\d{4})-?(\d{3})\s*$"
 )
 
+# Compact YYYYMM-Form (6 Ziffern, keine Trenner): "202406" -> 2024-06-01,
+# "199912" -> 1999-12-01. Sehr verbreitet in Datei-/Ordner-Namen aus Foto-/
+# Sammlungs-Archiven ("photos_202406/", "log_202406.txt", "export_202406.csv"),
+# in Buchhaltungs-Perioden-Stempeln (Excel-Auto-Format YYYYMM als Text-Spalte,
+# um lexikographische Sortierung sicherzustellen), in monatlichen Batch-/
+# Backup-Rotation-Skripten ("stone_202406.sqlite3", "backup_202406.tar.gz") und
+# in Foto-EXIF-Auto-Renamern (Sony/Canon Kamera-Software schreibt oft YYYYMM
+# als Ordner-Praefix). Bisher fiel jede reine 6-Ziffer-Notation ohne Trenner
+# auf ein *semantisch falsches* Datum durch: das :data:`_DATE_FORMATS`-Format
+# ``%Y%m%d`` (compact YYYYMMDD, 8 Ziffern) matcht per Python-strptime-Greedy-
+# Verhalten auch 6-Ziffer-Inputs (das ``%Y``-Directive nimmt gierig die ersten
+# 4 Ziffern, ``%m`` und ``%d`` teilen sich die restlichen 2 Ziffern als je
+# 1-Ziffer-Fragment). Konkret: ``202412`` wurde zu ``2024-01-02`` (Monat 1,
+# Tag 2 statt Monat 12 auf den 1.), ``202406`` fiel via ``ValueError`` (weil
+# strptime keine gueltige 5. Ziffer als Tag findet und den ``%d``-Zweig
+# blockiert - "202406" hat 6 Ziffern, %Y=2024, %m=0, %d=6 wuerde Monat 0 sein
+# und scheitert), aber ``202412`` (%Y=2024, %m=1, %d=2, alle gueltig) fiel
+# durch und lieferte ein semantisch komplett falsches ISO-Datum (2024-01-02
+# statt 2024-12-01, Januar-Zweiter statt Dezember-Erster - eine 11-Monats-
+# Verschiebung). Bei der Migration aus Foto-Ordner-Namen, aus Datei-basierten
+# Sammlungs-Metadaten und aus Buchhaltungs-Perioden-Stempeln entstand damit
+# silenter Funddatum-Datenverlust bzw. -Verzerrung auf jeder Achse, die den
+# Fundzeitpunkt aus dem Datei-/Ordner-Namen ableitet.
+#
+# Der Fix legt eine spezifische 6-Ziffer-Regex VOR den strptime-Loop, sodass
+# alle 6-Ziffer-Pure-Digit-Inputs zuerst als YYYYMM interpretiert werden -
+# entweder erfolgreich (Monat 1..12, Jahr 1800..2999 -> ISO-Datum am 1. des
+# Monats, analog zu _YEAR_MONTH und _MONTH_NUMERIC_YEAR) oder mit Rueckgabe
+# None (blockiert die falsche %Y%m%d-Greedy-Interpretation im nachfolgenden
+# strptime-Loop). Vor _ISO_ORDINAL_DATE (7 Ziffern) einsortiert waere
+# unschaedlich (kollisionsfreie Reihenfolge: 6 vs 7 Ziffern), wird aber
+# konsistent mit der etablierten Praxis der uebrigen Compact-Patterns direkt
+# nach _ISO_ORDINAL_DATE einsortiert (aufsteigende Ziffern-Zahl-Konvention:
+# _YEAR_ONLY 4 -> _COMPACT_YEAR_MONTH 6 -> _ISO_ORDINAL_DATE 7 -> %Y%m%d 8).
+# Konvention identisch zu _YEAR_MONTH und _MONTH_NUMERIC_YEAR: Tag auf den 1.
+# des Monats gesetzt (Monatsstart), Jahr im Bereich 1800..2999. Der 1800-
+# Untergrenze-Check filtert False-Positives wie "179906" (Jahr 1799, ausserhalb
+# der Kollektions-Domaene) und "170006" transparent auf None. Die 2999-
+# Obergrenze filtert "300006" analog. Der Monats-Check 1..12 filtert
+# "202400" (Monat 0), "202413" (Monat 13) und "202499" (Monat 99) auf None.
+_COMPACT_YEAR_MONTH = re.compile(
+    r"^\s*(\d{4})(\d{2})\s*$"
+)
+
 # ISO 8601 Wochendatum: "2024-W25", "2024W25" (compact), "2024-W25-3" (mit Tag).
 # Konvention: ohne expliziten Wochentag → Montag der Woche (ISO-Wochenstart).
 # Verbreitet in Log-/Build-Stempeln und manchen Sammlungs-Notizen ("KW25 2024").
@@ -1839,6 +1883,19 @@ def parse_iso_date(text) -> str | None:
             if d.year == year:
                 return d.isoformat()
             return None
+    # Compact YYYYMM-Form (6 Ziffern, keine Trenner): "202406" -> 2024-06-01.
+    # Vor dem _DATE_FORMATS-strptime-Loop einsortiert, damit die 6-Ziffer-
+    # Eingabe hier eindeutig als YYYYMM interpretiert wird und NICHT vom
+    # nachfolgenden %Y%m%d-Format greedy als YYYY-M-D (z.B. "202412" ->
+    # "2024-01-02" statt "2024-12-01") fehlinterpretiert wird. Return None
+    # bei ungueltigem Monat/Jahr blockiert den strptime-Loop (der die 6-Ziffer-
+    # Eingabe sonst mit gefaehrlichem Greedy-%Y-Verhalten aufloesen wuerde).
+    m = _COMPACT_YEAR_MONTH.match(s)
+    if m:
+        year, month = int(m.group(1)), int(m.group(2))
+        if 1 <= month <= 12 and 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
+        return None
     # Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960"). Vor _YEAR_MONTH
     # geprueft, damit klar wird: zwei 4-Ziffer-Anker, nicht YYYY-MM mit grossem
     # Monat. Konvention: Startjahr als ISO-Datum (analog zu Dekaden 1980er →
