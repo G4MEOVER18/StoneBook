@@ -642,6 +642,58 @@ def test_parse_iso_date_jahrzehnt_ungueltig():
     assert parse_iso_date("1980 j") is None
 
 
+def test_parse_iso_date_jahrzehnt_dativ_plural_substantiviert():
+    """Dativ-Plural-Form der substantivierten Dekaden-Notation ('1980ern',
+    'in den 1990ern') wird semantisch identisch zur Nominativ-Form ('1980er')
+    auf den Dekaden-Anker gemappt.
+
+    In praepositionalen Wendungen ist ``1980ern`` (Dativ-Plural des
+    substantivierten Adjektivs ``die 1980er``) die uebliche DE-Kurzform
+    ohne expliziten ``Jahre``-Trailer: ``in den 1980ern``, ``aus den
+    1990ern``, ``seit den 2000ern``. Bisher fiel diese sehr verbreitete
+    DE-Umgangs-/Print-Form still auf None, obwohl semantisch identisch
+    zur langen Form ``1980er Jahren`` (die bereits ueber die ``jahre(?:n)?``-
+    Klausel gemapped wird) und zur Nominativ-Form ``1980er``.
+
+    Konvention: Dekaden-Start (spiegelt die uebrigen Formen). Grammatika-
+    lisch ist ``1980ern`` die Dativ-Plural-Form des substantivierten Ad-
+    jektivs mit dem Standard-Dativ-Plural-Suffix -n (Nominativ Plural
+    -e -> Dativ Plural -en).
+    """
+    # Direkte substantivierte Dativ-Plural-Form
+    assert parse_iso_date("1980ern") == "1980-01-01"
+    assert parse_iso_date("1990ern") == "1990-01-01"
+    assert parse_iso_date("2000ern") == "2000-01-01"
+    # Case-insensitive
+    assert parse_iso_date("1980ERN") == "1980-01-01"
+    # Trenner-Varianten (symmetrisch zu 1980er / 1980-er / 1980 er)
+    assert parse_iso_date("1980-ern") == "1980-01-01"
+    assert parse_iso_date("1980 ern") == "1980-01-01"
+    # In Kombination mit _TEMPORAL_PREFIX (Standard-praepositionale Wendung
+    # "in den 1980ern" = Praeposition "in" + Artikel "den" + Dekade)
+    assert parse_iso_date("in den 1980ern") == "1980-01-01"
+    assert parse_iso_date("in den 1990ern") == "1990-01-01"
+    # In Kombination mit DE-Adjektiv-Form (die spaeten 1990ern = die + Adjektiv
+    # + Dativ-Plural-Substantiviert)
+    assert parse_iso_date("die spaeten 1990ern") == "1999-01-01"
+    assert parse_iso_date("die frühen 1980ern") == "1980-01-01"
+    assert parse_iso_date("in den fruehen 1980ern") == "1980-01-01"
+    # Mit Annaeherungspraefix (Verkettung ueber Rekursion)
+    assert parse_iso_date("ca. 1980ern") == "1980-01-01"
+    # Mit trailing Satzzeichen
+    assert parse_iso_date("1980ern.") == "1980-01-01"
+    # Ungueltige Formen: 2-stellige Kurzform bleibt mehrdeutig
+    assert parse_iso_date("80ern") is None
+    # Out-of-Range bleibt ausgeschlossen
+    assert parse_iso_date("1700ern") is None
+    assert parse_iso_date("3000ern") is None
+    # Regression-Anker: Nominativ-Form ("1980er") und lange Form ("1980er
+    # Jahren") bleiben unveraendert
+    assert parse_iso_date("1980er") == "1980-01-01"
+    assert parse_iso_date("1980er Jahren") == "1980-01-01"
+    assert parse_iso_date("1980er Jahre") == "1980-01-01"
+
+
 def test_parse_iso_date_jahrhundert():
     """Jahrhundert-Notation (DE/EN) ergibt das Jahrhundert-Startjahr.
 

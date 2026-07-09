@@ -62,8 +62,28 @@ _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
 # nach _TEMPORAL_PREFIX geparst - ``in den 1980er Jahren`` strippt zuerst
 # ``in den `` via _TEMPORAL_PREFIX-Praeposition-plus-Artikel und uebergibt
 # ``1980er Jahren`` an _DECADE zur Auswertung.
+#
+# Suffix-Alternante ``(?:ern|er|s)`` deckt zusaetzlich die substantivierte
+# Dativ-Plural-Form ``1980ern`` ab, die in praepositionalen Wendungen ohne
+# expliziten ``Jahre``-Trailer die uebliche DE-Kurzform ist ("in den 1980ern",
+# "aus den 1990ern", "seit den 2000ern"). Ohne den ``ern``-Zweig fielen diese
+# haeufigen DE-Formen still auf None, obwohl semantisch identisch zur langen
+# Form ``1980er Jahren`` und zur artikellosen Nominativ-Form ``1980er``.
+# Konvention: Dekaden-Start (spiegelt die uebrigen Formen). Die ``ern``-Endung
+# ist mehr als "er + n" - grammatikalisch ist ``1980ern`` die Dativ-Plural-
+# Form des substantivierten Adjektivs ``die 1980er`` mit dem Dativ-Plural-
+# Suffix -n (Standard-DE-Deklination: Nominativ Plural -e -> Dativ Plural
+# -en; hier auf die substantivierte Form der Dekaden-Notation appliziert).
+# In der Regex-Alternante muss ``ern`` VOR ``er`` stehen, damit fuer den
+# String ``1980ern`` zuerst die spezifische Dativ-Plural-Form getroffen wird
+# statt der kuerzeren ``er`` mit uebrig gelassenem ``n`` (das dann via
+# ``\s*$`` fehl-matcht und die Dativ-Form still auf None fallen laesst).
+# ``[\- ]?`` vor der Alternante bleibt symmetrisch zu den anderen Suffixen
+# (``1980-ern``, ``1980 ern`` sind selten aber spec-konform); nach dem
+# Suffix darf optional ``jahre(?:n)?`` folgen (redundant zur substantivierten
+# Form aber unschaedlich, spiegelt die uebrigen Suffix-Zweige).
 _DECADE = re.compile(
-    r"^\s*(\d{4})(?:[\- ]?(?:er|s))(?:\s+jahren?)?\s*$",
+    r"^\s*(\d{4})(?:[\- ]?(?:ern|er|s))(?:\s+jahren?)?\s*$",
     re.IGNORECASE,
 )
 # Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960", "1950 - 1960") -
@@ -1027,7 +1047,7 @@ _RELATIVE_DECADE = re.compile(
     r"(Anfang|Mitte|Ende|early|mid|late"
     r"|fr(?:üh|ueh)(?:e|em|en|er|es)"
     r"|sp(?:ät|aet)(?:e|em|en|er|es))"
-    r"[-\s]+(?:der\s+)?(\d{4})(?:[\- ]?(?:er|s))"
+    r"[-\s]+(?:der\s+)?(\d{4})(?:[\- ]?(?:ern|er|s))"
     r"(?:\s+jahren?)?\s*$",
     re.IGNORECASE,
 )
