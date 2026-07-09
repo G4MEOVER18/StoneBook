@@ -185,6 +185,18 @@ _APPROX_PREFIX = re.compile(
     r"|um|gegen|etwa|vermutlich"
     # Umlaut-Variante und Transliteration ae (gemischte Sammlungs-Notizen)
     r"|sch[äa]tzungsweise|schaetzungsweise"
+    # ``ungef[äa]hr``/``ungefaehr`` spiegelt die bereits im
+    # :data:`_TRAILING_APPROX_SUFFIX` gelistete Wortmarke auf die Praefix-
+    # Achse: DE-Standardvokabular fuer "geschaetzter Wert" (semantisch
+    # identisch zu ``ca.``/``etwa``), sehr verbreitet in Sammlungs-Notizen
+    # ("ungefähr 1985 in den Alpen gefunden", "ungefaehr Juni 2024
+    # gekauft"). Vor dem Fix fielen alle Praefix-Formen mit dieser Marke
+    # stille auf None, waehrend die identische Trailing-Form ("1985
+    # ungefähr") erkannt wurde - eine Asymmetrie, die typische DE-Satz-
+    # Reihenfolge ("ungefähr <Datum> <Kontext>") gegen die Anhang-Form
+    # ("<Datum> ungefähr <Kontext>") bevorzugte. Umlaut- und Transliterations-
+    # Variante spiegelt die schaetzungsweise-Konvention.
+    r"|ungef[äa]hr|ungefaehr"
     # Wahrscheinlichkeits-/Vermutungs-Marker (DE)
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"

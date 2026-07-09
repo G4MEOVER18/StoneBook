@@ -440,6 +440,60 @@ def test_parse_iso_date_annaeherungs_praefix_erweitert():
     assert parse_iso_date("approx 2024") == "2024-01-01"
 
 
+def test_parse_iso_date_annaeherungs_praefix_ungefaehr():
+    """``ungefähr``/``ungefaehr`` als Praefix - Symmetrie zum Trailing-Suffix.
+
+    Vor dem Fix war die Wortmarke ``ungefähr``/``ungefaehr`` nur als
+    Trailing-Suffix (``1985 ungefähr``) erkannt, waehrend die identische
+    Praefix-Form (``ungefähr 1985``) still auf None fiel. Das war eine
+    Asymmetrie zwischen ``_APPROX_PREFIX`` und ``_TRAILING_APPROX_SUFFIX``,
+    die die haeufigere DE-Satz-Reihenfolge (Praezisions-Marker vor Datum:
+    ``ungefähr <Datum> in den Alpen gefunden``) benachteiligt hat.
+    Semantisch identisch zu ``ca.``/``etwa``/``schaetzungsweise`` und den
+    uebrigen Praezisions-Praefixen.
+    """
+    # DE-Umlaut-Form (Standard-Schreibweise auf sauber gesetzten Etiketten)
+    assert parse_iso_date("ungefähr 1985") == "1985-01-01"
+    assert parse_iso_date("ungefähr 2020") == "2020-01-01"
+    # ae-Transliteration (Sammlungs-Notizen ohne Umlaut-Fähigkeit -
+    # Legacy-CSV-Exporte, ASCII-only-Tools, gemischte Encodings)
+    assert parse_iso_date("ungefaehr 1985") == "1985-01-01"
+    assert parse_iso_date("ungefaehr 2020") == "2020-01-01"
+    # Case-insensitive (Museums-Etiketten in Grossbuchstaben/Mischform)
+    assert parse_iso_date("UNGEFÄHR 1985") == "1985-01-01"
+    assert parse_iso_date("Ungefähr 1985") == "1985-01-01"
+    assert parse_iso_date("UNGEFAEHR 1985") == "1985-01-01"
+    # Praefix + vollstaendiges Datum (Rekursion greift durch)
+    assert parse_iso_date("ungefähr 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("ungefähr Juni 2024") == "2024-06-01"
+    assert parse_iso_date("ungefaehr 2024-06-13") == "2024-06-13"
+    # Praefix + Dekaden/Saison/Jahrhundert (rekursive Aufloesung)
+    assert parse_iso_date("ungefähr 1980er") == "1980-01-01"
+    assert parse_iso_date("ungefähr Sommer 1985") == "1985-06-01"
+    # Verkettet mit anderen Praefixen (Rekursion loest sie sequentiell auf)
+    assert parse_iso_date("ungefähr ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. ungefähr 1985") == "1985-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("ungefähr") is None
+    assert parse_iso_date("ungefaehr") is None
+    assert parse_iso_date("ungefähr abc") is None
+    assert parse_iso_date("ungefähr 1700") is None  # ausserhalb 1800-2999
+    # Kein False-Positive fuer aehnlich beginnende Woerter (``ungeeignet``,
+    # ``ungenau``, ``unger[ae]cht``) - der Praefix muss durch \s+ vom Rest
+    # getrennt sein und exakt eines der Alternate-Woerter matchen.
+    assert parse_iso_date("ungeeignet 1985") is None
+    assert parse_iso_date("ungenau 1985") is None
+    # Trailing-Form bleibt unveraendert erkannt (kein Regress)
+    assert parse_iso_date("1985 ungefähr") == "1985-01-01"
+    assert parse_iso_date("2024-06-13 ungefaehr") == "2024-06-13"
+    # Bestehende Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("etwa 1985") == "1985-01-01"
+    assert parse_iso_date("vermutlich 1985") == "1985-01-01"
+    assert parse_iso_date("schaetzungsweise 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_annaeherungs_symbol():
     """Tilde (``~``) und Almost-Equal (``≈``) als Annaeherungs-Symbol vor dem Datum."""
     # Tilde - typografisch knappe Notation aus Tabellen-Captions / Foto-EXIF
