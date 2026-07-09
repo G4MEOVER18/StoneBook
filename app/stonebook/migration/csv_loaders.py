@@ -204,7 +204,7 @@ _NUM_RE = re.compile(
 # Klammer-Typen sind symmetrisch behandelt, spiegelt die Konvention der
 # :func:`_strip_bracketed_annotations`-Helper.
 _PLUS_MINUS_UNCERTAINTY = re.compile(
-    r"^\s*(-?\d+(?:[.,]\d+)?)\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)"
+    r"^\s*(-?\d+(?:[.,]\d+)?)(?:\s*[%‰])?\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
     r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
 )
@@ -272,7 +272,7 @@ _PLUS_MINUS_UNCERTAINTY = re.compile(
 # einen semantisch falschen Range durch, wenn die Annotation eine hoehere
 # Zahl enthielt (2.65, ..., > 2.65).
 _PARENTHESIS_UNCERTAINTY = re.compile(
-    r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)"
+    r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)(?:\s*[%‰])?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
     r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
 )

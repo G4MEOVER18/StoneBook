@@ -359,6 +359,92 @@ def test_parse_range_uncertainty_mit_trailing_einheit():
     assert csv_loaders.parse_range("5.5 ± 0.3 42") == (5.5, 42.0)
 
 
+def test_parse_range_uncertainty_mit_prozent_und_promille():
+    """Unsicherheits-Notation mit ``%``/``‰`` direkt am Wert behaelt die Toleranz.
+
+    In mineralogischen und geochemischen Publikationen sind Prozent-Zeichen
+    (``%``, U+0025) und Promille-Zeichen (``‰``, U+2030) haeufige Wert-Suffixe,
+    die konventionell OHNE Whitespace zwischen Zahl und Symbol notiert werden
+    (``45.2 ± 0.3%`` in oxydischen Chemie-Analysen, ``-15.5 ± 0.5‰`` in
+    Isotopen-Fraktionierungs-Werten wie δ¹³C/δ¹⁸O/δ³⁴S, ``100(2)%`` in Erz-
+    Gehaltsangaben, ``2.65(5)%`` in Reinheits-/Ausbeute-Tabellen). Vor dem
+    Fix brach das direkt angehaengte ``%``/``‰`` den ``$``-Anker beider
+    Uncertainty-Patterns: der Trailing-Unit-Zweig verlangte obligatorisches
+    ``\\s+`` VOR dem ersten Einheiten-Token, sodass ``5.5 ± 0.3%`` durch das
+    fehlende Whitespace zwischen ``0.3`` und ``%`` auf die Fallback-Zahl-
+    Extraktion durchfiel und via ``[5.5, 0.3]``-inverted-range auf ``(5.5,
+    5.5)`` kollabierte (Toleranz verloren); ``100(2)%`` fiel via ``[100, 2]``
+    -> Kollaps auf ``(100, 100)`` (Toleranz verloren); ``-15.5(5)‰`` (Standard-
+    Notation der Isotopen-Referenz-Werte in Geochemie-/Kosmochemie-Publikationen)
+    fiel via inverted-Range-Kollaps auf ``(-15.5, -15.5)``. In den Fachdomaenen
+    (Isotopen-Geochemie: ‰ ist die einzige uebliche Einheit fuer delta-Werte
+    stabiler Isotope; Oxid-Gehaltsangaben: wt% / mol% / at% ist die Standard-
+    Konvention der Elektronenmikrosonden- und ICP-MS-Analysen; Erz-/Reinheits-
+    Angaben: % ohne Whitespace ist die Print-/Excel-Konvention) entsteht damit
+    silenter Verlust der publizierten Standard-Unsicherheit auf jeder Analyse-
+    /Isotopen-Achse. Fix ergaenzt in beiden Uncertainty-Patterns eine optionale
+    ``(?:\\s*[%‰])?``-Alternante hinter der Toleranz-Zahl (und, symmetrisch,
+    hinter der Center-Zahl der ±-Langform), sodass das Symbol mit oder ohne
+    Whitespace direkt an die Zahl gebunden werden kann, ohne den Trailing-
+    Unit-Zweig oder die Trailing-Bracket-Annotations-Zweig zu blockieren.
+    Center-``%``/``‰`` fuer die IUCr-Kompaktform ist bewusst NICHT ergaenzt,
+    weil die IUCr-Konvention das Einheiten-Symbol strikt hinter die
+    Klammer setzt (``5.5%(3)`` waere nicht IUCr-konform).
+    """
+    # ±-Langform mit ``%`` direkt an der Toleranz (Oxid-Gehaltsangabe).
+    # Vorher: (5.5, 5.5) via ``[5.5, 0.3]``-inverted-range-Kollaps.
+    assert csv_loaders.parse_range("5.5 ± 0.3%") == pytest.approx((5.2, 5.8))
+    # ±-Langform mit ``%`` an Center UND Toleranz (redundante aber verbreitete
+    # Publikations-Notation, "Wert-Einheit ± Toleranz-Einheit").
+    assert csv_loaders.parse_range("5.5% ± 0.3%") == pytest.approx((5.2, 5.8))
+    # ±-Langform ohne Whitespace zwischen ± und Zahlen, ``%`` direkt angehaengt
+    # (kompakte Tabellen-Schreibweise ohne Spacing-Overhead).
+    assert csv_loaders.parse_range("5.5%±0.3%") == pytest.approx((5.2, 5.8))
+    # ±-Langform mit ``‰`` (Promille) fuer Isotopen-delta-Werte. Center darf
+    # negativ sein - die klassische Konvention der Isotopen-Fraktionierung
+    # (δ¹³C ~ -25‰ in organischer Materie, δ¹⁸O ~ -8‰ in Suesswasser).
+    assert csv_loaders.parse_range("-15.5 ± 0.5‰") == pytest.approx((-16.0, -15.0))
+    # ±-ASCII-Ersatzform mit ``%`` (7-bit-Mail-Transport, LaTeX-Roh).
+    assert csv_loaders.parse_range("5.5 +/- 0.3%") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 +- 0.3%") == pytest.approx((5.2, 5.8))
+    # IUCr-Kompaktform mit ``%`` (Reinheits-/Ausbeute-Tabellen).
+    # Vorher: (5.5, 5.5) via inverted-Range-Kollaps.
+    assert csv_loaders.parse_range("5.5(3)%") == pytest.approx((5.2, 5.8))
+    # IUCr-Kompaktform mit ``%`` (Erz-Gehaltsangabe, ganzzahliges Center).
+    # Vorher: (100.0, 100.0) via inverted-Range-Kollaps.
+    assert csv_loaders.parse_range("100(2)%") == pytest.approx((98.0, 102.0))
+    # IUCr-Kompaktform mit ``‰`` fuer Isotopen-Referenz-Werte.
+    assert csv_loaders.parse_range("-15.5(5)‰") == pytest.approx((-16.0, -15.0))
+    # DE-Komma-Dezimal mit ``%``/``‰`` direkt angehaengt (deutschsprachige
+    # Publikationen mit Komma-Dezimal-Konvention).
+    assert csv_loaders.parse_range("5,5 ± 0,3%") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5,5(3)%") == pytest.approx((5.2, 5.8))
+    # ``%``/``‰`` mit optionalem Whitespace davor (Space-getrennte Publikations-
+    # Konvention) - bereits vor dem Fix ueber den Trailing-Unit-Zweig
+    # unterstuetzt, hier als Regression-Anker gegen die neue Alternante.
+    assert csv_loaders.parse_range("5.5 ± 0.3 %") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3) %") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("-15.5 ± 0.5 ‰") == pytest.approx((-16.0, -15.0))
+    # Kombination ``%`` + Trailing-Klammer-Annotation (publizierte Notation
+    # "Wert%-Einheit + Referenz-Klammer").
+    assert csv_loaders.parse_range("5.5 ± 0.3% (Literatur)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)% [Ref]") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: Uncertainty OHNE ``%``/``‰`` funktioniert unveraendert.
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: Uncertainty mit Whitespace-getrennter Einheit
+    # unveraendert (der neue ``%``/``‰``-Optional-Zweig blockiert die
+    # Trailing-Unit-Sequenz nicht).
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5(3) Mohs") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: Uncertainty mit Prozent-in-Einheit (``mol%``, ``wt%``,
+    # ``at%``) unveraendert - das ``%`` ist Bestandteil eines mehrbuchstabigen
+    # Einheiten-Tokens und wird via Trailing-Unit-Zweig gemischt, nicht via
+    # der neuen Optional-Alternante.
+    assert csv_loaders.parse_range("5.5 ± 0.3 mol%") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5) wt%") == pytest.approx((2.60, 2.70))
+
+
 def test_parse_range_klammer_annotation_wird_nicht_als_range_gelesen():
     """Klammer-umschlossene Freitext-Anhaenge sind Annotation, nicht Range-Grenze.
 
