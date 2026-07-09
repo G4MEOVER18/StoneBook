@@ -3078,6 +3078,59 @@ def test_parse_iso_date_year_first_monatsname_ungueltig():
     assert parse_iso_date("2024-XIII-13") is None
 
 
+def test_parse_iso_date_year_first_saison():
+    """Year-first Jahreszeit-Notation ('2024 Sommer', '1985-Winter', '2024/Herbst')
+    liefert den meteorologischen Saison-Start; symmetrisch zur Year-Last-Form
+    'Sommer 1985'."""
+    # DE-Saisons mit verschiedenen Separatoren (Whitespace/Bindestrich/Slash/Punkt/Komma)
+    assert parse_iso_date("2024 Sommer") == "2024-06-01"
+    assert parse_iso_date("2024-Sommer") == "2024-06-01"
+    assert parse_iso_date("2024/Sommer") == "2024-06-01"
+    assert parse_iso_date("2024.Sommer") == "2024-06-01"
+    assert parse_iso_date("2024, Sommer") == "2024-06-01"
+    # Alle vier DE-Saisons (Startmonate 3/6/9/12)
+    assert parse_iso_date("1985 Fruehling") == "1985-03-01"
+    assert parse_iso_date("1985 Fruehjahr") == "1985-03-01"
+    assert parse_iso_date("1985 Frühjahr") == "1985-03-01"
+    assert parse_iso_date("1985 Sommer") == "1985-06-01"
+    assert parse_iso_date("1985 Herbst") == "1985-09-01"
+    assert parse_iso_date("1985 Winter") == "1985-12-01"
+    # EN-Saisons symmetrisch zur Year-Last-Form
+    assert parse_iso_date("2024 spring") == "2024-03-01"
+    assert parse_iso_date("2024 summer") == "2024-06-01"
+    assert parse_iso_date("2024 autumn") == "2024-09-01"
+    assert parse_iso_date("2024 fall") == "2024-09-01"
+    assert parse_iso_date("2024 winter") == "2024-12-01"
+    # Case-insensitive (Normalisierung)
+    assert parse_iso_date("2024 SOMMER") == "2024-06-01"
+    assert parse_iso_date("2024 sommer") == "2024-06-01"
+    assert parse_iso_date("2024-HERBST") == "2024-09-01"
+    # Optionaler trailing Punkt am Saison-Wort
+    assert parse_iso_date("2024 Sommer.") == "2024-06-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern / Anfuehrungszeichen
+    assert parse_iso_date("ca. 2024 Sommer") == "2024-06-01"
+    assert parse_iso_date("(2024 Sommer)") == "2024-06-01"
+    assert parse_iso_date('"2024 Sommer"') == "2024-06-01"
+    assert parse_iso_date("ungefähr 2024 Herbst") == "2024-09-01"
+    # Regression: Year-Last-Form bleibt unveraendert erkannt
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("Winter 2023/2024") == "2023-12-01"
+
+
+def test_parse_iso_date_year_first_saison_ungueltig():
+    """Year-first Saison mit ungueltigen Werten faellt auf None."""
+    # Unbekanntes Wort (weder Monat noch Saison)
+    assert parse_iso_date("2024 Foo") is None
+    assert parse_iso_date("2024-Bar") is None
+    # Jahr ausserhalb 1800..2999
+    assert parse_iso_date("0000 Sommer") is None
+    assert parse_iso_date("3000 Sommer") is None
+    assert parse_iso_date("1700 Winter") is None
+    # Regression: Year-first Monatsname ("2024 Juni") bleibt Monat, nicht Saison
+    assert parse_iso_date("2024 Juni") == "2024-06-01"
+    assert parse_iso_date("2024-Dezember") == "2024-12-01"
+
+
 def test_parse_iso_date_invalid():
     assert parse_iso_date("") is None
     assert parse_iso_date(None) is None

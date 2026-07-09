@@ -893,6 +893,42 @@ _SEASON_CROSS_YEAR = re.compile(
     r"^\s*(winter)\.?\s*[, ]?\s*(\d{4})\s*[/\-–—]\s*(\d{4}|\d{2})\s*$",
     re.IGNORECASE,
 )
+# Year-first Jahreszeit-Notation ("2024 Sommer", "1985-Winter", "2024/Herbst",
+# "2024 spring", "1999.Fruehjahr"). Spiegelt :data:`_SEASON_YEAR` auf die
+# Year-First-Reihenfolge, analog zu :data:`_QUARTER_YEAR_FIRST` /
+# :data:`_HALFYEAR_YEAR_FIRST` gegenueber ihren Year-Last-Basisformen. In
+# Sammlungs-Notizen, Foto-Captions und Tagebuch-Eintraegen, die das Jahr als
+# ordnenden Schluessel voranstellen ("Sammlung 2024 Sommer - Tucson-Boerse",
+# "Fotos 1985 Winter") oder in denen das Datum-Feld aus einem sortierten
+# Excel-Auto-Fill kommt, wird die Saison typischerweise NACH der Jahres-Zahl
+# notiert - genauso wie die Quartal-/Halbjahr-Angabe in Business-Reports
+# ("2024-Q1", "2024-H2"). Vor dem Fix fielen alle Formen still auf None,
+# obwohl die identische Year-Last-Form (":data:`_SEASON_YEAR`") transparent
+# das Datum lieferte - eine Asymmetrie zwischen den beiden Reihenfolgen, die
+# die haeufigere DE-Excel-/Ordner-Struktur-Praxis (Jahr zuerst als sortierender
+# Praefix) benachteiligt hat. Konvention identisch zu _SEASON_YEAR: der
+# Saison-Startmonat aus :data:`_SEASON_MONTHS` (Fruehling/Fruehjahr/spring ->
+# Maerz, Sommer/summer -> Juni, Herbst/autumn/fall -> September, Winter ->
+# Dezember) auf den 1. des Monats gesetzt. Separatoren [/.\-, ] spiegeln die
+# _QUARTER_YEAR_FIRST-/_HALFYEAR_YEAR_FIRST-/_YEAR_MONTH_NAME-Konvention
+# (Bindestrich, Slash, Punkt, Komma, Leerzeichen).
+#
+# Kollisionsfreiheit zur bereits vorhandenen _YEAR_MONTH_NAME-Erkennung: das
+# Basis-Pattern matcht dieselbe Struktur (Jahr + Separator + Wort), aber die
+# Monatsnamen-Normalisierung liefert fuer Saison-Woerter None und die Funktion
+# faellt weiter durch - dieser neue Pfad greift genau dann, wenn das Wort
+# eine Saison und kein Monat ist. Kollisionsfreiheit zu _SEASON_CROSS_YEAR:
+# die Cross-Year-Form beginnt mit einem Saison-Wort (nicht mit einer Jahres-
+# Zahl) und ist strukturell disjunkt. Kollisionsfreiheit zu _RELATIVE_YEAR:
+# das relative-Praefix-Pattern verlangt "Anfang"/"Mitte"/"Ende"/"early"/"mid"/
+# "late" VOR der Jahreszahl - hier steht das Saison-Wort NACH der Jahreszahl,
+# klar disjunkt. Nach _SEASON_CROSS_YEAR / _SEASON_YEAR einsortiert (im
+# parse_iso_date-Body), damit die spezifischeren Formen (Cross-Year, Year-Last-
+# Basis) zuerst gepruft werden - die Reihenfolge folgt der etablierten
+# Spezifisch-vor-Allgemeinen-Konvention der uebrigen Patterns.
+_SEASON_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})\s*[/.\-, ]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
+)
 
 # Quartal + Jahr ("Q1 2024", "Q3/1985", "1. Quartal 2024", "3. Quarter 1985",
 # "1Q2024", "Quartal 1 2024"). Konvention: Quartals-Startmonat (Jan/Apr/Jul/Okt).
@@ -2050,6 +2086,16 @@ def parse_iso_date(text) -> str | None:
     if m:
         month = _normalize_season_name(m.group(1))
         year = int(m.group(2))
+        if month and 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
+    # Year-first Jahreszeit-Notation ("2024 Sommer", "1985-Winter", "2024/Herbst").
+    # Symmetrisch zur Year-Last-Form _SEASON_YEAR; kommt in Sammlungs-Notizen,
+    # Foto-Captions und Tagebuch-Eintraegen vor, die das Jahr als sortierenden
+    # Praefix voranstellen (Excel-Auto-Fill, Ordner-Struktur "2024/Sommer/...").
+    m = _SEASON_YEAR_FIRST.match(s)
+    if m:
+        year = int(m.group(1))
+        month = _normalize_season_name(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
     # Trailing Aera-Marker abstreifen ("1985 n. Chr.", "500 v. Chr.", "1985 AD",
