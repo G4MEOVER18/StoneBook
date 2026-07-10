@@ -4431,3 +4431,65 @@ def test_parse_coordinates_osm_hash_map_fragment():
         "https://www.google.com/maps/@46.5,7.5,15z") == (46.5, 7.5)
     assert parse_coordinates(
         "https://www.openstreetmap.org/?mlat=46.5&mlon=7.5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_bing_maps_tilde_separator():
+    """Tilde ``~`` als Separator - Bing-Maps-URL-Center-Point-Form (``cp=lat~lon``).
+
+    Bing Maps verwendet in seiner Share-URL-Spec den Query-Parameter
+    ``cp`` (Center Point) mit ``~`` als Lat-Lon-Trenner: ``bing.com/maps?
+    cp=46.5~7.5&lvl=15``. Diese Form ist die von Bing-Frontends selbst
+    generierte Copy-URL, wenn der Sammler auf "Share" klickt oder die URL
+    aus dem Browser-Adress-Feld kopiert. Auch aeltere Bing-Derivate (ehem.
+    maps.live.com, bing.com/mapspreview) und in Bing-basierte Karten-Widgets
+    eingebundene iframe-URLs verwenden dieselbe ``~``-Konvention. Ohne
+    ``~`` in der _DECIMAL_PAIR-Separator-Klasse fielen alle Bing-Share-URLs
+    stille auf None: _PREFIX_PAIR verlangt Richtungs-Buchstaben (N/S/E/W/O),
+    _SUFFIX_PAIR_NO_SEP ebenso, und _ISO6709_COMPACT_DECIMAL ist auf
+    ``^...$`` verankert und toleriert kein URL-Praefix.
+    """
+    # Standard Bing-Share-URL mit cp-Query-Parameter
+    assert parse_coordinates(
+        "https://www.bing.com/maps?cp=46.5~7.5&lvl=15") == (46.5, 7.5)
+    # Ohne trailing Query-Parameter
+    assert parse_coordinates(
+        "https://www.bing.com/maps?cp=46.5~7.5") == (46.5, 7.5)
+    # Ohne www-Subdomain (Bing akzeptiert beide Formen)
+    assert parse_coordinates(
+        "https://bing.com/maps?cp=46.5~7.5&lvl=15") == (46.5, 7.5)
+    # Reines cp-Query-Fragment ohne URL-Kontext
+    assert parse_coordinates("cp=46.5~7.5") == (46.5, 7.5)
+    # Reines Zahlen-Paar mit Tilde-Separator (Bing-cp-Form ohne Label)
+    assert parse_coordinates("46.5~7.5") == (46.5, 7.5)
+    # Mit Whitespace um die Tilde (tolerante Copy-Paste-Form)
+    assert parse_coordinates("46.5 ~ 7.5") == (46.5, 7.5)
+    # Mit Vorzeichen (Suedhalbkugel/Westhalbkugel)
+    assert parse_coordinates(
+        "https://bing.com/maps?cp=-46.5~-7.5&lvl=15") == (-46.5, -7.5)
+    assert parse_coordinates("-46.5~-7.5") == (-46.5, -7.5)
+    # Negatives Vorzeichen nur auf einer Achse (Nord/West-Kombination)
+    assert parse_coordinates("46.5~-7.5") == (46.5, -7.5)
+    # DE-Komma-Dezimal in Lat/Lon (Bing-DE-Locale-Frontends schreiben so)
+    assert parse_coordinates(
+        "https://www.bing.com/maps?cp=46,5~7,5&lvl=15") == (46.5, 7.5)
+    # Mit vorherigen Query-Parametern (rp/where davor ist Bing-typisch)
+    assert parse_coordinates(
+        "https://www.bing.com/maps?rp=~&cp=46.5~7.5&lvl=15") == (46.5, 7.5)
+    # Out-of-Range Lat -> None (Validierung greift wie sonst)
+    assert parse_coordinates("cp=100~50") is None
+    # Out-of-Range Lon -> None
+    assert parse_coordinates("cp=46.5~200") is None
+    # Regression: leading Tilde als Approximations-Praefix (aus dem Datum-
+    # Parser bekannt) blockiert die Zahl-Paar-Erkennung nicht - das .search()
+    # skippt vor den Tilden bis zur ersten Ziffer.
+    assert parse_coordinates("~46.5, 7.5") == (46.5, 7.5)
+    # Regression: bestehende Separatoren weiterhin gueltig
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5\t7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5&7.5") == (46.5, 7.5)
+    # Regression: Google-Maps-@-URL bleibt Komma-getrennt
+    assert parse_coordinates(
+        "https://www.google.com/maps/@46.5,7.5,15z") == (46.5, 7.5)
+    # Regression: einzelne Zahl ohne Trenner (auch mit ~) bleibt None
+    assert parse_coordinates("46.5") is None
+    assert parse_coordinates("~46.5") is None

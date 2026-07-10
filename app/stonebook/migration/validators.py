@@ -1806,8 +1806,27 @@ _DECIMAL_PAIR = re.compile(
     # den zwei Parametern und trennt gleichzeitig die Zahlen, sobald die
     # Label ``lat=``/``lon=``/``mlat=``/``mlon=`` vorher gestrippt sind.
     # Ohne diesen Zusatz fielen die typischen Share-Links auf None.
+    # Tilde ``~`` als Separator deckt die Bing-Maps-URL-Center-Point-Form ab
+    # (``cp=46.5~7.5``): die Bing-Maps-Frontend-Spec verwendet ``~`` als
+    # Lat-Lon-Trenner im ``cp``-(Center-Point-)Query-Parameter und in vielen
+    # Bing-basierten Share-Links (bing.com/maps, bing.com/mapspreview,
+    # ehem. maps.live.com). Bisher fielen alle Bing-Share-URLs stille auf
+    # None, weil ``~`` weder in der Separator-Klasse stand noch die anderen
+    # Patterns (_PREFIX_PAIR verlangt Richtungs-Buchstaben, _SUFFIX_PAIR_NO_SEP
+    # ebenso, _ISO6709_COMPACT_DECIMAL ist auf ^...$ verankert und toleriert
+    # kein URL-Praefix). Aus dem typischen Sammler-Workflow "Fundort in Bing
+    # Maps anzeigen -> Share-URL aus Browser-Adress-Feld kopieren -> ins
+    # Fundort-Feld einfuegen" entstand damit silenter Koordinaten-Datenverlust
+    # bei der Migration. Kollisionsfrei zur bereits vorhandenen Approximations-
+    # Praefix-Rolle von ``~`` in :func:`parse_iso_date` (das ist ein anderer
+    # Parser mit eigenem Kontext); in :func:`parse_coordinates` wird ``~``
+    # nirgends als semantisches Zeichen ausser als Bing-Separator verwendet.
+    # Ein-Wege-Tilde-Praefix (``~46.5, 7.5``, "ca. 46.5, 7.5") bleibt weiterhin
+    # ueber die vorhandene .search()-Semantik verlustfrei, weil der Leading-
+    # Tilde vor der Zahl-Extraktion still gescannt wird und der Match erst
+    # bei der ersten Ziffer beginnt.
     r"""([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # erste Zahl + opt. Richtung
-        \s*[ \t,;/&]\s*
+        \s*[ \t,;/&~]\s*
         ([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # zweite Zahl + opt. Richtung
     """,
     re.VERBOSE,
