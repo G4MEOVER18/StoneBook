@@ -72,6 +72,73 @@ def test_parse_iso_date_monat_jahr():
     assert parse_iso_date("März 2022") == "2022-03-01"
 
 
+def test_parse_iso_date_monat_range_jahr():
+    """Month-Range innerhalb eines Jahres ('Juni/Juli 2024', 'Mai-Juni 1985',
+    'Juni bis Juli 2024') spiegelt _YEAR_RANGE/_YEAR_RANGE_WORD auf die
+    Monats-Achse (Start-Monat als ISO-Datum, End-Monat als semantische
+    Anmerkung im Freitext)."""
+    # Symbol-Trenner (Slash/Bindestrich, DE-Standard-Notation)
+    assert parse_iso_date("Juni/Juli 2024") == "2024-06-01"
+    assert parse_iso_date("Juni-Juli 2024") == "2024-06-01"
+    assert parse_iso_date("Mai-Juni 1985") == "1985-05-01"
+    assert parse_iso_date("August/September 2000") == "2000-08-01"
+    # Kurzformen (Jun/Jul, DE-/EN-Kompakt)
+    assert parse_iso_date("Jun/Jul 2024") == "2024-06-01"
+    assert parse_iso_date("Jun-Jul 2024") == "2024-06-01"
+    # En-/Em-Dash (typografische Print-/Word-Autoformat-Trenner)
+    assert parse_iso_date("Juni – Juli 2024") == "2024-06-01"
+    assert parse_iso_date("Juni — Juli 2024") == "2024-06-01"
+    # Umlaut im Monatsnamen
+    assert parse_iso_date("März/April 2020") == "2020-03-01"
+    # Kurzform mit Punkt (DE-Etiketten-Praxis)
+    assert parse_iso_date("Nov./Dez. 2023") == "2023-11-01"
+    # Wort-Trenner (DE bis / EN to/till/until) - spiegelt _YEAR_RANGE_WORD
+    assert parse_iso_date("Juni bis Juli 2024") == "2024-06-01"
+    assert parse_iso_date("June to July 2024") == "2024-06-01"
+    assert parse_iso_date("June till July 2024") == "2024-06-01"
+    assert parse_iso_date("June until July 2024") == "2024-06-01"
+    # Case-insensitiv (Caps-Lock-Notizen aus geerbten Sammler-Etiketten)
+    assert parse_iso_date("JUNI/JULI 2024") == "2024-06-01"
+    assert parse_iso_date("Juni BIS Juli 2024") == "2024-06-01"
+    # Englische Monatsnamen (EXIF, Foto-Bibliotheks-Exporte)
+    assert parse_iso_date("June/July 2024") == "2024-06-01"
+    assert parse_iso_date("May-June 1985") == "1985-05-01"
+    # Inverted Range (Tippfehler oder Cross-Year-Semantik wie
+    # "November-Februar 2024" = Nov 2023 - Feb 2024) - liefert Start-Monat,
+    # spiegelt _YEAR_RANGE ("1985-1980" -> "1985-01-01")
+    assert parse_iso_date("November-Februar 2024") == "2024-11-01"
+    # Kombinationen mit bestehenden Modifikatoren (Rekursion)
+    assert parse_iso_date("ca. Juni/Juli 2024") == "2024-06-01"
+    assert parse_iso_date("circa Juni-Juli 2024") == "2024-06-01"
+    assert parse_iso_date("~Juni/Juli 2024") == "2024-06-01"
+    assert parse_iso_date("(Juni/Juli 2024)") == "2024-06-01"
+    assert parse_iso_date("[Mai-Juni 1985]") == "1985-05-01"
+    assert parse_iso_date("Juni/Juli 2024.") == "2024-06-01"
+    assert parse_iso_date("Juni/Juli 2024,") == "2024-06-01"
+    assert parse_iso_date("im Juni/Juli 2024") == "2024-06-01"
+
+
+def test_parse_iso_date_monat_range_jahr_ungueltig():
+    """Jahr ausserhalb [1800, 2999] oder unbekannter Monatsname in einem der
+    zwei Teile -> None; bestehende 2-Teil-Form (_MONTH_YEAR) bleibt
+    unveraendert (kein Regress)."""
+    # Jahr ausserhalb des gueltigen Bandes
+    assert parse_iso_date("Juni/Juli 1700") is None
+    assert parse_iso_date("Juni/Juli 3000") is None
+    # Unbekannter Monatsname in einem der Teile - Match faellt durch, kein
+    # Fallback auf "Juni 2024"
+    assert parse_iso_date("Juni/xxx 2024") is None
+    assert parse_iso_date("xxx/Juli 2024") is None
+    # Bestehende 2-Teil-Form _MONTH_YEAR bleibt unveraendert (Disjunktheit)
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Juni-2024") == "2024-06-01"
+    assert parse_iso_date("Juni/2024") == "2024-06-01"
+    assert parse_iso_date("Juni.2024") == "2024-06-01"
+    # Bestehende Jahres-Range (_YEAR_RANGE) bleibt unveraendert (kein Regress)
+    assert parse_iso_date("1985-1990") == "1985-01-01"
+    assert parse_iso_date("1985 bis 1990") == "1985-01-01"
+
+
 def test_parse_iso_date_englische_monatsnamen():
     """Englische Monatsnamen (EXIF, Foto-Bibliotheks-Exporte): 'Month DD, YYYY'."""
     # Kurz + lang

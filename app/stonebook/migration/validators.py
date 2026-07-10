@@ -909,6 +909,49 @@ _MONTH_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[,./ \-]\s*(\d{4})\s*$",
 )
 
+# Month-Range innerhalb eines Jahres ("Juni/Juli 2024", "Mai-Juni 1985",
+# "August/September 2000", "Juni bis Juli 2024", "June to July 2024"). Sehr
+# verbreitet in geerbten Sammlungs-Notizen und Foto-Captions, wenn der Sammler
+# den Fund/das Foto nicht auf einen einzigen Monat, aber auf einen zusammen-
+# haengenden Monatsbereich innerhalb desselben Jahres eingrenzen kann ("Aare-
+# gebiet, Juni/Juli 2024" = "im Juni oder Juli 2024 gefunden", "Fund Mai-Juni
+# 1985" = "irgendwann im Mai oder Juni 1985"). Bisher fielen alle Formen still
+# auf None, weil _MONTH_YEAR nur einen Monat + Jahr akzeptiert und der Range-
+# Trenner (Slash/Bindestrich/"bis"/"to") den strukturellen ``$``-Anker-Match
+# blockte - aus einem typischen Etikett wie "Juni/Juli 2024" wurde silenter
+# Funddatum-Datenverlust bei der Migration.
+#
+# Konvention identisch zu :data:`_YEAR_RANGE` / :data:`_YEAR_RANGE_WORD`: der
+# Start-Monat als ISO-Datum (Range-Start-Anker, "Juni/Juli 2024" -> "2024-06-01"
+# analog "1985-1990" -> "1985-01-01"), der End-Monat bleibt semantische Wert-
+# Anmerkung im Freitext (notizen). Inverted Range (Tippfehler oder Cross-Year-
+# Semantik wie "November-Februar 2024") liefert weiterhin den Start-Monat -
+# konsistent mit _YEAR_RANGE ("1985-1980" -> "1985-01-01").
+#
+# Trenner-Alternativen spiegeln die _YEAR_RANGE-/_YEAR_RANGE_WORD-Konvention:
+# - Symbol-Trenner ``[-–—/]``: "Juni/Juli 2024", "Mai-Juni 1985",
+#   "Juni–Juli 2024" (en dash typografisch), "Juni—Juli 2024" (em dash).
+# - Wort-Trenner (bis/to/till/until): "Juni bis Juli 2024",
+#   "June to July 2024" - spiegelt :data:`_YEAR_RANGE_WORD` auf die Monats-Achse.
+#
+# Beide Monats-Tokens muessen valide Monatsnamen sein (Pruefung im Handler via
+# :func:`_normalize_month_name`), sonst waere die Struktur mehrdeutig
+# ("Juni/xxx 2024" darf nicht als "Juni 2024" gelesen werden).
+#
+# Disjunktheit zu _MONTH_YEAR: die 2-Teil-Form ("Juni 2024") verlangt einen
+# einzelnen Separator ``[,./ \-]`` gefolgt von 4 Ziffern; die 3-Teil-Form hier
+# verlangt vor dem Jahr einen zweiten Monatsnamen. "Juni/Juli 2024" faellt bei
+# _MONTH_YEAR (nach dem "/"-Separator kommt "Juli", keine 4 Ziffern) und wird
+# hier korrekt aufgeloest. "Juni/2024" faellt hier (nach dem "/" kommt eine
+# Zahl, kein Monatsname) und wird von _MONTH_YEAR aufgeloest.
+_MONTH_RANGE_YEAR = re.compile(
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?"
+    r"\s*(?:[-–—/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"([A-Za-zÄÖÜäöü]+)\.?"
+    r"\s+(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
 # Year-first Notation mit Monatsnamen: "2024-Juni" / "2024 June" / "2024-Jun" /
 # "2024.Juni" / "2024/Juni" / "2024, June". Spiegelt _MONTH_YEAR ("Juni 2024")
 # auf die Year-First-Reihenfolge - die ISO-/sortierbare Form mit ausgeschriebenem
@@ -2094,6 +2137,22 @@ def parse_iso_date(text) -> str | None:
                 return datetime.date(year, month, day).isoformat()
             except ValueError:
                 return None
+    # Month-Range innerhalb eines Jahres ("Juni/Juli 2024", "Mai-Juni 1985",
+    # "Juni bis Juli 2024") - Start-Monat als ISO-Datum, End-Monat als
+    # semantische Wert-Anmerkung im Freitext. Spiegelt _YEAR_RANGE /
+    # _YEAR_RANGE_WORD auf die Monats-Achse. Vor _MONTH_YEAR geprueft, weil die
+    # 3-Teil-Form spezifischer ist als die 2-Teil-Form (Pattern sind durch den
+    # Zweit-Monatsnamen und den $-Anker disjunkt; Reihenfolge nur fuer
+    # Lesbarkeit). Beide Monats-Tokens muessen valide Monatsnamen sein - sonst
+    # waere die Struktur mehrdeutig ("Juni/xxx 2024" darf nicht als "Juni 2024"
+    # gelesen werden) und der Match faellt durch auf die restlichen Pattern.
+    m = _MONTH_RANGE_YEAR.match(s)
+    if m:
+        month1 = _normalize_month_name(m.group(1))
+        month2 = _normalize_month_name(m.group(2))
+        year = int(m.group(3))
+        if month1 and month2 and 1800 <= year <= 2999:
+            return f"{year:04d}-{month1:02d}-01"
     m = _MONTH_YEAR.match(s)
     if m:
         month = _normalize_month_name(m.group(1))
