@@ -128,10 +128,12 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 # Werte tragen kann. Der Lookbehind ``(?<![\d.])`` erfasst genau die Positionen,
 # an denen ``-`` unzweideutig Vorzeichen ist; die typografischen Minus-Varianten
 # (en-dash U+2013, em-dash U+2014, minus U+2212) bleiben Range-Separatoren
-# (das Sign-Match ist ASCII-only) - fuer die spezifische Minus-Zeichen-
-# Vorzeichen-Rolle (U+2212 aus Print-Katalogen) waere eine eigene Norma-
-# lisierung noetig (spiegelt den ``parse_coordinates``-Preprocess-Ansatz),
-# ist hier aber ausserhalb des ASCII-Fallback-Umfangs.
+# (das Sign-Match ist ASCII-only) - die spezifische Minus-Zeichen-
+# Vorzeichen-Rolle des U+2212 aus Print-Katalogen wird in
+# :func:`normalize_numeric_locale` per Single-Pass-Strip auf ASCII-Hyphen
+# normalisiert (spiegelt den ``parse_coordinates``-Preprocess-Ansatz), damit
+# ``"−5.5"`` als ``"-5.5"`` in die Sign-Bindung faellt; en-dash/em-dash
+# bleiben unangetastet, weil beide semantisch immer Range-Separatoren sind.
 # Der Sign-Lookbehind ``(?<![\d.%‰])-`` schliesst zusaetzlich zum Digit/
 # Punkt-Kontext die Prozent-/Promille-Suffixe (``%`` U+0025, ``‰`` U+2030)
 # als Vorzeichen-blockierende Vorgaenger aus - beide sind Wert-Terminatoren
@@ -760,6 +762,46 @@ def normalize_numeric_locale(text: str) -> str:
     (``1,000`` / ``1.000`` / ``1 234``) bleiben unangetastet, damit
     ``2,55`` weiterhin als Dezimal-2,55 lesbar bleibt.
 
+    Das typografische Minus-Zeichen U+2212 (MINUS SIGN) wird auf den ASCII-
+    Hyphen ``-`` normalisiert, damit die Sign-Bindung in :data:`_NUM_RE`
+    (``(?<![\\d.%‰])-``) greift und negative Werte aus typeset-Quellen
+    nicht stille auf ihren Absolut-Betrag kollabieren. Der ``_NUM_RE``-
+    Kommentar dokumentiert die ASCII-only-Konvention der Sign-Alternante
+    (typografische Minus-Varianten en-dash/em-dash/U+2212 bleiben Range-
+    Separatoren, das Vorzeichen ist ASCII-only) und verweist explizit auf
+    diese Vorverarbeitungs-Stufe als Ergaenzung fuer die U+2212-Vorzeichen-
+    Rolle aus Print-/PDF-/LaTeX-Autoformat-Quellen. Bisher fielen alle
+    U+2212-vorangestellten Werte silente auf den positiven Betrag:
+    ``"−5.5"`` lieferte ``(5.5, 5.5)`` statt ``(-5.5, -5.5)``, ``"−5.5 ±
+    0.3"`` fiel via ``$``-Anker-Miss auf die Fallback-Zahl-Suche und
+    lieferte ``(5.5, 5.5)`` statt ``(-5.8, -5.2)`` (Vorzeichen UND
+    publizierte Toleranz verloren), ``"−15.5 ± 0.5 ‰"`` (Isotopen-
+    Fraktionierungs-Wert δ¹³C/δ¹⁸O typisch negativ mit Toleranz und
+    Promille-Einheit) analog auf ``(15.5, 15.5)``. Bei der Migration aus
+    Print-Katalogen (Word-/Office-Autoformat wandelt ``-`` beim Zahl-
+    Kontext automatisch zu U+2212), PDF-/LaTeX-Publikationen (der
+    kanonische mathematische Minus-Setz) und GPS-/Editor-Tools mit "smart
+    punctuation" entstand damit silenter Vorzeichen-Datenverlust auf jeder
+    Numeric-Achse mit Nullpunkt-negativen Werten (Kryo-Temperaturen,
+    Isotopen-Delta-Notationen δ¹³C/δ¹⁸O in ‰, thermische Ausdehnungs-
+    Koeffizienten β < 0, Meereshoehe-negative Fundort-Tiefen). Single-
+    Pass-Strip vor allen weiteren Zahl-Patterns ist einfacher und sicherer
+    als alle Zahl-/Uncertainty-Patterns parallel um U+2212-Alternation zu
+    erweitern (Sign-Lookbehind, Center-Match, Trailing-Einheit-Alternate,
+    Klammer-Kompakt-Notation) - U+2212 hat im Wert-Kontext keine andere
+    Bedeutung als "negativ". Spiegelt den U+2212-Normalisierungs-Ansatz
+    aus :func:`stonebook.migration.validators.parse_coordinates`.
+
+    Kollisionsfreiheit zur Range-Separator-Rolle: U+2212 zwischen zwei
+    Zahlen (``"5.5 − 7.5"`` / ``"5.5−7.5"``) blieb schon bisher ein
+    Range-Trenner (U+2212 matcht nicht in ``_NUM_RE``, die Zahlen wurden
+    getrennt gefunden). Nach der Normalisierung wird die U+2212-Sequenz
+    zum ASCII-Hyphen ``-`` und faellt in die bereits vorhandene Range-
+    Separator-Logik: der Sign-Lookbehind ``(?<![\\d.%‰])-`` blockiert die
+    Sign-Bindung nach der ersten Digit (``5.5-7.5`` bleibt Range, das
+    ``-`` nach ``5.5`` wird nicht als Vorzeichen an ``7.5`` gebunden) -
+    die Range-Semantik bleibt unveraendert.
+
     Der Caller entscheidet selbst, ob er das Ergebnis als Range parst
     (``parse_range``) oder per ``_LEADING_NUMBER.search`` nur die erste
     Zahl extrahiert (Providers): die Kommazahl-zu-Punktzahl-Umsetzung
@@ -767,7 +809,7 @@ def normalize_numeric_locale(text: str) -> str:
     geht und nicht auf den ganzen Freitext (sonst wuerden Tausenderpunkte
     in DE-Notation unbeabsichtigt zu Dezimalpunkten).
     """
-    s = text.replace("'", "").replace("’", "")
+    s = text.replace("'", "").replace("’", "").replace("−", "-")
     return _strip_locale_thousands(s)
 
 

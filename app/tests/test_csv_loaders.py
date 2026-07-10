@@ -1506,6 +1506,147 @@ def test_parse_range_negatives_vorzeichen():
     assert csv_loaders.parse_range("-10 - -5 [Nr. 42]") == (-10.0, -5.0)
 
 
+def test_parse_range_typografisches_minus_u2212():
+    """Typografisches Minus-Zeichen U+2212 (MINUS SIGN) wird in der
+    Vorverarbeitung auf ASCII-Hyphen normalisiert, damit die Sign-Bindung in
+    :data:`_NUM_RE` greift und negative Werte aus typeset-Quellen ihr
+    Vorzeichen behalten.
+
+    Vor dem Fix fielen alle U+2212-vorangestellten Werte durch die ASCII-only-
+    Sign-Alternante des :data:`_NUM_RE`-Regex (``(?<![\\d.%‰])-``) und
+    lieferten silente ihren Absolut-Betrag:
+
+    * ``"−5.5"``          -> ``[5.5]``       -> (5.5, 5.5)    (Vorzeichen verloren)
+    * ``"−5.5 ± 0.3"``    -> Fallback        -> (5.5, 5.5)    (Vorzeichen UND Toleranz verloren)
+    * ``"−5.5(3)"``       -> Fallback        -> (5.5, 5.5)    (dito IUCr-Kompakt)
+    * ``"−1.5 ± 0.3 °C"`` -> Fallback        -> (1.5, 1.5)    (Kryo-Temperatur)
+    * ``"−15.5 ± 0.5 ‰"`` -> Fallback        -> (15.5, 15.5)  (Isotopen-Delta)
+    * ``"−10 − −5"``      -> ``[10, 5]``     -> (10.0, 10.0)  (Cryo-Range mit U+2212 dreifach)
+
+    U+2212 ist der kanonische Minus-Setz aus Print-/PDF-Publikationen
+    (LaTeX-Autoformat, Word/Office-Autoformat wandelt ``-`` im Zahl-Kontext
+    automatisch zu U+2212), GPS-/Editor-Tools mit "smart punctuation" und
+    typografisch sauber gesetzten Katalogen. Bei der Migration aus solchen
+    Quellen entstand silenter Vorzeichen-Datenverlust auf allen Numeric-
+    Achsen mit Nullpunkt-negativen Werten (Kryo-Temperaturen, Isotopen-
+    Fraktionierungs-Deltas in ‰, thermische Ausdehnungs-Koeffizienten β < 0,
+    Meereshoehe-negative Fundort-Tiefen).
+
+    Der Fix normalisiert U+2212 in :func:`normalize_numeric_locale` per
+    Single-Pass-Strip auf ASCII-Hyphen ``-``. Das ist einfacher und sicherer
+    als alle Zahl-/Uncertainty-Patterns parallel um U+2212-Alternation zu
+    erweitern - spiegelt den gleichen Vorverarbeitungs-Ansatz aus
+    :func:`stonebook.migration.validators.parse_coordinates`.
+
+    Kollisionsfreiheit zur Range-Separator-Rolle: U+2212 zwischen zwei
+    Zahlen (``"5.5 − 7.5"`` / ``"5.5−7.5"``) faellt nach der Normalisierung
+    in die bereits vorhandene ASCII-Hyphen-Range-Separator-Logik, wo der
+    Sign-Lookbehind ``(?<![\\d.%‰])-`` die Sign-Bindung nach der ersten
+    Digit blockiert - Range-Semantik bleibt unveraendert.
+    """
+    # Einzelwert mit U+2212 als Vorzeichen - klassischer Cryo-Temperatur-Wert
+    # aus Print-Publikationen oder PDF-Katalog.
+    assert csv_loaders.parse_range("−5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("−10") == (-10.0, -10.0)
+    assert csv_loaders.parse_range("−0.5") == (-0.5, -0.5)
+    # U+2212 als Vorzeichen mit ±-Uncertainty-Langform - der Uncertainty-Zweig
+    # muss die Toleranz auch mit typografischem Minus richtig auswerten.
+    assert csv_loaders.parse_range("−5.5 ± 0.3") == pytest.approx((-5.8, -5.2))
+    assert csv_loaders.parse_range("−1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    # U+2212 als Vorzeichen mit IUCr-Kompakt-Notation ``N(M)`` - Klammer-
+    # Toleranz auf die letzten Ziffern des negativen Zentrums.
+    assert csv_loaders.parse_range("−5.5(3)") == pytest.approx((-5.8, -5.2))
+    assert csv_loaders.parse_range("−2.65(5)") == pytest.approx((-2.70, -2.60))
+    # U+2212 als Vorzeichen mit Trailing-Einheit-Uncertainty - Kryo-Temperatur
+    # in °C ist der klassische Anwendungsfall mit publizierter Toleranz.
+    assert csv_loaders.parse_range("−1.5 ± 0.3 °C") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("−12 ± 2 °C") == (-14.0, -10.0)
+    # U+2212 als Vorzeichen mit Promille-Einheit-Uncertainty - Isotopen-
+    # Fraktionierungs-Werte δ¹³C/δ¹⁸O sind typisch negativ im ‰-Bereich.
+    assert csv_loaders.parse_range("−15.5 ± 0.5 ‰") == (-16.0, -15.0)
+    assert csv_loaders.parse_range("−7.2 ± 0.1 ‰") == pytest.approx((-7.3, -7.1))
+    # U+2212 als Vorzeichen mit Trailing-Einheit (ohne Uncertainty).
+    assert csv_loaders.parse_range("−5.5 g/cm³") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("−5.5 g") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("−273.15 °C") == (-273.15, -273.15)
+    # U+2212 sowohl als Vorzeichen als auch als Range-Separator - typische
+    # Print-Publikations-Notation "Cryo-Temperatur -10 bis -5 °C".
+    assert csv_loaders.parse_range("−10 − −5") == (-10.0, -5.0)
+    assert csv_loaders.parse_range("−10 − −5 °C") == (-10.0, -5.0)
+    # Gemischt: U+2212 als Vorzeichen, ASCII-Hyphen als Range-Separator.
+    assert csv_loaders.parse_range("−10 - −5") == (-10.0, -5.0)
+    # U+2212 nur als Vorzeichen der ersten Bound, positive zweite Bound
+    # (Temperatur-Range ueber Nullpunkt).
+    assert csv_loaders.parse_range("−10 - 5") == (-10.0, 5.0)
+    assert csv_loaders.parse_range("−10 − 5") == (-10.0, 5.0)
+    # DE-Komma-Dezimal mit U+2212-Vorzeichen - typografisch sauber gesetzte
+    # DE-Publikationen kombinieren Komma-Dezimal und U+2212-Minus.
+    assert csv_loaders.parse_range("−2,65") == (-2.65, -2.65)
+    assert csv_loaders.parse_range("−10,5 − −5,5") == (-10.5, -5.5)
+    # Freitext-Praefix (Annaeherungs-Marker) vor U+2212-Wert - der Wert muss
+    # sein Vorzeichen behalten.
+    assert csv_loaders.parse_range("ca. −5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("circa −5.5") == (-5.5, -5.5)
+    # Scientific notation mit U+2212 an der Mantisse - typisch fuer
+    # sub-Einheiten-Groessen im negativen Bereich.
+    assert csv_loaders.parse_range("−1.5e-3") == pytest.approx((-0.0015, -0.0015))
+    assert csv_loaders.parse_range("−1e3") == (-1000.0, -1000.0)
+    # Leading-Dot-Dezimal mit U+2212 (``−.5`` = -0.5, typografisch sauberes
+    # US-Konvention "no leading zero" mit Print-Minus).
+    assert csv_loaders.parse_range("−.5") == (-0.5, -0.5)
+    # Klammer-Annotation nach U+2212-Wert wird gestrippt.
+    assert csv_loaders.parse_range("−5.5 (Ref 42)") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("−10 − −5 [Nr. 42]") == (-10.0, -5.0)
+    # Regression-Anker: U+2212 zwischen zwei positiven Zahlen ohne
+    # Vorzeichen-Rolle bleibt Range-Separator (die neue Normalisierung
+    # laesst die bestehende Range-Semantik unveraendert).
+    assert csv_loaders.parse_range("5.5 − 7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("5.5−7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("5 − 7") == (5.0, 7.0)
+    # Regression-Anker: en-dash (U+2013) und em-dash (U+2014) bleiben
+    # unangetastet als Range-Separatoren - nur U+2212 wird normalisiert,
+    # die anderen typografischen Dash-Varianten sind semantisch immer
+    # Range-Separatoren.
+    assert csv_loaders.parse_range("5.5 – 7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("5.5 — 7.5") == (5.5, 7.5)
+    # Regression-Anker: Werte ohne U+2212 bleiben komplett unveraendert.
+    assert csv_loaders.parse_range("5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
+def test_normalize_numeric_locale_typografisches_minus_u2212():
+    """:func:`normalize_numeric_locale` normalisiert U+2212 auf ASCII-Hyphen,
+    damit die AI-Response-Koerzitierung in :mod:`stonebook.ai.providers`
+    auch typografisch gesetzte negative Werte aus Modell-Antworten korrekt
+    einliest.
+
+    KI-Modelle geben typeset-Minus-Zeichen (U+2212) gern in wissenschaftlichen
+    Kontexten aus (Kryo-Temperaturen ``−12 °C``, Isotopen-Fraktionierungen
+    ``−15.5 ‰``), weil das System-Prompt-Umfeld eine typografisch saubere
+    Ausgabe suggeriert. Ohne die U+2212-Normalisierung fiele die :data:`_LEADING_NUMBER`-
+    Extraktion (``[-+]?\\d+``) auf den positiven Betrag zurueck - der
+    Sammler-Wert wuerde als ``12 °C`` statt ``-12 °C`` in die Datenbank
+    wandern, mit silenter Vorzeichen-Inversion auf jeder Numeric-Achse.
+    """
+    # U+2212 wird auf ASCII-Hyphen normalisiert (Vorzeichen-Rolle bleibt
+    # erhalten, die Kombination mit :data:`_LEADING_NUMBER` liefert den
+    # negativen Wert).
+    assert csv_loaders.normalize_numeric_locale("−5.5") == "-5.5"
+    assert csv_loaders.normalize_numeric_locale("−12 °C") == "-12 °C"
+    assert csv_loaders.normalize_numeric_locale("−15.5 ‰") == "-15.5 ‰"
+    # Kombination mit Schweizer Apostroph-Tausender (bereits vorhandene
+    # Vorverarbeitung) und U+2212-Vorzeichen.
+    assert csv_loaders.normalize_numeric_locale("−1'500.00") == "-1500.00"
+    # Ohne U+2212 bleibt der Text unveraendert (der Strip ist idempotent
+    # und veraendert Nicht-U+2212-Zeichen nicht).
+    assert csv_loaders.normalize_numeric_locale("-5.5") == "-5.5"
+    assert csv_loaders.normalize_numeric_locale("5.5") == "5.5"
+    # En-dash und em-dash bleiben unangetastet (nur U+2212 wird normalisiert).
+    assert csv_loaders.normalize_numeric_locale("5.5 – 7.5") == "5.5 – 7.5"
+    assert csv_loaders.normalize_numeric_locale("5.5 — 7.5") == "5.5 — 7.5"
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data
