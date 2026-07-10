@@ -2036,6 +2036,54 @@ _OSM_HASH_MAP = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# WKT-POINT-Notation (OGC Simple Features / ISO 19125) - Standard-Serialisierungs-
+# Form fuer Punkt-Geometrien aus GIS-Werkzeugketten: PostGIS ST_AsText,
+# GeoPandas .to_wkt, QGIS "Copy as WKT", ogr2ogr, ArcGIS Feature-to-Text und
+# jeder Shapefile-Export-Pfad, der ueber GEOS/GDAL laeuft. Die OGC-Achsen-
+# Konvention ist fix vorgegeben: X ist Longitude (Ost-West), Y ist Latitude
+# (Nord-Sued) - unabhaengig davon, dass EPSG-Konventionen fuer geografische
+# Datenreferenz-Systeme oft die umgekehrte Reihenfolge (Lat, Lon) verwenden.
+# In WKT ist der Standard IMMER (X Y), also (Lon Lat). Vor diesem Pattern
+# fiel jeder WKT-POINT-Text durch _DECIMAL_PAIR (Whitespace-Separator, keine
+# obligatorischen Direction-Buchstaben) und lieferte silente Achsen-
+# Vertauschung: ``"POINT(7.5 46.5)"`` wurde als ``(lat=7.5, lon=46.5)``
+# gelesen, obwohl der publizierte Wert lat=46.5, lon=7.5 meint. Aus einem
+# typischen Sammler-Workflow "Fundort in QGIS anzeigen -> Copy as WKT ins
+# Fundort-Feld einfuegen" oder aus einem SQL-Report ueber PostGIS-Tabellen
+# (``SELECT ST_AsText(geom) FROM ...``) entstand damit silenter Achsen-
+# Vertauschungs-Fehler bei der Migration; besonders schwer erkennbar, weil
+# ``(7.5, 46.5)`` formal ein gueltiges Lat/Lon-Paar ist (Nord-Atlantik) und
+# die _validate-Range-Pruefung erfolgreich durchlaeuft. Match ist definitiv:
+# wenn das POINT-Keyword erkannt wird, ist die (Lon Lat)-Reihenfolge
+# eindeutig, und ein Fallback auf _DECIMAL_PAIR wuerde exakt die Vertauschung
+# reintroduzieren, die dieser Zweig fixt. Optional-Marker ``Z``/``M``/``ZM``
+# nach dem POINT-Keyword sind OGC-Erweiterungen fuer 3D-/Measure-Dimensionen
+# (Elevation, linear referenced measure) - die optionalen Werte werden nach
+# Lat konsumiert, aber nicht in Rueckgabe eingerechnet (die App fuehrt keine
+# Elevation-/Measure-Achse). Optionaler ``SRID=<n>;``-Praefix ist die
+# PostGIS-EWKT-Erweiterung (Spatial Reference Identifier, meist 4326 fuer
+# WGS84); wird toleriert aber semantisch ignoriert (die App speichert
+# Koordinaten immer in dem CRS, das der Sammler eingegeben hat). Kollisionsfrei
+# zu :data:`_COORD_LABEL` (weder ``point`` noch ``srid`` sind dort gelistet),
+# zu :data:`_PREFIX_PAIR` / :data:`_SUFFIX_PAIR_NO_SEP` (die verlangen
+# obligatorische Direction-Buchstaben), zu :data:`_DECIMAL_PAIR` (das per
+# .search kaeme, aber der WKT-Match ist per .match anchored und laeuft
+# davor). Case-Insensitiv, weil die verschiedenen WKT-Ausgabepfade
+# unterschiedliche Case-Konventionen haben (PostGIS ``POINT``, GeoJSON-to-WKT
+# oft ``Point``, ogr2ogr manchmal Lowercase). DE-Komma-Dezimal wird toleriert
+# (kein Standard-WKT, aber Sammler-typisch bei Export aus DE-Locale-Excel).
+_WKT_POINT = re.compile(
+    r"""^\s*(?:SRID=\d+\s*;\s*)?             # optional EWKT SRID-Prefix
+        POINT\s*(?:Z|M|ZM)?\s*               # POINT-Keyword + optionaler Z/M/ZM-Marker
+        \(\s*
+        ([-+]?\d+(?:[.,]\d+)?(?:[eE][-+]?\d+)?)   # X = Longitude
+        \s+
+        ([-+]?\d+(?:[.,]\d+)?(?:[eE][-+]?\d+)?)   # Y = Latitude
+        (?:\s+[-+]?\d+(?:[.,]\d+)?(?:[eE][-+]?\d+)?){0,2}  # optionale Z/M-Achsen
+        \s*\)\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -2790,6 +2838,20 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     m = _OSM_HASH_MAP.search(s)
     if m:
         return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
+    # WKT-POINT-Notation (OGC Simple Features): "POINT(lon lat)". Vor allen
+    # Zahl-Paar-Patterns extrahieren, weil das erste Zahl-Feld die
+    # Longitude ist, nicht die Latitude - _DECIMAL_PAIR (Whitespace-Separator
+    # ohne Direction-Buchstaben) wuerde sonst (lon, lat) als (lat, lon)
+    # lesen und die publizierten Achsen silente vertauschen. Match ist
+    # definitiv: das OGC-Standard-Format spezifiziert (X Y) mit X=Lon,
+    # Y=Lat; ein Fallback auf _DECIMAL_PAIR wuerde exakt die Vertauschung
+    # reintroduzieren, die dieser Zweig fixt. Return des _validate-Ergebnisses
+    # mit umgesortierter Rueckgabe (Lat, Lon) analog zu den anderen Zweigen.
+    m = _WKT_POINT.match(s)
+    if m:
+        lon = _to_float(m.group(1))
+        lat = _to_float(m.group(2))
+        return _validate(lat, lon)
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):

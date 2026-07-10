@@ -4583,3 +4583,78 @@ def test_parse_coordinates_bing_maps_tilde_separator():
     # Regression: einzelne Zahl ohne Trenner (auch mit ~) bleibt None
     assert parse_coordinates("46.5") is None
     assert parse_coordinates("~46.5") is None
+
+
+def test_parse_coordinates_wkt_point():
+    """WKT-POINT-Notation (OGC Simple Features / ISO 19125) - Standard-
+    Serialisierungs-Form fuer Punkt-Geometrien aus GIS-Werkzeugketten.
+
+    PostGIS ST_AsText, GeoPandas .to_wkt, QGIS "Copy as WKT", ogr2ogr,
+    ArcGIS Feature-to-Text und jeder Shapefile-Export-Pfad ueber GEOS/GDAL
+    liefern die WKT-Form. Die OGC-Achsen-Konvention ist fix (X Y) mit
+    X=Longitude, Y=Latitude - unabhaengig von der EPSG-Konvention (Lat
+    zuerst). Ohne diesen Zweig fiele jeder WKT-POINT-Text durch das
+    Whitespace-Separator-Muster von :data:`_DECIMAL_PAIR` und lieferte
+    silente Achsen-Vertauschung ((7.5, 46.5) statt (46.5, 7.5)).
+    """
+    # Basisform ohne Whitespace nach POINT
+    assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)
+    # Mit Whitespace nach POINT (auch OGC-Standard-Variante)
+    assert parse_coordinates("POINT (7.5 46.5)") == (46.5, 7.5)
+    # Case-Insensitivitaet (verschiedene WKT-Ausgabepfade)
+    assert parse_coordinates("point (7.5 46.5)") == (46.5, 7.5)
+    assert parse_coordinates("Point(7.5 46.5)") == (46.5, 7.5)
+    assert parse_coordinates("PoInT(7.5 46.5)") == (46.5, 7.5)
+    # 3D-Form (Z-Achse fuer Elevation) - Z wird ignoriert
+    assert parse_coordinates("POINT Z (7.5 46.5 800)") == (46.5, 7.5)
+    assert parse_coordinates("POINTZ(7.5 46.5 800)") == (46.5, 7.5)
+    # Measure-Form (M-Achse fuer linear-referenced measure)
+    assert parse_coordinates("POINT M (7.5 46.5 42)") == (46.5, 7.5)
+    assert parse_coordinates("POINTM(7.5 46.5 42)") == (46.5, 7.5)
+    # 3D + Measure (ZM-Form)
+    assert parse_coordinates("POINT ZM (7.5 46.5 800 42)") == (46.5, 7.5)
+    assert parse_coordinates("POINTZM(7.5 46.5 800 42)") == (46.5, 7.5)
+    # Vorzeichen auf Lon
+    assert parse_coordinates("POINT(-7.5 46.5)") == (46.5, -7.5)
+    assert parse_coordinates("POINT(+7.5 46.5)") == (46.5, 7.5)
+    # Vorzeichen auf Lat
+    assert parse_coordinates("POINT(7.5 -46.5)") == (-46.5, 7.5)
+    # Beide negativ (Sued-West-Kombination)
+    assert parse_coordinates("POINT(-7.5 -46.5)") == (-46.5, -7.5)
+    # EWKT-Prefix mit SRID (PostGIS-Erweiterung)
+    assert parse_coordinates("SRID=4326;POINT(7.5 46.5)") == (46.5, 7.5)
+    assert parse_coordinates(
+        "SRID=4326 ; POINT (7.5 46.5)") == (46.5, 7.5)
+    # DE-Komma-Dezimal (Sammler-typisch bei Excel-Export mit DE-Locale)
+    assert parse_coordinates("POINT(7,5 46,5)") == (46.5, 7.5)
+    # Scientific-Notation in den Koordinaten
+    assert parse_coordinates("POINT(7.5e0 4.65e1)") == (46.5, 7.5)
+    # Fuehrende/Trailing Whitespace
+    assert parse_coordinates("  POINT(7.5 46.5)  ") == (46.5, 7.5)
+    # Out-of-Range Lon -> None (Validierung greift wie sonst)
+    assert parse_coordinates("POINT(200 46.5)") is None
+    # Out-of-Range Lat -> None
+    assert parse_coordinates("POINT(7.5 91.0)") is None
+    # Aequator/Null-Meridian (Grenzfaelle)
+    assert parse_coordinates("POINT(0 0)") == (0.0, 0.0)
+    assert parse_coordinates("POINT(180 90)") == (90.0, 180.0)
+    assert parse_coordinates("POINT(-180 -90)") == (-90.0, -180.0)
+    # Regression: alle bestehenden Zahl-Paar-Formen bleiben (kein Regress)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    # Regression: MULTIPOINT/LINESTRING sind nicht abgedeckt und faellen
+    # (semantisch korrekt) zurueck auf das Fallback-Verhalten - kein Datum-
+    # Umsprung, sondern Sammler soll manuell Einzel-Punkt extrahieren.
+    # (Die alte _DECIMAL_PAIR-Extraktion greift dann, was hier semantisch
+    # falsch waere - aber der WKT-Zweig blockt MULTIPOINT bewusst nicht,
+    # weil eine Point-Menge nicht eindeutig auf einen Fundort abbildbar
+    # ist.)
+    # Freitext-Praefix vor POINT (kein WKT, matcht nicht mehr)
+    assert parse_coordinates("Location: POINT(7.5 46.5)") != (46.5, 7.5)
+    # Fehlender zweiter Wert -> None (kein halbes POINT)
+    assert parse_coordinates("POINT(7.5)") is None
+    # Fehlende Klammern -> kein WKT-Match, fallback auf _DECIMAL_PAIR
+    # (das dann silente Vertauschung liefert - erwartet und dokumentiert)
+    assert parse_coordinates("POINT 7.5 46.5") == (7.5, 46.5)
