@@ -1076,6 +1076,66 @@ def test_parse_iso_date_relative_jahresposition_ungueltig():
     assert parse_iso_date("Anfang der 1980er") == "1980-01-01"
 
 
+def test_parse_iso_date_year_compound_position():
+    """Deutsche Kompositum-Form Jahres<anfang/mitte/ende> + Jahr → Jan/Jul/Dez.
+
+    Substantivierte DE-Prosa-Form neben der artikellosen Kurzform ("Jahresende
+    1985" = "Ende 1985"). In geerbten Fund-Tagebuechern und Prosa-Etiketten
+    haeufiger als die journalistische Kurzform. Semantik spiegelt
+    :data:`_RELATIVE_MONTHS` auf die Kompositum-Achse:
+    Jahresanfang/Jahresbeginn -> Jan, Jahresmitte -> Jul, Jahresende/
+    Jahresschluss -> Dez.
+    """
+    # Deutsch: Jahresanfang/Jahresbeginn = Januar
+    assert parse_iso_date("Jahresanfang 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresbeginn 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresstart 2024") == "2024-01-01"
+    # Jahresmitte = Juli
+    assert parse_iso_date("Jahresmitte 2024") == "2024-07-01"
+    # Jahresende/Jahresschluss/Jahresausklang = Dezember
+    assert parse_iso_date("Jahresende 2024") == "2024-12-01"
+    assert parse_iso_date("Jahresschluss 2024") == "2024-12-01"
+    assert parse_iso_date("Jahresausklang 2024") == "2024-12-01"
+    # Verschiedene Jahre
+    assert parse_iso_date("Jahresanfang 1985") == "1985-01-01"
+    assert parse_iso_date("Jahresmitte 1999") == "1999-07-01"
+    assert parse_iso_date("Jahresende 1985") == "1985-12-01"
+    # Case-insensitive
+    assert parse_iso_date("JAHRESANFANG 2024") == "2024-01-01"
+    assert parse_iso_date("jahresende 2024") == "2024-12-01"
+    assert parse_iso_date("JahresMitte 2024") == "2024-07-01"
+    # Bindestrich-Trenner (typografisch selten aber spec-konform)
+    assert parse_iso_date("Jahresende-2024") == "2024-12-01"
+    assert parse_iso_date("Jahresanfang-2024") == "2024-01-01"
+    # Trailing Satzzeichen (via _TRAILING_PUNCT-Strip)
+    assert parse_iso_date("Jahresmitte 2024.") == "2024-07-01"
+    assert parse_iso_date("Jahresende 2024,") == "2024-12-01"
+    # In Klammern (via _BRACKET_PAIRS-Strip)
+    assert parse_iso_date("[Jahresende 1985]") == "1985-12-01"
+    assert parse_iso_date("(Jahresmitte 2020)") == "2020-07-01"
+    # Kombiniert mit Annaeherungspraefix
+    assert parse_iso_date("ca. Jahresende 1990") == "1990-12-01"
+    assert parse_iso_date("circa Jahresanfang 2020") == "2020-01-01"
+
+
+def test_parse_iso_date_year_compound_position_ungueltig():
+    """Kompositum ohne Jahr / Jahr ausserhalb 1800-2999 / unbekanntes Suffix → None."""
+    # Nur Kompositum-Prefix ohne Jahr
+    assert parse_iso_date("Jahresanfang") is None
+    assert parse_iso_date("Jahresende") is None
+    assert parse_iso_date("Jahresmitte") is None
+    # Jahr ausserhalb 1800-2999
+    assert parse_iso_date("Jahresende 1700") is None
+    assert parse_iso_date("Jahresanfang 3000") is None
+    # Unbekanntes Positions-Suffix
+    assert parse_iso_date("Jahreskern 2024") is None
+    assert parse_iso_date("Jahresrand 2024") is None
+    # Ohne Jahres-Praefix -> _RELATIVE_YEAR-Kurzform (kein Regress)
+    assert parse_iso_date("Anfang 2024") == "2024-01-01"
+    assert parse_iso_date("Mitte 2024") == "2024-07-01"
+    assert parse_iso_date("Ende 2024") == "2024-12-01"
+
+
 def test_parse_iso_date_relative_monat_jahresposition():
     """Anfang/Mitte/Ende + Monatsname + Jahr → Monatsanfang/Mitte/Ende.
 

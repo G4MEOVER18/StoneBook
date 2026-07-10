@@ -1365,6 +1365,47 @@ _RELATIVE_YEAR = re.compile(
     re.IGNORECASE,
 )
 
+# Deutsche Kompositum-Formen der Jahresposition ("Jahresanfang 2024",
+# "Jahresbeginn 2024", "Jahresmitte 2024", "Jahresende 2024", "Jahresschluss
+# 2024", "Jahresausklang 2024"). In DE-Sammler-Notizen und Prosa-Etiketten die
+# haeufigere Wort-Form neben der artikellosen "Anfang 2024"/"Mitte 2024"/
+# "Ende 2024"-Kurzform (letzteres ist journalistisch/Print, das Kompositum ist
+# umgangssprachlich und wird in geerbten Fund-Tagebuechern der Sammler-Praxis
+# durchgehend verwendet: "Aare-Herbstsammlung Jahresende 1985", "Erwerb
+# Jahresanfang 2020", "Kauf Jahresmitte 2019 an der Tucson-Boerse"). Spiegelt
+# das :data:`_RELATIVE_MONTHS`-Schema auf die substantivierte Kompositum-Achse:
+#   Jahresanfang/Jahresbeginn/Jahresstart -> 1 (Januar, Jahres-Startanker)
+#   Jahresmitte                            -> 7 (Juli, Jahres-Mitte)
+#   Jahresende/Jahresschluss/Jahresausklang -> 12 (Dezember, Jahres-Endanker)
+# Semantisch identisch zur artikellosen Kurzform (``Anfang 2024`` == ``Jahres-
+# anfang 2024``, beide meinen den Jahres-Startanker). Bisher fielen alle
+# Kompositum-Formen still auf None, weil :data:`_MONTH_YEAR` strukturell zwar
+# matcht (ein Wort + Jahr), aber :func:`_normalize_month_name` fuer
+# ``jahresanfang``/``jahresmitte``/``jahresende`` None liefert und die Kette
+# durchfaellt - der Sammler-Freitext ging silent verloren, obwohl semantisch
+# eindeutig zur Kurzform aequivalent.
+#
+# Separator zwischen Kompositum und Jahr: Whitespace oder Bindestrich, spiegelt
+# die :data:`_RELATIVE_YEAR`-Trenner-Klasse ``[-\s]+`` (``Jahresende-2024``
+# als hyphenierte Kompositum-Form ist typografisch selten aber spec-konform).
+# Case-insensitive spiegelt die uebrigen Position-Patterns. Kollisionsfreiheit
+# zu :data:`_RELATIVE_YEAR`: das ``Jahres``-Praefix ist obligatorisch, das
+# Positions-Suffix (``anfang``/``beginn``/...) allein reicht nicht (``Anfang
+# 2024`` faellt hier durch und wird von _RELATIVE_YEAR aufgeloest). Wird nach
+# _RELATIVE_YEAR geprueft (die artikellose Kurzform hat als bereits etabliertes
+# Pattern Vorrang), aber vor _SEASON_YEAR - sonst wuerde die kanonische Saison-
+# Aufloesung greifen wollen und via unbekannten Saison-Namen auf None fallen.
+_YEAR_COMPOUND_POSITION_MONTHS: dict[str, int] = {
+    "anfang": 1, "beginn": 1, "start": 1,
+    "mitte": 7,
+    "ende": 12, "schluss": 12, "ausklang": 12,
+}
+_YEAR_COMPOUND_POSITION = re.compile(
+    r"^\s*Jahres(anfang|beginn|start|mitte|ende|schluss|ausklang)"
+    r"[-\s]+(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
 # Relative Position innerhalb eines Monats mit Monatsname und Jahr:
 # "Anfang Juni 2024", "Mitte Juni 2024", "Ende Juni 2024", "early June 2024",
 # "mid-June 2024", "late June 2024". Sehr verbreitet in Sammler-Notizen und
@@ -2627,6 +2668,18 @@ def parse_iso_date(text) -> str | None:
     m = _RELATIVE_YEAR.match(s)
     if m:
         month = _RELATIVE_MONTHS[m.group(1).lower()]
+        year = int(m.group(2))
+        if 1800 <= year <= 2999:
+            return f"{year:04d}-{month:02d}-01"
+    # Deutsche Kompositum-Form ("Jahresanfang 2024", "Jahresmitte 2024",
+    # "Jahresende 2024", "Jahresbeginn 2020", "Jahresschluss 1985"). Semantisch
+    # identisch zur artikellosen Kurzform "Anfang/Mitte/Ende <Jahr>", nach
+    # _RELATIVE_YEAR geprueft (Kurzform hat als etabliertes Pattern Vorrang),
+    # vor _SEASON_YEAR (sonst faellt die substantivierte Form ueber den
+    # Fallback des unbekannten Saison-Namens auf None).
+    m = _YEAR_COMPOUND_POSITION.match(s)
+    if m:
+        month = _YEAR_COMPOUND_POSITION_MONTHS[m.group(1).lower()]
         year = int(m.group(2))
         if 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
