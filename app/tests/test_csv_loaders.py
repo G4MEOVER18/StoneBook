@@ -594,6 +594,85 @@ def test_parse_range_prozent_promille_range_ohne_whitespace_um_bindestrich():
     assert csv_loaders.parse_range("5 wt% - 10 wt%") == (5.0, 10.0)
 
 
+def test_parse_range_uncertainty_mit_trailing_satzzeichen():
+    """Uncertainty-Notation mit Trailing-Satzzeichen (``.``, ``,``, ``;``,
+    ``:``, ``!``, ``?``) behaelt die publizierte Toleranz.
+
+    In Sammler-Notizen und Excel-CSV-Zeilen ist es sehr verbreitet, den Wert
+    mit Toleranz am Ende eines Satzes oder einer Zeilen-Zelle mit einem
+    Punkt/Komma/Semikolon abzuschliessen ("Dichte 2.65 ± 0.05.",
+    "Haerte 5.5 ± 0.3, siehe Literatur X", "5.5(3);"). Vor dem Fix
+    ankerten beide Uncertainty-Patterns strikt auf ``\\s*$`` - jedes
+    Trailing-Satzzeichen blockte den End-Anker-Match und die Formen fielen
+    still auf die Fallback-Zahl-Extraktion via ``[center, tol]``-inverted-
+    range-Kollaps auf ``(center, center)`` durch (Toleranz verloren). Fix
+    ergaenzt beide Patterns um eine optionale Trailing-Satzzeichen-Klasse
+    ``[.,;:!?]?`` vor dem End-Anker.
+    """
+    # ±-Langform mit einzelnem Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5 ± 0.3.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3,") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3;") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3:") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3!") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3?") == pytest.approx((5.2, 5.8))
+    # Ohne Whitespace um ±
+    assert csv_loaders.parse_range("5.5±0.3.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5±0.3,") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5±0.3;") == pytest.approx((5.2, 5.8))
+    # ASCII-Ersatzform (+/-, +-) mit Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5 +/- 0.3.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 +/- 0.3,") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 +- 0.3;") == pytest.approx((5.2, 5.8))
+    # IUCr-Kompaktform mit Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5(3).") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3),") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3);") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3):") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5),") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("100(2).") == (98.0, 102.0)
+    # Mit direkt anhaengender Einheit + Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5 ± 0.3mm,") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3mm.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65 ± 0.05g/cm³,") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65(5)g/cm³.") == pytest.approx((2.60, 2.70))
+    # Mit Whitespace-getrennter Einheit + Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5 ± 0.3 mm,") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³.") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5(3) Mohs;") == pytest.approx((5.2, 5.8))
+    # Mit Trailing-Klammer-Annotation + Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Literatur).") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3 (Ref),") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3) [NIST-2018].") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("100(2) {IUCr};") == (98.0, 102.0)
+    # Mit Prozent-/Promille-Suffix + Trailing-Satzzeichen
+    assert csv_loaders.parse_range("5.5% ± 0.3%.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)%,") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("-15.5 ± 0.5‰.") == pytest.approx((-16.0, -15.0))
+    # Trailing-Whitespace nach Satzzeichen toleriert
+    assert csv_loaders.parse_range("5.5 ± 0.3, ") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3.  ") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3);  ") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: ohne Trailing-Satzzeichen unveraendert
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: Trailing-Freitext nach Satzzeichen fuehrt weiter zum
+    # Fallback (kein Match des Uncertainty-Zweigs, kein Ausschnitt-Match durch
+    # die neue optionale Satzzeichen-Klasse). Der Fallback liefert
+    # ``[center, tol]`` und kollabiert via ``if hi < lo`` auf ``(center, center)``
+    # - identisch zum Verhalten vor dem Fix, das Fix ist strikt additiv fuer
+    # die reine Satzzeichen-Terminator-Position.
+    assert csv_loaders.parse_range("5.5 ± 0.3, more text") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 ± 0.3!!more") == (5.5, 5.5)
+    # Freitext ohne Satzzeichen wird bereits vor dem Fix vom Trailing-Unit-
+    # Wort-Zweig aufgesaugt (jedes Wort wird als Einheit interpretiert), so
+    # dass ``"5.5(3) with note"`` als valide IUCr-Kompaktform + zwei Einheiten-
+    # Tokens erkannt wird und die Toleranz behaelt - Regress-Anker fuer die
+    # (ueberraschende, aber semantisch verlust-freie) alte Semantik.
+    assert csv_loaders.parse_range("5.5(3) with note") == pytest.approx((5.2, 5.8))
+
+
 def test_parse_range_klammer_annotation_wird_nicht_als_range_gelesen():
     """Klammer-umschlossene Freitext-Anhaenge sind Annotation, nicht Range-Grenze.
 

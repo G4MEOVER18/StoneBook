@@ -258,7 +258,31 @@ _PLUS_MINUS_UNCERTAINTY = re.compile(
     r"\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
     r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
-    r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
+    # Trailing-Klammer-Annotation ((\[{Ref\]}), (Literatur), [NIST-2018])
+    # single-level, symmetrisch fuer runde/eckige/geschweifte Klammern.
+    r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*"
+    # Trailing-Satzzeichen ``[.,;:!?]`` als Endpunkt der Wert-Zelle
+    # tolerieren, damit die publizierte Toleranz nicht durch das
+    # ``$``-Anker-Match verworfen wird, wenn Sammler-Notizen die
+    # Uncertainty-Notation innerhalb eines Satzes oder mit typischem
+    # Excel-CSV-Zeilen-Ende-Punkt/Komma schreiben ("Dichte 2.65 ± 0.05.",
+    # "Haerte 5.5 ± 0.3, Referenz X", "5.5(3);"). Bisher fielen alle
+    # Formen mit Trailing-Satzzeichen still auf die Fallback-Zahl-
+    # Extraktion durch und lieferten via ``[center, tol]``-inverted-
+    # range-Kollaps ``(center, center)`` (Toleranz verloren) - typische
+    # Praxis in Sammler-Notizen ("Dichte 2.65 ± 0.05.") und Excel-CSV-
+    # Zeilen mit vom Editor angehaengten Punkten/Kommas. Ein einzelnes
+    # Trailing-Zeichen ist ausreichend (Doppel-Punkt-Anhaenge sind in
+    # Wert-Feldern nicht praxisrelevant); Punkt/Komma/Semikolon sind die
+    # verbreitetsten Formen aus Editor-Autocomplete und Freitext-
+    # Satz-Kontext, Doppelpunkt und Ausrufezeichen/Fragezeichen sind
+    # seltener aber semantisch aequivalent (Wert-Terminator). Ohne
+    # Wechselwirkung mit der Trailing-Klammer-Annotation - die Klammer-
+    # Annotation ist optional und der neue Satzzeichen-Zweig kommt
+    # entweder nach der letzten Klammer-Gruppe (``"5.5 ± 0.3 (Ref),"``)
+    # oder nach dem letzten Einheiten-Token (``"5.5 ± 0.3 mm,"``) oder
+    # direkt hinter der Toleranz-Zahl (``"5.5 ± 0.3,"``).
+    r"\s*[.,;:!?]?\s*$"
 )
 
 # IUCr / kristallographische Kompakt-Unsicherheits-Notation ``N(M)`` - der
@@ -327,7 +351,13 @@ _PARENTHESIS_UNCERTAINTY = re.compile(
     r"^\s*(-?\d+(?:[.,]\d+)?)\((\d+)\)(?:\s*[%‰])?"
     r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
-    r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*\s*$"
+    r"(?:\s*[(\[{][^()\[\]{}]*[)\]}])*"
+    # Trailing-Satzzeichen tolerieren - spiegelt die Erweiterung von
+    # :data:`_PLUS_MINUS_UNCERTAINTY` auf die IUCr-Kompaktform, damit
+    # ``"5.5(3),"`` / ``"2.65(5)."`` / ``"100(2);"`` die publizierte
+    # Toleranz behalten statt via ``[center, tol]``-inverted-range-
+    # Kollaps auf ``(center, center)`` zu fallen.
+    r"\s*[.,;:!?]?\s*$"
 )
 
 # Eindeutig erkennbare Tausender-Strukturen (Komma+Punkt oder Punkt+Komma in einer Zahl,
