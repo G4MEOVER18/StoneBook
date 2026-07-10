@@ -2132,7 +2132,30 @@ _WKT_POINT = re.compile(
 _COORD_LABEL = re.compile(
     r"""\b(?:
             latitude | lat | breitengrad | breite
-          | longitude | longitudinal | long | lon | laengengrad | laenge
+          | longitude | longitudinal | long | lon | lng | laengengrad | laenge
+          # ``lng`` ist die de-facto Standard-Kurzform der Longitude in den
+          # verbreitetsten Web-Mapping-APIs (Google Maps JavaScript API mit
+          # ``google.maps.LatLng``, Leaflet ``L.latLng(lat, lng)``, Mapbox GL
+          # ``[lng, lat]``, MapKit JS, HERE Maps, Bing Maps V8) sowie im
+          # geerbten Web-Framework-Ecosystem (Node.js geolocation Middleware,
+          # React Native Maps, Flutter Maps, jeder Copy&Paste aus einer
+          # DevTools-Konsole eines Web-Karten-Widgets). Neben ``lon`` die zweite
+          # etablierte Konvention (Ein-Silben-Kurzform statt Drei-Buchstaben-
+          # Prefix), zu unterscheiden von den GIS-/Wissenschafts-APIs (PostGIS,
+          # GDAL, QGIS, ArcGIS), die ``lon`` bevorzugen. In Sammler-Notizen und
+          # Fund-Etiketten aus modernen Foto-Apps mit eingebetteter Karte
+          # (Google Photos "gps info", iPhone "Places", Bergtouren-Apps wie
+          # Komoot/AllTrails, Foto-EXIF-Exporte via ExifTool JSON-Output mit
+          # ``"GPSLongitude": ...`` als semantischer Schluessel, aber
+          # ``"lng": ...`` in JavaScript-JSON-Formatierung) ist ``lng`` die
+          # haeufigere Notation. Bisher fiel jede ``lat/lng``-Notation still
+          # auf None: ``_COORD_LABEL`` erkannte ``lat`` und strippte es, ``lng``
+          # blieb aber unbekannt und verhinderte via ``_PREFIX_PAIR`` /
+          # ``_DECIMAL_PAIR`` die Struktur-Erkennung ("46.5 lng 7.5" hat keinen
+          # zulaessigen Separator zwischen den Zahlen). Semantisch identisch
+          # zu ``lon``/``long`` - nur eine Wort-Alternante, keine Struktur-
+          # aenderung. Case-insensitive spiegelt die anderen Label-Woerter
+          # (``LAT``, ``Lat``, ``lat`` gleich behandelt).
           | längengrad | länge
           | mlat | mlon                # OpenStreetMap-Share-URL-Query-Parameter
         )

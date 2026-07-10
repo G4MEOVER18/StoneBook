@@ -4106,6 +4106,45 @@ def test_parse_coordinates_mit_labels():
     assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_lng_web_api_kurzform():
+    """Google-Maps-/Leaflet-/Mapbox-Kurzform ``lng`` als Longitude-Label.
+
+    ``lng`` ist die de-facto Standard-Kurzform der Longitude in den verbreitetsten
+    Web-Mapping-APIs (Google Maps JavaScript API mit ``google.maps.LatLng``,
+    Leaflet ``L.latLng(lat, lng)``, Mapbox GL ``[lng, lat]``, MapKit JS, HERE
+    Maps, Bing Maps V8), neben ``lon`` die zweite etablierte Konvention. In
+    Sammler-Notizen aus modernen Foto-Apps mit eingebetteter Karte (Google
+    Photos "gps info", iPhone "Places", Bergtouren-Apps wie Komoot/AllTrails,
+    ExifTool-JSON-Formatierung) die haeufigere Notation als ``lon``. Bisher
+    fiel jede ``lat/lng``-Notation still auf None: ``_COORD_LABEL`` erkannte
+    ``lat`` und strippte es, ``lng`` blieb aber unbekannt und verhinderte via
+    _PREFIX_PAIR / _DECIMAL_PAIR die Struktur-Erkennung.
+    """
+    # Grundfall: lat + lng mit Komma/Doppelpunkt/Gleichheit/Whitespace/Ampersand
+    assert parse_coordinates("lat 46.5, lng 7.5") == (46.5, 7.5)
+    assert parse_coordinates("lat: 46.5, lng: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("lat=46.5, lng=7.5") == (46.5, 7.5)
+    assert parse_coordinates("lat=46.5&lng=7.5") == (46.5, 7.5)
+    assert parse_coordinates("lat 46.5 lng 7.5") == (46.5, 7.5)
+    # Case-insensitive (spiegelt die uebrigen Labels)
+    assert parse_coordinates("LAT 46.5, LNG 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Lat 46.5, Lng 7.5") == (46.5, 7.5)
+    # Negative Werte (Suedhalbkugel/Westhalbkugel)
+    assert parse_coordinates("lat: -46.5, lng: -7.5") == (-46.5, -7.5)
+    # Grad-Symbol als typografischer Zusatz
+    assert parse_coordinates("lat: 46.5°, lng: 7.5°") == (46.5, 7.5)
+    # Mit expliziter Richtung (Label wird gestrippt, Richtung bleibt aktiv)
+    assert parse_coordinates("lat: 46.5N, lng: 7.5E") == (46.5, 7.5)
+    assert parse_coordinates("lat: 46.5S, lng: 7.5W") == (-46.5, -7.5)
+    # Wort-Boundary: laengere Woerter mit ``lng`` als Substring nicht matchen
+    assert parse_coordinates("lngs=1") is None
+    assert parse_coordinates("foolng=1") is None
+    # Regress-Anker: bereits vorhandene Labels (lon/long/longitude) bleiben
+    assert parse_coordinates("Lat: 46.5, Lon: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Lat 46.5 Long 7.5") == (46.5, 7.5)
+    assert parse_coordinates("latitude=46.5, longitude=7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_himmelsrichtung_vollnamen():
     """Vollnamen der Himmelsrichtungen (DE/EN) werden auf N/S/E/W/O reduziert."""
     # Deutsch (Praefix-Form)
