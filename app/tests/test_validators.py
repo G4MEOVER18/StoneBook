@@ -929,6 +929,92 @@ def test_parse_iso_date_jahreszeiten():
     assert parse_iso_date("June 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_kompositum_saison():
+    """DE-Kompositum-Formen ``Frueh<Saison>``/``Spaet<Saison>`` fuer die drei
+    innerhalb eines Kalenderjahres liegenden Saisons.
+
+    ``Frueh<X>`` -> erster Monat der Saison, ``Spaet<X>`` -> dritter Monat.
+    Deckt Fruehjahr/Fruehling, Sommer, Herbst ab; Winter-Kompositum ist
+    bewusst nicht aufgeloest (mehrdeutig zwischen Jahr-des-Anfangs und
+    Jahr-des-Endes).
+    """
+    # Sommer-Kompositum
+    assert parse_iso_date("Frühsommer 2024") == "2024-06-01"
+    assert parse_iso_date("Spätsommer 2024") == "2024-08-01"
+    # Herbst-Kompositum
+    assert parse_iso_date("Frühherbst 2024") == "2024-09-01"
+    assert parse_iso_date("Spätherbst 2024") == "2024-11-01"
+    # Fruehjahr-/Fruehling-Kompositum
+    assert parse_iso_date("Frühfrühling 2024") == "2024-03-01"
+    assert parse_iso_date("Spätfrühling 2024") == "2024-05-01"
+    assert parse_iso_date("Frühfrühjahr 2024") == "2024-03-01"
+    assert parse_iso_date("Spätfrühjahr 2024") == "2024-05-01"
+    # ASCII-transliterierte Umlaut-Formen (ae/oe/ue statt ä/ö/ü)
+    assert parse_iso_date("Fruehsommer 2024") == "2024-06-01"
+    assert parse_iso_date("Spaetsommer 2024") == "2024-08-01"
+    assert parse_iso_date("Fruehherbst 2024") == "2024-09-01"
+    assert parse_iso_date("Spaetherbst 2024") == "2024-11-01"
+    assert parse_iso_date("Fruehfruehjahr 2024") == "2024-03-01"
+    assert parse_iso_date("Spaetfruehjahr 2024") == "2024-05-01"
+    # Case-Insensitivitaet (Museums-Etiketten in Caps-Lock, gemischte Schreibung)
+    assert parse_iso_date("FRUEHSOMMER 2024") == "2024-06-01"
+    assert parse_iso_date("SPÄTHERBST 2024") == "2024-11-01"
+    assert parse_iso_date("spätsommer 1985") == "1985-08-01"
+    assert parse_iso_date("SpätSommer 1985") == "1985-08-01"
+    # EN-Kompositum-Formen "earlyspring"/"latespring" etc. (compact)
+    assert parse_iso_date("earlysummer 2024") == "2024-06-01"
+    assert parse_iso_date("latesummer 2024") == "2024-08-01"
+    assert parse_iso_date("earlyautumn 2024") == "2024-09-01"
+    assert parse_iso_date("lateautumn 2024") == "2024-11-01"
+    assert parse_iso_date("earlyfall 2024") == "2024-09-01"
+    assert parse_iso_date("latefall 2024") == "2024-11-01"
+    assert parse_iso_date("earlyspring 2024") == "2024-03-01"
+    assert parse_iso_date("latespring 2024") == "2024-05-01"
+    # Komma-Separator zwischen Saison und Jahr (spiegelt _SEASON_YEAR)
+    assert parse_iso_date("Spätsommer, 1985") == "1985-08-01"
+    assert parse_iso_date("Frühherbst, 1985") == "1985-09-01"
+    # Annaeherungspraefix (ca./circa) + Kompositum-Saison
+    assert parse_iso_date("ca. Spätsommer 1985") == "1985-08-01"
+    assert parse_iso_date("circa Frühherbst 1985") == "1985-09-01"
+    assert parse_iso_date("~ Spätfrühling 2024") == "2024-05-01"
+    # Temporale Praeposition (im/vom) + Kompositum-Saison
+    assert parse_iso_date("im Frühsommer 2024") == "2024-06-01"
+    assert parse_iso_date("im Spätherbst 1985") == "1985-11-01"
+    # Year-first-Reihenfolge (_SEASON_YEAR_FIRST)
+    assert parse_iso_date("2024 Spätherbst") == "2024-11-01"
+    assert parse_iso_date("2024-Spätsommer") == "2024-08-01"
+    assert parse_iso_date("2024/Frühsommer") == "2024-06-01"
+    # Klammern-/Anfuehrungszeichen-Strip vor der Kompositum-Aufloesung
+    assert parse_iso_date("(Spätsommer 2024)") == "2024-08-01"
+    assert parse_iso_date('"Frühherbst 2024"') == "2024-09-01"
+    # Trailing-Satzzeichen-Strip vor der Kompositum-Aufloesung
+    assert parse_iso_date("Spaetsommer 2024.") == "2024-08-01"
+    assert parse_iso_date("Frühherbst 1985!") == "1985-09-01"
+    # Winter-Kompositum bewusst nicht aufgeloest (Semantik mehrdeutig)
+    assert parse_iso_date("Frühwinter 2024") is None
+    assert parse_iso_date("Spätwinter 2024") is None
+    # Unbekannte Kompositum-Praefixe fallen weiter auf None
+    assert parse_iso_date("Vorsommer 2024") is None
+    assert parse_iso_date("Nachsommer 2024") is None
+    assert parse_iso_date("Hochsommer 2024") is None
+    assert parse_iso_date("Mittsommer 2024") is None
+    # Jahr ausserhalb 1800-2999 -> None (Bereichs-Konvention greift)
+    assert parse_iso_date("Frühsommer 1700") is None
+    assert parse_iso_date("Spätherbst 3000") is None
+    # Regress-Anker: Basis-Saisons unveraendert
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("Herbst 2024") == "2024-09-01"
+    assert parse_iso_date("Frühling 2024") == "2024-03-01"
+    assert parse_iso_date("Frühjahr 2024") == "2024-03-01"
+    assert parse_iso_date("Winter 2024") == "2024-12-01"
+    # Regress-Anker: Winter-Cross-Year weiterhin auf reines Winter beschraenkt
+    assert parse_iso_date("Winter 2023/2024") == "2023-12-01"
+    # Regress-Anker: Range-Spanne fuer Kompositum-Saison bleibt None (kein
+    # kruemliger Fallback-Match auf das erste Jahr)
+    assert parse_iso_date("Frühsommer 2023/2024") is None
+    assert parse_iso_date("Spätherbst 2023-2024") is None
+
+
 def test_parse_iso_date_relative_jahresposition():
     """Anfang/Mitte/Ende + Jahr (analog Saison): Jan / Jul / Dez im genannten Jahr."""
     # Deutsch

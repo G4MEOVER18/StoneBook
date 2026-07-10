@@ -1049,6 +1049,38 @@ _SEASON_MONTHS: dict[str, int] = {
     "sommer": 6, "summer": 6,
     "herbst": 9, "autumn": 9, "fall": 9,
     "winter": 12,
+    # DE-Kompositum-Formen "Frueh<Saison>"/"Spaet<Saison>" der drei innerhalb
+    # eines Kalenderjahres liegenden Saisons (Fruehling/Fruehjahr, Sommer,
+    # Herbst) mappen auf die Saison-Startmonat +/- Randabstand: "Frueh<X>"
+    # zeigt auf den ersten Monat der Saison (identisch zur nackten Saison,
+    # weil die Saison drei Monate abdeckt und "Frueh<X>" ihren Anfang meint),
+    # "Spaet<X>" auf den dritten Monat der Saison. Sehr verbreitet in DE-
+    # Sammlungs-Notizen, Foto-Captions und Fundort-Etiketten ("Fund
+    # Spaetsommer 2024", "Spaetherbst-Exkursion 2023 Aare", "Fruehsommer-
+    # Bergtour 1985"), weil Sammler die Fund-/Foto-Zeit oft innerhalb der
+    # Saison eingrenzen koennen, aber nicht auf den exakten Monat. Bisher
+    # fielen alle Kompositum-Formen still auf None, obwohl semantisch klar
+    # in einen Kalendermonat abbildbar - der reine Saison-Wortstamm ist im
+    # Kompositum durch das Modifikator-Praefix "Frueh"/"Spaet" ergaenzt und
+    # damit fuer _normalize_season_name unbekannt. Konvention: Fruehjahr
+    # (Maerz-Mai) -> Fruehfruehjahr=3, Spaetfruehjahr=5; Sommer (Juni-Aug)
+    # -> Fruehsommer=6, Spaetsommer=8; Herbst (Sep-Nov) -> Fruehherbst=9,
+    # Spaetherbst=11. ASCII-transliterierte Formen (frueh statt frueh) und
+    # Umlaut-Formen (frueh/spaet) werden durch _normalize_season_name via
+    # ae/oe/ue-Ersatz auf denselben Key normalisiert. Winter-Kompositum-
+    # Formen (Fruehwinter/Spaetwinter) bewusst NICHT enthalten, weil der
+    # meteorologische Winter Dezember-Februar zwei Kalenderjahre umschliesst
+    # und die Modifikator-Semantik dort mehrdeutig zwischen dem Jahr des
+    # Winter-Anfangs und dem Jahr des Winter-Endes waere - "Spaetwinter
+    # 2024" koennte Februar 2024 (Ende Winter 2023/24) oder Februar 2025
+    # (Ende Winter 2024/25) meinen. Fuer die drei Ganzjahres-internen
+    # Saisons ist die Zuordnung eindeutig.
+    "fruehfruehling": 3, "fruehfruehjahr": 3, "earlyspring": 3,
+    "spaetfruehling": 5, "spaetfruehjahr": 5, "latespring": 5,
+    "fruehsommer": 6, "earlysummer": 6,
+    "spaetsommer": 8, "latesummer": 8,
+    "fruehherbst": 9, "earlyautumn": 9, "earlyfall": 9,
+    "spaetherbst": 11, "lateautumn": 11, "latefall": 11,
 }
 _SEASON_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]?\s*(\d{4})\s*$",
