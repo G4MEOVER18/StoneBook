@@ -3294,6 +3294,95 @@ def test_parse_iso_date_kw_notation():
     assert parse_iso_date("KW 25") is None
 
 
+def test_parse_iso_date_kw_langform_und_englisch():
+    """Langform-KW-Notation (Kalenderwoche/Woche) und englisches CW/calendar week.
+
+    Erweitert die reine KW-Kurzform um die drei praxisrelevanten Langform-
+    Alternativen: DE-Langform ``Kalenderwoche``, DE-Kurzform ohne Kalender-
+    Praefix ``Woche``, und EN-Kurzform ``CW`` (calendar week) samt EN-
+    Langform ``calendar week`` (mit/ohne Whitespace). Mapping identisch zur
+    Kurzform (Montag der genannten Woche).
+    """
+    # DE-Langform "Kalenderwoche"
+    assert parse_iso_date("Kalenderwoche 25 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25/2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25, 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche25/2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 1 2024") == "2024-01-01"
+    # DE-Kurzform "Woche"
+    assert parse_iso_date("Woche 25 2024") == "2024-06-17"
+    assert parse_iso_date("Woche 25/2024") == "2024-06-17"
+    assert parse_iso_date("Woche25 2024") == "2024-06-17"
+    # EN-Kurzform "CW"
+    assert parse_iso_date("CW 25 2024") == "2024-06-17"
+    assert parse_iso_date("CW25/2024") == "2024-06-17"
+    assert parse_iso_date("CW 25, 2024") == "2024-06-17"
+    # EN-Langform "calendar week" mit/ohne Whitespace
+    assert parse_iso_date("calendar week 25 2024") == "2024-06-17"
+    assert parse_iso_date("calendarweek 25 2024") == "2024-06-17"
+    assert parse_iso_date("calendar week 1 2024") == "2024-01-01"
+    # Case-Insensitivitaet
+    assert parse_iso_date("KALENDERWOCHE 25 2024") == "2024-06-17"
+    assert parse_iso_date("kalenderwoche 25 2024") == "2024-06-17"
+    assert parse_iso_date("cw 25 2024") == "2024-06-17"
+    assert parse_iso_date("CALENDAR WEEK 25 2024") == "2024-06-17"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. Kalenderwoche 25 2024") == "2024-06-17"
+    assert parse_iso_date("[Woche 25 2024]") == "2024-06-17"
+    assert parse_iso_date("(CW 25 2024)") == "2024-06-17"
+    # Ungueltig (nicht-existente Woche / Jahr ausserhalb / Woche ohne Jahr)
+    assert parse_iso_date("Kalenderwoche 0 2024") is None
+    assert parse_iso_date("Woche 54 2024") is None
+    assert parse_iso_date("CW 25 1700") is None
+    assert parse_iso_date("Kalenderwoche 53 2024") is None
+    assert parse_iso_date("Kalenderwoche 25") is None
+    assert parse_iso_date("Woche 25") is None
+    assert parse_iso_date("CW 25") is None
+    # Kein Match: kein Whitespace/Trenner zwischen Wort und Jahr
+    assert parse_iso_date("Kalenderwoche2024") is None
+    # Regress-Anker: Basis-KW und ISO-Woche unveraendert
+    assert parse_iso_date("KW 25 2024") == "2024-06-17"
+    assert parse_iso_date("2024-W25") == "2024-06-17"
+
+
+def test_parse_iso_date_kw_year_first():
+    """Year-first KW-Notation ('2024 KW 25', '2024/KW25', '2024-Kalenderwoche 25').
+
+    Symmetrisch zur Year-Last-Form _KW_YEAR - in Sammlungs-Tagebuechern und
+    Excel-Auto-Fill mit dem Jahr als sortierendem Praefix ueblich. Mapping
+    identisch (Montag der genannten Woche).
+    """
+    # Alle KW-Marker in Year-First-Reihenfolge
+    assert parse_iso_date("2024 KW 25") == "2024-06-17"
+    assert parse_iso_date("2024/KW25") == "2024-06-17"
+    assert parse_iso_date("2024-KW25") == "2024-06-17"
+    assert parse_iso_date("2024, KW 25") == "2024-06-17"
+    assert parse_iso_date("2024 Kalenderwoche 25") == "2024-06-17"
+    assert parse_iso_date("2024/Kalenderwoche 25") == "2024-06-17"
+    assert parse_iso_date("2024 Woche 25") == "2024-06-17"
+    assert parse_iso_date("2024 CW 25") == "2024-06-17"
+    assert parse_iso_date("2024/CW25") == "2024-06-17"
+    assert parse_iso_date("2024 calendar week 25") == "2024-06-17"
+    assert parse_iso_date("2024 calendarweek 25") == "2024-06-17"
+    # Case-Insensitivitaet
+    assert parse_iso_date("2024 kw 25") == "2024-06-17"
+    assert parse_iso_date("2024 KALENDERWOCHE 25") == "2024-06-17"
+    # Erste Woche (Grenzfall)
+    assert parse_iso_date("2024 KW 1") == "2024-01-01"
+    assert parse_iso_date("2024 Woche 1") == "2024-01-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. 2024 KW 25") == "2024-06-17"
+    assert parse_iso_date("[2024 Kalenderwoche 25]") == "2024-06-17"
+    # Ungueltig (Woche ausser Bereich / Jahr ausserhalb)
+    assert parse_iso_date("2024 KW 0") is None
+    assert parse_iso_date("2024 KW 54") is None
+    assert parse_iso_date("1700 KW 25") is None
+    assert parse_iso_date("2024 KW 53") is None  # 2024 hat nur 52 Wochen
+    # Regress-Anker: Basis-Year-Last-Formen unveraendert
+    assert parse_iso_date("KW 25 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25 2024") == "2024-06-17"
+
+
 def test_parse_iso_date_monat_jahr_punkt_separator():
     """Punkt als Separator zwischen Monatsname und Jahr ('Juni.2024', Excel-CSV-Form)."""
     # Deutsche Voll-/Kurzformen

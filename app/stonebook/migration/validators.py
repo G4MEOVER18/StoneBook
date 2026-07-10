@@ -1307,11 +1307,45 @@ _ISO_WEEK_DATE = re.compile(
     r"^\s*(\d{4})-?W(\d{1,2})(?:-?([1-7]))?\s*$",
     re.IGNORECASE,
 )
-# Deutsche KW-Notation: "KW 25 2024", "KW25/2024", "KW 25, 2024".
-# Verbreitet in Sammlungs-Tagebuechern (Wochenangaben statt Tagen). Mapping
-# identisch zu _ISO_WEEK_DATE (Montag der genannten Woche).
+# Deutsche KW-Notation: "KW 25 2024", "KW25/2024", "KW 25, 2024",
+# "Kalenderwoche 25 2024", "Woche 25 2024", plus englische Aequivalente
+# "CW 25 2024" ("calendar week"). Verbreitet in Sammlungs-Tagebuechern
+# (Wochenangaben statt Tagen) und in Geschaeftsperioden-Reports (die
+# Wochen-Achse als sortierender Zeit-Anker fuer Tucson-/Mineralien-Boersen-
+# Reisen, Foto-Sessions und Exkursions-Planung). Mapping identisch zu
+# :data:`_ISO_WEEK_DATE` (Montag der genannten Woche). Die drei Kurzformen
+# ``KW`` (DE), ``CW`` (EN, "calendar week") und die Langformen
+# ``Kalenderwoche`` (DE) / ``Woche`` (DE-Kurzform ohne Kalender-Praefix)
+# / ``calendar week`` (EN, mit optionalem Whitespace) decken alle
+# praxisrelevanten Schreibweisen ab. Optionaler ``.``/``,``-Trenner nach
+# der Kurzform (z.B. ``KW. 25 2024`` bei Punkt-Abkuerzungs-Konvention)
+# durch die Alternante ``\.?`` toleriert. Kollisionsfrei zu
+# :data:`_SEASON_YEAR` (kein Saison-Wort im _SEASON_MONTHS-Dict endet auf
+# ``KW``/``CW``/``woche``/``week``) und zu :data:`_YEAR_MONTH_NAME`
+# (keine Monatsname-Alternante enthaelt ``KW``/``CW``/``Kalenderwoche``/
+# ``Woche``/``calendar``). Die Whitespace-erlaubende Form
+# ``calendar\s*week`` deckt sowohl ``calendarweek 25 2024`` (compact) als
+# auch ``calendar week 25 2024`` (Whitespace-getrennt) ab.
 _KW_YEAR = re.compile(
-    r"^\s*KW\s*(\d{1,2})\s*[/.\-, ]\s*(\d{4})\s*$",
+    r"^\s*(?:KW|CW|Kalenderwoche|Woche|calendar\s*week)\.?\s*(\d{1,2})"
+    r"\s*[/.\-, ]\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
+# Year-first KW-Notation: "2024 KW 25", "2024/KW25", "2024-Kalenderwoche 25",
+# "2024, CW 25". Spiegelt :data:`_KW_YEAR` auf die Year-First-Reihenfolge -
+# analog zu :data:`_QUARTER_YEAR_FIRST` / :data:`_HALFYEAR_YEAR_FIRST` /
+# :data:`_SEASON_YEAR_FIRST` gegenueber ihren Year-Last-Basisformen. In
+# Sammlungs-Tagebuechern, die das Jahr als sortierenden Praefix voranstellen
+# ("2024 KW 25 - Tucson-Boerse", "Aktivitaeten 2024 CW 40 Bergtour Gotthard"),
+# ist die Jahr-zuerst-Reihenfolge die uebliche Excel-/Ordner-Struktur-Konvention.
+# Bisher fielen alle Year-First-Formen still auf None, obwohl die identische
+# Year-Last-Form (":data:`_KW_YEAR`") transparent das Datum lieferte. Mapping
+# identisch zu :data:`_ISO_WEEK_DATE` und :data:`_KW_YEAR` (Montag der
+# genannten Woche). Separator [/.\-, ] zwischen Jahr und KW-Marker spiegelt die
+# Year-First-Konvention der uebrigen Patterns (_QUARTER_YEAR_FIRST etc.).
+_KW_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})\s*[/.\-, ]\s*"
+    r"(?:KW|CW|Kalenderwoche|Woche|calendar\s*week)\.?\s*(\d{1,2})\s*$",
     re.IGNORECASE,
 )
 
@@ -2335,10 +2369,23 @@ def parse_iso_date(text) -> str | None:
                 return datetime.date.fromisocalendar(year, week, day).isoformat()
             except ValueError:
                 return None
-    # Deutsche KW-Notation ("KW 25 2024", "KW25/2024"). Mapping wie _ISO_WEEK_DATE.
+    # Deutsche KW-Notation ("KW 25 2024", "KW25/2024", "Kalenderwoche 25 2024",
+    # "Woche 25 2024", "CW 25 2024"). Mapping wie _ISO_WEEK_DATE.
     m = _KW_YEAR.match(s)
     if m:
         week, year = int(m.group(1)), int(m.group(2))
+        if 1800 <= year <= 2999 and 1 <= week <= 53:
+            try:
+                return datetime.date.fromisocalendar(year, week, 1).isoformat()
+            except ValueError:
+                return None
+    # Year-first KW-Notation ("2024 KW 25", "2024/KW25", "2024-Kalenderwoche 25",
+    # "2024 CW 25"). Symmetrisch zur Year-Last-Form _KW_YEAR; kommt in
+    # Sammlungs-Tagebuechern mit Jahr-zuerst-Sortierung ("2024 KW 25 -
+    # Tucson-Boerse", Excel-Auto-Fill mit YYYY als sortierendem Praefix) vor.
+    m = _KW_YEAR_FIRST.match(s)
+    if m:
+        year, week = int(m.group(1)), int(m.group(2))
         if 1800 <= year <= 2999 and 1 <= week <= 53:
             try:
                 return datetime.date.fromisocalendar(year, week, 1).isoformat()
