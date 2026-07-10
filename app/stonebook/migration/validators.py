@@ -1870,6 +1870,37 @@ _ISO6709_COMPACT_DMS = re.compile(
     """,
     re.VERBOSE,
 )
+# OpenStreetMap-URL-Fragment mit map-Position: ``#map=<zoom>/<lat>/<lon>``.
+# Konvention der OSM-JavaScript-Karte (leaflet-basiert) und uebernommen von
+# zahlreichen OSM-Derivaten (openstreetmap.de, waymarkedtrails.org, uMap,
+# OpenTopoMap), die den View-State ueber die URL-Hash-Fragment-Position
+# teilen. Die Reihenfolge <zoom>/<lat>/<lon> ist fix in der OSM-Frontend-
+# Spec: das erste Slash-getrennte Feld ist der Zoom-Level (0-19 typisch,
+# ganzzahlig), die naechsten zwei sind Latitude und Longitude als Dezimal.
+# Bisher fiel jeder OSM-Share-Link durch _DECIMAL_PAIR auf ein semantisch
+# falsches Paar: ``"#map=15/46.5/7.5"`` liefert (15.0, 46.5), weil das
+# _DECIMAL_PAIR-Pattern die ersten beiden Slash-getrennten Zahlen greift -
+# der Zoom-Level (15) wird als Latitude gelesen, die eigentliche Latitude
+# (46.5) rutscht in die Longitude-Position, und die tatsaechliche Longitude
+# (7.5) faellt weg. Aus einem typischen Sammler-Workflow "Fundort in OSM
+# anzeigen -> Share-URL kopieren -> ins Fundort-Feld einfuegen" entstand
+# damit silenter Koordinaten-Datenverlust bei der Migration. Wird in
+# :func:`parse_coordinates` vor allen Pattern-Versuchen extrahiert (via
+# .search), sodass die zoom-vorangestellte Struktur die generischen Zahl-
+# Paar-Patterns nicht mehr irrefuehrt. Zoom-Feld akzeptiert optional einen
+# Dezimal-Teil (neuere OSM-Versionen bzw. ``&map=`` in eingebetteten
+# Rendern erlauben fraktionalen Zoom); Lat/Lon akzeptieren Vorzeichen und
+# DE-Komma-Dezimal, symmetrisch zu den uebrigen Coord-Patterns. Beide
+# separator-Slashes zwischen Zoom-Lat und Lat-Lon sind fix in der OSM-Spec.
+# Kollisionsfrei zu _DECIMAL_PAIR (das keinen ``#map=``-Prefix kennt) und
+# zu _COORD_LABEL (das ``map`` nicht als Koordinaten-Label listet).
+_OSM_HASH_MAP = re.compile(
+    r"""\#map=\d+(?:[.,]\d+)?/                        # #map=<zoom>/
+        ([-+]?\d+(?:[.,]\d+)?)/                       # <lat>/
+        ([-+]?\d+(?:[.,]\d+)?)                        # <lon>
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -2571,6 +2602,18 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     # hat im Koordinaten-Kontext keine andere Bedeutung als Komma. Symmetrisch
     # zum U+2212-Strip auf der Vorzeichen-Achse.
     s = s.replace("%2C", ",").replace("%2c", ",")
+    # OSM-URL-Hash-Fragment "#map=<zoom>/<lat>/<lon>" vor allen Zahl-Paar-Patterns
+    # extrahieren: das erste Slash-getrennte Feld ist der Zoom-Level, nicht die
+    # Latitude - _DECIMAL_PAIR wuerde sonst (zoom, lat) statt (lat, lon) greifen
+    # und die tatsaechliche Longitude verwerfen. Match ist definitiv: wenn die
+    # OSM-Fragment-Signatur erkannt wird, ist die Zoom-Lat-Lon-Reihenfolge
+    # eindeutig, und ein Fallback auf _DECIMAL_PAIR wuerde exakt den Bug
+    # reintroduzieren, den dieser Zweig fixt (Zoom-Level als Latitude gelesen).
+    # Return des _validate-Ergebnisses (None bei Out-of-Range), analog zu den
+    # ISO6709-Compact-Zweigen.
+    m = _OSM_HASH_MAP.search(s)
+    if m:
+        return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):

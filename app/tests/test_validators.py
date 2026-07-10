@@ -4197,3 +4197,62 @@ def test_parse_coordinates_prefix_dms():
     assert parse_coordinates("N 46.5 E 7.5") == (46.5, 7.5)
     # Regress: dezimale Form weiter unveraendert
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_osm_hash_map_fragment():
+    """OSM-URL-Hash-Fragment "#map=<zoom>/<lat>/<lon>" korrekt entpacken.
+
+    Standard-Share-Format der OpenStreetMap-JavaScript-Karte und uebernommen
+    von zahlreichen OSM-Derivaten (openstreetmap.de, waymarkedtrails.org,
+    uMap, OpenTopoMap): das erste Slash-getrennte Feld ist der Zoom-Level
+    (0-19 typisch), die naechsten zwei sind Lat/Lon. Vor dem Fix fiel jeder
+    OSM-Share-Link auf ein semantisch falsches Paar - ``"#map=15/46.5/7.5"``
+    wurde von _DECIMAL_PAIR als (15.0, 46.5) gelesen, weil das Pattern die
+    ersten beiden Slash-getrennten Zahlen greift und Zoom-Level als Latitude
+    interpretiert. Aus einem typischen Sammler-Workflow "Fundort in OSM
+    anzeigen -> Share-URL kopieren -> ins Fundort-Feld einfuegen" entstand
+    silenter Koordinaten-Datenverlust bei der Migration.
+    """
+    # Vollstaendige OSM-URL mit Hash-Fragment
+    assert parse_coordinates(
+        "https://www.openstreetmap.org/#map=15/46.5/7.5") == (46.5, 7.5)
+    # Nur Fragment ohne URL-Kontext (Sammler kopiert nur den Hash-Teil)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    # Zusaetzliche Layer-Parameter nach den Koordinaten
+    assert parse_coordinates(
+        "https://www.openstreetmap.org/#map=15/46.5/7.5&layers=N") == (46.5, 7.5)
+    # Fraktionaler Zoom (neuere OSM-Versionen erlauben Nicht-Ganzzahl-Zoom)
+    assert parse_coordinates("#map=15.5/46.5/7.5") == (46.5, 7.5)
+    # Case-Insensitivitaet (OSM-Frontends akzeptieren Uppercase-Variante)
+    assert parse_coordinates("#MAP=15/46.5/7.5") == (46.5, 7.5)
+    # Suedhalbkugel / Westhalbkugel (Vorzeichen an Lat/Lon)
+    assert parse_coordinates("#map=15/-33.85/151.2") == (-33.85, 151.2)
+    assert parse_coordinates("#map=10/-46.5/-7.5") == (-46.5, -7.5)
+    # DE-Komma-Dezimal (aus DE-Locale-Kontext, wenn der Browser die
+    # dezimalen Trenner beim Copy-Paste in die DE-Locale umformt)
+    assert parse_coordinates("#map=15/46,5/7,5") == (46.5, 7.5)
+    # OSM-Derivat mit gleichem Fragment-Format
+    assert parse_coordinates(
+        "https://openstreetmap.de/karte.html?zoom=15#map=15/46.5/7.5") == (
+        46.5, 7.5)
+    assert parse_coordinates(
+        "https://opentopomap.org/#map=15/46.5/7.5") == (46.5, 7.5)
+    # Fragment eingebettet in Freitext (Sammler-Notizen wie "siehe X")
+    assert parse_coordinates(
+        "siehe https://www.openstreetmap.org/#map=15/46.5/7.5") == (46.5, 7.5)
+    # Out-of-range Lat/Lon -> None (Validierung greift, kein Fallback auf
+    # _DECIMAL_PAIR das sonst die Zoom-Lat-Reihenfolge zurueckdrehen wuerde)
+    assert parse_coordinates("#map=15/91.0/181.0") is None
+    assert parse_coordinates("#map=15/-91.0/7.5") is None
+    assert parse_coordinates("#map=15/46.5/181.0") is None
+    # Kombination mit bereits vorhandenen mlat/mlon-Params (Regression:
+    # der bestehende Test test_parse_coordinates_url_query_params deckt
+    # das Kombinationsverhalten mit denselben Koordinaten ab)
+    assert parse_coordinates(
+        "?mlat=46.5&mlon=7.5#map=15/46.5/7.5") == (46.5, 7.5)
+    # Regress: Formen ohne #map-Fragment bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://www.google.com/maps/@46.5,7.5,15z") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://www.openstreetmap.org/?mlat=46.5&mlon=7.5") == (46.5, 7.5)
