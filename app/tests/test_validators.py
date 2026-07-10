@@ -1054,10 +1054,13 @@ def test_parse_iso_date_relative_jahresposition_ungueltig():
     # Jahr ausserhalb 1800-2999
     assert parse_iso_date("Anfang 1700") is None
     assert parse_iso_date("Ende 3000") is None
-    # Mit zusaetzlichem Wort (z.B. "Anfang Maerz 2024") → None
-    # (semantisch sinnvoll waere 2024-03-01, aber das Format ist nicht eindeutig
-    # genug zur stillschweigenden Konvertierung)
-    assert parse_iso_date("Anfang März 2024") is None
+    # "Anfang <Monatsname> <Jahr>" wird jetzt ueber das eigene
+    # _RELATIVE_MONTH_YEAR-Pattern auf den ersten Tag des jeweiligen Monats
+    # gemappt (semantisch: "Monatsanfang" = 1. Tag) - siehe
+    # ``test_parse_iso_date_relative_monat_jahresposition``. Frueher fiel diese
+    # Form auf None (mit Begruendung "nicht eindeutig genug"), inzwischen ist
+    # die Sammler-Semantik eindeutig verortet.
+    assert parse_iso_date("Anfang März 2024") == "2024-03-01"
     # Bestehende Saison-Notation bleibt unveraendert (kein Regress)
     assert parse_iso_date("Sommer 2024") == "2024-06-01"
     # Dekaden-Position ("late 1980s", "Anfang 1980er") wird ueber das eigene
@@ -1071,6 +1074,93 @@ def test_parse_iso_date_relative_jahresposition_ungueltig():
     # identisch zur artikellosen Form auf den Dekaden-Anker gemappt - siehe
     # ``test_parse_iso_date_relative_dekade_genitiv_artikel``.
     assert parse_iso_date("Anfang der 1980er") == "1980-01-01"
+
+
+def test_parse_iso_date_relative_monat_jahresposition():
+    """Anfang/Mitte/Ende + Monatsname + Jahr → Monatsanfang/Mitte/Ende.
+
+    Sehr verbreitet in DE-Sammler-Notizen und Fund-Etiketten, wenn der Fund
+    zwar auf einen Monat, aber nicht auf ein Einzeldatum eingegrenzt werden kann
+    ("Fund Anfang Juni 2024", "Bergtour Mitte August 2020", "Erwerb Ende
+    Dezember 2019", "found mid-March 1995"). Konvention: Anfang/early -> Tag 1,
+    Mitte/mid -> Tag 15, Ende/late -> letzter Tag des Monats (28-31, Schaltjahr-
+    korrekt via datetime-Arithmetik).
+    """
+    # Deutsch: Anfang / Mitte / Ende auf 1 / 15 / letzter Tag
+    assert parse_iso_date("Anfang Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Mitte Juni 2024") == "2024-06-15"
+    assert parse_iso_date("Ende Juni 2024") == "2024-06-30"
+    # Ende der Monate mit 31 Tagen
+    assert parse_iso_date("Ende Januar 2024") == "2024-01-31"
+    assert parse_iso_date("Ende Dezember 2024") == "2024-12-31"
+    assert parse_iso_date("Ende August 2020") == "2020-08-31"
+    # Ende der Monate mit 30 Tagen
+    assert parse_iso_date("Ende April 2024") == "2024-04-30"
+    assert parse_iso_date("Ende November 2024") == "2024-11-30"
+    # Februar-Schaltjahr-Behandlung
+    assert parse_iso_date("Ende Februar 2024") == "2024-02-29"  # Schaltjahr
+    assert parse_iso_date("Ende Februar 2023") == "2023-02-28"  # kein Schaltjahr
+    assert parse_iso_date("Ende Februar 2000") == "2000-02-29"  # Schaltjahr (durch 400)
+    assert parse_iso_date("Ende Februar 1900") == "1900-02-28"  # kein Schaltjahr (durch 100, nicht 400)
+    # Alle DE-Positionen fuer weitere Monate
+    assert parse_iso_date("Anfang Januar 2024") == "2024-01-01"
+    assert parse_iso_date("Mitte März 2020") == "2020-03-15"
+    assert parse_iso_date("Ende Juli 1985") == "1985-07-31"
+    # DE-Umlaut-Monatsnamen (Maerz)
+    assert parse_iso_date("Mitte Maerz 2024") == "2024-03-15"
+    assert parse_iso_date("Ende März 2024") == "2024-03-31"
+    # Englisch: early / mid / late auf 1 / 15 / letzter Tag
+    assert parse_iso_date("early June 2024") == "2024-06-01"
+    assert parse_iso_date("mid June 2024") == "2024-06-15"
+    assert parse_iso_date("late June 2024") == "2024-06-30"
+    assert parse_iso_date("late February 2024") == "2024-02-29"
+    assert parse_iso_date("early January 1985") == "1985-01-01"
+    # Bindestrich-Compound (typische EN-Notation "mid-June", "late-March")
+    assert parse_iso_date("mid-June 2024") == "2024-06-15"
+    assert parse_iso_date("early-June 2024") == "2024-06-01"
+    assert parse_iso_date("late-March 2024") == "2024-03-31"
+    # Case-insensitive
+    assert parse_iso_date("ANFANG JUNI 2024") == "2024-06-01"
+    assert parse_iso_date("Mid June 2024") == "2024-06-15"
+    assert parse_iso_date("LATE JUNE 2024") == "2024-06-30"
+    # Monatsname als Kurzform mit Punkt (spiegelt _DAY_MONTH_YEAR / _MONTH_YEAR)
+    assert parse_iso_date("Anfang Jan. 2024") == "2024-01-01"
+    assert parse_iso_date("Ende Dez. 2024") == "2024-12-31"
+    assert parse_iso_date("mid Jan. 2024") == "2024-01-15"
+    # Kombiniert mit Annaeherungspraefix (Rekursion durch _APPROX_PREFIX-Strip)
+    assert parse_iso_date("ca. Anfang Juni 2024") == "2024-06-01"
+    assert parse_iso_date("circa mid June 2024") == "2024-06-15"
+    # Kombiniert mit trailing Satzzeichen (durch _TRAILING_PUNCT gestrippt)
+    assert parse_iso_date("Ende Juni 2024.") == "2024-06-30"
+    # Kombiniert in Klammern (durch Bracket-Strip in parse_iso_date rekursiv)
+    assert parse_iso_date("[Mitte Juni 2024]") == "2024-06-15"
+
+
+def test_parse_iso_date_relative_monat_jahresposition_ungueltig():
+    """Ungueltige Monatsnamen / Jahre ausserhalb Bereich / fehlende Komponenten -> None."""
+    # Ungueltige Monatsnamen fallen auf None (kein stiller Fallback auf
+    # Standard-Monat, damit "Anfang Xyz 2024" nicht als "Anfang 2024" gelesen wird)
+    assert parse_iso_date("Anfang Xyz 2024") is None
+    assert parse_iso_date("Ende Foo 1985") is None
+    # Jahr ausserhalb 1800-2999
+    assert parse_iso_date("Anfang Juni 1700") is None
+    assert parse_iso_date("Ende Juni 3000") is None
+    # Fehlendes Jahr faellt zurueck auf uebrige Patterns (typischerweise None)
+    assert parse_iso_date("Anfang Juni") is None
+    # Nur Positions-Wort ohne Monat + Jahr -> None (spiegelt _RELATIVE_YEAR)
+    assert parse_iso_date("Anfang") is None
+    # Regression: bestehende _RELATIVE_YEAR-Form (Position + Jahr ohne Monat)
+    # bleibt unveraendert
+    assert parse_iso_date("Anfang 2024") == "2024-01-01"
+    assert parse_iso_date("Ende 2024") == "2024-12-01"
+    # Regression: bestehende _MONTH_YEAR-Form (Monatsname + Jahr ohne Position)
+    # bleibt unveraendert
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    # Regression: bestehende _DAY_MONTH_YEAR-Form (Ziffer + Monatsname + Jahr)
+    # bleibt unveraendert
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    # Regression: Dekaden-Position "Anfang 1980er" ueber _RELATIVE_DECADE
+    assert parse_iso_date("Anfang 1980er") == "1980-01-01"
 
 
 def test_parse_iso_date_jahrzehnt():

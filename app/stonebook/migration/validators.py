@@ -1365,6 +1365,56 @@ _RELATIVE_YEAR = re.compile(
     re.IGNORECASE,
 )
 
+# Relative Position innerhalb eines Monats mit Monatsname und Jahr:
+# "Anfang Juni 2024", "Mitte Juni 2024", "Ende Juni 2024", "early June 2024",
+# "mid-June 2024", "late June 2024". Sehr verbreitet in Sammler-Notizen und
+# Fund-Etiketten, wenn der Sammler den Fund/das Foto zwar auf einen bestimmten
+# Monat, aber innerhalb dieses Monats nicht auf ein Einzeldatum eingrenzen kann
+# ("Fund Anfang Juni 2024 am Aaregebiet", "Bergtour Mitte August 2020",
+# "Erwerb Ende Dezember 2019", "found mid-March 1995"). Bisher fielen alle Formen
+# still auf None, weil _DAY_MONTH_YEAR eine numerische Tag-Angabe verlangt
+# (``\d{1,2}`` als erstes Feld) und _MONTH_YEAR ohne den Positions-Praefix
+# ausschliesslich Monatsname + Jahr als 2-Teil-Form ($-verankert) kennt - aus
+# einer typischen Notiz wie "Ende Juni 2024" wurde silenter Funddatum-Datenverlust
+# bei der Migration, obwohl Monat und Jahr eindeutig lesbar sind.
+#
+# Konvention: Positions-Wort mappt auf einen Tag innerhalb des Monats -
+#   Anfang/early -> 1 (Monatsanfang)
+#   Mitte/mid    -> 15 (Monatsmitte)
+#   Ende/late    -> letzter Tag des Monats (28-31, abhaengig von Monat + Schaltjahr)
+# Spiegelt das _RELATIVE_YEAR-Schema (Anfang/Mitte/Ende auf 1/7/12 als Monatszahl
+# innerhalb eines Jahres) auf die Tag-innerhalb-eines-Monats-Achse und ist konsistent
+# zur EN/US-Sammler-Praxis, den entsprechenden Monatspol zu treffen (fruehester,
+# mittlerer, spaetester Tag). Fuer "Ende" wird der Monats-Endtag korrekt berechnet
+# (Februar-Schaltjahr-Behandlung ueber datetime.date-Arithmetik: erster Tag des
+# Folgemonats minus einen Tag), sodass "Ende Februar 2024" -> 2024-02-29 (Schaltjahr)
+# und "Ende Februar 2023" -> 2023-02-28 (Nicht-Schaltjahr) semantisch korrekt sind.
+#
+# Separator zwischen Positions-Wort und Monatsname: Whitespace oder Bindestrich
+# (spiegelt _RELATIVE_YEAR / _RELATIVE_DECADE - englisches "mid-June" ist eine
+# sehr verbreitete Compound-Notation, deutsches "Anfang-Juni" (mit Bindestrich)
+# selten aber spec-konform durch die identische Trenner-Klasse ``[-\s]+``).
+# Monatsname als ``([A-Za-zÄÖÜäöü]+)\.?`` deckt beide Sprachen und die Kurz-
+# form-Punkt-Notation ab (Juni/June/Jun./Jan., spiegelt _DAY_MONTH_YEAR und
+# _MONTH_YEAR).
+#
+# Disjunktheit zu _RELATIVE_YEAR: die 3-Teil-Form (Position + Monat + Jahr)
+# verlangt einen Monats-Buchstaben-Token zwischen Position und Jahr, waehrend
+# _RELATIVE_YEAR direkt die Jahres-Ziffern nach der Position erwartet - keine
+# Kollision. Disjunktheit zu _DAY_MONTH_YEAR (verlangt Ziffer als erstes Feld)
+# und _ENGLISH_MONTH_DAY_YEAR (verlangt Monatsname, dann Ziffer + Jahr):
+# "Anfang Juni 2024" scheitert bei beiden strukturell. Disjunktheit zu
+# _MONTH_YEAR (2-Teil-Form Monatsname + Jahr): der Positions-Praefix
+# "Anfang"/"Mitte"/"Ende" wird zwar als [A-Za-zÄÖÜäöü]+-Token erkannt, aber
+# _normalize_month_name liefert dann None, sodass der Match transparent
+# durchfaellt.
+_RELATIVE_MONTH_YEAR = re.compile(
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)"
+    r"[-\s]+([A-Za-zÄÖÜäöü]+)\.?"
+    r"\s+(\d{4})\s*$",
+    re.IGNORECASE,
+)
+
 # Relative Position innerhalb einer Dekade ("Anfang 1980er", "Mitte 1980er",
 # "Ende 1990s", "early 1980s", "mid-1990s", "late 2000s"). Spiegelt
 # _RELATIVE_YEAR (relative Position innerhalb eines Jahres) auf die Dekaden-
@@ -2304,6 +2354,34 @@ def parse_iso_date(text) -> str | None:
         if month and 1 <= day1 <= 31 and 1 <= day2 <= 31 and 1800 <= year <= 2999:
             try:
                 return datetime.date(year, month, day1).isoformat()
+            except ValueError:
+                return None
+    # Relative Position innerhalb eines Monats mit Monatsname + Jahr
+    # ("Anfang Juni 2024", "Mitte Juni 2024", "Ende Juni 2024", "early June 2024",
+    # "mid-June 2024", "late June 2024"). Vor _DAY_MONTH_YEAR / _ENGLISH_MONTH_DAY_YEAR
+    # / _MONTH_YEAR geprueft, weil die Positions-Praefix-Form strukturell disjunkt
+    # zu allen dreien ist (Positions-Wort statt Ziffer/Monatsname-first) und die
+    # explizite Reihenfolge das Verhalten lesbarer macht. Konvention: Anfang/early
+    # -> Tag 1, Mitte/mid -> Tag 15, Ende/late -> letzter Tag des Monats (28-31,
+    # Schaltjahr-korrekt via datetime-Arithmetik).
+    m = _RELATIVE_MONTH_YEAR.match(s)
+    if m:
+        position = m.group(1).lower()
+        month = _normalize_month_name(m.group(2))
+        year = int(m.group(3))
+        if month and 1800 <= year <= 2999:
+            if position in ("anfang", "early"):
+                day = 1
+            elif position in ("mitte", "mid"):
+                day = 15
+            else:  # ende / late
+                if month == 12:
+                    day = 31
+                else:
+                    day = (datetime.date(year, month + 1, 1)
+                           - datetime.timedelta(days=1)).day
+            try:
+                return datetime.date(year, month, day).isoformat()
             except ValueError:
                 return None
     # Deutsche Monatsnamen ("13. Juni 2024", "Juni 2024")
