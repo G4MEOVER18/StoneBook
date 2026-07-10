@@ -132,10 +132,29 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 # Vorzeichen-Rolle (U+2212 aus Print-Katalogen) waere eine eigene Norma-
 # lisierung noetig (spiegelt den ``parse_coordinates``-Preprocess-Ansatz),
 # ist hier aber ausserhalb des ASCII-Fallback-Umfangs.
+# Der Sign-Lookbehind ``(?<![\d.%‰])-`` schliesst zusaetzlich zum Digit/
+# Punkt-Kontext die Prozent-/Promille-Suffixe (``%`` U+0025, ``‰`` U+2030)
+# als Vorzeichen-blockierende Vorgaenger aus - beide sind Wert-Terminatoren
+# (kein Bestandteil der Zahl, kein Separator innerhalb einer Zahl), sodass
+# der ``-`` unmittelbar dahinter unzweideutig Range-Trenner ist. Bisher
+# fiel ``"5%-10%"`` durch den zu engen Lookbehind auf ``[5, -10]``, was
+# via ``if hi < lo``-Kollaps stille auf ``(5.0, 5.0)`` reduzierte und die
+# obere Range-Grenze (10%) verwarf - typische Sammler-Notiz fuer
+# Reinheits-/Beimengungs-/Anteil-Angaben in ppm-nahen Konzentrationen
+# ("Cu-Gehalt 5%-10%", "Fluid-Einschluss-Salinitaet 3%-8%") mit silenter
+# Datenverlust bei der Migration. Der ‰-Zweig spiegelt die Regelung auf
+# die Promille-Achse (Isotopen-Fraktionierung δ¹³C, δ¹⁸O sowie Wasser-
+# Chemie-Konzentrationen "0.5‰-2.5‰"). Kollisionsfrei zu ``"5% - 10%"``
+# (Whitespace um den Bindestrich) - dort blockt die separate Whitespace-
+# Sequenz die Sign-Bindung ohnehin, das Fix ist strikt additiv fuer die
+# whitespace-lose Notation. Kollisionsfrei zu Negativ-Vorzeichen-Rollen an
+# String-Anfang, nach Whitespace oder anderen echten Separatoren (Komma,
+# Semikolon, Klammern, Gleichheitszeichen) - dort ist der Vorgaenger
+# nicht ``%``/``‰``, und das Sign-Match bleibt aktiv.
 _NUM_RE = re.compile(
     r"(?<![A-Za-z^])"
     r"("
-    r"(?:(?<![\d.])-)?"
+    r"(?:(?<![\d.%‰])-)?"
     r"(?:\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)"
     r")"
 )

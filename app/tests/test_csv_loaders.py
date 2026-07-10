@@ -532,6 +532,68 @@ def test_parse_range_uncertainty_mit_direkt_anhaengender_einheit():
     assert csv_loaders.parse_range("5.5 ± 0.3 42") == (5.5, 42.0)
 
 
+def test_parse_range_prozent_promille_range_ohne_whitespace_um_bindestrich():
+    """Range-Notation ``N%-M%`` / ``N‰-M‰`` ohne Whitespace um den Bindestrich
+    liefert beide Bereichsgrenzen (keine Sign-Bindung an die obere Grenze).
+
+    In Sammler-Notizen sind Prozent-/Promille-Bereichs-Angaben ohne
+    Whitespace um den Bindestrich der praxis-verbreitetste Kompakt-Stil
+    ("Cu-Gehalt 5%-10% (XRF)", "Fluid-Einschluss-Salinitaet 3%-8%",
+    "Isotopen-Fraktionierung δ13C 0.5‰-2.5‰"). Vor dem Fix fiel der
+    zu enge Sign-Lookbehind auf ``[5, -10]``, was via ``if hi < lo``-
+    Kollaps stille auf ``(5.0, 5.0)`` reduzierte und die obere Grenze
+    verwarf - silenter Datenverlust auf ppm-nahen Konzentrations- und
+    Isotopen-Feldern. Fix erweitert die Sign-Blockierung ``(?<![\\d.])-``
+    auf ``(?<![\\d.%‰])-`` und beruecksichtigt die Wert-Terminatoren
+    ``%``/``‰`` als sign-blockierende Vorgaenger.
+    """
+    # Prozent-Range ohne Whitespace um den Bindestrich
+    assert csv_loaders.parse_range("5%-10%") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5%-10") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5.5%-10.5%") == pytest.approx((5.5, 10.5))
+    assert csv_loaders.parse_range("0%-100%") == (0.0, 100.0)
+    # Promille-Range (Isotopen-Fraktionierung, Wasser-Chemie)
+    assert csv_loaders.parse_range("0.5‰-2.5‰") == pytest.approx((0.5, 2.5))
+    assert csv_loaders.parse_range("1‰-3‰") == (1.0, 3.0)
+    # Whitespace-Kombinationen: bereits vor dem Fix korrekt, hier als
+    # Regress-Anker (das Fix darf keine dieser Formen brechen)
+    assert csv_loaders.parse_range("5% - 10%") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5 % - 10 %") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5 %-10 %") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5%- 10%") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5-10%") == (5.0, 10.0)
+    # DE-Komma-Dezimal im Prozent-Range
+    assert csv_loaders.parse_range("5,5%-10,5%") == pytest.approx((5.5, 10.5))
+    # Range mit "bis"/"to"-Wort-Trenner (kein Sign-Konflikt, aber
+    # Konsistenz-Anker fuer Prozent-Notation)
+    assert csv_loaders.parse_range("5% bis 10%") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5% to 10%") == (5.0, 10.0)
+    # Regress-Anker: Negativ-Vorzeichen bleibt aktiv an legitimen
+    # Start-Positionen (String-Anfang, Whitespace, Komma, Semikolon,
+    # Klammer, andere Nicht-Wert-Terminatoren) - der Fix darf die
+    # Negativ-Semantik nur an %/‰-Positionen blockieren
+    assert csv_loaders.parse_range("-5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("-5-10") == (-5.0, 10.0)
+    assert csv_loaders.parse_range("-10 - -5") == (-10.0, -5.0)
+    assert csv_loaders.parse_range("5, -10") == (5.0, 5.0)   # inverted collapse
+    assert csv_loaders.parse_range("-15.5 ± 0.5‰") == pytest.approx((-16.0, -15.0))
+    # Regress-Anker: reine Prozent-/Promille-Einzelwerte unveraendert
+    assert csv_loaders.parse_range("5%") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5‰") == (5.0, 5.0)
+    assert csv_loaders.parse_range("100%") == (100.0, 100.0)
+    # Regress-Anker: Uncertainty mit Prozent-Suffix unveraendert (der
+    # dedizierte ±-Zweig matcht vor der Range-Zahl-Extraktion)
+    assert csv_loaders.parse_range("5.5% ± 0.3%") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3)%") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: Basis-Range ohne Prozent unveraendert
+    assert csv_loaders.parse_range("5-10") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5.5-10.5") == pytest.approx((5.5, 10.5))
+    # Regress-Anker: mol%/wt%/at% (Prozent als Teil eines mehrbuchstabigen
+    # Einheit-Tokens) bleibt Range-Grenze, nicht sign-blockierender Terminator
+    assert csv_loaders.parse_range("5.5 mol% - 10.5 mol%") == pytest.approx((5.5, 10.5))
+    assert csv_loaders.parse_range("5 wt% - 10 wt%") == (5.0, 10.0)
+
+
 def test_parse_range_klammer_annotation_wird_nicht_als_range_gelesen():
     """Klammer-umschlossene Freitext-Anhaenge sind Annotation, nicht Range-Grenze.
 
