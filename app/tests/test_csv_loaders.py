@@ -532,6 +532,125 @@ def test_parse_range_uncertainty_mit_direkt_anhaengender_einheit():
     assert csv_loaders.parse_range("5.5 ± 0.3 42") == (5.5, 42.0)
 
 
+def test_parse_range_uncertainty_mit_center_einheit_whitespace_getrennt():
+    """Unsicherheits-Notation mit whitespace-getrennter Einheit VOR dem ± behaelt
+    die publizierte Toleranz.
+
+    In publizierten Referenz-Tabellen und Excel-CSV-Exporten aus Print-Quellen
+    ist die redundante "Center-mit-Einheit ± Toleranz-mit-Einheit"-Notation
+    eine sehr verbreitete Standard-Praxis (Sammler kopieren komplette Dichte-
+    /Haerte-/Temperatur-Zeilen aus IUCr-/NIST-Publikationen und Print-
+    Nachschlagewerken, wo die Einheit auf beiden Seiten des ±-Symbols
+    redundant notiert wird). Vor dem Fix fiel jede Notation mit whitespace-
+    getrennter Einheit VOR dem ±-Symbol still auf die Fallback-Zahl-
+    Extraktion durch: ``2.65 g/cm³ ± 0.05 g/cm³`` wurde als ``[2.65, 0.05]``
+    gelesen und via ``if hi < lo``-Kollaps auf ``(2.65, 2.65)`` reduziert
+    (Toleranz verloren); ``-1.5 °C ± 0.3`` sogar semantisch falsch als
+    ``[-1.5, 0.3]``-Range interpretiert und zu ``(-1.5, 0.3)`` (thermisch
+    unsinnige Range-Grenzen, publizierte Standard-Unsicherheit als Range-
+    Grenze fehlgedeutet). Fix ergaenzt in :data:`_PLUS_MINUS_UNCERTAINTY`
+    einen ``(?:\\s+…[A-Za-z…][A-Za-z0-9…]*)*``-Zweig ZWISCHEN Center und
+    ± symmetrisch zur bereits vorhandenen Trailing-Einheit-nach-Toleranz-
+    Klausel.
+
+    Der Zweig backtrackt sauber bei ± direkt hinter Center (``5.5 ± 0.3``):
+    das erste-Zeichen-muss-Buchstabe-Kriterium (``[A-Za-zÅΩµ°]``) blockt die
+    ±-Zeichen-Position, und das ``*``-Quantifier erlaubt Zero-Match. Regression-
+    Anker gegen die vorhandenen Uncertainty-Tests: ``5.5 ± 0.3`` (kein Middle-
+    Token) bleibt unveraendert, ``5.5 ± 0.3 mm`` (Trailing-Token, nicht Middle)
+    bleibt unveraendert.
+    """
+    # SI-Einheit auf Center UND Toleranz, whitespace-getrennt (Publikations-Standard
+    # aus mineralogischen Dichte-Tabellen). Vorher: (2.65, 2.65) via Kollaps.
+    assert csv_loaders.parse_range(
+        "2.65 g/cm³ ± 0.05 g/cm³"
+    ) == pytest.approx((2.60, 2.70))
+    # SI-Einheit nur auf Center-Seite, Toleranz ohne Einheit (kompaktere
+    # Publikations-Notation). Vorher: (5.5, 5.5) via Kollaps.
+    assert csv_loaders.parse_range("5.5 mm ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 g ± 0.3") == pytest.approx((5.2, 5.8))
+    # Zwei-Buchstaben-Einheit (Vickers-Haerte-Kuerzel) auf Center UND Toleranz.
+    # Vorher: (100.0, 100.0) via Kollaps.
+    assert csv_loaders.parse_range("100 HV ± 2") == (98.0, 102.0)
+    assert csv_loaders.parse_range("100 HV ± 2 HV") == (98.0, 102.0)
+    # Skalen-Name (Mohs-Haerte, kein SI-Symbol) auf Center-Seite.
+    assert csv_loaders.parse_range("5.5 Mohs ± 0.3") == pytest.approx((5.2, 5.8))
+    # Temperatur-Einheit mit SI-Standard-Sonderzeichen (° = U+00B0) auf Center
+    # UND Toleranz. Negativer Center - spiegelt die _PLUS_MINUS-Konvention.
+    # Vorher besonders schlimm: (-1.5, 0.3) als vermeintlicher Range across-zero.
+    assert csv_loaders.parse_range("-1.5 °C ± 0.3") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range(
+        "-1.5 °C ± 0.3 °C"
+    ) == pytest.approx((-1.8, -1.2))
+    # Angstroem-Einheit (Kristall-Achsen-Laengen in Roentgen-Struktur-Reports).
+    assert csv_loaders.parse_range(
+        "12.345 Å ± 0.067 Å"
+    ) == pytest.approx((12.278, 12.412))
+    # SI-Standard-Sonderzeichen Å auf Center-Seite, ohne Einheit auf Toleranz.
+    assert csv_loaders.parse_range(
+        "12.345 Å ± 0.067"
+    ) == pytest.approx((12.278, 12.412))
+    # Ohm (Ω = U+03A9) - elektrische Leitfaehigkeit in erz-mineralogischen
+    # Kontexten (Halbleiter-Mineralien, Cu-/Ag-Analytik).
+    assert csv_loaders.parse_range("100 Ω ± 5") == (95.0, 105.0)
+    # ASCII-Ersatzform ``+/-`` mit Center-Einheit (LaTeX-Roh-Export, 7-bit-Mail).
+    assert csv_loaders.parse_range(
+        "2.65 g/cm³ +/- 0.05 g/cm³"
+    ) == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5 mm +/- 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 mm +- 0.3") == pytest.approx((5.2, 5.8))
+    # DE-Komma-Dezimal auf Center und Toleranz mit whitespace-getrennter Einheit
+    # (deutschsprachige mineralogische Publikationen und DE-Excel-Exporte).
+    assert csv_loaders.parse_range(
+        "2,65 g/cm³ ± 0,05 g/cm³"
+    ) == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5,5 mm ± 0,3") == pytest.approx((5.2, 5.8))
+    # Mehrere whitespace-getrennte Einheiten-Tokens auf Center-Seite (Skalen-
+    # Name + Zusatz-Marker, publizierte Praxis in mineralogischen Referenz-
+    # Tabellen).
+    assert csv_loaders.parse_range(
+        "5.5 Mohs Haerte ± 0.3"
+    ) == pytest.approx((5.2, 5.8))
+    # Kombination Center-Einheit + Trailing-Klammer-Annotation (kanonische
+    # Publikations-Zeilenform "Wert-Einheit + Toleranz + Referenz-Klammer").
+    assert csv_loaders.parse_range(
+        "2.65 g/cm³ ± 0.05 g/cm³ (Literatur)"
+    ) == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range(
+        "100 HV ± 2 HV [NIST-2018]"
+    ) == (98.0, 102.0)
+    # Kombination Center-Einheit + Trailing-Satzzeichen (aus Satz-Fluss
+    # uebernommener Wert).
+    assert csv_loaders.parse_range("5.5 mm ± 0.3.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("100 HV ± 2 HV;") == (98.0, 102.0)
+    # Regression-Anker: Uncertainty OHNE Center-Einheit bleibt via Zero-Match
+    # der neuen ``*``-Alternante unveraendert.
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    # Regression-Anker: direkt anhaengende Einheit (ohne Whitespace) auf Center
+    # bleibt via bestehende Direct-Attach-Alternante erkannt, nicht via der
+    # neuen Whitespace-Middle-Unit-Alternante.
+    assert csv_loaders.parse_range("5.5mm ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5mm ± 0.3mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range(
+        "2.65g/cm³ ± 0.05g/cm³"
+    ) == pytest.approx((2.60, 2.70))
+    # Regression-Anker: gemischte Notation (Whitespace-Center, Attached-Toleranz)
+    # bleibt korrekt aufgeloest.
+    assert csv_loaders.parse_range("5.5 mm ± 0.3mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5mm ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: Range mit "N to M"-Syntax bleibt Fallback (kein
+    # Uncertainty), weil ``to`` zwar durch die Middle-Unit-Alternante
+    # konsumiert wird, aber die Toleranz-Zahl nach dem naechsten Whitespace
+    # kein Buchstabe ist und das Uncertainty-Pattern insgesamt nicht matcht;
+    # die Fallback-Zahl-Extraktion liefert [5, 10, 0.3], via ``hi < lo``-
+    # Anti-Kollaps auf (5.0, 5.0) - die publizierte Range-Grenze wird
+    # verworfen, weil die Notation ohnehin mehrdeutig ist (Range oder
+    # Range-mit-Toleranz?), das Center-only-Fallback ist die konservative Wahl.
+    assert csv_loaders.parse_range("5 to 10 ± 0.3") == (5.0, 5.0)
+
+
 def test_parse_range_prozent_promille_range_ohne_whitespace_um_bindestrich():
     """Range-Notation ``N%-M%`` / ``N‰-M‰`` ohne Whitespace um den Bindestrich
     liefert beide Bereichsgrenzen (keine Sign-Bindung an die obere Grenze).

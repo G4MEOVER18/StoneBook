@@ -255,6 +255,31 @@ _NUM_RE = re.compile(
 _PLUS_MINUS_UNCERTAINTY = re.compile(
     r"^\s*(-?\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
     r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
+    # Whitespace-getrennte Einheiten-Tokens ZWISCHEN Center und ± -
+    # deckt die in Publikationen verbreitete Redundanz-Notation
+    # "Center-mit-Einheit ± Toleranz-mit-Einheit" ab (``2.65 g/cm³ ±
+    # 0.05 g/cm³``, ``5.5 mm ± 0.3 mm``, ``100 HV ± 2 HV``, ``-1.5 °C
+    # ± 0.3 °C``). Ohne diesen Zweig fiel jede Notation mit whitespace-
+    # getrennter Einheit VOR dem ±-Symbol still auf die Fallback-Zahl-
+    # Extraktion durch: ``2.65 g/cm³ ± 0.05 g/cm³`` wurde als
+    # ``[2.65, 0.05]``-Range gelesen und via ``if hi < lo``-Kollaps auf
+    # ``(2.65, 2.65)`` reduziert (Toleranz verloren); ``-1.5 °C ± 0.3``
+    # noch bunter: als ``[-1.5, 0.3]``-Range gelesen und zu
+    # ``(-1.5, 0.3)`` interpretiert (mineralogisch/thermisch unsinnige
+    # Range-Grenzen, die publizierte Standard-Unsicherheit als
+    # Range-Grenze fehlgedeutet). In publizierten Referenz-Tabellen,
+    # Excel-CSV-Exporten und Sammler-Notizen ist die redundante
+    # Einheit-auf-beiden-Seiten-Notation eine Standard-Praxis
+    # (Copy&Paste von Dichte-Zeilen aus Print-Publikationen,
+    # Feld-Uebernahmen aus Etiketten-Beschreibungen); der Zweig macht
+    # sie symmetrisch zur bereits vorhandenen Trailing-Einheit-nach-
+    # Toleranz-Klausel akzeptierbar. Das erste-Zeichen-muss-Buchstabe-
+    # Kriterium (``[A-Za-zÅΩµ°]``) schuetzt vor Kollision mit dem
+    # ±-Symbol (nicht in der Zeichen-Klasse) und mit der Toleranz-
+    # Zahl (Ziffer nicht in der Zeichen-Klasse) - der Zweig backtrackt
+    # sauber, wenn die naechste Position ± oder Ziffer statt Einheit
+    # zeigt.
+    r"(?:\s+(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)*"
     r"\s*(?:±|\+/-|\+-)\s*(\d+(?:[.,]\d+)?)(?:\s*[%‰])?"
     r"(?:(?![eE][+-]?\d)[A-Za-zÅΩµ°][A-Za-z0-9ÅΩµ°/^³²]*)?"
     r"(?:\s+[^\s\d(){}\[\],;][^\s(){}\[\],;]*)*"
