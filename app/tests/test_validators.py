@@ -139,6 +139,91 @@ def test_parse_iso_date_monat_range_jahr_ungueltig():
     assert parse_iso_date("1985 bis 1990") == "1985-01-01"
 
 
+def test_parse_iso_date_tages_range_monat_jahr():
+    """Tages-Range innerhalb eines Monats mit Monatsname ('5.-7. Juni 2024',
+    '5-7 June 2024', '5 bis 7 Juni 2024') spiegelt _YEAR_RANGE / _MONTH_RANGE_YEAR
+    auf die Tages-Achse (Start-Tag als ISO-Datum, End-Tag als semantische
+    Anmerkung im Freitext)."""
+    # DE-Standardnotation "TAG.-TAG. Monat YYYY" (Etiketten, Sammlungs-Notizen)
+    assert parse_iso_date("5.-7. Juni 2024") == "2024-06-05"
+    assert parse_iso_date("12.-14. August 2020") == "2020-08-12"
+    assert parse_iso_date("1.-3. März 2020") == "2020-03-01"
+    # DE-Kurzform ohne Punkte "TAG-TAG Monat YYYY"
+    assert parse_iso_date("5-7 Juni 2024") == "2024-06-05"
+    assert parse_iso_date("12-14 August 2020") == "2020-08-12"
+    # Mit Whitespace um den Bindestrich (Freitext-Praxis)
+    assert parse_iso_date("5. - 7. Juni 2024") == "2024-06-05"
+    assert parse_iso_date("5 - 7 Juni 2024") == "2024-06-05"
+    # En-/Em-Dash (typografische Print-/Word-Autoformat-Trenner)
+    assert parse_iso_date("5–7 Juni 2024") == "2024-06-05"
+    assert parse_iso_date("5—7 Juni 2024") == "2024-06-05"
+    assert parse_iso_date("5.–7. Juni 2024") == "2024-06-05"
+    # Wort-Trenner DE (bis) - spiegelt _YEAR_RANGE_WORD / _MONTH_RANGE_YEAR
+    assert parse_iso_date("5 bis 7 Juni 2024") == "2024-06-05"
+    assert parse_iso_date("5. bis 7. Juni 2024") == "2024-06-05"
+    # Wort-Trenner EN (to/till/until)
+    assert parse_iso_date("5 to 7 June 2024") == "2024-06-05"
+    assert parse_iso_date("5 till 7 June 2024") == "2024-06-05"
+    assert parse_iso_date("5 until 7 June 2024") == "2024-06-05"
+    # Englische Monatsnamen (EXIF, Boersen-Zitate, Foto-Captions)
+    assert parse_iso_date("5-7 June 2024") == "2024-06-05"
+    assert parse_iso_date("12-14 August 2020") == "2020-08-12"
+    assert parse_iso_date("1-3 May 1985") == "1985-05-01"
+    # Kurzformen (Jun/Aug, DE/EN-Kompakt)
+    assert parse_iso_date("5-7 Jun 2024") == "2024-06-05"
+    assert parse_iso_date("12-14 Aug 2020") == "2020-08-12"
+    # Mit Punkt nach Monats-Kurzform (DE-Etiketten-Praxis)
+    assert parse_iso_date("5.-7. Jun. 2024") == "2024-06-05"
+    # EN-Ordinal-Suffix am Tag (spiegelt _DAY_MONTH_YEAR)
+    assert parse_iso_date("5th-7th June 2024") == "2024-06-05"
+    assert parse_iso_date("1st to 3rd March 2024") == "2024-03-01"
+    assert parse_iso_date("21st to 23rd December 2024") == "2024-12-21"
+    # Umlaut im Monatsnamen
+    assert parse_iso_date("5.-7. März 2024") == "2024-03-05"
+    assert parse_iso_date("5-7 März 2024") == "2024-03-05"
+    # Case-insensitiv (Caps-Lock-Notizen aus geerbten Sammler-Etiketten)
+    assert parse_iso_date("5.-7. JUNI 2024") == "2024-06-05"
+    assert parse_iso_date("5 BIS 7 Juni 2024") == "2024-06-05"
+    # Inverted Range (Tippfehler) - Start-Tag, spiegelt _MONTH_RANGE_YEAR
+    # ("November-Februar 2024" -> "2024-11-01")
+    assert parse_iso_date("7.-5. Juni 2024") == "2024-06-07"
+    # Kombinationen mit bestehenden Modifikatoren (Rekursion)
+    assert parse_iso_date("ca. 5.-7. Juni 2024") == "2024-06-05"
+    assert parse_iso_date("circa 5-7 June 2024") == "2024-06-05"
+    assert parse_iso_date("~5.-7. Juni 2024") == "2024-06-05"
+    assert parse_iso_date("(5.-7. Juni 2024)") == "2024-06-05"
+    assert parse_iso_date("[12-14 August 2020]") == "2020-08-12"
+    assert parse_iso_date("5.-7. Juni 2024.") == "2024-06-05"
+    assert parse_iso_date("5.-7. Juni 2024,") == "2024-06-05"
+    assert parse_iso_date("vom 5.-7. Juni 2024") == "2024-06-05"
+
+
+def test_parse_iso_date_tages_range_monat_jahr_ungueltig():
+    """Jahr ausserhalb [1800, 2999], unbekannter Monatsname oder ungueltiger
+    Start-Tag -> None; bestehende Formen (_DAY_MONTH_YEAR, _MONTH_RANGE_YEAR)
+    bleiben unveraendert (kein Regress)."""
+    # Jahr ausserhalb des gueltigen Bandes
+    assert parse_iso_date("5.-7. Juni 1700") is None
+    assert parse_iso_date("5-7 June 3000") is None
+    # Unbekannter Monatsname - Match faellt durch, kein Fallback auf einen Tag
+    assert parse_iso_date("5.-7. xxx 2024") is None
+    assert parse_iso_date("5-7 foo 2024") is None
+    # Ungueltiger Start-Tag (32/33) - Match faellt durch
+    assert parse_iso_date("32.-33. Juni 2024") is None
+    assert parse_iso_date("0-3 Juni 2024") is None
+    # Ungueltiger Start-Tag im Monat (31. Februar) - datetime.date wirft ValueError
+    assert parse_iso_date("31.-32. Feb 2024") is None
+    # Slash als Trenner NICHT erlaubt (mehrdeutig mit US-Datumsformat M/D)
+    assert parse_iso_date("5/7 Juni 2024") is None
+    # Bestehende Einzel-Tag-Form _DAY_MONTH_YEAR bleibt unveraendert (Disjunktheit)
+    assert parse_iso_date("5. Juni 2024") == "2024-06-05"
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("June 5, 2024") == "2024-06-05"
+    # Bestehende Month-Range-Form _MONTH_RANGE_YEAR bleibt unveraendert
+    assert parse_iso_date("Juni/Juli 2024") == "2024-06-01"
+    assert parse_iso_date("Mai-Juni 1985") == "1985-05-01"
+
+
 def test_parse_iso_date_englische_monatsnamen():
     """Englische Monatsnamen (EXIF, Foto-Bibliotheks-Exporte): 'Month DD, YYYY'."""
     # Kurz + lang

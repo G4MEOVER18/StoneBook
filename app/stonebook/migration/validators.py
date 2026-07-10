@@ -952,6 +952,62 @@ _MONTH_RANGE_YEAR = re.compile(
     re.IGNORECASE,
 )
 
+# Tages-Range innerhalb eines Monats mit Monatsname ("5.-7. Juni 2024",
+# "5-7 June 2024", "5. bis 7. Juni 2024", "5 to 7 June 2024"). Sehr verbreitet in
+# Sammlungs-Notizen, Foto-Captions und Fund-Etiketten, wenn der Sammler den Fund
+# oder die Exkursion auf einen zusammenhaengenden Tages-Bereich innerhalb eines
+# einzelnen Monats eingrenzt ("Fund vom 5.-7. Juni 2024 am Aaregebiet", "Tucson
+# Boerse 5-7 February 2024", "Alpen-Tour 12.-14. August 2020"). Bisher fielen
+# alle Formen still auf None, weil :data:`_DAY_MONTH_YEAR` nur einen Einzel-Tag
+# akzeptiert und der Range-Trenner (Bindestrich/en-dash/em-dash/"bis"/"to"/
+# "till"/"until") den strukturellen ``$``-Anker-Match blockte - aus einem
+# typischen Etikett wie "5.-7. Juni 2024" (= vom 5. bis 7. Juni 2024) oder
+# einem Boersen-Zitat "Tucson Boerse 5-7 February 2024" wurde silenter
+# Funddatum-Datenverlust bei der Migration.
+#
+# Konvention identisch zu :data:`_YEAR_RANGE` / :data:`_YEAR_RANGE_WORD` /
+# :data:`_MONTH_RANGE_YEAR`: der Start-Tag als ISO-Datum (Range-Start-Anker,
+# "5.-7. Juni 2024" -> "2024-06-05" analog "Mai-Juni 1985" -> "1985-05-01"),
+# der End-Tag bleibt semantische Wert-Anmerkung im Freitext (notizen). Inverted
+# Range (Tippfehler wie "7.-5. Juni 2024") liefert weiterhin den Start-Tag -
+# konsistent mit _MONTH_RANGE_YEAR ("November-Februar 2024" -> "2024-11-01").
+#
+# Trenner-Alternativen spiegeln die _MONTH_RANGE_YEAR-Konvention:
+# - Symbol-Trenner ``[-–—]``: "5-7 Juni 2024", "5–7 Juni 2024" (en dash),
+#   "5—7 Juni 2024" (em dash). Slash ``/`` bewusst NICHT als Trenner erlaubt,
+#   weil "5/7 Juni 2024" in EN/US-Kontexten als "May 7" (M/D) oder "July 5"
+#   (D/M) mehrdeutig gelesen werden koennte - Tages-Ranges verwenden idiomatisch
+#   Bindestrich, nicht Slash.
+# - Wort-Trenner (bis/to/till/until): "5 bis 7 Juni 2024", "5 to 7 June 2024"
+#   - spiegelt :data:`_YEAR_RANGE_WORD` / :data:`_MONTH_RANGE_YEAR` auf die
+#   Tages-Achse.
+#
+# Optionaler Punkt nach jedem Tag (``\.?``) deckt die DE-Ordinal-Notation ab
+# ("5. Juni" statt "5 Juni"); optionales EN-Ordinal-Suffix ``(?:st|nd|rd|th)?``
+# spiegelt :data:`_DAY_MONTH_YEAR` fuer EN-Formen ("5th-7th June 2024", "1st
+# to 3rd March 2024"). Beide Tages-Tokens werden im Handler auf 1..31 geprueft,
+# der Monatsname via :func:`_normalize_month_name` auf einen gueltigen Monat.
+#
+# Disjunktheit zu :data:`_DAY_MONTH_YEAR`: die Einzel-Tag-Form verlangt genau
+# einen Tag + Monatsname + Jahr; die Tages-Range-Form hier verlangt zwei Tage
+# + Range-Trenner + Monatsname + Jahr. "5.-7. Juni 2024" faellt bei
+# _DAY_MONTH_YEAR (nach "5" + optionalem "."-Trenner folgt "-7." statt Monats-
+# name) und wird hier korrekt aufgeloest. "5 Juni 2024" faellt hier (kein
+# Range-Trenner) und wird von _DAY_MONTH_YEAR aufgeloest.
+_DAY_RANGE_MONTH_YEAR = re.compile(
+    r"""^\s*
+        (\d{1,2})(?:st|nd|rd|th)?\.?
+        (?:\s*[-–—]\s*|\s+(?:bis|to|till|until)\s+)
+        (\d{1,2})(?:st|nd|rd|th)?\.?
+        \s+
+        ([A-Za-zÄÖÜäöü]+)\.?
+        \s+
+        (\d{4})
+        \s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 # Year-first Notation mit Monatsnamen: "2024-Juni" / "2024 June" / "2024-Jun" /
 # "2024.Juni" / "2024/Juni" / "2024, June". Spiegelt _MONTH_YEAR ("Juni 2024")
 # auf die Year-First-Reihenfolge - die ISO-/sortierbare Form mit ausgeschriebenem
@@ -2115,6 +2171,25 @@ def parse_iso_date(text) -> str | None:
         if 1800 <= d.year <= 2999:
             return d.isoformat()
         return None
+    # Tages-Range innerhalb eines Monats mit Monatsname ("5.-7. Juni 2024",
+    # "5-7 June 2024", "5. bis 7. Juni 2024") - Start-Tag als ISO-Datum, End-Tag
+    # als semantische Wert-Anmerkung im Freitext. Spiegelt _YEAR_RANGE /
+    # _MONTH_RANGE_YEAR auf die Tages-Achse. Vor _DAY_MONTH_YEAR geprueft, weil
+    # die Range-Form spezifischer ist als die Einzel-Tag-Form (Patterns sind
+    # durch den Range-Trenner + Zweit-Tag disjunkt; Reihenfolge fuer Klarheit).
+    # Monatsname muss valide sein - sonst faellt der Match durch auf die uebrigen
+    # Pattern.
+    m = _DAY_RANGE_MONTH_YEAR.match(s)
+    if m:
+        day1 = int(m.group(1))
+        day2 = int(m.group(2))
+        month = _normalize_month_name(m.group(3))
+        year = int(m.group(4))
+        if month and 1 <= day1 <= 31 and 1 <= day2 <= 31 and 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day1).isoformat()
+            except ValueError:
+                return None
     # Deutsche Monatsnamen ("13. Juni 2024", "Juni 2024")
     m = _DAY_MONTH_YEAR.match(s)
     if m:
