@@ -153,8 +153,64 @@ from stonebook.migration.validators import DATE_NO_DATA_MARKERS, parse_iso_date
 # String-Anfang, nach Whitespace oder anderen echten Separatoren (Komma,
 # Semikolon, Klammern, Gleichheitszeichen) - dort ist der Vorgaenger
 # nicht ``%``/``‰``, und das Sign-Match bleibt aktiv.
+# Zweites Lookbehind ``(?<![A-Za-z^]-)`` schuetzt vor Fehl-Lese des SI-Kompakt-
+# Exponenten in Einheiten mit negativer Zehnerpotenz: ``g cm-3``, ``kg m-3``
+# (Dichte in coherent-SI-Notation), ``m s-1`` (Geschwindigkeit), ``s-1`` (Frequenz-
+# Reziprok), ``mol-1`` (Loschmidt-Reziprok), ``A-1``/``Å-1`` (reziproke Basis-
+# Vektoren in Roentgen-Beugung), ``cm-3`` (Konzentration/Zerfallsdichte) sowie
+# die ASCII-Caret-Variante ``g cm^-3``/``m s^-1``. Diese SI-Kompakt-Form ohne
+# Divisions-Slash ist der internationale Publikations-Standard fuer coherent-
+# SI-Notation (ISO 80000, IUPAC-Gruen-Buch, IUCr-Style-Guide) und in Mineralogie-/
+# Physik-Referenz-Tabellen die kanonische Weise, zusammengesetzte Einheiten mit
+# negativer Zehnerpotenz zu setzen ("Dichte 2.65 g cm-3", "Loeslichkeitsprodukt
+# 1.5e-9 mol2 kg-2", "Frequenz 100 s-1", "Bragg-Winkel 5.5 A-1"). Bisher
+# fielen alle diese Formen still auf Range-Fehl-Interpretation durch: die
+# generische ``_NUM_RE``-Extraktion erkannte den ``-``-Trenner zwar als
+# Sign-Blocker (durch die Buchstaben-Lookbehind), aber die trailing Ziffer nach
+# dem ``-`` fiel als eigenstaendige Zahl in ``nums`` und lieferte via
+# ``if hi < lo``-Fallback entweder einen semantisch falschen Range oder einen
+# stille (n, n)-Kollaps. Konkret: ``"2.65 g cm-3"`` lieferte ``[2.65, 3.0]`` und
+# via ``hi > lo`` den unsinnigen Dichte-Range ``(2.65, 3.0)`` statt ``(2.65,
+# 2.65)`` (die 3 aus ``cm-3`` als Range-hi fehlgelesen); ``"2.65 kg m-3"``
+# analog auf ``(2.65, 3.0)``; ``"1.5 mol-1"`` auf ``(1.0, 1.5)`` (die 1 aus
+# ``mol-1`` als Range-lo). ``"5.5 cm-3"`` fiel via inverted-Range-Fallback auf
+# ``(5.5, 5.5)`` (die 3 wurde extrahiert, aber weil 3 < 5.5, kollabierte hi<lo
+# auf lo) - der stille Kollaps sah zwar richtig aus, war aber zufaellig, denn
+# jede Wert-Notation mit Wert < SI-Exponent produziert weiterhin die falsche
+# Range-Interpretation. Bei der Migration aus Mineralogie-/Physik-Publikationen
+# mit coherent-SI-Notation (Dichte 1-4 g cm-3, Konzentrationen um 1 mol-1,
+# spektroskopische Bragg-Winkel 1-10 A-1) entstand damit silenter Range-
+# Fehl-Interpretations-Fehler auf jeder Wert-Achse mit SI-Kompakt-Einheit.
+#
+# Neues Lookbehind ``(?<![A-Za-z^]-)`` prueft die zwei Zeichen vor dem Match-
+# Start und blockiert, wenn ``[Buchstabe|Caret][Hyphen]`` als 2-Zeichen-Sequenz
+# unmittelbar vorausgeht - genau die SI-Kompakt-Exponenten-Signatur. Die
+# einzelne Zahl-Position wird durchgelassen, wenn das 2-Zeichen-Fenster ANDERS
+# aussieht: ``"5 -3"`` (Whitespace-Hyphen, kein Buchstabe im Fenster) bleibt
+# echte Range, ``"x=-3.5"`` / ``"value:-3.5"`` (Punkt/Doppelpunkt/Gleich vor
+# Hyphen) bleibt Sign-Bindung, ``"(-3.5, 4.5)"`` (Klammer vor Hyphen) bleibt
+# Sign-Bindung. Der Existenz-basierte Sign-Zweig oben (``(?<![\d.%‰])-``) und
+# das neue Lookbehind sind strukturell disjunkt: der Sign-Zweig operiert
+# innerhalb des Match-Bodies (optionale Vorzeichen-Anbindung an eine
+# nachfolgende Ziffer), das neue Lookbehind operiert an der Match-Start-
+# Position (blockiert ganze Position). Beide zusammen ergeben die vollstaen-
+# dige SI-Kompakt-Einheit-Absicherung: der ``-`` wird nie als Sign gebunden
+# (Sign-Zweig blockt durch Buchstaben-Lookbehind auf der ``-``-Position, siehe
+# oben) UND die Ziffer nach ``-`` wird nicht als eigenstaendige Zahl extrahiert
+# (neues Lookbehind blockt auf der Ziffer-Position).
+#
+# Kollisionsfreiheit zu Sign-Rollen: der Zweig blockiert NUR das 2-Zeichen-
+# Fenster ``[Buchstabe|Caret][Hyphen]``. Alle uebrigen Kontexte, in denen ein
+# Hyphen als echter Sign fungiert, bleiben unberuehrt - Zeilenanfang (``"-3"``),
+# nach Whitespace (``"5 -3"``), nach Komma/Semikolon/Klammer/Gleichheitszeichen
+# (``"(-3.5, 4.5)"``, ``"x=-3.5"``, ``"value:-3.5"``), nach anderen Nicht-
+# Buchstaben-Separatoren (`.replace(",", ".")`-Nachbereitung). Kollisionsfrei
+# zu Range-Semantik: die Range-Trenner-Rolle des Hyphens zwischen zwei Zahlen
+# (``"5-7"``, ``"5.5-3.2"``) hat auf der ersten Ziffer der zweiten Zahl das
+# 2-Zeichen-Fenster ``[Ziffer][Hyphen]`` - ``[Ziffer]`` ist nicht ``[A-Za-z^]``,
+# das Lookbehind passiert, die Range-Extraktion bleibt intakt.
 _NUM_RE = re.compile(
-    r"(?<![A-Za-z^])"
+    r"(?<![A-Za-z^])(?<![A-Za-z^]-)"
     r"("
     r"(?:(?<![\d.%‰])-)?"
     r"(?:\.\d+(?:[eE][+-]?\d+)?|\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?)"

@@ -1131,6 +1131,79 @@ def test_parse_range_einheit_mit_hochgestellter_ascii_ziffer():
     assert csv_loaders.parse_range("1'000.00") == (1000.0, 1000.0)
 
 
+def test_parse_range_si_kompakt_negativer_exponent():
+    """SI-Kompakt-Einheit mit negativer Zehnerpotenz (``g cm-3``, ``m s-1``) darf
+    die Exponenten-Ziffer nicht als Range-Grenze anschleppen.
+
+    SI-Kompakt-Notation ohne Divisions-Slash ist der internationale Publikations-
+    Standard (ISO 80000, IUPAC-Gruen-Buch, IUCr-Style-Guide) fuer zusammengesetzte
+    Einheiten mit negativer Zehnerpotenz - "Dichte 2.65 g cm-3", "Frequenz 100
+    s-1", "Bragg-Winkel 5.5 A-1", "Konzentration 1.5 mol-1", "Diffusivitaet 1e-6
+    m2 s-1". In Mineralogie-/Physik-Publikationen (Nature/Science/AmMin/GCA) und
+    NIST-CODATA-Konstanten-Tabellen die kanonische Form. Bisher fiel jede dieser
+    Notationen still auf Range-Fehl-Interpretation durch:
+
+    * ``"2.65 g cm-3"`` -> (2.65, 3.0) (3 aus ``cm-3`` als Range-hi statt Exponent)
+    * ``"2.65 kg m-3"`` -> (2.65, 3.0) (analog SI-Basis-Einheit)
+    * ``"1.5 mol-1"``   -> (1.0, 1.5)  (1 aus ``mol-1`` als Range-lo)
+    * ``"5.5 cm-3"``    -> (5.5, 5.5)  (zufaellig richtig via hi<lo-Kollaps, aber
+                                        semantisch die 3 als Range-hi fehlgelesen)
+
+    Der Fix ergaenzt ``_NUM_RE`` um ein zweites Lookbehind
+    ``(?<![A-Za-z^]-)``, das die generische Zahl-Extraktion an Positionen
+    blockiert, an denen die Ziffer direkt nach ``[Buchstabe|Caret][Hyphen]``
+    steht - die SI-Kompakt-Exponenten-Signatur. Kollisionsfrei zu echten
+    Sign-Rollen (Zeilenanfang, nach Whitespace/Punktuation/Klammer/=) und zu
+    Range-Trennern (der Trenner-Hyphen sitzt zwischen zwei Ziffern, nicht
+    nach einem Buchstaben).
+    """
+    # Dichte in SI-Kompakt-Form (mineralogische Standardnotation)
+    assert csv_loaders.parse_range("2.65 g cm-3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 kg m-3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 g m-3") == (2.65, 2.65)
+    # Caret-Superskript-Variante (LaTeX-/Math-Konvention)
+    assert csv_loaders.parse_range("2.65 g cm^-3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 kg m^-3") == (2.65, 2.65)
+    # Frequenz-/Zerfalls-Reziprok (s-1 = Hz)
+    assert csv_loaders.parse_range("100 s-1") == (100.0, 100.0)
+    assert csv_loaders.parse_range("2.65 g s-1") == (2.65, 2.65)
+    # Reziproke Basis-Vektoren in Roentgen-Beugung (Å-1 / A-1)
+    assert csv_loaders.parse_range("5.5 A-1") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 Å-1") == (5.5, 5.5)
+    # Loeslichkeitsprodukt / Loschmidt-Reziprok
+    assert csv_loaders.parse_range("1.5 mol-1") == (1.5, 1.5)
+    # Konzentration/Zerfalls-Dichte (cm-3, pm-1)
+    assert csv_loaders.parse_range("5.5 cm-3") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 pm-1") == (5.5, 5.5)
+    # Longformer-Wert < SI-Exponent (der Fix beseitigt den echten Range-Fehler
+    # 2.65 g cm-3 -> (2.65, 3.0), der beim inverted-Range-Fallback bisher NICHT
+    # gefangen wurde). Vorher: (2.65, 3.0); jetzt: (2.65, 2.65).
+    assert csv_loaders.parse_range("2.65 g m-3") == (2.65, 2.65)
+    # Wissenschaftliche Notation kombiniert mit SI-Kompakt-Einheit
+    assert csv_loaders.parse_range("3.14e-5 mol kg-1") == pytest.approx(
+        (3.14e-5, 3.14e-5))
+    # Regression-Anker: echte negative Sign-Rollen bleiben intakt
+    assert csv_loaders.parse_range("-5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("x=-3.5") == (-3.5, -3.5)
+    assert csv_loaders.parse_range("value:-3.5") == (-3.5, -3.5)
+    # Regression-Anker: echte Range-Trenner bleiben intakt (der Hyphen zwischen
+    # zwei Ziffern hat vor der zweiten Ziffer das Muster [Ziffer][Hyphen],
+    # nicht [Buchstabe][Hyphen] - Lookbehind passiert).
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("5.5-7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("5-7 g/cm3") == (5.0, 7.0)
+    # Regression-Anker: bereits vorhandene SI-Positiv-Exponenten-Behandlung
+    # (``cm3``/``m2``/``s2``/``cm^3``) bleibt unveraendert.
+    assert csv_loaders.parse_range("2.65 g/cm3") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 g/cm³") == (2.65, 2.65)
+    assert csv_loaders.parse_range("2.65 g/cm^3") == (2.65, 2.65)
+    # Regression-Anker: Uncertainty-Notation mit SI-Kompakt-Einheit bleibt
+    # ueber den etablierten ±-/Klammer-Zweig aufgeloest (der neue Zweig
+    # greift nur in der Fallback-Extraktion).
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+
+
 def test_parse_range_unicode_vulgar_fraktionen():
     """Unicode-Vulgar-Fraktionen (¼/½/¾ und U+2150-U+215E) werden als Wert
     aufgeloest statt still verworfen.
