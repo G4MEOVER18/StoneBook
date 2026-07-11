@@ -1145,7 +1145,7 @@ _DAY_RANGE_MONTH_YEAR = re.compile(
 # 4 Ziffern - kollisionsfrei) und die Reihenfolge die ueblichere Month-First-
 # Variante zuerst behandelt.
 _YEAR_MONTH_NAME = re.compile(
-    r"^\s*(\d{4})\s*[,./ \-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
+    r"^\s*(\d{4})\s*[,./ _\-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
 )
 # Year-first DD-Monatsname-YYYY-Notation: "2024-Juni-13" / "2024 June 13" /
 # "2024.Juni.13" / "2024-Jun-13" / "2024/Juni/13". Spiegelt _DAY_MONTH_YEAR
@@ -1159,8 +1159,8 @@ _YEAR_MONTH_NAME = re.compile(
 # _YEAR_MONTH_NAME geprueft, weil die 3-Teil-Form spezifischer ist; beide
 # Patterns sind durch das ``$``-Anker disjunkt (3 Teile vs. 2 Teile).
 _YEAR_MONTH_NAME_DAY = re.compile(
-    r"^\s*(\d{4})\s*[,./ \-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*"
-    r"[,./ \-]\s*(\d{1,2})(?:st|nd|rd|th)?\s*$",
+    r"^\s*(\d{4})\s*[,./ _\-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*"
+    r"[,./ _\-]\s*(\d{1,2})(?:st|nd|rd|th)?\s*$",
 )
 
 # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024", "Frühjahr 2020").

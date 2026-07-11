@@ -5535,3 +5535,65 @@ def test_parse_iso_date_saison_underscore_separator():
     assert parse_iso_date("Sommer2024") == "2024-06-01"
     assert parse_iso_date("summer of 2024") == "2024-06-01"
     assert parse_iso_date("Sommer von 2024") == "2024-06-01"
+
+
+def test_parse_iso_date_year_month_name_underscore_separator():
+    """Year-first Monatsname-Notation mit Underscore ``_`` als Filename-sicherem
+    Separator zwischen Jahr und Monatsname (``2024_Juli`` / ``1985_June`` /
+    ``2020_Sep``) und optional zwischen Monatsname und Tag (``2024_Juli_15``
+    / ``2024_June_15`` / ``2024_July_1st``).
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[,./ \\-]`` von
+    :data:`_YEAR_MONTH_NAME` und :data:`_YEAR_MONTH_NAME_DAY` um den
+    Underscore, symmetrisch zur ``_MONTH_YEAR``- und
+    ``_SEASON_YEAR``-Underscore-Erweiterung. Year-first-Filename-Konvention
+    (Jahr als sortierender Praefix) ist der de-facto Standard in Foto-
+    Library-Sortierungen und Backup-Rotation-Ordnern (``2024_Juli_Aare.jpg``,
+    ``2024_June_Tucson-Boerse/``, ``2020_Sep_Bergtour_15.pdf``); der
+    Underscore ist der zuverlaessigste Cross-Plattform-Filename-Trenner.
+    Mapping identisch zur Ein-Zeichen-Separator-Form (erster Tag des
+    Monats bei nur Jahr+Monat, expliziter Tag bei Jahr+Monat+Tag).
+    """
+    # Year-first Jahr + Monatsname mit Underscore (voll ausgeschrieben DE/EN)
+    assert parse_iso_date("2024_Juli") == "2024-07-01"
+    assert parse_iso_date("2024_January") == "2024-01-01"
+    assert parse_iso_date("1985_June") == "1985-06-01"
+    assert parse_iso_date("2020_December") == "2020-12-01"
+    # Year-first mit abgekuerztem Monatsnamen und Underscore
+    assert parse_iso_date("2020_Sep") == "2020-09-01"
+    assert parse_iso_date("2024_Jun") == "2024-06-01"
+    assert parse_iso_date("1985_Dec") == "1985-12-01"
+    # Year-first Jahr + Monatsname + Tag mit Underscore-Separator auf beiden
+    # Positionen (Konvention _YEAR_MONTH_NAME_DAY)
+    assert parse_iso_date("2024_Juli_15") == "2024-07-15"
+    assert parse_iso_date("2024_June_15") == "2024-06-15"
+    assert parse_iso_date("2024_January_15") == "2024-01-15"
+    # Year-first mit englischem Tag-Ordinal-Suffix und Underscore
+    assert parse_iso_date("2024_July_1st") == "2024-07-01"
+    assert parse_iso_date("2024_June_15th") == "2024-06-15"
+    # Case-Insensitivitaet (Foto-Software mit uppercase-Auto-Rename)
+    assert parse_iso_date("2024_JUNI") == "2024-06-01"
+    assert parse_iso_date("2024_JULI_15") == "2024-07-15"
+    # Mixed-Separator-Kombination (typisch bei Copy-paste aus einem
+    # gemischten Fluss-Etikett - Jahr-Space-Monat gefolgt von Underscore-Tag):
+    assert parse_iso_date("2024 Juni_15") == "2024-06-15"
+    assert parse_iso_date("2024-Juni_15") == "2024-06-15"
+    assert parse_iso_date("2024_Juni-15") == "2024-06-15"
+    # Kollisionsschutz: unbekannte Nicht-Monatsname-Woerter mit Underscore-
+    # Struktur fallen weiterhin auf None
+    assert parse_iso_date("2024_Sample") is None
+    assert parse_iso_date("2024_Foo") is None
+    assert parse_iso_date("2024_Sample_15") is None
+    assert parse_iso_date("2024_Foo_15") is None
+    # Kombiniert mit Annaeherungspraefix / Klammer-Strip
+    assert parse_iso_date("ca. 2024_Juli") == "2024-07-01"
+    assert parse_iso_date("[2024_June_15]") == "2024-06-15"
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert.
+    assert parse_iso_date("2024 Juli") == "2024-07-01"
+    assert parse_iso_date("2024-Juli") == "2024-07-01"
+    assert parse_iso_date("2024/Juli") == "2024-07-01"
+    assert parse_iso_date("2024.Juli") == "2024-07-01"
+    assert parse_iso_date("2024,Juli") == "2024-07-01"
+    assert parse_iso_date("2024-Juli-15") == "2024-07-15"
+    assert parse_iso_date("2024/July/15") == "2024-07-15"
