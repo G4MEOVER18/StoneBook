@@ -1398,8 +1398,30 @@ _ISO_WEEK_DATE = re.compile(
 # ``Woche``/``calendar``). Die Whitespace-erlaubende Form
 # ``calendar\s*week`` deckt sowohl ``calendarweek 25 2024`` (compact) als
 # auch ``calendar week 25 2024`` (Whitespace-getrennt) ab.
+#
+# Einzelbuchstabe-Kurzform ``W`` als letzte Alternante: ISO 8601 setzt ``W``
+# als Wochen-Marker (``2024-W25`` / ``2024W25``); die Year-Last-Reihenfolge
+# ``W25 2024`` (Wochen-Zahl vor Jahr) und die Space-getrennte Year-First-
+# Form ``2024 W25`` sind in Log-Stempeln, Kalender-Exporten und
+# internationalen Sammler-Notizen die de-facto Kompakt-Schreibweisen ohne
+# volles Kalenderwoche-Wort. Bisher fielen alle Formen mit reinem
+# W-Marker (statt KW/CW/Kalenderwoche/Woche/calendar week) still auf
+# None, obwohl die ISO-Compact-Form ``2024W25`` (kein Whitespace zwischen
+# Jahr und W) transparent das Datum lieferte - jede Notation mit
+# Whitespace-Trenner (``W25 2024`` week-first, ``2024 W25`` year-first mit
+# Space) oder mit Nicht-ISO-Separator (``W25/2024``, ``W25.2024``)
+# konnte nicht gelesen werden, obwohl die Wochen-Semantik eindeutig
+# ist. Die W-Alternante ist bewusst am Ende der Alternativen platziert,
+# damit die laengeren Marker (``KW``, ``CW``, ``Kalenderwoche``, ``Woche``,
+# ``calendar week``) zuerst versucht werden - regex-alternative-Ordering
+# ist links-nach-rechts, und ``W`` als Praefix von ``Woche``/``week``
+# haette die laengeren Formen sonst blockiert. Der obligatorische
+# 4-Ziffer-Jahr-Anker und der obligatorische Wochen-Zahl-Anker mit
+# Separator schuetzen vor False-Positives an Standalone-W-Tokens
+# (``W25`` allein, ``W3.5`` Messwert, ``W-4`` Sortier-Code) - alle
+# fallen mangels vollstaendiger Struktur unangetastet auf None.
 _KW_YEAR = re.compile(
-    r"^\s*(?:KW|CW|Kalenderwoche|Woche|calendar\s*week)\.?\s*(\d{1,2})"
+    r"^\s*(?:KW|CW|Kalenderwoche|Woche|calendar\s*week|W)\.?\s*(\d{1,2})"
     r"\s*[/.\-, ]\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
@@ -1415,9 +1437,14 @@ _KW_YEAR = re.compile(
 # identisch zu :data:`_ISO_WEEK_DATE` und :data:`_KW_YEAR` (Montag der
 # genannten Woche). Separator [/.\-, ] zwischen Jahr und KW-Marker spiegelt die
 # Year-First-Konvention der uebrigen Patterns (_QUARTER_YEAR_FIRST etc.).
+# Einzelbuchstabe-Kurzform ``W`` als letzte Alternante spiegelt die
+# entsprechende Erweiterung in :data:`_KW_YEAR`; deckt ``2024 W25`` /
+# ``2024/W25`` / ``2024-W 25`` ab, die die Whitespace-Space-Form der
+# ISO-Compact-Konvention ``2024W25`` sind (letztere per _ISO_WEEK_DATE
+# bereits erfasst, aber ohne Whitespace-Trenner).
 _KW_YEAR_FIRST = re.compile(
     r"^\s*(\d{4})\s*[/.\-, ]\s*"
-    r"(?:KW|CW|Kalenderwoche|Woche|calendar\s*week)\.?\s*(\d{1,2})\s*$",
+    r"(?:KW|CW|Kalenderwoche|Woche|calendar\s*week|W)\.?\s*(\d{1,2})\s*$",
     re.IGNORECASE,
 )
 

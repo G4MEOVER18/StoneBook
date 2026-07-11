@@ -3645,6 +3645,80 @@ def test_parse_iso_date_kw_year_first():
     assert parse_iso_date("Kalenderwoche 25 2024") == "2024-06-17"
 
 
+def test_parse_iso_date_w_marker_kurzform():
+    """Einzelbuchstabe-Kurzform ``W`` als Wochen-Marker (``W25 2024`` / ``2024 W25``).
+
+    Symmetrisch zu :data:`_KW_YEAR` / :data:`_KW_YEAR_FIRST` fuer den ISO
+    8601-Wochen-Marker ``W`` ohne volles Kalenderwoche-Wort. Spiegelt die
+    ISO-Compact-Form ``2024W25`` (:data:`_ISO_WEEK_DATE`, kein Whitespace-
+    Trenner) auf die Formen mit Whitespace-/Separator-Trenner: die
+    Year-Last-Reihenfolge ``W25 2024`` (Wochen-Zahl vor Jahr) und die
+    Space-getrennte Year-First-Form ``2024 W25`` sind in Log-Stempeln,
+    Kalender-Exporten und internationalen Sammler-Notizen die de-facto
+    Kompakt-Schreibweisen ohne KW-/CW-Praefix. Mapping identisch (Montag
+    der genannten Woche).
+    """
+    # Year-Last-Reihenfolge (Wochen-Marker vor Jahr): die klassische
+    # Log-Stempel-/Kalender-Export-Notation.
+    assert parse_iso_date("W25 2024") == "2024-06-17"
+    assert parse_iso_date("W25/2024") == "2024-06-17"
+    assert parse_iso_date("W25.2024") == "2024-06-17"
+    assert parse_iso_date("W25, 2024") == "2024-06-17"
+    assert parse_iso_date("W25-2024") == "2024-06-17"
+    # Optionaler Whitespace zwischen W-Marker und Wochen-Zahl (spiegelt die
+    # KW/CW-Konvention aus _KW_YEAR: ``KW 25 2024`` / ``KW25 2024``).
+    assert parse_iso_date("W 25 2024") == "2024-06-17"
+    # Optionaler Punkt-Trenner nach W-Kurzform (``W. 25 2024``) - spiegelt
+    # die Punkt-Abkuerzungs-Konvention aus _KW_YEAR (``KW. 25 2024``).
+    assert parse_iso_date("W. 25 2024") == "2024-06-17"
+    # Year-First-Reihenfolge (Jahr vor Wochen-Marker): symmetrisch zu
+    # _KW_YEAR_FIRST fuer ``KW`` etc. Deckt die Space-getrennte Form
+    # ``2024 W25`` ab (die Non-Space-Form ``2024W25`` bleibt bei
+    # _ISO_WEEK_DATE).
+    assert parse_iso_date("2024 W25") == "2024-06-17"
+    assert parse_iso_date("2024/W25") == "2024-06-17"
+    assert parse_iso_date("2024 W 25") == "2024-06-17"
+    assert parse_iso_date("2024, W25") == "2024-06-17"
+    # Case-insensitive (Standard-KW-Alternante hat re.IGNORECASE-Flag).
+    assert parse_iso_date("w25 2024") == "2024-06-17"
+    # Erste Woche und letzte Woche als Grenzfaelle (2024 hat 52 Wochen).
+    assert parse_iso_date("W1 2024") == "2024-01-01"
+    assert parse_iso_date("W52 2024") == "2024-12-23"
+    # Kombiniert mit Annaeherungspraefix / Klammern (die Prefix-Strip-
+    # Kaskade in parse_iso_date arbeitet transparent).
+    assert parse_iso_date("ca. W25 2024") == "2024-06-17"
+    assert parse_iso_date("[W25 2024]") == "2024-06-17"
+    # Ungueltig: Wochen-Zahl ausser Bereich (Woche 0, Woche 54, Woche 53
+    # in 2024 gibt es nicht) und Jahr ausserhalb der Kollektions-Domaene.
+    assert parse_iso_date("W0 2024") is None
+    assert parse_iso_date("W54 2024") is None
+    assert parse_iso_date("W53 2024") is None  # 2024 hat nur 52 Wochen
+    assert parse_iso_date("W25 1700") is None
+    # Standalone-W-Token ohne 4-Ziffer-Jahr matcht NICHT: schuetzt vor
+    # False-Positives bei Messwert-Notationen (``W3.5``), Sortier-Codes
+    # (``W-4``), Standalone-Wochen-Referenzen (``W25`` allein). Der
+    # obligatorische Separator + 4-Ziffer-Jahr im Regex-Anker sorgt
+    # dafuer, dass die W-Alternante nur bei vollstaendiger Wochen-plus-
+    # Jahr-Struktur greift.
+    assert parse_iso_date("W25") is None
+    assert parse_iso_date("W3.5") is None
+    assert parse_iso_date("W-4") is None
+    # Regress-Anker: die bestehenden KW/CW/Kalenderwoche/Woche-Formen
+    # bleiben unveraendert (die W-Alternante steht am Ende der Regex-
+    # Alternativen, sodass laengere Marker Vorrang haben - regex-
+    # alternative-Ordering ist links-nach-rechts).
+    assert parse_iso_date("KW 25 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25 2024") == "2024-06-17"
+    assert parse_iso_date("Woche 25 2024") == "2024-06-17"
+    assert parse_iso_date("2024 KW 25") == "2024-06-17"
+    # Regress-Anker: die ISO-Compact-Form ``2024W25`` bleibt bei
+    # _ISO_WEEK_DATE und liefert unveraendert das Datum (keine
+    # Doppel-Interpretation durch die neue W-Alternante).
+    assert parse_iso_date("2024W25") == "2024-06-17"
+    assert parse_iso_date("2024-W25") == "2024-06-17"
+    assert parse_iso_date("2024-W25-3") == "2024-06-19"
+
+
 def test_parse_iso_date_monat_jahr_punkt_separator():
     """Punkt als Separator zwischen Monatsname und Jahr ('Juni.2024', Excel-CSV-Form)."""
     # Deutsche Voll-/Kurzformen
