@@ -1316,7 +1316,7 @@ _QUARTER_MONTHS: dict[int, int] = {1: 1, 2: 4, 3: 7, 4: 10}
 # dort ist die Praepositions-Semantik ``von``/``of`` nicht idiomatisch).
 _QUARTER_SHORT = re.compile(
     r"^\s*(?:Q\s*([1-4])|([1-4])\s*Q)"
-    r"(?:\s*[/.\-,]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"(?:\s*[/.\-,_]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # "1. Quartal 2024" / "Quartal 1 2024" / "3. Quarter 1985"
@@ -1344,7 +1344,7 @@ _QUARTER_LONG = re.compile(
 # Q-zuerst beginnt mit Q oder Ziffer 1-4), wird aber konsistent mit den
 # anderen Year-First-Patterns am gleichen Block-Ende einsortiert.
 _QUARTER_YEAR_FIRST = re.compile(
-    r"^\s*(\d{4})\s*[/.\-, ]?\s*(?:Q\s*([1-4])|([1-4])\s*Q)\s*$",
+    r"^\s*(\d{4})\s*[/.\-, _]?\s*(?:Q\s*([1-4])|([1-4])\s*Q)\s*$",
     re.IGNORECASE,
 )
 # Year-first Langform-Quartal: "2024 1. Quartal" / "2024 Quartal 1" /
@@ -1387,7 +1387,7 @@ _HALFYEAR_MONTHS: dict[int, int] = {1: 1, 2: 7}
 # dort ist die Praepositions-Semantik nicht idiomatisch).
 _HALFYEAR_SHORT = re.compile(
     r"^\s*(?:H\s*([1-2])|([1-2])\s*H)"
-    r"(?:\s*[/.\-,]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"(?:\s*[/.\-,_]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # "1. Halbjahr 2024" / "Halbjahr 1 2024" / "2. Halfyear 1985" / "1. Half-Year 2024"
@@ -1417,7 +1417,7 @@ _HALFYEAR_LONG = re.compile(
 # Reports und Excel-Auto-Format sortieren oft Year-First-formatiert
 # ("2024-H1" sortiert lexikographisch korrekt vor "2024-H2").
 _HALFYEAR_YEAR_FIRST = re.compile(
-    r"^\s*(\d{4})\s*[/.\-, ]?\s*(?:H\s*([1-2])|([1-2])\s*H)\s*$",
+    r"^\s*(\d{4})\s*[/.\-, _]?\s*(?:H\s*([1-2])|([1-2])\s*H)\s*$",
     re.IGNORECASE,
 )
 # Year-first Langform-Halbjahr ("2024 1. Halbjahr", "2024 Halbjahr 1",
@@ -1555,7 +1555,7 @@ _ISO_WEEK_DATE = re.compile(
 # Uppercase-Titeln matchen ohne Regel-Doppel-Pflege.
 _KW_YEAR = re.compile(
     r"^\s*(?:KW|CW|Kalenderwoche|Woche|calendar\s*week|W)\.?\s*(\d{1,2})"
-    r"(?:\s*[/.\-, ]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"(?:\s*[/.\-, _]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Year-first KW-Notation: "2024 KW 25", "2024/KW25", "2024-Kalenderwoche 25",
@@ -1576,7 +1576,7 @@ _KW_YEAR = re.compile(
 # ISO-Compact-Konvention ``2024W25`` sind (letztere per _ISO_WEEK_DATE
 # bereits erfasst, aber ohne Whitespace-Trenner).
 _KW_YEAR_FIRST = re.compile(
-    r"^\s*(\d{4})\s*[/.\-, ]\s*"
+    r"^\s*(\d{4})\s*[/.\-, _]\s*"
     r"(?:KW|CW|Kalenderwoche|Woche|calendar\s*week|W)\.?\s*(\d{1,2})\s*$",
     re.IGNORECASE,
 )

@@ -5649,3 +5649,80 @@ def test_parse_iso_date_year_first_saison_underscore_separator():
     assert parse_iso_date("2024/Herbst") == "2024-09-01"
     assert parse_iso_date("2024.Fruehjahr") == "2024-03-01"
     assert parse_iso_date("2024,Sommer") == "2024-06-01"
+
+
+def test_parse_iso_date_periodenmarker_underscore_separator():
+    """Perioden-Marker-Kurzformen (Q/H/KW/CW/W) mit Underscore ``_`` als
+    Filename-sicherem Separator zwischen Marker und Jahr (``Q1_2024`` /
+    ``H1_2024`` / ``KW25_2024`` / ``W25_2024``) sowie Year-First-Formen
+    (``2024_Q1`` / ``2024_H1`` / ``2024_KW25``).
+
+    Ergaenzt die Ein-Zeichen-Separator-Klassen von :data:`_QUARTER_SHORT`,
+    :data:`_QUARTER_YEAR_FIRST`, :data:`_HALFYEAR_SHORT`,
+    :data:`_HALFYEAR_YEAR_FIRST`, :data:`_KW_YEAR` und
+    :data:`_KW_YEAR_FIRST` um den Underscore. In Geschaefts-Perioden-
+    Reports (Excel-Auto-Fill, Buchhaltungs-Perioden-Stempel) und Foto-
+    Library-Sortierungen (``Q1_2024_Bericht.pdf``, ``H1_2024_Umsatz/``,
+    ``KW25_2024_Aare-Bergtour.jpg``) ist der Underscore der zuverlaessigste
+    Cross-Plattform-Filename-Trenner. Mapping identisch zu den bestehenden
+    Ein-Zeichen-Separator-Formen: Q1->Jan, Q2->Apr, Q3->Jul, Q4->Okt;
+    H1->Jan, H2->Jul; KW/CW/W->Montag der Woche.
+    """
+    # Quartal Kurzform Year-Last mit Underscore
+    assert parse_iso_date("Q1_2024") == "2024-01-01"
+    assert parse_iso_date("Q2_2024") == "2024-04-01"
+    assert parse_iso_date("Q3_1985") == "1985-07-01"
+    assert parse_iso_date("Q4_2020") == "2020-10-01"
+    assert parse_iso_date("1Q_2024") == "2024-01-01"
+    assert parse_iso_date("3Q_1985") == "1985-07-01"
+    # Quartal Kurzform Year-First mit Underscore
+    assert parse_iso_date("2024_Q1") == "2024-01-01"
+    assert parse_iso_date("2024_Q3") == "2024-07-01"
+    assert parse_iso_date("1985_Q4") == "1985-10-01"
+    # Halbjahr Kurzform Year-Last mit Underscore
+    assert parse_iso_date("H1_2024") == "2024-01-01"
+    assert parse_iso_date("H2_1985") == "1985-07-01"
+    assert parse_iso_date("1H_2024") == "2024-01-01"
+    assert parse_iso_date("2H_1985") == "1985-07-01"
+    # Halbjahr Kurzform Year-First mit Underscore
+    assert parse_iso_date("2024_H1") == "2024-01-01"
+    assert parse_iso_date("2024_H2") == "2024-07-01"
+    # KW Year-Last mit Underscore
+    assert parse_iso_date("KW25_2024") == "2024-06-17"
+    assert parse_iso_date("KW1_2024") == "2024-01-01"
+    assert parse_iso_date("CW25_2024") == "2024-06-17"
+    assert parse_iso_date("W25_2024") == "2024-06-17"
+    # KW Year-First mit Underscore
+    assert parse_iso_date("2024_KW25") == "2024-06-17"
+    assert parse_iso_date("2024_W25") == "2024-06-17"
+    assert parse_iso_date("2024_CW25") == "2024-06-17"
+    # Case-Insensitivitaet
+    assert parse_iso_date("q1_2024") == "2024-01-01"
+    assert parse_iso_date("h1_2024") == "2024-01-01"
+    assert parse_iso_date("kw25_2024") == "2024-06-17"
+    # Kombiniert mit Annaeherungspraefix / Klammer-Strip
+    assert parse_iso_date("ca. Q1_2024") == "2024-01-01"
+    assert parse_iso_date("[H1_2024]") == "2024-01-01"
+    # Kollisionsschutz: Nicht-Q-/H-/KW-/W-Prefixe fallen weiterhin auf None
+    assert parse_iso_date("K1_2024") is None
+    assert parse_iso_date("J1_2024") is None
+    assert parse_iso_date("Q5_2024") is None  # Q5 kein gueltiges Quartal
+    assert parse_iso_date("H3_2024") is None  # H3 kein gueltiges Halbjahr
+    # Regress-Anker: bisherige Ein-Zeichen-Separator-Formen unveraendert
+    assert parse_iso_date("Q1 2024") == "2024-01-01"
+    assert parse_iso_date("Q1/2024") == "2024-01-01"
+    assert parse_iso_date("Q1-2024") == "2024-01-01"
+    assert parse_iso_date("Q1.2024") == "2024-01-01"
+    assert parse_iso_date("Q1,2024") == "2024-01-01"
+    assert parse_iso_date("H1 2024") == "2024-01-01"
+    assert parse_iso_date("H1/2024") == "2024-01-01"
+    assert parse_iso_date("KW25 2024") == "2024-06-17"
+    assert parse_iso_date("2024 Q1") == "2024-01-01"
+    assert parse_iso_date("2024/Q1") == "2024-01-01"
+    assert parse_iso_date("2024-Q1") == "2024-01-01"
+    assert parse_iso_date("2024Q1") == "2024-01-01"
+    assert parse_iso_date("2024 KW 25") == "2024-06-17"
+    # Praepositions-Alternante bleibt aktiv
+    assert parse_iso_date("Q1 von 2024") == "2024-01-01"
+    assert parse_iso_date("H1 of 2024") == "2024-01-01"
+    assert parse_iso_date("KW 25 von 2024") == "2024-06-17"
