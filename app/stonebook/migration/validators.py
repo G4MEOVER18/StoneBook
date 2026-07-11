@@ -2463,6 +2463,70 @@ _GEOJSON_POINT_COORDS = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# GeoURI-Notation (RFC 5870) - Standard-URI-Schema fuer geografische Koordinaten,
+# verbreitet in: Android-Maps-Intents (``geo:``-Scheme aus der Android-Developer-
+# Doc, jeder "In Karten oeffnen"-Link aus einer Nachrichten-/Kalender-App),
+# vCard v4 (RFC 6350 §6.5.2, das GEO-Property speichert Kontakt-Standorte als
+# GeoURI), iCalendar RFC 7986 (VEVENT/VLOCATION mit GEO-Property, Sammler-
+# Kalender-Export mit Fundort-Termin), QR-Code-Standard "geo:"-Encoding fuer
+# Standort-QR-Codes (Feld-/Museums-Schilder mit QR-Standort), OpenStreetMap-
+# ``Share->geo:``-Format, ``osmand://`` und div. mobile Karten-Apps. RFC 5870
+# §3.3 fixiert die Reihenfolge (Latitude, Longitude, [Altitude]) - im Gegensatz
+# zur GeoJSON-/WKT-Konvention (Longitude, Latitude), also OHNE Achsen-Umsortierung.
+# Der Altitude (drittes Element) wird ignoriert (die App fuehrt keine
+# Elevation-Achse), symmetrisch zur Z-Achsen-Behandlung in :data:`_WKT_POINT`
+# und :data:`_GEOJSON_POINT_COORDS`. Parameter (``;crs=<crs>``, ``;u=<uncertainty>``,
+# beliebige Zusatzparameter) werden nach den Koordinaten toleriert aber
+# semantisch ignoriert (die App speichert Koordinaten immer in dem CRS, das
+# der Sammler eingegeben hat; RFC 5870 nennt WGS84 als Default und den einzigen
+# obligatorisch unterstuetzten Wert). Scheme-Match ist Case-Insensitive (per
+# RFC 3986 sind URI-Schemes Case-Insensitive; Android-Codegen produziert
+# ``geo:``, aber Copy-Paste aus einer Terminal-/Log-Ausgabe kann ``GEO:``
+# liefern). Match ist definitiv per anchored ``^`` - der GeoURI-Scheme-Marker
+# ``geo:`` disambiguiert eindeutig vom RFC-6068 mailto-Scheme und allen
+# anderen URI-Schemes; kein Fallback auf _DECIMAL_PAIR noetig (fuer die Standard-
+# RFC-5870-Form wuerde _DECIMAL_PAIR zwar dieselben zwei Zahlen extrahieren,
+# aber der Android-Query-Fall ``geo:0,0?q=<lat>,<lon>`` unten wuerde ohne
+# expliziten GeoURI-Zweig auf ``0,0`` fallen).
+_GEO_URI = re.compile(
+    r"""^\s*geo:\s*
+        ([-+]?\d+(?:\.\d+)?)                     # <lat>
+        \s*,\s*
+        ([-+]?\d+(?:\.\d+)?)                     # <lon>
+        (?:\s*,\s*[-+]?\d+(?:\.\d+)?)?           # optional <alt>
+        (?:\s*[;?].*)?                           # optional Parameter/Query-String
+        \s*$
+    """,
+    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+)
+# Google-Maps-Android-Intent-Form ``geo:0,0?q=<lat>,<lon>[(<label>)]`` - die
+# offizielle Android-Developer-Doc-Konvention fuer "Zeige Standort mit Label"
+# und "Zeige Suchergebnis an Position": der ``geo:``-Pfad enthaelt die
+# Platzhalter-Koordinaten ``0,0`` (Null Island), die *echten* Koordinaten
+# stehen im ``?q=<lat>,<lon>``-Query mit optionalem Label in Klammern. Diese
+# Form entsteht typischerweise, wenn der Sammler den "Teilen"-Button in
+# Google Maps drueckt und den generierten Intent-URI aus dem Share-Sheet
+# kopiert. Ohne diesen expliziten Zweig gewinnt der ``0,0``-Match aus dem
+# geo-Pfad, weil er zuerst matcht - und der Sammler bekommt silente
+# Null-Island-Koordinaten statt seiner Position. Muss VOR :data:`_GEO_URI`
+# gepruft werden, weil sonst die generische GeoURI-Form auf ``0,0`` (den
+# Platzhalter) matcht und der Query-Teil ignoriert wird. Label in Klammern
+# ist RFC-3986-Query-kompatibel (Klammern sind ``sub-delims``); der Label-
+# Text wird ignoriert (die App speichert Fundort-Bezeichnung im dedizierten
+# Feld, nicht als Teil der Koordinaten).
+_GEO_URI_ANDROID_QUERY = re.compile(
+    r"""^\s*geo:\s*
+        [-+]?\d+(?:\.\d+)?                        # placeholder <lat> (typisch 0)
+        \s*,\s*
+        [-+]?\d+(?:\.\d+)?                        # placeholder <lon> (typisch 0)
+        (?:\s*,\s*[-+]?\d+(?:\.\d+)?)?            # optional placeholder <alt>
+        \s*\?[^#]*?\bq=\s*
+        ([-+]?\d+(?:\.\d+)?)                      # echte <lat> im q-Parameter
+        \s*,\s*
+        ([-+]?\d+(?:\.\d+)?)                      # echte <lon> im q-Parameter
+    """,
+    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -3302,6 +3366,24 @@ def parse_coordinates(text) -> tuple[float, float] | None:
             lon = _to_float(m.group(1))
             lat = _to_float(m.group(2))
             return _validate(lat, lon)
+    # GeoURI-Notation (RFC 5870): "geo:<lat>,<lon>[,<alt>][;param=value...]".
+    # Android-Intent-Query-Form "geo:0,0?q=<lat>,<lon>(<label>)" muss VOR der
+    # generischen GeoURI-Form geprueft werden, weil sonst der Platzhalter-Pfad
+    # "0,0" matcht und die echten Koordinaten im ?q=-Query verworfen wuerden
+    # (silente Achsen-/Wert-Vertauschung: Sammler kopiert einen Google-Maps-
+    # Share-Intent aus der Android-App, bekommt (0.0, 0.0) statt seiner
+    # tatsaechlichen Position). Beide Zweige verwenden RFC-5870-Achsen-
+    # Reihenfolge (Lat, Lon) - kein _orient noetig (Reihenfolge ist im
+    # URI-Schema fix vorgegeben). Der RFC-5870-Zweig konsumiert den Rest
+    # der Eingabe (Parameter, Query) via anchored ".*"-Suffix, damit die
+    # generischen Fallback-Patterns (_DECIMAL_PAIR, _PREFIX_PAIR) keine
+    # sekundaeren Zahl-Paare aus Uncertainty/Altitude aufgreifen.
+    m = _GEO_URI_ANDROID_QUERY.match(s)
+    if m:
+        return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
+    m = _GEO_URI.match(s)
+    if m:
+        return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):

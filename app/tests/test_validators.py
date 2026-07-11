@@ -5815,3 +5815,122 @@ def test_parse_coordinates_geojson_point():
     assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
     assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
     assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)
+
+
+def test_parse_coordinates_geo_uri_rfc5870():
+    """GeoURI-Notation (RFC 5870) - Standard-URI-Schema fuer Geo-Koordinaten.
+
+    Verbreitet in Android-Maps-Intents (``geo:`` aus der Android-Developer-Doc:
+    jeder "In Karten oeffnen"-Link aus Nachrichten-/Kalender-Apps), vCard v4
+    (RFC 6350 §6.5.2 GEO-Property), iCalendar RFC 7986 (VEVENT GEO-Property,
+    Sammler-Kalender-Export mit Fundort-Termin), QR-Code-Standard-Encoding
+    fuer Standort-QR-Codes (Feld-/Museums-Schilder) und div. Karten-Apps.
+    RFC 5870 §3.3 fixiert die Reihenfolge (Latitude, Longitude, [Altitude]) -
+    im Gegensatz zur GeoJSON-/WKT-Konvention (Lon, Lat); Altitude und
+    Parameter (``;crs=``, ``;u=``) werden semantisch ignoriert. Standardform
+    (RFC 5870 §3.1): ``geo:<lat>,<lon>[,<alt>][;param=value...]``.
+    """
+    # Basisform (RFC 5870 §3.1 kanonisches Beispiel)
+    assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
+    # Mit Altitude (drittes Element, RFC 5870 §3.4)
+    assert parse_coordinates("geo:46.5,7.5,100") == (46.5, 7.5)
+    # Mit Uncertainty-Parameter (RFC 5870 §3.4.3, ``u=`` in Metern)
+    assert parse_coordinates("geo:46.5,7.5;u=65") == (46.5, 7.5)
+    # Mit CRS-Parameter (RFC 5870 §3.4.2, WGS84 als Default und einziger
+    # obligatorisch unterstuetzter Wert)
+    assert parse_coordinates("geo:46.5,7.5;crs=wgs84") == (46.5, 7.5)
+    # Mit Altitude, CRS und Uncertainty kombiniert (voller Parameter-Satz)
+    assert parse_coordinates(
+        "geo:46.5,7.5,100;crs=wgs84;u=10") == (46.5, 7.5)
+    # Uppercase-Scheme (RFC 3986 spec: URI-Schemes sind Case-Insensitive)
+    assert parse_coordinates("GEO:46.5,7.5") == (46.5, 7.5)
+    # Mixed-Case-Scheme
+    assert parse_coordinates("Geo:46.5,7.5") == (46.5, 7.5)
+    # Vorzeichen auf Lat/Lon (Suedhalbkugel / Westhalbkugel)
+    assert parse_coordinates("geo:-33.85,151.2") == (-33.85, 151.2)
+    assert parse_coordinates("geo:46.5,-7.5") == (46.5, -7.5)
+    assert parse_coordinates("geo:-46.5,-7.5") == (-46.5, -7.5)
+    # Explizites Plus-Vorzeichen (RFC 5870 laesst optionales ``+`` zu)
+    assert parse_coordinates("geo:+46.5,+7.5") == (46.5, 7.5)
+    # Ganzzahl-Werte (kein Dezimalpunkt)
+    assert parse_coordinates("geo:46,7") == (46.0, 7.0)
+    # Aequator/Null-Meridian (Null Island - formal gueltig)
+    assert parse_coordinates("geo:0,0") == (0.0, 0.0)
+    # Pol-Nord-Ost-Ecke (Grenzfall der Range-Pruefung)
+    assert parse_coordinates("geo:90,180") == (90.0, 180.0)
+    assert parse_coordinates("geo:-90,-180") == (-90.0, -180.0)
+    # Whitespace um den Doppelpunkt (tolerante Copy-Paste-Form)
+    assert parse_coordinates("geo: 46.5,7.5") == (46.5, 7.5)
+    # Fuehrende/Trailing Whitespace um den ganzen URI
+    assert parse_coordinates("  geo:46.5,7.5  ") == (46.5, 7.5)
+    # Zoom-Query (Google Maps Android-Extension, spec-konform als Query)
+    assert parse_coordinates("geo:46.5,7.5?z=15") == (46.5, 7.5)
+    # Zusaetzliche Query-Parameter (spec-konform als generisches URI-Query)
+    assert parse_coordinates("geo:46.5,7.5?z=15&label=Zermatt") == (46.5, 7.5)
+    # Out-of-Range Lat -> None (Validierung greift wie sonst)
+    assert parse_coordinates("geo:91,7.5") is None
+    assert parse_coordinates("geo:-91,7.5") is None
+    # Out-of-Range Lon -> None
+    assert parse_coordinates("geo:46.5,200") is None
+    assert parse_coordinates("geo:46.5,-200") is None
+    # Regression: alle bestehenden Formen bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)
+
+
+def test_parse_coordinates_geo_uri_android_intent():
+    """Google-Maps-Android-Intent-Form ``geo:0,0?q=<lat>,<lon>[(<label>)]``.
+
+    Offizielle Android-Developer-Doc-Konvention (siehe
+    ``developer.android.com/guide/components/intents-common#Maps``) fuer
+    "Zeige Standort mit Label" und "Zeige Suchergebnis an Position":
+    der ``geo:``-Pfad enthaelt die Platzhalter-Koordinaten ``0,0``
+    (Null Island), die *echten* Koordinaten stehen im ``?q=<lat>,<lon>``-
+    Query mit optionalem Label in Klammern. Diese Form entsteht typischerweise,
+    wenn der Sammler den "Teilen"-Button in Google Maps drueckt und den
+    generierten Intent-URI aus dem Share-Sheet kopiert (in eine Notiz-App,
+    einen Chat, in eine E-Mail). Ohne diesen expliziten Zweig gewinnt der
+    ``0,0``-Match aus dem geo-Pfad und der Sammler bekommt silente Null-
+    Island-Koordinaten statt seiner tatsaechlichen Position - besonders
+    schwer erkennbar, weil (0,0) formal ein gueltiges Lat/Lon-Paar ist und
+    die _validate-Range-Pruefung erfolgreich durchlaeuft.
+    """
+    # Standardform (Placeholder-Path + q mit Koordinaten)
+    assert parse_coordinates("geo:0,0?q=46.5,7.5") == (46.5, 7.5)
+    # Mit Label in Klammern (RFC-3986-sub-delims-kompatibel)
+    assert parse_coordinates("geo:0,0?q=46.5,7.5(Zermatt)") == (46.5, 7.5)
+    # Label mit Whitespace und mehreren Woertern
+    assert parse_coordinates(
+        "geo:0,0?q=47.037,7.749(Some Long Label With Spaces)"
+    ) == (47.037, 7.749)
+    # Case-Insensitivitaet auf Scheme (Android-Codegen produziert lowercase,
+    # aber Copy-Paste aus Terminal/Log-Output kann Uppercase liefern)
+    assert parse_coordinates("GEO:0,0?q=46.5,7.5") == (46.5, 7.5)
+    # Vorzeichen auf Query-Koordinaten (Suedhalbkugel-Fundorte)
+    assert parse_coordinates("geo:0,0?q=-33.85,151.2") == (-33.85, 151.2)
+    assert parse_coordinates("geo:0,0?q=-46.5,-7.5") == (-46.5, -7.5)
+    # Placeholder-Path mit .0-Dezimal-Notation (Android-Codegen-Variante)
+    assert parse_coordinates("geo:0.0,0.0?q=46.5,7.5") == (46.5, 7.5)
+    # Whitespace um den Doppelpunkt / q-Wert (tolerante Form)
+    assert parse_coordinates("geo:0,0?q= 46.5, 7.5") == (46.5, 7.5)
+    # Query-Koordinaten Out-of-Range -> None (Validierung greift)
+    assert parse_coordinates("geo:0,0?q=91,7.5") is None
+    assert parse_coordinates("geo:0,0?q=46.5,200") is None
+    # Regression: q mit Textadresse (kein Zahl-Paar) faellt auf die generische
+    # GeoURI-Form zurueck und liefert die Placeholder-Koordinaten (0,0). Der
+    # Sammler soll in diesem Fall die tatsaechliche Adresse manuell aufloesen
+    # und nachtragen; die (0,0)-Rueckgabe ist der eindeutig identifizierbare
+    # "keine echten Koordinaten"-Marker.
+    assert parse_coordinates("geo:0,0?q=Zermatt") == (0.0, 0.0)
+    assert parse_coordinates(
+        "geo:0,0?q=my+street+address") == (0.0, 0.0)
+    # Regression: geo: mit echten Koordinaten im Pfad UND q-Text-Label
+    # (spec-konform, siehe Android-Doc "Show given location with matching
+    # address as the label") - die Pfad-Koordinaten gewinnen
+    assert parse_coordinates("geo:46.5,7.5?q=Zermatt") == (46.5, 7.5)
+    # Regression: alle bestehenden Formen bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
