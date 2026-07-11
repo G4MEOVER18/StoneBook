@@ -983,6 +983,134 @@ def test_parse_range_scientific_notation_overflow():
     assert csv_loaders.parse_range("1e-400") == (0.0, 0.0)
 
 
+def test_parse_range_explizit_multiplikative_zehnerpotenz():
+    """``N × 10^M`` / ``N · 10^M`` / ``N × 10ᴹ`` wird als scientific notation ``NeM`` gelesen.
+
+    Explizit-multiplikative Form der wissenschaftlichen Zehnerpotenz ist der
+    typografische Standard in Print-Publikationen (Mineralogie-Handbuecher
+    Hollemann-Wiberg, Ternes Bio-Chemie, CRC Handbook of Chemistry and
+    Physics, IUPAC Green Book, Kluwer Handbook of Minerals) und in LaTeX-/
+    PDF-Publikationen; die kompakte E-Notation ``1.5e-3`` dominiert dagegen
+    in Excel-/CSV-/Terminal-Ausgaben. Typische Anwendungsfelder sind
+    Absorptions-Querschnitte in cm² (``2.5 × 10⁻¹⁹``), Loeslichkeitsprodukte
+    (``1.5 × 10⁻⁹``), Aktivitaeten radioaktiver Isotope (``4.5 · 10⁹ a``),
+    Kalibrier-Konstanten aus spektroskopischen Messungen (``1.5 × 10⁻³``),
+    Fluoreszenz-Lebensdauern (``3 · 10⁻⁶``), Bragg-Winkel-Beugungs-Faktoren
+    (``5.5 · 10⁻² Å``) und thermische Ausdehnungs-Koeffizienten (``β = 5.5
+    × 10⁻⁶ K⁻¹``).
+
+    Vor dem Fix fielen alle diese Formen still auf eine strukturell falsche
+    Range-Interpretation ``(mantisse, 10.0)``: die generische ``_NUM_RE``-
+    Extraktion las Mantisse und ``10`` als zwei separate Zahl-Tokens und
+    lieferte den unsinnigen Range mit dem Basis-Radix als vermeintlicher
+    Range-Grenze. Konkret: ``5.5 × 10^-3`` lieferte (5.5, 10.0) statt
+    (0.0055, 0.0055) - Groessenordnung komplett verloren, Wert mit dem
+    Basis-Radix vertauscht; ``2.5 · 10⁻¹⁹`` (Superskript-Form) analog auf
+    (2.5, 10.0) (der Superskript-Exponent faellt aus ``_NUM_RE`` heraus,
+    weil ``⁻¹⁹`` nicht in der ASCII-Zahl-Klasse liegt); ``1.5 * 10^3`` auf
+    (1.5, 10.0). Bei der Migration aus Mineralogie-/Physik-Publikationen mit
+    typografischer Explizit-Multiplikations-Notation entstand damit silenter
+    Groessenordnungs-Datenverlust auf jeder Wert-Achse ueber viele
+    Groessenordnungen hinweg.
+
+    Kollisionsfreiheit zur bestehenden E-Notation (``1e-3`` bleibt
+    unveraendert - hat keinen ``10``-Basis-Radix), zur Range-Notation
+    (``5-10`` bleibt Range - kein Multiplikations-Zeichen), zur Uncertainty-
+    Notation (``5 ± 3`` bleibt Uncertainty - kein Multiplikations-Zeichen),
+    zur SI-Kompakt-Einheit (``g cm^-3`` bleibt Einheit - keine Mantisse
+    davor), zur Dimensions-Notation (``5x10 cm`` bleibt Range - kein
+    Exponent nach ``10``).
+    """
+    # ASCII-Asterisk-Multiplikation (Terminal-/Log-/E-Mail-Notiz ohne Unicode).
+    assert csv_loaders.parse_range("5.5*10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5 * 10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5 * 10 ^ -3") == pytest.approx((0.0055, 0.0055))
+    # Unicode Middle Dot U+00B7 (DE-Print-Publikations-Standard).
+    assert csv_loaders.parse_range("5.5·10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5 · 10^-3") == pytest.approx((0.0055, 0.0055))
+    # Unicode Multiplication Sign U+00D7 (EN-Print-Publikations-Standard).
+    assert csv_loaders.parse_range("5.5×10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5 × 10^-3") == pytest.approx((0.0055, 0.0055))
+    # ASCII-Letter ``x``/``X`` (Typewriter-/Handschrift-Ersatz fuer ×).
+    assert csv_loaders.parse_range("5.5 x 10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5 X 10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5x10^-3") == pytest.approx((0.0055, 0.0055))
+    # Positiver Exponent ohne explizites Plus-Zeichen (Print-Standard).
+    assert csv_loaders.parse_range("5.5×10^3") == pytest.approx((5500.0, 5500.0))
+    assert csv_loaders.parse_range("5.5 × 10^3") == pytest.approx((5500.0, 5500.0))
+    assert csv_loaders.parse_range("5.5·10^3") == pytest.approx((5500.0, 5500.0))
+    # Explizites Plus-Vorzeichen (LaTeX-Roh-Export oder Excel-Auto-Format).
+    assert csv_loaders.parse_range("5.5×10^+3") == pytest.approx((5500.0, 5500.0))
+    # Exponent Null (Skalar ohne Groessenordnungs-Modifikation) - Regression-
+    # Anker fuer den Fall, dass die Zehnerpotenz nicht faelschlich zu 10
+    # (10^1) fehlgelesen wird.
+    assert csv_loaders.parse_range("2.65 × 10^0") == pytest.approx((2.65, 2.65))
+    # Unicode-Superskript-Exponent (typografischer Print-Publikations-
+    # Standard: die Explizit-Multiplikation wird oft mit Superskript-
+    # Exponent gesetzt, weil beide Elemente typografisch zusammen gehoeren).
+    assert csv_loaders.parse_range("5.5×10³") == pytest.approx((5500.0, 5500.0))
+    assert csv_loaders.parse_range("5.5·10³") == pytest.approx((5500.0, 5500.0))
+    assert csv_loaders.parse_range("5.5×10²") == pytest.approx((550.0, 550.0))
+    assert csv_loaders.parse_range("5.5×10⁻³") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5·10⁻³") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5.5×10⁻²") == pytest.approx((0.055, 0.055))
+    # Mehrstellige Superskript-Exponenten (astronomische Groessenordnungen
+    # aus Isotopen-HWZ und Absorptions-Querschnitten).
+    assert csv_loaders.parse_range("5.5×10⁻¹⁹") == pytest.approx((5.5e-19, 5.5e-19))
+    assert csv_loaders.parse_range("4.5×10⁹") == pytest.approx((4.5e9, 4.5e9))
+    # DE-Komma-Dezimal in der Mantisse (Publikationen aus DE-Print-Quellen
+    # kombinieren Komma-Dezimal mit Middle-Dot-Multiplikation).
+    assert csv_loaders.parse_range("5,5·10^-3") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("5,5 × 10⁻³") == pytest.approx((0.0055, 0.0055))
+    # Leading-Dot-Dezimal-Mantisse ohne fuehrende Null (US-/LaTeX-Konvention).
+    assert csv_loaders.parse_range(".5×10^-3") == pytest.approx((0.0005, 0.0005))
+    # Ganzzahl-Mantisse (Publikationen mit exakten Werten ohne Nachkommastelle).
+    assert csv_loaders.parse_range("2×10^3") == pytest.approx((2000.0, 2000.0))
+    assert csv_loaders.parse_range("1×10⁻³") == pytest.approx((0.001, 0.001))
+    # Trailing SI-Einheit nach dem Exponent (typischer Publikations-Setz
+    # ``2.65 × 10^3 kg/m^3``, ``1.5 × 10⁻⁹ mol/L``) - die Einheit hat
+    # eigene Ziffern, die durch ``_NUM_RE``-Lookbehind ausgeblendet werden.
+    assert csv_loaders.parse_range("5.5 × 10^-3 g/cm³") == pytest.approx((0.0055, 0.0055))
+    assert csv_loaders.parse_range("1.5 × 10⁻⁹ mol/L") == pytest.approx((1.5e-9, 1.5e-9))
+    # Negatives Vorzeichen vor der Mantisse (Kryo-Temperatur-Koeffizienten,
+    # Isotopen-Delta-Werte, δ¹³C/δ¹⁸O in extremen Fraktionierungs-Regimen).
+    assert csv_loaders.parse_range("-5.5 × 10^-3") == pytest.approx((-0.0055, -0.0055))
+    # Range mit explizit-multiplikativer Zehnerpotenz auf beiden Seiten
+    # (Kalibrier-Bereich, spektroskopischer Absorptions-Range).
+    assert csv_loaders.parse_range("1×10^-3 - 5×10^-3") == pytest.approx((0.001, 0.005))
+    assert csv_loaders.parse_range("1 × 10^3 - 5 × 10^3") == pytest.approx((1000.0, 5000.0))
+    assert csv_loaders.parse_range("1 × 10^3 bis 5 × 10^3") == pytest.approx((1000.0, 5000.0))
+    # Regression-Anker: die bestehende kompakte E-Notation bleibt
+    # unveraendert - hat keinen ``10``-Basis-Radix, matcht das neue
+    # Pattern nicht.
+    assert csv_loaders.parse_range("1e-3") == pytest.approx((0.001, 0.001))
+    assert csv_loaders.parse_range("1.5e-3") == pytest.approx((0.0015, 0.0015))
+    # Regression-Anker: die Range-Notation ``5-10`` bleibt Range - kein
+    # Multiplikations-Zeichen zwischen den Zahlen, das Pattern matcht nicht.
+    assert csv_loaders.parse_range("5-10") == (5.0, 10.0)
+    # Regression-Anker: die Dimensions-/Groessen-Notation ``5x10 cm``
+    # (Groessen-Angabe, nicht Zehnerpotenz) faellt weiter auf die
+    # bestehende Semantik - kein Exponent nach ``10``, das Pattern
+    # matcht nicht.
+    assert csv_loaders.parse_range("5x10 cm") == (5.0, 5.0)
+    # Regression-Anker: eine ``5x10`` ohne Exponent bleibt unveraendert
+    # (Groessen-Notation, keine wissenschaftliche Zehnerpotenz).
+    assert csv_loaders.parse_range("5x10") == (5.0, 5.0)
+    # Regression-Anker: Uncertainty-Notation ``5.5 ± 0.3`` bleibt
+    # Uncertainty - kein Multiplikations-Zeichen im Struktur-Anker.
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: SI-Kompakt-Einheit ``g cm^-3`` bleibt Einheit -
+    # keine Mantisse VOR dem Multiplikations-Zeichen (bzw. der ``^-3``-
+    # Sequenz), das Pattern matcht nicht.
+    assert csv_loaders.parse_range("2.65 g cm^-3") == pytest.approx((2.65, 2.65))
+    # Namens-/Katalog-Fragment mit ``x10``-Sequenz: das Lookbehind
+    # ``(?<![A-Za-z0-9])`` blockiert das Mantissa-Match nach Buchstaben,
+    # der Sample-/Katalog-Name wird nicht als Wert-Traeger fehlinterpretiert.
+    # Regression-Anker fuer den Fall, dass jemand das Lookbehind entfernt.
+    assert csv_loaders.parse_range("Sample5x10^-3 g") == (None, None) or \
+           csv_loaders.parse_range("Sample5x10^-3 g") == (0.0, 0.0)
+
+
 def test_parse_range_leading_dot_dezimal():
     """Leading-Dot-Dezimals ``.5`` / ``.05`` / ``.5e-3`` werden als Wert < 1 gelesen.
 

@@ -763,6 +763,126 @@ def _normalize_ascii_mixed_fractions(s: str) -> str:
     return _ASCII_MIXED_FRACTION_RE.sub(_ascii_mixed_fraction_replace, s)
 
 
+# Explizit-Multiplikations-Notation der wissenschaftlichen Zehnerpotenz
+# (``N × 10^M``, ``N · 10^M``, ``N * 10^M``, ``N x 10^M``, sowie die Unicode-
+# Superskript-Form ``N × 10ᴹ``) auf die kompakte E-Notation ``NeM`` abbilden.
+# In Mineralogie-/Physik-/Chemie-Publikationen der klassische typografische
+# Standard fuer Werte, die viele Groessenordnungen ueberspannen: Absorptions-
+# Querschnitte in cm² (``2.5 × 10⁻¹⁹``), Loeslichkeitsprodukte (``1.5 × 10⁻⁹
+# mol²/kg²``), Aktivitaeten radioaktiver Isotope (``4.5 · 10⁹ a``), Kalibrier-
+# Konstanten (``1.5 × 10⁻³``), Fluoreszenz-Lebensdauern (``3 · 10⁻⁶ s``), Bragg-
+# Winkel-Beugungs-Faktoren (``5.5 · 10⁻² Å``) sowie thermische Ausdehnungs-
+# Koeffizienten (``β = 5.5 × 10⁻⁶ K⁻¹``). Waehrend die kompakte E-Notation
+# ``2.5e-19`` in Computer-Ausgaben und Excel-Auto-Format dominiert, ist die
+# explizit-multiplikative Form ``2.5 × 10⁻¹⁹`` die kanonische Setz-Weise in
+# gedruckten Referenz-Tabellen, in LaTeX-/PDF-Publikationen und in Sammler-
+# Notizen, die aus Print-Quellen (Mineralogie-Handbuecher, Hollemann-Wiberg,
+# CRC Handbook) uebernommen wurden. Bisher fielen alle diese Formen still auf
+# eine strukturell falsche Range-Interpretation: die generische ``_NUM_RE``-
+# Extraktion las Mantisse und ``10`` als zwei separate Zahl-Tokens und lieferte
+# via ``(lo, hi)``-Aufbau den unsinnigen Range ``(<mantisse>, 10.0)``:
+# ``5.5 × 10^-3`` lieferte ``(5.5, 10.0)`` statt ``(0.0055, 0.0055)`` -
+# Groessenordnung komplett verloren, Wert mit dem Basis-Radix vertauscht;
+# ``2.5 · 10⁻¹⁹`` (Superskript-Form) analog auf ``(2.5, 10.0)`` (der Superskript-
+# Exponent faellt aus ``_NUM_RE`` heraus, weil ``⁻¹⁹`` nicht in der ASCII-
+# Zahl-Klasse liegt); ``1.5 * 10^3`` auf ``(1.5, 10.0)``. Bei der Migration aus
+# Mineralogie-/Physik-Publikationen mit typografischer Explizit-Multiplikations-
+# Notation entstand damit silenter Groessenordnungs-Datenverlust auf jeder Wert-
+# Achse (Dichte, Aktivitaet, Loeslichkeit, spektroskopische Konstante, thermischer
+# Koeffizient), oft ueber viele Groessenordnungen hinweg (``e-19`` -> 10 macht
+# Sammlungs-Statistik und JSON-Export unbrauchbar).
+#
+# Normalisierung als Preprocessing-Schritt vor allen Zahl-Extraktions-Zweigen:
+# Die explizit-multiplikative Form wird zur E-Notation gemappt, sodass die
+# nachgelagerten Zweige (Uncertainty-Match, Zahl-Extraktion mit ``_NUM_RE``)
+# transparent die bereits existierende E-Notations-Semantik nutzen. Der Schritt
+# ist idempotent (bei erneuter Anwendung matcht nichts) und lokal-beschraenkt
+# (matcht nur die vollstaendige Sequenz ``<mantisse> <mult-sign> 10 <exponent>``,
+# nicht Teil-Muster).
+#
+# Multiplikations-Signaturen:
+# - ``·`` (U+00B7, Middle Dot): typografischer Standard fuer Multiplikation in
+#   DE-Print-Publikationen (Hollemann-Wiberg, Ternes Bio-Chemie, Straus/Sailer).
+# - ``×`` (U+00D7, Multiplication Sign): typografischer Standard fuer
+#   Multiplikation in EN-Print-Publikationen (CRC Handbook, IUPAC Green Book,
+#   Kluwer Handbook of Minerals).
+# - ``*`` (U+002A, Asterisk): ASCII-Ersatz fuer Multiplikation in Terminal-/
+#   Log-/E-Mail-Notizen und LaTeX-Roh-Exporten ohne Unicode.
+# - ``x``/``X`` (U+0078/U+0058, letter): ASCII-Ersatz fuer Multiplikation in
+#   Typewriter-/Terminal-Notizen; identisch behandelt zu ``×``, weil beide in
+#   handschriftlichen und Terminal-Kontexten austauschbar sind. Das Lookbehind
+#   ``(?<![A-Za-z0-9])`` an der Match-Start-Position schuetzt vor Namens-
+#   Fragmenten wie ``Sample5x10^-3`` (der ``5`` in ``Sample5`` ist Teil des
+#   Namens, kein Wert-Token) und Katalog-Nummern.
+#
+# Exponent-Signaturen:
+# - ``^<sign?><digits>``: ASCII-Caret-Notation, verbreitet in Terminal-/Plain-
+#   Text-/LaTeX-Roh-Quellen.
+# - ``<superscript-digits>``: Unicode-Superskript (U+2070-U+2079 fuer Ziffern,
+#   U+207B/U+207A fuer Vorzeichen), typografischer Standard in gedruckten
+#   Publikationen und modernem Word-/PDF-Autoformat.
+#
+# Kollisionsfreiheit:
+# - Zur bestehenden E-Notation ``1e-3``: die E-Notation hat keinen ``10``-
+#   Basis-Radix in ihrer Struktur; das Match-Pattern fordert die explizite
+#   ``10``-Sequenz, die in ``1e-3`` nicht existiert.
+# - Zur Range-Notation ``5-10``: das Match-Pattern fordert eine Multiplikations-
+#   Signatur ZWISCHEN Mantisse und ``10``; ein Range hat statt dessen einen
+#   Hyphen und trifft das Pattern nicht.
+# - Zur Uncertainty-Notation ``5 ± 3``: das Match-Pattern fordert die
+#   Multiplikations-Signatur; ``±`` matcht nicht.
+# - Zur SI-Kompakt-Einheit ``g cm^-3``: das Match-Pattern fordert eine Mantisse
+#   VOR der Multiplikations-Signatur; ``cm^-3`` beginnt mit Buchstaben, keine
+#   Mantisse davor, kein Match.
+# - Zur Dimensions-/Groessen-Notation ``5x10 cm``: das Match-Pattern fordert
+#   nach ``10`` einen Exponenten (``^<int>`` oder Superskript); ``5x10 cm``
+#   hat weder das eine noch das andere, wird nicht angetastet und faellt
+#   weiterhin auf die bestehende Range-Interpretation ``(5, 10)`` zurueck.
+_UNICODE_SUPERSCRIPT_MAP = str.maketrans({
+    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+    "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    "⁻": "-", "⁺": "+",
+})
+
+_EXPLICIT_EXPONENT_RE = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(?P<mantissa>\d+(?:[.,]\d+)?|\.\d+)"
+    r"\s*(?:[·×*]|[xX])\s*"
+    r"10"
+    r"(?:"
+    r"\s*\^\s*(?P<caret>[+-]?\d+)"
+    r"|"
+    r"(?P<superscript>[⁰¹²³⁴⁵⁶⁷⁸⁹][⁰¹²³⁴⁵⁶⁷⁸⁹]*|[⁻⁺][⁰¹²³⁴⁵⁶⁷⁸⁹]+)"
+    r")"
+    r"(?![.,\d])"
+)
+
+
+def _normalize_explicit_multiplication_exponent(s: str) -> str:
+    """Ersetzt ``N × 10^M`` / ``N · 10^M`` / ``N × 10ᴹ`` durch ``NeM``.
+
+    Explizit-multiplikative Form der wissenschaftlichen Zehnerpotenz ist der
+    typografische Standard in Print-Publikationen (Mineralogie-Handbuecher,
+    Hollemann-Wiberg, CRC Handbook, IUPAC Green Book) und in LaTeX-/PDF-
+    Quellen; die kompakte E-Notation ``1.5e-3`` dominiert in Computer-
+    Ausgaben. Ohne diese Normalisierung wuerden alle Explizit-Formen als
+    Range ``(mantisse, 10.0)`` fehlgelesen und die Groessenordnung ginge
+    stille verloren - typisch fuer Absorptions-Querschnitte, Loeslichkeits-
+    produkte, Isotopen-Aktivitaeten, Kalibrier-Konstanten. Siehe
+    :data:`_EXPLICIT_EXPONENT_RE` fuer die Multiplikations- und Exponent-
+    Signaturen sowie die Kollisions-Schutz-Zonen.
+    """
+    def _replace(m: re.Match) -> str:
+        mantissa = m.group("mantissa")
+        caret = m.group("caret")
+        if caret is not None:
+            exponent = caret
+        else:
+            exponent = m.group("superscript").translate(_UNICODE_SUPERSCRIPT_MAP)
+        return f"{mantissa}e{exponent}"
+    return _EXPLICIT_EXPONENT_RE.sub(_replace, s)
+
+
 def _strip_bracketed_annotations(s: str) -> str:
     """Entfernt runde/eckige/geschweifte Klammer-Annotationen inklusive Nest.
 
@@ -921,6 +1041,17 @@ def parse_range(text) -> tuple[float | None, float | None]:
     if text is None:
         return None, None
     s = normalize_numeric_locale(str(text))
+    # Explizit-multiplikative Form der wissenschaftlichen Zehnerpotenz
+    # (``5.5 × 10^-3``, ``5.5 · 10⁻³``, ``5.5 * 10^-3``, ``5.5 x 10^-3``)
+    # auf die kompakte E-Notation ``5.5e-3`` abbilden, damit die publizierte
+    # Groessenordnung von der bereits existierenden E-Notations-Semantik in
+    # ``_NUM_RE`` transparent gelesen wird. Ohne diese Normalisierung wuerden
+    # Print-Publikations-Werte als Range ``(5.5, 10.0)`` fehlgelesen (der
+    # Basis-Radix ``10`` als vermeintliche Range-Grenze extrahiert) und die
+    # eigentliche Groessenordnung ginge stille verloren. Siehe
+    # :func:`_normalize_explicit_multiplication_exponent` fuer Details zu
+    # Multiplikations-/Exponent-Signaturen und Kollisions-Schutz.
+    s = _normalize_explicit_multiplication_exponent(s)
     # Unicode-Vulgar-Fraktionen (¼/½/¾ und U+2150-U+215E) vor allen weiteren
     # Zweigen normalisieren: die Fraktion ist ein Wert-Bestandteil, kein
     # Separator - Mixed-Form ``5½`` -> ``5.5``, Standalone ``½`` -> ``0.5``.
