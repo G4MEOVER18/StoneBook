@@ -419,8 +419,45 @@ _WEEKDAY_PREFIX = re.compile(
 # ``abc``) nicht als TZ interpretiert werden; einzelnes ``Z`` ist Zulu und
 # wird durch den vorhandenen ``[Zz]``-Branch abgedeckt (deshalb hier
 # Mindestlaenge 2, um Kollision zu vermeiden).
+#
+# Zweite Alternante ``(?<=\d)[Tt]\d{4}(?:\d{2})?(?:[.,]\d+)?`` deckt die
+# kompakte ISO 8601 Basic-Form ohne Trenner ab: ``T143200`` (HHMMSS),
+# ``T1432`` (HHMM), ``T143200.123`` (HHMMSS mit Sekundenbruchteil), symmetrisch
+# zur kollektionerweiterten Form mit Sekundenbruch aus der ersten Alternante.
+# Standard-Serialisierungs-Form fuer datei-basierte Zeitstempel (Backup-/
+# Log-Rotations-Skripte schreiben typisch ``stone_20240613T143200.sqlite3``,
+# ``export_20240613T143200.tar.gz``), fuer Git-Branch-/Tag-Namen (``release/
+# 20240613T143200``), fuer ISO 8601 basic profile in RFC-2822/RFC-3339-nahen
+# Log-Formaten und fuer manche EXIF-DateTimeOriginal-Feldwerte in JPEG-/RAW-
+# Kameras (Sony/Canon-Auto-Rename kombiniert manchmal die basic-Form mit dem
+# Ordner-Namen zu Datei-Stempeln). Bisher fielen alle basic-Form-Datetime-
+# Notationen still auf None, obwohl das Datum vor dem T-Separator eindeutig
+# kompakt-lesbar war (``20240613`` -> 2024-06-13 via _DATE_FORMATS-``%Y%m%d``):
+# ``20240613T143200`` -> None statt 2024-06-13 (Datum-Kompakt-Form wird durch
+# das T-Time-Suffix blockiert), ``20240613T143200Z`` und
+# ``20240613T143200+0200`` analog (TZ-Suffix schon in der ersten Alternante
+# abgedeckt, aber die kompakte Zeit selbst faellt aus dem Colon-Muster
+# heraus).
+#
+# Lookbehind ``(?<=\d)`` blockiert die Substitution, wenn dem ``T`` kein
+# Ziffer vorangeht - schuetzt vor falsch-positiven Strips wie ``Bezirk T2024``
+# oder ``Text T2024``, wo ``T2024`` semantisch ein Katalog-Marker oder
+# Namens-Suffix ist, kein Zeit-Fragment. Fuer die legitime Basic-Form
+# ``20240613T143200`` steht die Kompakt-Datum-Ziffer vor dem T; fuer
+# Katalog-/Namens-Kontext steht ein Buchstabe oder Whitespace davor.
+#
+# Nur ``[Tt]`` (kein Whitespace-Trenner) fuer die Kompakt-Form: die
+# Whitespace-Form ``20240613 143200`` ist nicht ISO 8601 basic profile und
+# koennte in Sammler-Notizen mit Katalog-/Referenz-Nummern (``1985 12345``)
+# kollidieren; die Basic-Form-Konvention setzt zwingend ``T`` als Datum-Zeit-
+# Trenner. Die 4-oder-6-Ziffern-Alternante (HHMM oder HHMMSS) ist die
+# vollstaendige ISO 8601 basic time-Form; 5-Ziffer- oder andere Zwischen-
+# Formen sind semantisch undefiniert und bleiben unangetastet.
 _TRAILING_TIME = re.compile(
+    r"(?:"
     r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
+    r"|(?<=\d)[Tt]\d{4}(?:\d{2})?(?:[.,]\d+)?"
+    r")"
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2}|\s+[A-Z]{2,5})?\s*$"
 )
 # Standalone-Trailing-Zeitzone ohne Zeitanteil ("2024-06-13 UTC", "1985 GMT",

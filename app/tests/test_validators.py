@@ -351,6 +351,61 @@ def test_parse_iso_date_iso_datetime():
     assert parse_iso_date("2024-06-13T10:00:00-0500") == "2024-06-13"
 
 
+def test_parse_iso_date_iso_datetime_compact_basic():
+    """ISO 8601 Basic-Form ohne Trenner: ``20240613T143200`` / ``20240613T1432``.
+
+    Standard-Serialisierungs-Form fuer datei-basierte Zeitstempel (Backup-/
+    Log-Rotations-Skripte schreiben typisch ``stone_20240613T143200.sqlite3``,
+    ``export_20240613T143200.tar.gz``), Git-Branch-/Tag-Namen (``release/
+    20240613T143200``), RFC-3339-nahe Log-Formate und manche EXIF-DateTime-
+    Original-Feldwerte in JPEG-/RAW-Kameras. Bisher fielen alle basic-Form-
+    Datetime-Notationen still auf None, obwohl das Datum vor dem T-Separator
+    eindeutig kompakt-lesbar war (``20240613`` -> 2024-06-13 via
+    _DATE_FORMATS-``%Y%m%d``): der T-Time-Suffix in der kompakten Form
+    ``T143200`` blockierte das nachfolgende ``%Y%m%d``-Matching und der
+    Trailing-Time-Strip verlangte in der ersten Alternante zwingend Colons
+    im Zeit-Anteil (``\\d{1,2}:\\d{2}``). Die zweite Alternante
+    ``(?<=\\d)[Tt]\\d{4}(?:\\d{2})?(?:[.,]\\d+)?`` deckt die kompakte
+    Time-Form ab; Lookbehind ``(?<=\\d)`` schuetzt vor Katalog-/Namens-
+    Kontext (``Bezirk T2024``, ``Text T2024``), wo das T semantisch ein
+    Namens-Suffix ist.
+    """
+    # HHMMSS-Vollform (Sekunden-genau) - die kanonische ISO 8601 basic-Form.
+    assert parse_iso_date("20240613T143200") == "2024-06-13"
+    # HHMM-Kurzform (Minuten-genau) - in kompakten Log-Stempeln und Datei-
+    # Rotations-Skripten die minimalste zeitliche Rasterung.
+    assert parse_iso_date("20240613T1432") == "2024-06-13"
+    # Zulu-Suffix ``Z``: UTC ohne Offset, spiegelt die Colon-Form-Konvention
+    # (``2024-06-13T14:32:00Z``) auf die basic-Form.
+    assert parse_iso_date("20240613T143200Z") == "2024-06-13"
+    # Numerischer Offset (``+0200`` / ``-0500``): spiegelt die Colon-Form.
+    assert parse_iso_date("20240613T143200+0200") == "2024-06-13"
+    assert parse_iso_date("20240613T143200-0500") == "2024-06-13"
+    # Sekundenbruchteil mit Punkt- und Komma-Dezimal (ISO 8601 laesst beide
+    # zu, empfiehlt Komma; Systeme in EU-Locales schreiben oft Komma).
+    assert parse_iso_date("20240613T143200.123") == "2024-06-13"
+    assert parse_iso_date("20240613T143200,5") == "2024-06-13"
+    # Benannter TZ-Suffix (``UTC``/``CET``/``MEZ``): spiegelt die Colon-Form-
+    # Konvention der Whitelist-Suffixe.
+    assert parse_iso_date("20240613T143200 UTC") == "2024-06-13"
+    # Case-insensitive ``T`` (kleines ``t``): manche Log-Formate schreiben
+    # ``t`` als Trenner (RFC 3339 laesst beide zu).
+    assert parse_iso_date("20240613t143200") == "2024-06-13"
+    # Lookbehind-Schutz: ``T`` nach Nicht-Ziffer wird NICHT als Zeit-Trenner
+    # interpretiert - schuetzt vor falsch-positiven Strips in Katalog-/
+    # Namens-Kontext.
+    assert parse_iso_date("Bezirk T143200") is None
+    assert parse_iso_date("2024 T2024") is None
+    # Ambivalente Ziffern-Zahl (1/2/3/5 Ziffern nach ``T``) - nur 4 und 6
+    # sind spec-konforme basic time-Formen.
+    assert parse_iso_date("20240613T1") is None
+    assert parse_iso_date("20240613T12") is None
+    assert parse_iso_date("20240613T123") is None
+    # Regression-Anker: die Colon-Form bleibt unveraendert.
+    assert parse_iso_date("2024-06-13T14:32:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:32:00") == "2024-06-13"
+
+
 def test_parse_iso_date_iso_datetime_komma_dezimal():
     """ISO 8601 schreibt Komma als bevorzugten Dezimal-Separator im Zeitanteil vor."""
     # Reines ISO mit Komma-Decimal in Sekundenbruch
