@@ -5726,3 +5726,92 @@ def test_parse_iso_date_periodenmarker_underscore_separator():
     assert parse_iso_date("Q1 von 2024") == "2024-01-01"
     assert parse_iso_date("H1 of 2024") == "2024-01-01"
     assert parse_iso_date("KW 25 von 2024") == "2024-06-17"
+
+
+def test_parse_coordinates_geojson_point():
+    """GeoJSON-Point-Notation (RFC 7946) - Achsen-Reihenfolge (Lon, Lat).
+
+    Aus JSON-basierten GIS-Werkzeugketten (geojson.io, Mapbox, Leaflet,
+    Folium, geopandas .to_json(), QGIS "Save As... GeoJSON", ogr2ogr -f
+    GeoJSON, Overpass-Turbo, Nominatim ``format=geojson``) und API-Response-
+    Snippets. RFC 7946 §3.1.1 fixiert die Reihenfolge (Longitude, Latitude)
+    im Coordinates-Array; ohne diesen Zweig fielen alle GeoJSON-Point-Texte
+    durch :data:`_DECIMAL_PAIR` (Komma-Separator im ``[X, Y]``-Array) und
+    lieferten silente Achsen-Vertauschung ((7.5, 46.5) statt (46.5, 7.5)).
+    """
+    # Basisform (voller GeoJSON-Point mit Type und Coordinates)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [7.5, 46.5]}') == (46.5, 7.5)
+    # Coordinates VOR Type (JSON-Member-Reihenfolge ist per spec unerheblich)
+    assert parse_coordinates(
+        '{"coordinates": [7.5, 46.5], "type": "Point"}') == (46.5, 7.5)
+    # Kompakte Form ohne Whitespace um den Doppelpunkt / im Array
+    assert parse_coordinates(
+        '{"type":"Point","coordinates":[7.5,46.5]}') == (46.5, 7.5)
+    # Formatiert mit Zeilenumbruechen (pretty-print aus geojson.io)
+    assert parse_coordinates(
+        '{\n  "type": "Point",\n  "coordinates": [7.5, 46.5]\n}') == (46.5, 7.5)
+    # Case-Insensitivitaet auf Type=Point (nicht-kanonische Casing aus JS-Codegen)
+    assert parse_coordinates(
+        '{"type": "point", "coordinates": [7.5, 46.5]}') == (46.5, 7.5)
+    assert parse_coordinates(
+        '{"type": "POINT", "coordinates": [7.5, 46.5]}') == (46.5, 7.5)
+    # Single-Quotes statt Double-Quotes (Python-Repr-Form)
+    assert parse_coordinates(
+        "{'type': 'Point', 'coordinates': [7.5, 46.5]}") == (46.5, 7.5)
+    # Elevation als drittes Element (RFC 7946 §3.1.1 SHOULD-Klausel)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [7.5, 46.5, 800]}') == (46.5, 7.5)
+    # Vorzeichen auf Lon / Lat
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [-7.5, 46.5]}') == (46.5, -7.5)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [7.5, -46.5]}') == (-46.5, 7.5)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [-7.5, -46.5]}') == (-46.5, -7.5)
+    # Wissenschaftliche Notation (JSON-Spec erlaubt E±N)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [7.5e0, 4.65e1]}') == (46.5, 7.5)
+    # Feature-Wrapper (der Type-Marker der Geometry gewinnt, weil er direkt
+    # neben dem Coordinates-Feld steht - Sammler kopiert ganze Feature-JSON
+    # aus geojson.io oder Overpass-Turbo)
+    assert parse_coordinates(
+        '{"type": "Feature", "geometry": {"type": "Point", '
+        '"coordinates": [7.5, 46.5]}, "properties": {}}') == (46.5, 7.5)
+    # Grenzfaelle: Aequator/Null-Meridian, Pol-Nord-Ost-Ecke
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [0, 0]}') == (0.0, 0.0)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [180, 90]}') == (90.0, 180.0)
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [-180, -90]}') == (-90.0, -180.0)
+    # Out-of-Range Lon -> None
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [200, 46.5]}') is None
+    # Out-of-Range Lat -> None
+    assert parse_coordinates(
+        '{"type": "Point", "coordinates": [7.5, 91.0]}') is None
+    # Fehlender Type-Marker -> Fallback auf _DECIMAL_PAIR (silente Vertauschung,
+    # weil kein GeoJSON-Achsen-Signal vorliegt - dokumentiert). Sammler soll
+    # den vollen GeoJSON-Snippet mit Type-Feld kopieren, nicht nur den Array.
+    assert parse_coordinates('"coordinates": [7.5, 46.5]') == (7.5, 46.5)
+    # Fehlendes Coordinates-Feld -> None (kein GeoJSON-Match, kein Zahl-Paar
+    # im Rest der Type-Deklaration)
+    assert parse_coordinates('{"type": "Point"}') is None
+    # Type=MultiPoint/LineString/Polygon -> kein Match (semantisch nicht als
+    # Einzelpunkt-Fundort abbildbar, faellt auf Fallback zurueck)
+    assert parse_coordinates(
+        '{"type": "MultiPoint", "coordinates": [[7.5, 46.5], [8.0, 47.0]]}'
+    ) != (46.5, 7.5)
+    assert parse_coordinates(
+        '{"type": "LineString", "coordinates": [[7.5, 46.5], [8.0, 47.0]]}'
+    ) != (46.5, 7.5)
+    # Fuehrende/Trailing Whitespace um den ganzen JSON-Blob
+    assert parse_coordinates(
+        '  {"type": "Point", "coordinates": [7.5, 46.5]}  ') == (46.5, 7.5)
+    # Regression: alle bestehenden Formen bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)

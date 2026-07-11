@@ -2401,6 +2401,68 @@ _WKT_POINT = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# GeoJSON-Point-Notation (RFC 7946) - Standard-Serialisierungs-Form fuer Punkt-
+# Geometrien aus JSON-basierten GIS-Werkzeugketten: geojson.io, Mapbox, Leaflet,
+# Folium, geopandas .to_json(), QGIS "Save As... GeoJSON", ogr2ogr -f GeoJSON,
+# Overpass-Turbo-Export und jeder Web-Karten-Frontend, der auf GeoJSON basiert.
+# Die RFC-7946-Achsen-Konvention ist fix vorgegeben (§3.1.1): "A position is an
+# array of numbers. There MUST be two or more elements. The first two elements
+# are longitude and latitude, or easting and northing, precisely in that order
+# and using decimal numbers." - also (Lon, Lat), spiegelt die WKT-Konvention
+# aus OGC Simple Features. Vor diesem Pattern fiel jeder GeoJSON-Point-Text
+# durch :data:`_DECIMAL_PAIR` (Komma-Separator zwischen den zwei Zahlen im
+# ``[X, Y]``-Array) und lieferte silente Achsen-Vertauschung: ``{"type":
+# "Point", "coordinates": [7.5, 46.5]}`` wurde als ``(lat=7.5, lon=46.5)``
+# gelesen, obwohl der publizierte Wert lat=46.5, lon=7.5 meint. Aus einem
+# typischen Sammler-Workflow "Fundort in geojson.io / QGIS anzeigen ->
+# GeoJSON-Feature kopieren -> ins Fundort-Feld einfuegen" oder aus einem
+# API-Response-Snippet (Overpass, Nominatim mit ``format=geojson``, Mapbox
+# Directions API, ArcGIS REST) entstand damit silenter Achsen-Vertauschungs-
+# Fehler bei der Migration; besonders schwer erkennbar, weil ``(7.5, 46.5)``
+# formal ein gueltiges Lat/Lon-Paar ist (Nord-Atlantik) und die _validate-
+# Range-Pruefung erfolgreich durchlaeuft. Match ist definitiv: wenn der
+# GeoJSON-Point-Marker (Type-Feld mit Wert "Point" plus Coordinates-Feld
+# mit Zwei-Element-Array) erkannt wird, ist die (Lon, Lat)-Reihenfolge
+# eindeutig, und ein Fallback auf _DECIMAL_PAIR wuerde exakt die Vertauschung
+# reintroduzieren, die dieser Zweig fixt. Nur Type=``Point`` wird als
+# eindeutig behandelt: MultiPoint/LineString/Polygon haben verschachtelte
+# Arrays (``[[X,Y], [X,Y], ...]``) und liefern semantisch einen Set/Pfad,
+# der nicht auf einen Sammler-Fundort abbildbar ist - diese Formen fallen
+# bewusst auf den bestehenden Fallback zurueck (analog zur MULTIPOINT-
+# Regression im WKT-Test). Der Type-Match ist Case-Insensitive, weil einige
+# Kette (besonders JavaScript/TypeScript-Codegen, kleingeschriebene JSON-
+# APIs, Sammler-Hand-Notationen) die kanonische Titlecase-Form nicht
+# einhalten. Der Coordinates-Array laesst optional ein drittes Element
+# fuer die Elevation zu (RFC 7946 §3.1.1: "Implementations SHOULD NOT
+# extend positions beyond three elements") - Elevation wird ignoriert
+# (die App fuehrt keine Elevation-Achse), symmetrisch zur Z-Achse-Behandlung
+# in _WKT_POINT. Reine JSON-Numeric-Notation (kein DE-Komma-Dezimal, kein
+# ° / N/S/E/W): der JSON-Standard spezifiziert ``.`` als Dezimaltrenner
+# und toleriert keine Locale-Varianten. Wissenschaftliche Notation E±N
+# ist per JSON-Spec erlaubt und wird symmetrisch zu den uebrigen Coord-
+# Patterns akzeptiert. Kollisionsfrei zu :data:`_COORD_LABEL` (weder
+# ``type`` noch ``coordinates`` sind dort gelistet - die neuen Substrings
+# stehen im JSON-Kontext mit Quote-Marker, sodass ``lon``-Substrings im
+# JSON-Key-Namen keinen Label-Strip triggern) und zu allen Zahl-Paar-
+# Patterns (die Suche nach den zwei Marker-Substrings ist strenger als
+# jede generische Zahl-Extraktion). Zwei Reihenfolgen des Type/Coordinates-
+# Members werden akzeptiert (JSON-Objekt-Member-Reihenfolge ist per
+# spec unerheblich): der Type-Match und der Coordinates-Match laufen als
+# zwei unabhaengige .search()-Aufrufe, die beide fuendig werden muessen.
+_GEOJSON_POINT_TYPE = re.compile(
+    r"""["']type["']\s*:\s*["']Point["']""",
+    re.IGNORECASE,
+)
+_GEOJSON_POINT_COORDS = re.compile(
+    r"""["']coordinates["']\s*:\s*\[\s*
+        ([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)   # X = Longitude
+        \s*,\s*
+        ([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)   # Y = Latitude
+        (?:\s*,\s*[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)?   # optionale Elevation (Z)
+        \s*\]
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -3223,6 +3285,23 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         lon = _to_float(m.group(1))
         lat = _to_float(m.group(2))
         return _validate(lat, lon)
+    # GeoJSON-Point-Notation (RFC 7946): Type=``Point`` + Coordinates=``[lon, lat]``.
+    # Vor allen Zahl-Paar-Patterns extrahieren, weil das erste Zahl-Feld die
+    # Longitude ist, nicht die Latitude - _DECIMAL_PAIR (Komma-Separator ohne
+    # Direction-Buchstaben) wuerde sonst (lon, lat) als (lat, lon) lesen und
+    # die publizierten Achsen silente vertauschen (analog zum WKT-POINT-Fall).
+    # Match ist definitiv nur, wenn BEIDE Marker (Type=Point, Coordinates-Array)
+    # vorhanden sind - dann ist die (Lon, Lat)-Reihenfolge per RFC 7946 §3.1.1
+    # eindeutig. Fallback auf _DECIMAL_PAIR wuerde exakt die Vertauschung
+    # reintroduzieren, die dieser Zweig fixt. Fehlt der Type-Marker oder das
+    # Coordinates-Feld, faellt die Eingabe auf das bestehende Verhalten zurueck
+    # (kein GeoJSON, generische Zahl-Paar-Extraktion greift).
+    if _GEOJSON_POINT_TYPE.search(s):
+        m = _GEOJSON_POINT_COORDS.search(s)
+        if m:
+            lon = _to_float(m.group(1))
+            lat = _to_float(m.group(2))
+            return _validate(lat, lon)
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):
