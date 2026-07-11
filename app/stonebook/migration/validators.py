@@ -1351,8 +1351,20 @@ _HALFYEAR_MONTHS: dict[int, int] = {1: 1, 2: 7}
 # "H1 2024" / "H1/2024" / "H1-2024" / "1H 2024" - Kurzform symmetrisch zu
 # _QUARTER_SHORT. Akzeptiert Q-Stil ("H1") und Postfix-Stil ("1H"); optionaler
 # Separator [/.\-,] zwischen H und Jahr (analog Quartal).
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen H-Marker und Jahr deckt
+# die natuerlichsprachige DE-/EN-Prosa-Form ``H1 von 2024`` / ``H2 of 1985`` /
+# ``1H von 2024`` ab, die in Sammler-Fund-Tagebuechern und Geschaefts-Halbjahres-
+# Prosa die uebliche Verbindungs-Form zwischen Halbjahres-Marker und Jahr ist
+# ("Fund H1 von 2024 im Aaregebiet", "Bergtour 2H of 2019 an der Tucson-Boerse",
+# "Erwerb H2 von 2020 Zermatt-Bergtour"). Spiegelt die identische Erweiterung
+# in :data:`_QUARTER_SHORT` (Commit ...) und :data:`_KW_YEAR` (Wochen-Achse)
+# auf die Halbjahres-Achse. Beide Praepositionen verlangen Whitespace auf
+# beiden Seiten, sodass Kompositum- und angehaengte Formen unangetastet auf
+# None fallen. Kollisionsfrei zu :data:`_HALFYEAR_YEAR_FIRST` (Year-First-Form,
+# dort ist die Praepositions-Semantik nicht idiomatisch).
 _HALFYEAR_SHORT = re.compile(
-    r"^\s*(?:H\s*([1-2])|([1-2])\s*H)\s*[/.\-,]?\s*(\d{4})\s*$",
+    r"^\s*(?:H\s*([1-2])|([1-2])\s*H)"
+    r"(?:\s*[/.\-,]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # "1. Halbjahr 2024" / "Halbjahr 1 2024" / "2. Halfyear 1985" / "1. Half-Year 2024"
@@ -1362,10 +1374,19 @@ _HALFYEAR_SHORT = re.compile(
 # ("the half year ended..."); EN-Form lebt von der Bindestrich-/Compound-
 # Variante ("half-year"/"halfyear"), die in Reports der ueblichen Praxis
 # entspricht.
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Halbjahr-Wort/Zahl und
+# Jahr symmetrisch zur Kurzform (``1. Halbjahr von 2024`` / ``Halbjahr 1 of
+# 2024`` / ``2. Halfyear of 1985`` / ``1. Half-Year von 2020``). In Prosa-
+# Etiketten und Sammler-Notizen ist die Langform-Praepositions-Verbindung die
+# haeufigere natuerlichsprachige DE-/EN-Form gegenueber der Kurzform-H1-
+# Notation, da die ausgeschriebene Halbjahr/Halfyear-Bezeichnung typischer
+# fuer Fliesstext ist ("Erwerb 1. Halbjahr von 2020 Zermatt-Bergtour", "Fund
+# 2. Halfyear of 2019 Tucson-Boerse", "Aktivitaeten Halbjahr 1 von 2024
+# Aaregebiet-Sammlung").
 _HALFYEAR_LONG = re.compile(
     r"^\s*(?:([1-2])\s*\.?\s*(?:halbjahr|half-?year)"
     r"|(?:halbjahr|half-?year)\s+([1-2]))"
-    r"\s*[/.\-, ]?\s*(\d{4})\s*$",
+    r"(?:\s*[/.\-, ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Year-first Halbjahres-Notation ("2024-H1", "2024 H1", "2024H1", "2024-1H")

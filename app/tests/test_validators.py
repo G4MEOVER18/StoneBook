@@ -3887,6 +3887,98 @@ def test_parse_iso_date_quartal_praeposition_von_of():
     assert parse_iso_date("2024 1. Quartal") == "2024-01-01"
 
 
+def test_parse_iso_date_halbjahr_praeposition_von_of():
+    """Halbjahres-Notation mit Wort-Praeposition ``von`` (DE) / ``of`` (EN)
+    zwischen H-/Halbjahr-Marker und Jahr: ``H1 von 2024`` / ``1. Halbjahr of
+    2024`` / ``2. Halfyear of 1985``.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[/.\\-,]`` von
+    :data:`_HALFYEAR_SHORT` und ``[/.\\-, ]`` von :data:`_HALFYEAR_LONG` um die
+    Wort-Praepositions-Alternante ``\\s+(?:von|of)\\s+``. Spiegelt die
+    identische Erweiterung in :data:`_QUARTER_SHORT` / :data:`_QUARTER_LONG`
+    (Quartals-Achse), :data:`_KW_YEAR` (Wochen-Achse) und :data:`_MONTH_YEAR`
+    (Monatsname-Achse) auf die Halbjahres-Achse: in Prosa-Etiketten und
+    Sammler-Fund-Tagebuechern ist die Praepositions-Form die uebliche
+    natuerlichsprachige Verbindung zwischen Halbjahres-Marker und Jahr
+    ("Fund H1 von 2024 im Aaregebiet", "Erwerb 1. Halbjahr von 2020 Zermatt-
+    Bergtour", "Fund 2. Halfyear of 2019 Tucson-Boerse"). Mapping identisch
+    zur Ein-Zeichen-Separator-Form (Halbjahres-Startmonat Jan/Jul, Tag 1).
+    Beide Praepositionen verlangen Whitespace auf beiden Seiten, sodass
+    Kompositum- und angehaengte Formen unangetastet auf None fallen.
+    """
+    # Kurzform H1/H2 + von/of (DE/EN)
+    assert parse_iso_date("H1 von 2024") == "2024-01-01"
+    assert parse_iso_date("H2 von 2024") == "2024-07-01"
+    assert parse_iso_date("H1 of 2024") == "2024-01-01"
+    assert parse_iso_date("H2 of 1985") == "1985-07-01"
+    assert parse_iso_date("H1 of 2019") == "2019-01-01"
+    assert parse_iso_date("H2 of 1999") == "1999-07-01"
+    # Postfix-Form (1H/2H) + von/of
+    assert parse_iso_date("1H von 2024") == "2024-01-01"
+    assert parse_iso_date("2H von 2024") == "2024-07-01"
+    assert parse_iso_date("2H of 2019") == "2019-07-01"
+    # Langform Zahl-vor-Wort (1. Halbjahr / 2. Halbjahr) + von/of
+    assert parse_iso_date("1. Halbjahr von 2024") == "2024-01-01"
+    assert parse_iso_date("2. Halbjahr von 2024") == "2024-07-01"
+    assert parse_iso_date("1. Halbjahr of 2024") == "2024-01-01"
+    assert parse_iso_date("2. Halbjahr of 1985") == "1985-07-01"
+    # Langform EN (halfyear / half-year) Zahl-vor-Wort + von/of
+    assert parse_iso_date("1. Halfyear of 2024") == "2024-01-01"
+    assert parse_iso_date("2. Halfyear of 1985") == "1985-07-01"
+    assert parse_iso_date("1. Half-Year von 2020") == "2020-01-01"
+    assert parse_iso_date("2. Half-Year of 2019") == "2019-07-01"
+    # Langform Wort-vor-Zahl (Halbjahr 1 / Halfyear 2) + von/of
+    assert parse_iso_date("Halbjahr 1 von 2024") == "2024-01-01"
+    assert parse_iso_date("Halbjahr 2 of 2024") == "2024-07-01"
+    assert parse_iso_date("Halfyear 1 of 2024") == "2024-01-01"
+    assert parse_iso_date("Half-Year 2 von 1985") == "1985-07-01"
+    # Case-Insensitivitaet (Excel-Auto-Fill / Uppercase-Titel)
+    assert parse_iso_date("h1 VON 2024") == "2024-01-01"
+    assert parse_iso_date("H1 OF 2024") == "2024-01-01"
+    assert parse_iso_date("HALBJAHR 2 VON 2024") == "2024-07-01"
+    assert parse_iso_date("halfyear 1 of 2024") == "2024-01-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. H1 von 2024") == "2024-01-01"
+    assert parse_iso_date("[H2 of 1985]") == "1985-07-01"
+    assert parse_iso_date("ca. 1. Halbjahr von 2020") == "2020-01-01"
+    # Kein Match: Whitespace auf beiden Seiten der Praeposition obligatorisch
+    assert parse_iso_date("H1von2024") is None
+    assert parse_iso_date("H1von 2024") is None
+    assert parse_iso_date("H1 von2024") is None
+    assert parse_iso_date("Halbjahr 1von 2024") is None
+    assert parse_iso_date("Halbjahr 1 von2024") is None
+    # Kein Match: Kompositum-Formen (vondel/vonof)
+    assert parse_iso_date("H1 vondel 2024") is None
+    assert parse_iso_date("H1 vonof 2024") is None
+    # Kein Match: andere DE-Praepositionen bleiben unangetastet
+    assert parse_iso_date("H1 vor 2024") is None
+    assert parse_iso_date("H1 nach 2024") is None
+    assert parse_iso_date("H1 im 2024") is None
+    assert parse_iso_date("Halbjahr 1 vor 2024") is None
+    # Ungueltige H-Nummer (nur H1/H2)
+    assert parse_iso_date("H0 von 2024") is None
+    assert parse_iso_date("H3 von 2024") is None
+    assert parse_iso_date("3. Halbjahr von 2024") is None
+    assert parse_iso_date("Halbjahr 3 von 2024") is None
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert.
+    assert parse_iso_date("H1 2024") == "2024-01-01"
+    assert parse_iso_date("H1/2024") == "2024-01-01"
+    assert parse_iso_date("H1-2024") == "2024-01-01"
+    assert parse_iso_date("H1,2024") == "2024-01-01"
+    assert parse_iso_date("H1.2024") == "2024-01-01"
+    assert parse_iso_date("1H2024") == "2024-01-01"
+    assert parse_iso_date("1. Halbjahr 2024") == "2024-01-01"
+    assert parse_iso_date("Halbjahr 1 2024") == "2024-01-01"
+    assert parse_iso_date("2. Halfyear 1985") == "1985-07-01"
+    # Regress-Anker: Year-First-Formen bleiben unveraendert (dort ist die
+    # Praepositions-Semantik nicht idiomatisch, keine Aenderung).
+    assert parse_iso_date("2024-H1") == "2024-01-01"
+    assert parse_iso_date("2024 H2") == "2024-07-01"
+    assert parse_iso_date("2024H2") == "2024-07-01"
+    assert parse_iso_date("2024 1. Halbjahr") == "2024-01-01"
+
+
 def test_parse_iso_date_w_marker_kurzform():
     """Einzelbuchstabe-Kurzform ``W`` als Wochen-Marker (``W25 2024`` / ``2024 W25``).
 
