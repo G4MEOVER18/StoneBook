@@ -3796,6 +3796,97 @@ def test_parse_iso_date_saison_praeposition_von_of():
     assert parse_iso_date("Summer 1985") == "1985-06-01"
 
 
+def test_parse_iso_date_quartal_praeposition_von_of():
+    """Quartals-Notation mit Wort-Praeposition ``von`` (DE) / ``of`` (EN)
+    zwischen Q-/Quartal-Marker und Jahr: ``Q1 von 2024`` / ``1. Quartal of
+    2024`` / ``Quarter 3 of 1985``.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[/.\\-,]`` von
+    :data:`_QUARTER_SHORT` und ``[/.\\-, ]`` von :data:`_QUARTER_LONG` um die
+    Wort-Praepositions-Alternante ``\\s+(?:von|of)\\s+``. Spiegelt die
+    identische Erweiterung in :data:`_KW_YEAR` (Wochen-Achse) und
+    :data:`_MONTH_YEAR` (Monatsname-Achse) auf die Quartals-Achse: in
+    Prosa-Etiketten und Sammler-Fund-Tagebuechern ist die Praepositions-
+    Form die uebliche natuerlichsprachige Verbindung zwischen Quartals-
+    Marker und Jahr ("Fund Q1 von 2024 im Aaregebiet", "Erwerb 1. Quartal
+    von 2020 Zermatt-Bergtour", "Fund 3. Quarter of 2019 Tucson-Boerse").
+    Mapping identisch zur Ein-Zeichen-Separator-Form (Quartals-Startmonat
+    Jan/Apr/Jul/Okt, Tag 1). Beide Praepositionen verlangen Whitespace auf
+    beiden Seiten, sodass Kompositum- und angehaengte Formen unangetastet
+    auf None fallen.
+    """
+    # Kurzform Q1..Q4 + von/of (DE/EN)
+    assert parse_iso_date("Q1 von 2024") == "2024-01-01"
+    assert parse_iso_date("Q2 von 2024") == "2024-04-01"
+    assert parse_iso_date("Q3 von 2024") == "2024-07-01"
+    assert parse_iso_date("Q4 von 2024") == "2024-10-01"
+    assert parse_iso_date("Q1 of 2024") == "2024-01-01"
+    assert parse_iso_date("Q2 of 1985") == "1985-04-01"
+    assert parse_iso_date("Q3 of 2019") == "2019-07-01"
+    assert parse_iso_date("Q4 of 1999") == "1999-10-01"
+    # Postfix-Form (1Q/2Q/3Q/4Q) + von/of
+    assert parse_iso_date("1Q von 2024") == "2024-01-01"
+    assert parse_iso_date("3Q of 2019") == "2019-07-01"
+    # Langform Zahl-vor-Wort (1. Quartal / 3. Quarter) + von/of
+    assert parse_iso_date("1. Quartal von 2024") == "2024-01-01"
+    assert parse_iso_date("2. Quartal von 2024") == "2024-04-01"
+    assert parse_iso_date("3. Quartal von 1985") == "1985-07-01"
+    assert parse_iso_date("4. Quartal von 1999") == "1999-10-01"
+    assert parse_iso_date("1. Quarter of 2024") == "2024-01-01"
+    assert parse_iso_date("3. Quarter of 1985") == "1985-07-01"
+    # Langform Wort-vor-Zahl (Quartal 1 / Quarter 3) + von/of
+    assert parse_iso_date("Quartal 1 von 2024") == "2024-01-01"
+    assert parse_iso_date("Quartal 2 of 2024") == "2024-04-01"
+    assert parse_iso_date("Quarter 4 von 2024") == "2024-10-01"
+    assert parse_iso_date("Quarter 3 of 1985") == "1985-07-01"
+    # Case-Insensitivitaet (Excel-Auto-Fill / Uppercase-Titel)
+    assert parse_iso_date("q1 VON 2024") == "2024-01-01"
+    assert parse_iso_date("Q1 OF 2024") == "2024-01-01"
+    assert parse_iso_date("QUARTAL 2 VON 2024") == "2024-04-01"
+    assert parse_iso_date("quarter 3 of 1985") == "1985-07-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. Q1 von 2024") == "2024-01-01"
+    assert parse_iso_date("[Q3 of 1985]") == "1985-07-01"
+    assert parse_iso_date("ca. 1. Quartal von 2020") == "2020-01-01"
+    # Kein Match: Whitespace auf beiden Seiten der Praeposition obligatorisch
+    assert parse_iso_date("Q1von2024") is None
+    assert parse_iso_date("Q1von 2024") is None
+    assert parse_iso_date("Q1 von2024") is None
+    assert parse_iso_date("Quartal 1von 2024") is None
+    assert parse_iso_date("Quartal 1 von2024") is None
+    # Kein Match: Kompositum-Formen (vondel/vonof)
+    assert parse_iso_date("Q1 vondel 2024") is None
+    assert parse_iso_date("Q1 vonof 2024") is None
+    # Kein Match: andere DE-Praepositionen bleiben unangetastet
+    assert parse_iso_date("Q1 vor 2024") is None
+    assert parse_iso_date("Q1 nach 2024") is None
+    assert parse_iso_date("Q1 im 2024") is None
+    assert parse_iso_date("Quartal 1 vor 2024") is None
+    # Kein Match: EN-``of`` mit falscher Fortsetzung (kein 4-Ziffer-Jahr)
+    assert parse_iso_date("Q1 of course 2024") is None
+    # Ungueltige Q-Nummer
+    assert parse_iso_date("Q0 von 2024") is None
+    assert parse_iso_date("Q5 von 2024") is None
+    assert parse_iso_date("5. Quartal von 2024") is None
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert.
+    assert parse_iso_date("Q1 2024") == "2024-01-01"
+    assert parse_iso_date("Q1/2024") == "2024-01-01"
+    assert parse_iso_date("Q1-2024") == "2024-01-01"
+    assert parse_iso_date("Q1,2024") == "2024-01-01"
+    assert parse_iso_date("Q1.2024") == "2024-01-01"
+    assert parse_iso_date("1Q2024") == "2024-01-01"
+    assert parse_iso_date("1. Quartal 2024") == "2024-01-01"
+    assert parse_iso_date("Quartal 1 2024") == "2024-01-01"
+    assert parse_iso_date("3. Quarter 1985") == "1985-07-01"
+    # Regress-Anker: Year-First-Formen bleiben unveraendert (dort ist die
+    # Praepositions-Semantik nicht idiomatisch, keine Aenderung).
+    assert parse_iso_date("2024-Q1") == "2024-01-01"
+    assert parse_iso_date("2024 Q3") == "2024-07-01"
+    assert parse_iso_date("2024Q4") == "2024-10-01"
+    assert parse_iso_date("2024 1. Quartal") == "2024-01-01"
+
+
 def test_parse_iso_date_w_marker_kurzform():
     """Einzelbuchstabe-Kurzform ``W`` als Wochen-Marker (``W25 2024`` / ``2024 W25``).
 

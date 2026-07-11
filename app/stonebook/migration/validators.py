@@ -1271,14 +1271,43 @@ _SEASON_YEAR_FIRST = re.compile(
 # Akzeptiert sowohl deutsche ("Quartal") als auch englische ("Quarter") Schreibweise.
 _QUARTER_MONTHS: dict[int, int] = {1: 1, 2: 4, 3: 7, 4: 10}
 # "Q1 2024" / "Q1/2024" / "Q1-2024" / "1Q 2024"
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Q-Marker und Jahr deckt
+# die natuerlichsprachige DE-/EN-Prosa-Form ``Q1 von 2024`` / ``Q3 of 1985`` /
+# ``1Q von 2024`` ab, die in Sammler-Fund-Tagebuechern und Geschaefts-Perioden-
+# Prosa die uebliche Verbindungs-Form zwischen Quartals-Marker und Jahr ist
+# ("Fund Q1 von 2024 im Aaregebiet", "Bergtour 3Q of 2019 an der Tucson-Boerse",
+# "Erwerb Q2 von 2020 Zermatt"). Bisher fielen alle Praepositions-Formen still
+# auf None, weil die Separator-Klasse ``[/.\-,]?`` nur Ein-Zeichen-Trenner
+# (Slash, Punkt, Bindestrich, Komma) plus umgebendes Whitespace kennt und keinen
+# Wort-Trenner - typische DE-/EN-Prosa-Notizen aus Fund-Tagebuechern gingen als
+# silenter Funddatum-Datenverlust in die Migration. Spiegelt die "of"-Praepositions-
+# Erweiterung aus :data:`_DAY_OF_MONTH_YEAR` (englische Ordinal-Konstruktion "the
+# 4th of July 2019") und :data:`_KW_YEAR` (Wochen-Achse ``KW 25 von 2024``) auf
+# die Quartals-Achse. Beide Praepositionen verlangen Whitespace auf beiden Seiten
+# (``\s+...\s+``), sodass Kompositum-Formen (``vondel``, ``vonof``) und angehaengte
+# Formen (``Q1von 2024``, ``Q1 von2024``) mangels vollstaendiger Struktur
+# unangetastet auf None fallen. Case-Insensitivitaet spiegelt die uebrigen
+# Marker-Alternativen (``VON``/``OF`` in Grossbuchstaben aus Excel-Auto-Fill /
+# Uppercase-Titeln matchen ohne Regel-Doppel-Pflege). Kollisionsfrei zu
+# :data:`_QUARTER_YEAR_FIRST` (Year-First-Form mit anderer Separator-Position,
+# dort ist die Praepositions-Semantik ``von``/``of`` nicht idiomatisch).
 _QUARTER_SHORT = re.compile(
-    r"^\s*(?:Q\s*([1-4])|([1-4])\s*Q)\s*[/.\-,]?\s*(\d{4})\s*$",
+    r"^\s*(?:Q\s*([1-4])|([1-4])\s*Q)"
+    r"(?:\s*[/.\-,]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # "1. Quartal 2024" / "Quartal 1 2024" / "3. Quarter 1985"
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Quartal-Wort/Zahl und
+# Jahr symmetrisch zur Kurzform (``1. Quartal von 2024`` / ``Quartal 1 of 2024``
+# / ``3. Quarter of 1985`` / ``2. Quartal von 1990``). In Prosa-Etiketten und
+# Sammler-Notizen ist die Langform-Praepositions-Verbindung die haeufigere
+# natuerlichsprachige DE-/EN-Form gegenueber der Kurzform-Q1-Notation, da die
+# ausgeschriebene Quartal/Quarter-Bezeichnung typischer fuer Fliesstext ist
+# ("Erwerb 1. Quartal von 2020 Zermatt-Bergtour", "Fund 3. Quarter of 2019
+# Tucson-Boerse", "Aktivitaeten Quartal 2 von 2024 Aaregebiet-Sammlung").
 _QUARTER_LONG = re.compile(
     r"^\s*(?:([1-4])\s*\.?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))"
-    r"\s*[/.\-, ]?\s*(\d{4})\s*$",
+    r"(?:\s*[/.\-, ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Year-first Quartals-Notation: "2024-Q1", "2024/Q1", "2024 Q1", "2024Q1",
