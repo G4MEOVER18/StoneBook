@@ -1569,8 +1569,26 @@ _RELATIVE_MONTHS: dict[str, int] = {
     "mitte": 7, "mid": 7,
     "ende": 12, "late": 12,
 }
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Positions-Wort und
+# Jahr deckt die natuerlichsprachige DE-/EN-Prosa-Form ``Anfang von 2024`` /
+# ``Mitte von 1985`` / ``Ende von 1999`` / ``early of 2024`` ab, die in
+# Sammler-Fund-Tagebuechern und Prosa-Etiketten die uebliche Verbindungs-
+# Form zwischen Positions-Wort und Jahr ist ("Fund Anfang von 2024 im
+# Aaregebiet", "Bergtour Mitte von 2020 Zermatt", "Erwerb Ende von 2019
+# Tucson-Boerse"). Semantisch idiomatisch fuer DE ("Anfang von 2024" ist
+# umgangssprachlich = "am Anfang des Jahres 2024"); die EN-``of``-Alternante
+# wird zur DE-Symmetrie mit unterstuetzt (spiegelt die uebrigen Praepositions-
+# Achsen aus :data:`_KW_YEAR`/`_MONTH_YEAR`/`_QUARTER_SHORT`/`_HALFYEAR_SHORT`).
+# Beide Praepositionen verlangen Whitespace auf beiden Seiten, sodass
+# Kompositum-Formen (``vondel``, ``vonof``) und angehaengte Formen (``Anfang
+# von2024``) mangels vollstaendiger Struktur unangetastet auf None fallen.
+# Kollisionsfrei zu :data:`_YEAR_COMPOUND_POSITION` (die ``Jahres``-Kompositum-
+# Form hat das ``Jahres``-Praefix als obligatorisches Anker-Woertchen, ohne
+# das die Kette hier greift). Bisher fielen alle Praepositions-Formen still
+# auf None, weil die Trenner-Klasse ``[-\s]+`` nur Ein-Zeichen-Trenner kennt.
 _RELATIVE_YEAR = re.compile(
-    r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+(\d{4})\s*$",
+    r"^\s*(Anfang|Mitte|Ende|early|mid|late)"
+    r"(?:[-\s]+|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 
@@ -1609,9 +1627,23 @@ _YEAR_COMPOUND_POSITION_MONTHS: dict[str, int] = {
     "mitte": 7,
     "ende": 12, "schluss": 12, "ausklang": 12,
 }
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Kompositum und Jahr
+# deckt die natuerlichsprachige DE-Prosa-Form ``Jahresanfang von 2024`` /
+# ``Jahresmitte von 1985`` / ``Jahresende von 1999`` / ``Jahresschluss of
+# 2019`` ab - die in DE-Sammler-Notizen und Prosa-Etiketten uebliche und stark
+# idiomatische Verbindungs-Form ("Fund Jahresanfang von 2020 im Aaregebiet",
+# "Erwerb Jahresende von 1985 an der Tucson-Boerse", "Kauf Jahresmitte von
+# 2019 Zermatt-Bergtour"). Spiegelt die Praepositions-Erweiterung aus
+# :data:`_RELATIVE_YEAR` (artikellose Kurzform ``Anfang von 2024``) auf die
+# substantivierte Kompositum-Achse; identische semantische Rolle und
+# identisches Mapping (``Jahresanfang von 2024`` == ``Anfang von 2024``,
+# beide meinen den Jahres-Startanker Januar). Beide Praepositionen verlangen
+# Whitespace auf beiden Seiten, sodass Kompositum- und angehaengte Formen
+# unangetastet auf None fallen. Bisher fielen alle Praepositions-Formen still
+# auf None, weil die Trenner-Klasse ``[-\s]+`` nur Ein-Zeichen-Trenner kennt.
 _YEAR_COMPOUND_POSITION = re.compile(
     r"^\s*Jahres(anfang|beginn|start|mitte|ende|schluss|ausklang)"
-    r"[-\s]+(\d{4})\s*$",
+    r"(?:[-\s]+|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 

@@ -3979,6 +3979,95 @@ def test_parse_iso_date_halbjahr_praeposition_von_of():
     assert parse_iso_date("2024 1. Halbjahr") == "2024-01-01"
 
 
+def test_parse_iso_date_relative_year_praeposition_von_of():
+    """Relative Jahresposition mit Wort-Praeposition ``von`` (DE) / ``of``
+    (EN) zwischen Positions-Wort und Jahr: ``Anfang von 2024`` / ``Mitte von
+    1985`` / ``Ende von 1999`` / ``Jahresanfang von 2020`` / ``Jahresende
+    of 2019``.
+
+    Ergaenzt die Trenner-Klasse ``[-\\s]+`` von :data:`_RELATIVE_YEAR` und
+    :data:`_YEAR_COMPOUND_POSITION` um die Wort-Praepositions-Alternante
+    ``\\s+(?:von|of)\\s+``. Spiegelt die identische Erweiterung in
+    :data:`_KW_YEAR` (Wochen-Achse), :data:`_MONTH_YEAR` (Monatsname-Achse),
+    :data:`_QUARTER_SHORT`/:data:`_QUARTER_LONG` (Quartals-Achse) und
+    :data:`_HALFYEAR_SHORT`/:data:`_HALFYEAR_LONG` (Halbjahres-Achse) auf die
+    relative-Jahresposition-Achse. In DE-Sammler-Notizen ist ``Anfang von
+    2024`` (bzw. das umgangssprachlich haeufigere Substantiv-Kompositum
+    ``Jahresanfang von 2024``) die etablierte Verbindungs-Form zwischen
+    Positions-Wort und Jahr. Mapping identisch zur Ein-Zeichen-Trenner-Form
+    (Anfang/early -> Jan, Mitte -> Jul, Ende/late -> Dez). Beide
+    Praepositionen verlangen Whitespace auf beiden Seiten, sodass
+    Kompositum- und angehaengte Formen unangetastet auf None fallen.
+    """
+    # DE artikellose Kurzform + von/of
+    assert parse_iso_date("Anfang von 2024") == "2024-01-01"
+    assert parse_iso_date("Mitte von 2024") == "2024-07-01"
+    assert parse_iso_date("Ende von 2024") == "2024-12-01"
+    assert parse_iso_date("Anfang of 2024") == "2024-01-01"
+    assert parse_iso_date("Mitte of 1985") == "1985-07-01"
+    assert parse_iso_date("Ende of 1999") == "1999-12-01"
+    # EN Kurzform + von/of (of-Praeposition idiomatisch fuer EN)
+    assert parse_iso_date("early of 2024") == "2024-01-01"
+    assert parse_iso_date("mid of 2024") == "2024-07-01"
+    assert parse_iso_date("late of 2024") == "2024-12-01"
+    assert parse_iso_date("early von 2024") == "2024-01-01"
+    # DE Substantiv-Kompositum + von/of (haeufigste DE-Prosa-Form)
+    assert parse_iso_date("Jahresanfang von 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresbeginn von 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresstart von 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresmitte von 2024") == "2024-07-01"
+    assert parse_iso_date("Jahresende von 2024") == "2024-12-01"
+    assert parse_iso_date("Jahresschluss von 1985") == "1985-12-01"
+    assert parse_iso_date("Jahresausklang von 1999") == "1999-12-01"
+    # Substantiv-Kompositum mit of (Symmetrie zur uebrigen Praxis)
+    assert parse_iso_date("Jahresanfang of 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresende of 1985") == "1985-12-01"
+    assert parse_iso_date("Jahresschluss of 2019") == "2019-12-01"
+    # Case-Insensitivitaet (Excel-Auto-Fill / Uppercase-Titel)
+    assert parse_iso_date("ANFANG VON 2024") == "2024-01-01"
+    assert parse_iso_date("mitte OF 2024") == "2024-07-01"
+    assert parse_iso_date("ENDE OF 1985") == "1985-12-01"
+    assert parse_iso_date("JAHRESANFANG VON 2024") == "2024-01-01"
+    assert parse_iso_date("jahresmitte of 2024") == "2024-07-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. Anfang von 2024") == "2024-01-01"
+    assert parse_iso_date("[Jahresende von 1985]") == "1985-12-01"
+    assert parse_iso_date("circa Mitte von 1990") == "1990-07-01"
+    # Kein Match: Whitespace auf beiden Seiten der Praeposition obligatorisch
+    assert parse_iso_date("Anfangvon2024") is None
+    assert parse_iso_date("Anfangvon 2024") is None
+    assert parse_iso_date("Anfang von2024") is None
+    assert parse_iso_date("Jahresanfangvon 2024") is None
+    assert parse_iso_date("Jahresanfang von2024") is None
+    # Kein Match: Kompositum-Formen (vondel/vonof)
+    assert parse_iso_date("Anfang vondel 2024") is None
+    assert parse_iso_date("Anfang vonof 2024") is None
+    assert parse_iso_date("Jahresanfang vondel 2024") is None
+    # Kein Match: andere DE-Praepositionen bleiben unangetastet
+    assert parse_iso_date("Anfang vor 2024") is None
+    assert parse_iso_date("Anfang nach 2024") is None
+    assert parse_iso_date("Anfang im 2024") is None
+    assert parse_iso_date("Jahresende vor 2024") is None
+    assert parse_iso_date("Jahresende nach 2024") is None
+    # Kein Match: EN-``of`` mit falscher Fortsetzung (kein 4-Ziffer-Jahr)
+    assert parse_iso_date("Anfang of course 2024") is None
+    # Regress-Anker: die bisherigen Trenner-Formen bleiben unveraendert.
+    assert parse_iso_date("Anfang 2024") == "2024-01-01"
+    assert parse_iso_date("Mitte 2024") == "2024-07-01"
+    assert parse_iso_date("Ende 2024") == "2024-12-01"
+    assert parse_iso_date("early 2024") == "2024-01-01"
+    assert parse_iso_date("mid 2024") == "2024-07-01"
+    assert parse_iso_date("late 2024") == "2024-12-01"
+    assert parse_iso_date("mid-2024") == "2024-07-01"
+    assert parse_iso_date("early-2024") == "2024-01-01"
+    assert parse_iso_date("Jahresanfang 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresmitte 2024") == "2024-07-01"
+    assert parse_iso_date("Jahresende 2024") == "2024-12-01"
+    assert parse_iso_date("Jahresbeginn 2024") == "2024-01-01"
+    assert parse_iso_date("Jahresschluss 2024") == "2024-12-01"
+    assert parse_iso_date("Jahresausklang 1999") == "1999-12-01"
+
+
 def test_parse_iso_date_w_marker_kurzform():
     """Einzelbuchstabe-Kurzform ``W`` als Wochen-Marker (``W25 2024`` / ``2024 W25``).
 
