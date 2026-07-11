@@ -5934,3 +5934,81 @@ def test_parse_coordinates_geo_uri_android_intent():
     # Regression: alle bestehenden Formen bleiben unveraendert
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
+
+
+def test_parse_coordinates_google_place_3d_4d_fragment():
+    """Google-Maps-Place-URL-Protobuf-Fragment ``!3d<lat>!4d<lon>``.
+
+    Diese Form entsteht, wenn der Sammler in Google Maps einen Ort
+    antippt (statt nur die Karte zu scrollen) und den Share-Link kopiert.
+    Die URL enthaelt dann zwei semantisch unterschiedliche Koordinaten-
+    Paare: ``@<lat>,<lon>,<zoom>z`` fuer den View-Center (Kamera-Position)
+    und ``!3d<lat>!4d<lon>`` im ``/data=``-Segment fuer die tatsaechliche
+    Pin-Position des angeklickten Ortes. Die Pin-Position ist der
+    semantisch publizierte Wert und muss den View-Center-Match ueberholen -
+    sonst bekaeme der Sammler bei "heraus-gezoomt teilen" die zufaellige
+    Zoom-abhaengige Kamera-Position statt seiner Fundort-Koordinaten.
+    """
+    # Full place URL: !3d!4d identisch mit @-URL (zoom-in-Sonderfall)
+    assert parse_coordinates(
+        "https://www.google.com/maps/place/Zermatt/@46.0207,7.7491,15z"
+        "/data=!4m5!3m4!1s0x0:0x0!8m2!3d46.0207!4d7.7491"
+    ) == (46.0207, 7.7491)
+    # Full place URL: !3d!4d weichen ab vom @-URL-View-Center (heraus-
+    # gezoomt teilen) - der Pin gewinnt, nicht der Kamera-Standort
+    assert parse_coordinates(
+        "https://www.google.com/maps/place/Zermatt/@46.5,7.5,6z"
+        "/data=!4m5!3m4!1s0x0:0x0!8m2!3d46.0207!4d7.7491"
+    ) == (46.0207, 7.7491)
+    # Nur das Fragment ohne URL-Kontext (Sammler kopiert nur das
+    # /data=-Segment aus der Adress-Leiste)
+    assert parse_coordinates("!3d46.0207!4d7.7491") == (46.0207, 7.7491)
+    assert parse_coordinates("data=!3d46.0207!4d7.7491") == (46.0207, 7.7491)
+    # Mit vorherigen Protobuf-Markern (typisch fuer echte Google-URLs)
+    assert parse_coordinates("!4m5!3m4!1s0x0:0x0!8m2!3d46.5!4d7.5") == (46.5, 7.5)
+    # Mit trailing Marker (!16z fuer Feature-ID) nach dem Pin-Paar
+    assert parse_coordinates(
+        "!3d46.5!4d7.5!16zL20vMDNqamY") == (46.5, 7.5)
+    # Vorzeichen auf beiden Achsen (Suedhalbkugel/Westhalbkugel)
+    assert parse_coordinates("!3d-33.85!4d151.2") == (-33.85, 151.2)
+    assert parse_coordinates("!3d-46.5!4d-7.5") == (-46.5, -7.5)
+    # Vorzeichen nur auf einer Achse (Nord/West-Kombination)
+    assert parse_coordinates("!3d46.5!4d-7.5") == (46.5, -7.5)
+    # Explizites +-Vorzeichen (unueblich, aber spec-konform)
+    assert parse_coordinates("!3d+46.5!4d+7.5") == (46.5, 7.5)
+    # Case-Insensitivitaet (!3D/!4D aus manuell nachbearbeiteten URLs)
+    assert parse_coordinates("!3D46.5!4D7.5") == (46.5, 7.5)
+    # DE-Komma-Dezimal (Excel-Zwischenkopie mit DE-Locale)
+    assert parse_coordinates("!3d46,5!4d7,5") == (46.5, 7.5)
+    # Ganzzahlige Koordinaten (Grenzfall)
+    assert parse_coordinates("!3d46!4d7") == (46.0, 7.0)
+    # Null-Island (Grenzfall, aber gueltig)
+    assert parse_coordinates("!3d0!4d0") == (0.0, 0.0)
+    # Grenzwerte
+    assert parse_coordinates("!3d90.0!4d180.0") == (90.0, 180.0)
+    assert parse_coordinates("!3d-90.0!4d-180.0") == (-90.0, -180.0)
+    # Out-of-Range Lat -> None
+    assert parse_coordinates("!3d91.0!4d7.5") is None
+    # Out-of-Range Lon -> None
+    assert parse_coordinates("!3d46.5!4d200.0") is None
+    # Fehlender !4d-Marker -> Fallback auf None (kein anderes Zahl-Paar
+    # in der Eingabe)
+    assert parse_coordinates("!3d46.5") is None
+    # !5d anstelle von !4d -> nicht die Pin-Position (Feld-Index-Konvention
+    # verletzt) -> Fallback greift, keine Koordinaten in Eingabe -> None
+    assert parse_coordinates("!3d46.5!5d100") is None
+    # Freitext-Ausrufezeichen mit "3d"-/"4d"-Substrings (Fotoshooting,
+    # 3D-Modell-Notation) - kein Match, weil die Marker eine unmittelbar
+    # folgende Zahl verlangen und die Freitext-Semantik davon abweicht.
+    assert parse_coordinates("Wow! 3d-Fotoshooting!") is None
+    # Regression: URL ohne !3d!4d-Fragment faellt auf @-URL-Center
+    # (bestehendes Verhalten)
+    assert parse_coordinates(
+        "https://www.google.com/maps/@46.5,7.5,15z") == (46.5, 7.5)
+    # Regression: Standard-Dezimal-Paar bleibt unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    # Regression: OSM-Query-Param-Form bleibt unveraendert
+    assert parse_coordinates(
+        "https://www.openstreetmap.org/?mlat=46.5&mlon=7.5") == (46.5, 7.5)
+    # Regression: GeoURI-Form bleibt unveraendert
+    assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)

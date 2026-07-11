@@ -2527,6 +2527,59 @@ _GEO_URI_ANDROID_QUERY = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE | re.DOTALL,
 )
+# Google-Maps-Place-URL-Fragment "!3d<lat>!4d<lon>" - die Protobuf-Feld-
+# Serialisierung, mit der Google Maps im ``/data=``-Segment einer geteilten
+# Place-URL die tatsaechliche Pin-Position kodiert. ``!3d`` markiert den
+# double-Wert der Latitude an Feld-Index 3, ``!4d`` den double der Longitude
+# an Feld-Index 4 - die beiden Marker stehen bei einer Single-Place-URL
+# unmittelbar hintereinander. Diese Form entsteht typischerweise, wenn der
+# Sammler in Google Maps auf einen Ort klickt (statt nur die Karte zu
+# scrollen) und den Share-Link kopiert - die URL enthaelt dann zwei
+# semantisch unterschiedliche Koordinaten-Paare: das ``@<lat>,<lon>,<zoom>z``-
+# Segment fuer den View-Center (Kamera-Position) und das ``!3d<lat>!4d<lon>``-
+# Fragment fuer die tatsaechliche Pin-Position des angeklickten Ortes. Beide
+# Paare koennen unterschiedlich sein, wenn der Sammler heraus-/heraus-gezoomt
+# ist und dann teilt: ``@46.5,7.5,6z`` (View auf Bern-Umgebung) mit
+# ``!3d46.0207!4d7.7491`` (Pin auf Zermatt) - der publizierte Wert ist die
+# Pin-Position, nicht der View-Center. Vor diesem Zweig fielen alle Google-
+# Place-URLs still auf den View-Center-Wert, weil :data:`_DECIMAL_PAIR` das
+# ``@``-Segment mit Komma-Separator zuerst greift und die Pin-Koordinaten
+# im ``/data=``-Segment ignoriert (der ``!``-Delimiter des Protobuf-Encoding
+# steht nicht in der Separator-Klasse ``[ \t,;/&~]``, sodass keiner der
+# generischen Zahl-Paar-Zweige die ``!3d``/``!4d``-Zahlen zusammenbringt).
+# Aus dem typischen Sammler-Workflow "Ort in Google Maps auf dem Smartphone
+# suchen -> Pin antippen -> Teilen -> Link kopieren -> ins Fundort-Feld
+# einfuegen" entstand damit silenter Fundort-Datenverlust: der Sammler bekam
+# statt der tatsaechlichen Pin-Position die zufaellige Zoom-abhaengige
+# Kamera-Position gespeichert; besonders schwer erkennbar, weil View-Center
+# und Pin oft (aber nicht immer) uebereinstimmen und die _validate-Range-
+# Pruefung in beiden Faellen erfolgreich durchlaeuft. Match ist definitiv:
+# wenn die ``!3d...!4d...``-Signatur erkannt wird, sind die Werte die
+# Pin-Koordinaten, und ein Fallback auf _DECIMAL_PAIR wuerde exakt den Bug
+# reintroduzieren, den dieser Zweig fixt (View-Center statt Pin). Muss vor
+# :data:`_DECIMAL_PAIR` gepruft werden, weil sonst der ``@``-URL-Center die
+# Rueckgabe belegt. Case-Insensitivitaet (``!3D``/``!4D``) folgt der
+# Toleranz-Konvention der uebrigen Coord-Muster (Google-Codegen produziert
+# konsistent Lowercase, aber Copy-Paste aus manuell nachbearbeiteten URLs
+# oder Screenshot-OCR kann Case brechen). DE-Komma-Dezimal wird toleriert
+# (kein Standard von Google, aber Sammler-typisch bei Excel-Zwischenkopie
+# mit DE-Locale). Kollisionsfreiheit zu :data:`_COORD_LABEL` (``!3d``/``!4d``
+# sind keine Koordinaten-Label-Woerter), zu :data:`_PREFIX_PAIR` /
+# :data:`_SUFFIX_PAIR_NO_SEP` (die verlangen obligatorische Direction-
+# Buchstaben), zu :data:`_ISO6709_COMPACT_DECIMAL` (die per .match anchored
+# sind und kein URL-Praefix erlauben). Kollisionsfreiheit zu Freitext-Zahlen
+# nach einem Ausrufezeichen (``"Wow! 3d-Fotoshooting!"``): das Pattern
+# verlangt die exakte Marker-Reihenfolge ``!3d...!4d`` mit unmittelbar
+# folgender Zahl - ohne die zweite Marker-Zahl bleibt der Match aus und
+# die Eingabe faellt auf den Fallback zurueck. Weitere Protobuf-Feld-Typen
+# (``!3i`` fuer int32, ``!3s`` fuer string) sind fuer die Pin-Position
+# nicht relevant und bleiben ausserhalb des Patterns.
+_GOOGLE_PLACE_3D_4D = re.compile(
+    r"""!3d([-+]?\d+(?:[.,]\d+)?)     # Pin-Latitude nach !3d-Marker
+        !4d([-+]?\d+(?:[.,]\d+)?)     # Pin-Longitude nach !4d-Marker
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -3382,6 +3435,17 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     if m:
         return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
     m = _GEO_URI.match(s)
+    if m:
+        return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
+    # Google-Maps-Place-URL-Fragment "!3d<lat>!4d<lon>" (Protobuf-Feld-Serialisierung
+    # im /data=-Segment). Muss vor _DECIMAL_PAIR gepruft werden, weil sonst der
+    # ``@<lat>,<lon>,<zoom>z``-View-Center gewinnt und die semantisch relevante
+    # Pin-Position ignoriert wuerde (die beiden Paare koennen unterschiedlich sein,
+    # wenn der Sammler heraus-gezoomt teilt). Match ist definitiv: der !3d/!4d-
+    # Marker-Paar identifiziert eindeutig die Pin-Koordinaten - keine Achsen-
+    # Vertauschung, keine _orient-Nachpruefung noetig (die Protobuf-Feld-Indizes
+    # 3 und 4 sind fix Lat/Lon per Google-Encoding).
+    m = _GOOGLE_PLACE_3D_4D.search(s)
     if m:
         return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
