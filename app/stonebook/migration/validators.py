@@ -977,8 +977,35 @@ _DAY_OF_MONTH_YEAR = re.compile(
 # wird. Das optionale ``\.?`` vor dem Separator deckt zusaetzlich ``Jun..2024``
 # / ``Jun. 2024``-Mischformen ab, ohne die bestehenden Whitespace-/Komma-/
 # Slash-/Bindestrich-Varianten zu beeintraechtigen.
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Monatsname und Jahr
+# deckt die natuerlichsprachige DE-/EN-Prosa-Form ab: ``Juli von 2024`` /
+# ``Januar von 2024`` (DE), ``July of 2024`` / ``January of 2024`` (EN).
+# In geerbten Sammlungs-Etiketten und Fund-Tagebuechern mit Fliesstext-
+# Notation ("Fund Juli von 2024 im Aaregebiet", "Bergtour January of 2020
+# Zermatt") ist die Praeposition die natuerlichsprachige Verbindung
+# zwischen Monat und Jahr - viel natuerlicher als die knappe ``Juli 2024``-
+# Form, aber genauso semantisch eindeutig. Bisher fielen alle
+# Praepositions-Formen still auf None, weil die Separator-Klasse
+# ``[,./ \-]`` nur Ein-Zeichen-Trenner (Komma, Punkt, Slash, Leerzeichen,
+# Bindestrich) kennt und keinen Wort-Trenner - typische DE-/EN-Prosa-
+# Notizen aus Fund-Tagebuechern gingen als silenter Funddatum-Datenverlust
+# in die Migration, obwohl Monat und Jahr eindeutig lesbar sind.
+#
+# Spiegelt die "of"/"von"-Praepositions-Erweiterung aus
+# :data:`_KW_YEAR` (Wochen-Achse) und :data:`_DAY_OF_MONTH_YEAR`
+# (englische Ordinal-Konstruktion "4th of July 2019") auf die
+# Monatsname-Achse. Beide Praepositionen verlangen Whitespace auf beiden
+# Seiten (``\s+...\s+``), sodass Kompositum-Formen (``Julivon``,
+# ``Juli-von``) und angehaengte Formen (``Juli von2024``) still fehl-
+# matchen. Case-Insensitivitaet ist nicht noetig (die Regex ist ohne
+# ``re.IGNORECASE``); der :func:`_normalize_month_name`-Handler behandelt
+# Case-Insensitivitaet der Monats-Alternativen und die Praeposition
+# ``von``/``of`` ist bereits in ihrer natuerlichen Kleinbuchstaben-Form
+# (Grossbuchstaben-Varianten aus Uppercase-Titeln sind semantisch
+# identisch, aber praktisch selten im Prosa-Kontext).
 _MONTH_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[,./ \-]\s*(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[,./ \-]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    re.IGNORECASE,
 )
 
 # Month-Range innerhalb eines Jahres ("Juni/Juli 2024", "Mai-Juni 1985",
@@ -1154,8 +1181,22 @@ _SEASON_MONTHS: dict[str, int] = {
     "fruehherbst": 9, "earlyautumn": 9, "earlyfall": 9,
     "spaetherbst": 11, "lateautumn": 11, "latefall": 11,
 }
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Saison-Wort und Jahr
+# deckt die natuerlichsprachige DE-/EN-Prosa-Form ab: ``Sommer von 2024`` /
+# ``Winter von 1985`` (DE), ``summer of 2024`` / ``autumn of 2019`` (EN).
+# Spiegelt die identische Erweiterung in :data:`_MONTH_YEAR` (Monatsname-
+# Achse) und :data:`_KW_YEAR` (Wochen-Achse) auf die Saison-Achse. Beide
+# Praepositionen verlangen Whitespace auf beiden Seiten (``\s+...\s+``),
+# sodass Kompositum-Formen (``Sommervon``, ``Sommer-von``) still fehl-
+# matchen. Case-Insensitivitaet nach oben aufgenommen (spiegelt
+# :data:`_MONTH_YEAR`) damit Excel-Auto-Fill-/Uppercase-Titel-Varianten
+# (``SOMMER VON 2024``, ``SUMMER OF 2024``) ohne Regel-Doppel-Pflege
+# matchen; die reine :func:`_normalize_season_name`-Aufloesung war schon
+# case-insensitive (via ``.lower()``-Normierung), diese Erweiterung setzt
+# nur die Regex-Level-Konvention nach.
 _SEASON_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?\s*[, ]?\s*(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[, ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    re.IGNORECASE,
 )
 # Winter-Cross-Year-Notation ("Winter 2023/2024", "Winter 2023/24", "Winter
 # 1999-2000", "Winter 2023-24") - sehr verbreitet in Sammlungs-Notizen und

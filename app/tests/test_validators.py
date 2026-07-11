@@ -3711,6 +3711,91 @@ def test_parse_iso_date_kw_praeposition_von_of():
     assert parse_iso_date("Kalenderwoche 25/2024") == "2024-06-17"
 
 
+def test_parse_iso_date_monat_praeposition_von_of():
+    """Monatsname-Notation mit Wort-Praeposition ``von`` (DE) / ``of`` (EN)
+    zwischen Monatsname und Jahr: ``Juli von 2024`` / ``January of 2024``.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[,./ \\-]`` von :data:`_MONTH_YEAR`
+    um die Wort-Praepositions-Alternante ``\\s+(?:von|of)\\s+``. Spiegelt die
+    identische Erweiterung in :data:`_KW_YEAR` (Wochen-Achse, Commit
+    bc67cc7) auf die Monatsname-Achse: in Prosa-Etiketten und Sammler-Fund-
+    Tagebuechern ist die Praepositions-Form die uebliche natuerlichsprachige
+    Verbindung zwischen Monat und Jahr ("Fund Juli von 2024 im Aaregebiet",
+    "Bergtour January of 2020 Zermatt"). Mapping identisch zur Ein-Zeichen-
+    Separator-Form (erster Tag des Monats).
+    """
+    # DE-Praeposition ``von`` mit voller / abgekuerzter DE-Monatsform
+    assert parse_iso_date("Januar von 2024") == "2024-01-01"
+    assert parse_iso_date("Juli von 2024") == "2024-07-01"
+    assert parse_iso_date("Dezember von 1985") == "1985-12-01"
+    assert parse_iso_date("Jun von 2024") == "2024-06-01"
+    assert parse_iso_date("Jun. von 2024") == "2024-06-01"
+    # EN-Praeposition ``of`` mit voller / abgekuerzter EN-Monatsform
+    assert parse_iso_date("January of 2024") == "2024-01-01"
+    assert parse_iso_date("July of 2024") == "2024-07-01"
+    assert parse_iso_date("December of 1985") == "1985-12-01"
+    assert parse_iso_date("June of 2024") == "2024-06-01"
+    assert parse_iso_date("Jun of 2024") == "2024-06-01"
+    assert parse_iso_date("Jun. of 2024") == "2024-06-01"
+    # Case-Insensitivitaet (Excel-Auto-Fill / Uppercase-Titel)
+    assert parse_iso_date("JULI VON 2024") == "2024-07-01"
+    assert parse_iso_date("january of 2024") == "2024-01-01"
+    assert parse_iso_date("JULY OF 2024") == "2024-07-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. Juli von 2024") == "2024-07-01"
+    assert parse_iso_date("[January of 2024]") == "2024-01-01"
+    # Kein Match: Whitespace auf beiden Seiten der Praeposition obligatorisch
+    assert parse_iso_date("Julivon 2024") is None
+    assert parse_iso_date("Juli von2024") is None
+    # Kein Match: Kompositum-Formen
+    assert parse_iso_date("Juli vondel 2024") is None
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert.
+    assert parse_iso_date("Januar 2024") == "2024-01-01"
+    assert parse_iso_date("Juli, 2024") == "2024-07-01"
+    assert parse_iso_date("July 2024") == "2024-07-01"
+    assert parse_iso_date("Jun.2024") == "2024-06-01"
+    assert parse_iso_date("Juni/2024") == "2024-06-01"
+    assert parse_iso_date("Juni-2024") == "2024-06-01"
+
+
+def test_parse_iso_date_saison_praeposition_von_of():
+    """Jahreszeit-Notation mit Wort-Praeposition ``von`` (DE) / ``of`` (EN)
+    zwischen Saison-Wort und Jahr: ``Sommer von 2024`` / ``summer of 2024``.
+
+    Spiegelt die identische Erweiterung in :data:`_KW_YEAR` (Wochen-Achse)
+    und :data:`_MONTH_YEAR` (Monatsname-Achse) auf die Saison-Achse.
+    Mapping identisch zur Ein-Zeichen-Separator-Form (meteorologischer
+    Saison-Startmonat gemaess :data:`_SEASON_MONTHS`).
+    """
+    # DE-Saisons mit ``von``-Praeposition
+    assert parse_iso_date("Frühling von 2024") == "2024-03-01"
+    assert parse_iso_date("Frühjahr von 2024") == "2024-03-01"
+    assert parse_iso_date("Sommer von 2024") == "2024-06-01"
+    assert parse_iso_date("Herbst von 1999") == "1999-09-01"
+    assert parse_iso_date("Winter von 1985") == "1985-12-01"
+    # EN-Saisons mit ``of``-Praeposition
+    assert parse_iso_date("spring of 2024") == "2024-03-01"
+    assert parse_iso_date("summer of 2024") == "2024-06-01"
+    assert parse_iso_date("autumn of 2020") == "2020-09-01"
+    assert parse_iso_date("fall of 1999") == "1999-09-01"
+    assert parse_iso_date("winter of 1985") == "1985-12-01"
+    # Case-Insensitivitaet
+    assert parse_iso_date("SOMMER VON 2024") == "2024-06-01"
+    assert parse_iso_date("SUMMER OF 2024") == "2024-06-01"
+    assert parse_iso_date("sommer von 2020") == "2020-06-01"
+    # Kombiniert mit Annaeherungspraefix
+    assert parse_iso_date("ca. Sommer von 1985") == "1985-06-01"
+    assert parse_iso_date("circa summer of 1985") == "1985-06-01"
+    # Kein Match: Whitespace-Zwang beidseitig
+    assert parse_iso_date("Sommervon 2024") is None
+    assert parse_iso_date("Sommer von2024") is None
+    # Regress-Anker: die bisherigen Formen bleiben unveraendert
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer, 1985") == "1985-06-01"
+    assert parse_iso_date("Summer 1985") == "1985-06-01"
+
+
 def test_parse_iso_date_w_marker_kurzform():
     """Einzelbuchstabe-Kurzform ``W`` als Wochen-Marker (``W25 2024`` / ``2024 W25``).
 
