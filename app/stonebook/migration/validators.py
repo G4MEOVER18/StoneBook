@@ -1218,7 +1218,7 @@ _SEASON_MONTHS: dict[str, int] = {
 # case-insensitive (via ``.lower()``-Normierung), diese Erweiterung setzt
 # nur die Regex-Level-Konvention nach.
 _SEASON_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[, ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[,_ ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Winter-Cross-Year-Notation ("Winter 2023/2024", "Winter 2023/24", "Winter

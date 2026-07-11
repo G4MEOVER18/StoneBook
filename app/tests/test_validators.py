@@ -5481,3 +5481,57 @@ def test_parse_iso_date_monat_underscore_separator():
     assert parse_iso_date("Juni, 2024") == "2024-06-01"
     assert parse_iso_date("Juli von 2024") == "2024-07-01"
     assert parse_iso_date("July of 2024") == "2024-07-01"
+
+
+def test_parse_iso_date_saison_underscore_separator():
+    """Jahreszeit-Notation mit Underscore ``_`` als Filename-sicherem Separator
+    zwischen Saison-Wort und Jahr: ``Sommer_2024`` / ``Winter_1985`` /
+    ``summer_2020`` / ``Fruehjahr_2020``.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[, ]?`` von
+    :data:`_SEASON_YEAR` um den Underscore, symmetrisch zur
+    ``_MONTH_YEAR``-Underscore-Erweiterung. In Foto-/Sammlungs-Archiven
+    ordnen Sammler ihre Sammelaktionen und Ausflug-Fotos oft nach Saison
+    ein ("Aare_Sommer_2024.jpg", "Bergtour_Winter_1985/",
+    "Fund_Herbst_2020.pdf") - der Underscore ist der Filename-sichere
+    Trenner, den Foto-Software-Auto-Rename und massenhafte Datei-
+    Umbenennung typischerweise setzen. Mapping identisch zur Ein-Zeichen-
+    Separator-Form (Saison-Startmonat).
+    """
+    # DE-Saisons mit Underscore
+    assert parse_iso_date("Sommer_2024") == "2024-06-01"
+    assert parse_iso_date("Winter_1985") == "1985-12-01"
+    assert parse_iso_date("Herbst_2020") == "2020-09-01"
+    assert parse_iso_date("Fruehjahr_2020") == "2020-03-01"
+    assert parse_iso_date("Fruehling_2024") == "2024-03-01"
+    # EN-Saisons mit Underscore
+    assert parse_iso_date("summer_2020") == "2020-06-01"
+    assert parse_iso_date("spring_2024") == "2024-03-01"
+    assert parse_iso_date("autumn_2020") == "2020-09-01"
+    assert parse_iso_date("fall_2020") == "2020-09-01"
+    assert parse_iso_date("winter_1985") == "1985-12-01"
+    # DE-Kompositum-Formen (Fruehsommer/Spaetsommer/Fruehherbst/Spaetherbst)
+    # mit Underscore - die Modifikator-Praefixe schieben den Saison-Startmonat
+    # jeweils an den Rand der Saison; symmetrisch zur Space-Separator-Form.
+    assert parse_iso_date("Spaetsommer_2024") == "2024-08-01"
+    assert parse_iso_date("Fruehsommer_2024") == "2024-06-01"
+    assert parse_iso_date("Spaetherbst_2020") == "2020-11-01"
+    # Case-Insensitivitaet (Foto-Software mit uppercase-Auto-Rename)
+    assert parse_iso_date("SOMMER_2024") == "2024-06-01"
+    assert parse_iso_date("winter_1985") == "1985-12-01"
+    assert parse_iso_date("WINTER_1985") == "1985-12-01"
+    # Kombiniert mit Annaeherungspraefix / Klammer-Strip
+    assert parse_iso_date("ca. Sommer_2024") == "2024-06-01"
+    assert parse_iso_date("[Winter_1985]") == "1985-12-01"
+    # Kollisionsschutz: unbekannte Nicht-Saison-Woerter mit Underscore-Jahr-
+    # Struktur fallen weiterhin auf None (nur eindeutige Saison-Wortstammes
+    # sollen matchen)
+    assert parse_iso_date("Foo_2024") is None
+    assert parse_iso_date("Sample_2024") is None
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert und die Praepositions-Alternante bleibt aktiv.
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer, 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer2024") == "2024-06-01"
+    assert parse_iso_date("summer of 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer von 2024") == "2024-06-01"
