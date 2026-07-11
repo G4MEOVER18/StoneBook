@@ -1319,7 +1319,7 @@ _QUARTER_SHORT = re.compile(
     r"(?:\s*[/.\-,_]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
-# "1. Quartal 2024" / "Quartal 1 2024" / "3. Quarter 1985"
+# "1. Quartal 2024" / "Quartal 1 2024" / "3. Quarter 1985" / "1st Quarter 2024"
 # Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Quartal-Wort/Zahl und
 # Jahr symmetrisch zur Kurzform (``1. Quartal von 2024`` / ``Quartal 1 of 2024``
 # / ``3. Quarter of 1985`` / ``2. Quartal von 1990``). In Prosa-Etiketten und
@@ -1328,8 +1328,24 @@ _QUARTER_SHORT = re.compile(
 # ausgeschriebene Quartal/Quarter-Bezeichnung typischer fuer Fliesstext ist
 # ("Erwerb 1. Quartal von 2020 Zermatt-Bergtour", "Fund 3. Quarter of 2019
 # Tucson-Boerse", "Aktivitaeten Quartal 2 von 2024 Aaregebiet-Sammlung").
+# Ordinal-Marker ``(?:st|nd|rd|th|\.)?`` deckt symmetrisch die deutsche
+# Digit-Punkt-Form ("1. Quartal") und die englische Ordinal-Suffix-Form
+# ("1st|2nd|3rd|4th quarter") ab - letztere ist in EN-sprachigen Auktions-
+# Katalogen, Mineral-Boersen-Berichten und Sammler-Blogs die Standard-
+# Notation, fiel bisher aber still auf None (das reine ``\.?`` erlaubte nur
+# den optionalen Punkt). Toleriert bewusst semantisch schiefe Kombinationen
+# wie "1th"/"2th"/"3st" (keine Positions-Zwang [1-4]->{st,nd,rd,th}), weil
+# die Regex-Klasse ohnehin lenient formuliert ist (Case-Insensitiv, freie
+# Separatoren, Praepositions-Alternante) und OCR-/Autocorrect-Artefakte in
+# Sammler-Katalog-Notizen gaengig sind; die Fehl-Kombinationen bleiben
+# nachtraeglich sichtbar via :func:`find_rows_with_invalid_funddatum`.
+# Kollisionsfrei zu bestehenden ``st|nd|rd|th``-Vorkommen in
+# :data:`_CENTURY_YEAR` (Century-Pattern, eigener Zweig) und den Tag-
+# Ordinal-Formen (nach der Ziffer, nicht nach dem Quartal-Keyword) - der
+# Quartal-Zweig setzt es explizit VOR das Quartal-/Quarter-Keyword und
+# teilt die semantische Position mit dem DE-Punkt-Marker.
 _QUARTER_LONG = re.compile(
-    r"^\s*(?:([1-4])\s*\.?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))"
+    r"^\s*(?:([1-4])\s*(?:st|nd|rd|th|\.)?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))"
     r"(?:\s*[/.\-, ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
@@ -1357,7 +1373,7 @@ _QUARTER_YEAR_FIRST = re.compile(
 # sodass "2024 1. Quartal" und "2024 Quartal 1" identisch behandelt werden.
 _QUARTER_LONG_YEAR_FIRST = re.compile(
     r"^\s*(\d{4})\s*[/.\-, ]?\s*"
-    r"(?:([1-4])\s*\.?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))\s*$",
+    r"(?:([1-4])\s*(?:st|nd|rd|th|\.)?\s*(?:quartal|quarter)|(?:quartal|quarter)\s+([1-4]))\s*$",
     re.IGNORECASE,
 )
 
@@ -1407,7 +1423,7 @@ _HALFYEAR_SHORT = re.compile(
 # 2. Halfyear of 2019 Tucson-Boerse", "Aktivitaeten Halbjahr 1 von 2024
 # Aaregebiet-Sammlung").
 _HALFYEAR_LONG = re.compile(
-    r"^\s*(?:([1-2])\s*\.?\s*(?:halbjahr|half-?year)"
+    r"^\s*(?:([1-2])\s*(?:st|nd|rd|th|\.)?\s*(?:halbjahr|half-?year)"
     r"|(?:halbjahr|half-?year)\s+([1-2]))"
     r"(?:\s*[/.\-, ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
@@ -1426,7 +1442,7 @@ _HALFYEAR_YEAR_FIRST = re.compile(
 # Langform akzeptiert.
 _HALFYEAR_LONG_YEAR_FIRST = re.compile(
     r"^\s*(\d{4})\s*[/.\-, ]?\s*"
-    r"(?:([1-2])\s*\.?\s*(?:halbjahr|half-?year)"
+    r"(?:([1-2])\s*(?:st|nd|rd|th|\.)?\s*(?:halbjahr|half-?year)"
     r"|(?:halbjahr|half-?year)\s+([1-2]))\s*$",
     re.IGNORECASE,
 )

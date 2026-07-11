@@ -2250,6 +2250,70 @@ def test_parse_iso_date_halbjahr_ungueltig():
     assert parse_iso_date("1985 bis 1990") == "1985-01-01"
 
 
+def test_parse_iso_date_quartal_halbjahr_englische_ordinal_suffixe():
+    """Englische Ordinal-Suffix-Form ('1st|2nd|3rd|4th quarter YYYY',
+    '1st|2nd half-year YYYY') als symmetrische Ergaenzung zur deutschen
+    Digit-Punkt-Form ('1. Quartal YYYY'). Die EN-Form ist die Standard-
+    Notation in EN-sprachigen Auktions-Katalogen, Mineral-Boersen-Berichten
+    und Sammler-Blogs; sie fiel zuvor still auf None und wurde damit in
+    der Sammler-Statistik nicht zeitlich verortet."""
+    # Year-Last Quartal-Langform mit EN-Ordinal-Suffix
+    assert parse_iso_date("1st quarter 2024") == "2024-01-01"
+    assert parse_iso_date("2nd quarter 2024") == "2024-04-01"
+    assert parse_iso_date("3rd quarter 1985") == "1985-07-01"
+    assert parse_iso_date("4th quarter 1999") == "1999-10-01"
+    # Case-insensitiv (mixed-case ist in Katalog-Titeln typisch)
+    assert parse_iso_date("1st Quarter 2024") == "2024-01-01"
+    assert parse_iso_date("4TH QUARTER 2024") == "2024-10-01"
+    # Year-First Quartal-Langform mit EN-Ordinal-Suffix
+    assert parse_iso_date("2024 1st quarter") == "2024-01-01"
+    assert parse_iso_date("2024-3rd Quarter") == "2024-07-01"
+    assert parse_iso_date("2024,4th Quarter") == "2024-10-01"
+    assert parse_iso_date("1985.2nd Quarter") == "1985-04-01"
+    # Year-Last Halbjahr-Langform mit EN-Ordinal-Suffix (Compound half-year)
+    assert parse_iso_date("1st half-year 2024") == "2024-01-01"
+    assert parse_iso_date("2nd half-year 2024") == "2024-07-01"
+    assert parse_iso_date("1st halfyear 2024") == "2024-01-01"
+    assert parse_iso_date("2nd halfyear 1985") == "1985-07-01"
+    # Year-First Halbjahr-Langform mit EN-Ordinal-Suffix
+    assert parse_iso_date("2024 1st half-year") == "2024-01-01"
+    assert parse_iso_date("2024-2nd Halfyear") == "2024-07-01"
+    # Mit Annaeherungspraefix / trailing Satzzeichen
+    assert parse_iso_date("ca. 1st Quarter 2024") == "2024-01-01"
+    assert parse_iso_date("(2nd Quarter 2024)") == "2024-04-01"
+    assert parse_iso_date("3rd Quarter 2024.") == "2024-07-01"
+    # Kombination mit Praepositions-Alternante (von/of) - EN-Ordinal-Suffix
+    # in Prosa mit "of"-Verbindung wie in Katalog-Fliesstext ("1st Quarter
+    # of 2020 Zermatt-Bergtour")
+    assert parse_iso_date("1st Quarter of 2020") == "2020-01-01"
+    assert parse_iso_date("3rd Quarter of 2019") == "2019-07-01"
+    assert parse_iso_date("2nd half-year of 2024") == "2024-07-01"
+    # Kombination Ziffer + Punkt bleibt erlaubt (der bestehende DE-Marker)
+    assert parse_iso_date("1. Quartal 2024") == "2024-01-01"
+    assert parse_iso_date("2024 1. Quartal") == "2024-01-01"
+    # Semantisch-schiefe Kombinationen bleiben tolerant (kein Positions-Zwang
+    # [1-4]->{st,nd,rd,th}) - konsistent zur ohnehin lenient formulierten
+    # Klasse; OCR-/Autocorrect-Artefakte werden nicht verworfen.
+    assert parse_iso_date("1th quarter 2024") == "2024-01-01"
+    assert parse_iso_date("2st quarter 2024") == "2024-04-01"
+    # Q-Kurzform + H-Kurzform unveraendert (kein Regress in Nachbar-Patterns)
+    assert parse_iso_date("Q1 2024") == "2024-01-01"
+    assert parse_iso_date("Q4 2024") == "2024-10-01"
+    assert parse_iso_date("H1 2024") == "2024-01-01"
+    assert parse_iso_date("H2 2024") == "2024-07-01"
+    # DE-Langform (Digit-Punkt und Wort-vor-Zahl) bleibt unveraendert
+    assert parse_iso_date("3. Quartal 1985") == "1985-07-01"
+    assert parse_iso_date("Quartal 4 1999") == "1999-10-01"
+    assert parse_iso_date("Halbjahr 2 1999") == "1999-07-01"
+    # Jahr ausserhalb Spanne / ungueltige Zahl → None
+    assert parse_iso_date("5th quarter 2024") is None
+    assert parse_iso_date("3rd half-year 2024") is None
+    assert parse_iso_date("1st quarter 1700") is None
+    assert parse_iso_date("1st quarter 3000") is None
+    # EN-Ordinal-Suffix ohne Quartal-/Halbjahr-Keyword darf nicht fangen
+    assert parse_iso_date("1st 2024") is None
+
+
 def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Sommer 1700") is None    # ausserhalb 1800-2999
     assert parse_iso_date("Foosaison 2020") is None  # kein bekannter Saison-Name
