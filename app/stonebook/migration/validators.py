@@ -1286,7 +1286,7 @@ _SEASON_CROSS_YEAR = re.compile(
 # Basis) zuerst gepruft werden - die Reihenfolge folgt der etablierten
 # Spezifisch-vor-Allgemeinen-Konvention der uebrigen Patterns.
 _SEASON_YEAR_FIRST = re.compile(
-    r"^\s*(\d{4})\s*[/.\-, ]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
+    r"^\s*(\d{4})\s*[/.\-, _]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
 )
 
 # Quartal + Jahr ("Q1 2024", "Q3/1985", "1. Quartal 2024", "3. Quarter 1985",
