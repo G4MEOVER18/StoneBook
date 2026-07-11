@@ -490,6 +490,80 @@ _SPACE_THOUSANDS_PURE = re.compile(
 )
 _SPACE_THOUSAND_CHAR_RE = re.compile(_SP_THOUSAND_CHARS)
 
+# Underscore-Digit-Grouping (PEP 515, Java 7+, JavaScript ES2021, Rust, Swift,
+# Kotlin, C++14, C# 7+) - der programmiersprachen-verbreitetste Ziffer-
+# Gruppierungs-Trenner fuer numerische Literale. In Python 3.6+, Java, JS,
+# Rust und den uebrigen modernen Sprachen ist ``1_000_000`` die kanonische
+# Notation fuer grosse ganze Zahlen, und die Trenner-Notation faellt bei
+# jedem Copy&Paste aus dem Editor (Interactive Python REPL, Jupyter-Notebook,
+# Java-Datei-Ausriss, Rust-Playground, JSON5 mit numeric-separator-Erweiterung,
+# Vim-yank, VSCode-copy-paste einer Code-Zeile ins Notiz-Feld) in die
+# Sammler-Notiz-Feld-Werte. Aus dem typischen Sammler-Workflow "Preis-/
+# Groessen-/Menge-Angabe aus einem Python/Java/JavaScript-Snippet in das
+# Wert-CHF-/Gewicht-g-/Anzahl-Feld einfuegen" entstand damit silenter
+# Groessenordnungs-Datenverlust bei der Migration: ``"1_000_000"`` (1 Million
+# CHF, Preis-Angabe aus einer Sammler-Datenbank mit Python-numeric-literal-
+# Format) fiel via :data:`_NUM_RE`-Fallback auf ``(1.0, 1.0)`` (Groessenordnung
+# komplett verloren, 999999 CHF Wert-Diskrepanz), ``"1_500 g"`` (Gewicht-
+# Angabe aus einem Java-Datenblatt) auf ``(1.0, 500.0)`` (Range-Grenzen
+# vertauscht und um Faktor 3 geschrumpft), ``"10_000-20_000"`` (Range aus
+# einem Rust-Playground-Code) auf ``(10.0, 10.0)`` (obere Grenze verloren,
+# untere Grenze um Faktor 1000 geschrumpft), ``"1_234.567_89"`` (Rust-float-
+# literal mit Ganzzahl- und Fraktions-Gruppierung) auf ``(1.0, 234.567)``
+# (Ganzzahl-Groessenordnung verloren, Fraktion um zwei signifikante Stellen
+# gekappt).
+#
+# Der Unicode-Underscore ``_`` (U+005F LOW LINE) hat in numerischen Kontexten
+# ausserhalb dieser Ziffer-Gruppierungs-Rolle keine andere Bedeutung: kein
+# Dezimal-Trenner (weder EN noch DE noch FR), kein Range-Trenner (typische
+# Trenner sind Bindestrich/en-dash/em-dash/Slash/bis-Wort), kein Uncertainty-
+# Marker (``±``/Klammer-Kompaktform) und kein Einheiten-Zeichen. Damit ist
+# die Underscore-Position zwischen Ziffern eindeutig als "Ziffer-Gruppierungs-
+# Trenner" interpretierbar und die Normalisierung ist verlustfrei fuer
+# beliebige Gruppierungs-Groessen, sofern sie der Standard-3-Ziffer-
+# Gruppierungs-Konvention folgen. Nicht-Standard-Gruppierungen (``1_23``,
+# ``1_0000``) bleiben unangetastet - Python erlaubt sie zwar syntaktisch,
+# aber in menschlich gepflegten Sammler-Notizen sind sie extrem selten und
+# das Risiko einer Fehl-Interpretation als Bezeichner-Fragment ist hoeher
+# als der Nutzen einer erzwungenen Normalisierung.
+#
+# Die Lookbehind-Klasse ``(?<![A-Za-z_\d])`` schuetzt vor Bezeichner-
+# Kontexten (``Sample_1_000``, ``id_1_000``, ``_1_000`` als Kotlin-Backing-
+# Field-Konvention, ``AB1_000``) - in allen diesen Faellen ist der Unterstrich
+# Teil des Bezeichners und nicht Wert-Ziffer-Trenner. Die Lookahead-Klasse
+# ``(?![\d_])`` schuetzt vor unvollstaendigen Gruppen (``1_000_a`` mit
+# trailing Nicht-Standard-Suffix, ``1_000_`` mit trailing Underscore ohne
+# folgende Ziffern) - dort ist der Underscore-Fluss unterbrochen und die
+# Interpretation als Wert-Gruppierung unsicher. Die 3-Ziffer-Gruppen-
+# Anforderung ``(?:_\d{3})+`` deckt die konventionelle Praxis in allen
+# Programmiersprachen ab (Python-PEP-515-Empfehlung, Java-Style-Guide,
+# JavaScript-Community-Praxis, Rust-Style-Guide) und vermeidet
+# Kollisionen mit atypischen Ziffer-Sequenzen wie ``1_23`` (Python
+# akzeptiert, aber sehr selten in menschlichen Notizen). Die Fuehrungs-
+# Gruppen-Groesse ``\d{1,3}`` spiegelt die Standard-Konvention (leading
+# 1-3 Ziffern vor der ersten 3er-Gruppe: ``1_000``, ``12_000``, ``123_000``).
+#
+# Kollisionsfreiheit zu den bestehenden Trennern:
+#   * :data:`_SP_THOUSAND_CHARS` (Leerzeichen/NBSP/thin-space) - kein
+#     Konflikt, Underscore ist kein Whitespace.
+#   * :data:`_NUM_RE`-Sign-Lookbehind ``(?<![\d.%‰])-`` - kein Konflikt,
+#     Underscore ist nicht in der Klasse.
+#   * :data:`_APPROX_PREFIX` / temporale Praepositionen - werden VOR
+#     dem numerischen Parsing gestrippt, kein Konflikt.
+#   * :data:`_PLUS_MINUS_UNCERTAINTY` / :data:`_PARENTHESIS_UNCERTAINTY` -
+#     matcht auf ``^...$`` und muss auf den gesamten String matchen; ein
+#     Wert ``"1_000 ± 5"`` wuerde die Center-Zahl ``\d+(?:[.,]\d+)?``
+#     verletzen (Underscore ist nicht in der Zahl-Klasse). Der Strip
+#     VOR dem Uncertainty-Match loest genau diese Kollision: nach dem
+#     Strip wird ``"1000 ± 5"`` transparent zur Uncertainty-Range
+#     ``(995.0, 1005.0)`` (statt (1.0, 5.0) vorher).
+#   * Range-Trenner-Bindestrich - der Strip normalisiert Underscore-
+#     Gruppierungen VOR der Zahl-Extraktion; ``"1_000-2_000"`` wird zu
+#     ``"1000-2000"`` und die Range-Semantik bleibt erhalten.
+_UNDERSCORE_DIGIT_GROUPING = re.compile(
+    r"(?<![A-Za-z_\d])(\d{1,3}(?:_\d{3})+)(?![\d_])"
+)
+
 # Bracket-Annotation-Strip fuer die Fallback-Zahl-Extraktion. Klammer-
 # umschlossene Freitext-Anhaenge in Sammler-Notizen ("(Foto)", "(Nr. 42)",
 # "(Ref 2020)", "(siehe Katalog)", "[verified 2024]", "{geerbt}") enthalten
@@ -910,7 +984,10 @@ def _strip_locale_thousands(s: str) -> str:
     ``1,000.50``/``1.000,50`` (gemischte Trenner ⇒ rechter ist Dezimal),
     ``1,000,000``/``1.000.000`` (≥2 gleichartige Trennergruppen ⇒ Tausender)
     sowie die SI-/FR-Whitespace-Form ``1 234,56``/``1\xa0234.56``/
-    ``1 234 567`` (Leerzeichen, NBSP, schmales NBSP). Mehrdeutige Faelle
+    ``1 234 567`` (Leerzeichen, NBSP, schmales NBSP). Zusaetzlich die
+    programmiersprachen-verbreitete Underscore-Ziffer-Gruppierungs-Form
+    ``1_000``/``1_000_000``/``1_234.567`` (PEP 515, Java 7+, JS ES2021,
+    Rust) - siehe :data:`_UNDERSCORE_DIGIT_GROUPING`. Mehrdeutige Faelle
     wie ``1,000`` / ``1.000`` / ``1 234`` (eine Trennergruppe) werden
     nicht angetastet, damit ``2,55`` weiterhin als Dezimal-2.55 gelesen wird.
     """
@@ -923,6 +1000,7 @@ def _strip_locale_thousands(s: str) -> str:
         lambda m: _SPACE_THOUSAND_CHAR_RE.sub("", m.group(1)), s)
     s = _SPACE_THOUSANDS_PURE.sub(
         lambda m: _SPACE_THOUSAND_CHAR_RE.sub("", m.group(1)), s)
+    s = _UNDERSCORE_DIGIT_GROUPING.sub(lambda m: m.group(1).replace("_", ""), s)
     return s
 
 

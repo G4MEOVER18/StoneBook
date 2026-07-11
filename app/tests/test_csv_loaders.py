@@ -218,6 +218,98 @@ def test_parse_range_einzelne_whitespace_gruppe_bleibt_ambivalent():
     assert csv_loaders.parse_range("5 7") == (5.0, 7.0)
 
 
+def test_parse_range_underscore_digit_grouping():
+    """Underscore-Digit-Grouping (PEP 515, Java 7+, JS ES2021, Rust): ``'1_000'`` -> 1000.
+
+    Der programmiersprachen-verbreitetste Ziffer-Gruppierungs-Trenner fuer
+    numerische Literale. Vor dem Fix fielen alle Formen mit Underscore-
+    Gruppierung silent auf ihre erste Ziffer-Sequenz: ``"1_000"`` -> (1.0, 1.0)
+    (Groessenordnung komplett verloren), ``"10_000-20_000"`` -> (10.0, 10.0)
+    (obere Range-Grenze weg, untere um Faktor 1000 geschrumpft), ``"1_000 ± 5"``
+    -> (1.0, 5.0) (Uncertainty-Struktur zerbrochen, statt (995, 1005)). Der Fix
+    strippt Underscore-Trenner mit Standard-3-Ziffer-Gruppierung symmetrisch
+    zu den EN/DE/FR-Tausender-Trennern, damit Werte aus Python/Java/Rust-
+    Snippets in Sammler-Notiz-Felder verlustfrei re-importiert werden.
+    """
+    # Basis-Form (1 Gruppe): eindeutig weil Underscore in Numerik keine
+    # alternative Bedeutung hat (kein Dezimal-, Range-, Uncertainty-Marker).
+    assert csv_loaders.parse_range("1_000") == (1000.0, 1000.0)
+    assert csv_loaders.parse_range("2_500") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("999_999") == (999999.0, 999999.0)
+    # Mehrgruppen-Form (2+ Gruppen)
+    assert csv_loaders.parse_range("1_000_000") == (1000000.0, 1000000.0)
+    assert csv_loaders.parse_range("1_234_567") == (1234567.0, 1234567.0)
+    assert csv_loaders.parse_range("1_000_000_000") == (1000000000.0, 1000000000.0)
+    # Mit EN-Punkt-Dezimal
+    assert csv_loaders.parse_range("1_000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("2_500.75") == (2500.75, 2500.75)
+    assert csv_loaders.parse_range("1_000_000.99") == (1000000.99, 1000000.99)
+    # Mit DE-Komma-Dezimal (Sammler kopiert Python/Rust-Literal, aber notiert
+    # den Dezimal-Anteil in DE-Locale)
+    assert csv_loaders.parse_range("1_000,50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1_000_000,75") == (1000000.75, 1000000.75)
+    # Range-Notation mit Underscore-Gruppierung auf beiden Seiten
+    assert csv_loaders.parse_range("10_000-20_000") == (10000.0, 20000.0)
+    assert csv_loaders.parse_range("1_000-2_000") == (1000.0, 2000.0)
+    assert csv_loaders.parse_range("1_000_000-5_000_000") == (1000000.0, 5000000.0)
+    # Kombination mit Uncertainty (± Langform): der Strip laeuft VOR dem
+    # Uncertainty-Match und macht die grosse Center-Zahl ueberhaupt erst
+    # als Uncertainty-Center erkennbar.
+    assert csv_loaders.parse_range("1_000 ± 5") == (995.0, 1005.0)
+    assert csv_loaders.parse_range("10_000 ± 100") == (9900.0, 10100.0)
+    # Kombination mit direkt anhaengender Einheit (SI-Groesse aus einem
+    # Rust-Snippet mit Suffix "g", "CHF", "kg" etc.)
+    assert csv_loaders.parse_range("1_500 g") == (1500.0, 1500.0)
+    assert csv_loaders.parse_range("2_500 CHF") == (2500.0, 2500.0)
+    # Kombination mit Klammer-Annotation (Katalog-Nummer bleibt annotiert)
+    assert csv_loaders.parse_range("1_000 (Ref-Preis)") == (1000.0, 1000.0)
+    # Kombination mit Approx-Praefix ("ca. 1_000" - Sammler schreibt DE-
+    # Praefix vor einen Programmier-Snippet-Wert)
+    assert csv_loaders.parse_range("ca. 1_000") == (1000.0, 1000.0)
+
+
+def test_parse_range_underscore_digit_grouping_kollisionsschutz():
+    """Bezeichner-Kontexte, atypische Gruppen und Nicht-Standard-Formen bleiben unangetastet.
+
+    Underscore als Ziffer-Gruppierungs-Trenner ist nur dann sicher normalisierbar,
+    wenn er unzweideutig zwischen Wert-Ziffern steht - nicht innerhalb einer
+    Bezeichner-Sequenz wie ``id_1_000`` oder ``Sample_1_000``. Der Lookbehind
+    ``(?<![A-Za-z_\\d])`` schuetzt diese Faelle. Atypische Gruppen-Groessen
+    (``1_23`` mit 2-Ziffer-Gruppe, ``1_0000`` mit 4-Ziffer-Gruppe) bleiben
+    ebenfalls unangetastet - Python erlaubt sie zwar syntaktisch, aber in
+    Sammler-Notizen sind sie extrem selten und das Risiko einer Fehl-
+    Interpretation ist hoeher als der Nutzen.
+    """
+    # Bezeichner-Kontext: Bezeichner-Praefix vor der Gruppierung - Lookbehind
+    # blockt, die Ziffern werden vom _NUM_RE-Fallback separat extrahiert.
+    assert csv_loaders.parse_range("Sample_1_000") == (1.0, 1.0)
+    assert csv_loaders.parse_range("id_1_000") == (1.0, 1.0)
+    # Underscore-Leading (Kotlin-Backing-Field-Konvention _foo): keine
+    # Wert-Interpretation - der Lookbehind blockt _1_000 als Bezeichner-
+    # Fragment. Die trailing 1_000 nach dem ersten Underscore hat ein
+    # Underscore im Lookbehind, das den Match ebenfalls blockt.
+    assert csv_loaders.parse_range("_1_000") == (1.0, 1.0)
+    # Atypische Gruppen (nicht die Standard-3-Ziffer-Konvention): das
+    # Pattern verlangt exakt 3-Ziffer-Gruppen nach dem Underscore -
+    # unklare Formen bleiben unnormalisiert.
+    assert csv_loaders.parse_range("1_23") == (1.0, 23.0)
+    # 4-Ziffer-Gruppe (``1_0000``): kein Standard-Match; _NUM_RE zerlegt
+    # in [1, 0000] und via ``if hi < lo``-Kollaps liefert (1.0, 1.0).
+    assert csv_loaders.parse_range("1_0000") == (1.0, 1.0)
+    # Leading > 3 Ziffern (``1234_567``): Konvention ist 1-3 leading digits
+    # vor der ersten 3er-Gruppe. Nicht-konventionelle Form bleibt ambivalent -
+    # _NUM_RE zerlegt in [1234, 567], und via inverted-range-Kollaps (1234.0, 1234.0).
+    assert csv_loaders.parse_range("1234_567") == (1234.0, 1234.0)
+    # Range mit Bezeichner-Praefix: die Gruppierungs-Position ist zwar
+    # nach dem Bindestrich, aber der Range-Kontext wird nicht verwirrt.
+    assert csv_loaders.parse_range("obj_id_1_000") == (1.0, 1.0)
+    # Regress-Anker fuer die EN/DE-Standard-Tausender-Trenner: die
+    # Underscore-Normalisierung darf keine bestehenden Formen beeinflussen.
+    assert csv_loaders.parse_range("1,000.50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1.000,50") == (1000.5, 1000.5)
+    assert csv_loaders.parse_range("1 000.50") == (1000.5, 1000.5)
+
+
 def test_parse_range_plus_minus_unsicherheit():
     """Wissenschaftliche Unsicherheits-Notation ``N ± M`` liefert (N-M, N+M).
 
