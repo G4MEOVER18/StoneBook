@@ -4404,6 +4404,47 @@ def test_parse_coordinates_tab_separator():
     assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_pipe_separator():
+    """Pipe ``|`` als Separator (PSV-Files, MapInfo/QGIS-Pipe-Delimiter, GIS-Alternativ-Export).
+
+    Pipe-Separator ist die de-facto Standard-Alternative fuer Locale-
+    agnostische Datenbank-/GIS-Exporte in europaeischen Setups mit
+    Komma-Dezimal-Locale (DE/FR/IT), wo Kommas als Feld-Separator
+    mehrdeutig waeren. Typische Quellen: Plain-Text-Datenbank-Exporte
+    (PSV-Files), SQLite-CLI-Text-Exporte mit Pipe-Delimiter, MapInfo-/
+    QGIS-Attributtabellen-Exporte, GDAL/OGR-Text-Formate, sowie manche
+    Bookmarking-Tools und Foto-Metadaten-Export-Werkzeuge mit Locale-
+    unabhaengiger Feld-Trennung. Bisher fielen alle Pipe-getrennten
+    Koordinaten still auf None, obwohl die beiden Zahl-Anteile eindeutig
+    lesbar waren; symmetrisch zum Tab-/Ampersand-/Tilde-Separator-Precedent
+    wird Pipe in die :data:`_DECIMAL_PAIR`-Separator-Klasse aufgenommen.
+    """
+    # Reines Pipe-Separator-Paar (PSV-File-Standard).
+    assert parse_coordinates("46.5|7.5") == (46.5, 7.5)
+    # Pipe + Whitespace-Padding (Formatierte GIS-Attribut-Exporte).
+    assert parse_coordinates("46.5 | 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5| 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5 |7.5") == (46.5, 7.5)
+    # DE-Komma-Dezimal + Pipe (Locale-agnostischer Export aus DE-Excel-
+    # CSV nach PSV-Konvertierung).
+    assert parse_coordinates("46,5|7,5") == (46.5, 7.5)
+    # Mit Vorzeichen (negative Koordinaten aus GIS-Attribute).
+    assert parse_coordinates("-46.5|-7.5") == (-46.5, -7.5)
+    assert parse_coordinates("+46.5|+7.5") == (46.5, 7.5)
+    # Mit Grad-Symbol und Himmelsrichtung (Suffix-Form aus GIS-Text-Export).
+    assert parse_coordinates("46.5°|7.5°") == (46.5, 7.5)
+    assert parse_coordinates("46.5°N|7.5°E") == (46.5, 7.5)
+    assert parse_coordinates("46.5° S|7.5° W") == (-46.5, -7.5)
+    # Out-of-range bleibt None (Validierung greift wie sonst).
+    assert parse_coordinates("100|50") is None
+    # Bestehende Separatoren weiterhin gueltig (kein Regress).
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5\t7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5~7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_colon_dms():
     """Colon-separierte DMS-Notation: '46:30:15 N' (GPS-Logs, NMEA-Konvertierungen).
 

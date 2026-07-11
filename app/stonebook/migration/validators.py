@@ -2015,8 +2015,20 @@ _DECIMAL_PAIR = re.compile(
     # ueber die vorhandene .search()-Semantik verlustfrei, weil der Leading-
     # Tilde vor der Zahl-Extraktion still gescannt wird und der Match erst
     # bei der ersten Ziffer beginnt.
+    # Pipe ``|`` als Separator deckt Plain-Text-Datenbank-/CSV-Alternativ-
+    # Exporte ab (z.B. ``46.5|7.5`` in PSV-Files, Pipe-getrennte SQLite-CLI-
+    # Text-Exporte, viele GIS-Tools wie MapInfo/QGIS mit Pipe-Delimiter-
+    # Option, sowie manche Bookmarking-Tools und Foto-Metadaten-Export-
+    # Werkzeuge). Der Pipe-Separator vermeidet Kollisionen mit Komma-
+    # Dezimal-Locales (DE/FR/IT), wo Kommas als Feld-Separator mehrdeutig
+    # waeren - deshalb ist Pipe die de-facto Standard-Alternative fuer
+    # Locale-agnostische Datenbank-Exporte in europaeischen GIS-Setups.
+    # Bisher fiel jede Pipe-getrennte Koordinate stille auf None, obwohl
+    # die beiden Zahl-Anteile eindeutig lesbar waren; symmetrisch zum
+    # Tab-/Ampersand-/Tilde-Separator-Precedent wird Pipe in die Klasse
+    # aufgenommen, ohne die bestehende Semantik zu beruehren.
     r"""([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # erste Zahl + opt. Richtung
-        \s*[ \t,;/&~]\s*
+        \s*[ \t,;/&~|]\s*
         ([-+]?\d+(?:[.,]\d+)?)\s*°?\s*([NSEWOnsewo])?  # zweite Zahl + opt. Richtung
     """,
     re.VERBOSE,
