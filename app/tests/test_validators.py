@@ -276,6 +276,63 @@ def test_parse_iso_date_englische_monatsnamen_ungueltig():
     assert parse_iso_date("Jun 13, 1700") is None  # vor 1800
 
 
+def test_parse_iso_date_englische_of_konstruktion():
+    """Englische "day of month" Ordinal-Konstruktion mit "of"-Praeposition
+    ("the 4th of July 2019", "15th of June 2020"). Idiomatische EN-Form der
+    Tages-vor-Monat-Reihenfolge; in geerbten Sammlungs-Notizen, Auktions-
+    Katalogen und englischen Foto-Captions verbreitet."""
+    # Standard-Ordinal-Formen
+    assert parse_iso_date("the 4th of July 2019") == "2019-07-04"
+    assert parse_iso_date("4th of July 2019") == "2019-07-04"
+    assert parse_iso_date("the 15th of June 2020") == "2020-06-15"
+    assert parse_iso_date("15th of June 2020") == "2020-06-15"
+    assert parse_iso_date("1st of January 2020") == "2020-01-01"
+    assert parse_iso_date("2nd of February 2019") == "2019-02-02"
+    assert parse_iso_date("3rd of March 1985") == "1985-03-03"
+    assert parse_iso_date("22nd of December 2020") == "2020-12-22"
+    assert parse_iso_date("31st of May 2024") == "2024-05-31"
+    # Kurzform-Monatsnamen
+    assert parse_iso_date("2nd of Feb 2019") == "2019-02-02"
+    assert parse_iso_date("1st of Jan 2020") == "2020-01-01"
+    assert parse_iso_date("15th of Jun 2020") == "2020-06-15"
+    assert parse_iso_date("22nd of Dec 2020") == "2020-12-22"
+    # Kurzform mit Punkt
+    assert parse_iso_date("2nd of Feb. 2019") == "2019-02-02"
+    # Komma vor Jahr (Zeitungs-/Journal-Stil)
+    assert parse_iso_date("the 4th of July, 2019") == "2019-07-04"
+    assert parse_iso_date("15th of June, 2020") == "2020-06-15"
+    # Case-Insensitivitaet (Caps, Titel-Case, Mixed)
+    assert parse_iso_date("THE 4TH OF JULY 2019") == "2019-07-04"
+    assert parse_iso_date("The 4th Of July 2019") == "2019-07-04"
+    assert parse_iso_date("the 4TH of JULY 2019") == "2019-07-04"
+    # Ohne Ordinal-Suffix (Kompakt-Notiz-Form, grammatisch lax)
+    assert parse_iso_date("15 of June 2020") == "2020-06-15"
+    assert parse_iso_date("4 of July 2019") == "2019-07-04"
+    # Trailing Satzzeichen
+    assert parse_iso_date("4th of July 2019.") == "2019-07-04"
+    assert parse_iso_date("the 15th of June 2020,") == "2020-06-15"
+    # Mit Annaeherungspraefix
+    assert parse_iso_date("ca. 4th of July 2019") == "2019-07-04"
+    assert parse_iso_date("approx. the 15th of June 2020") == "2020-06-15"
+    # Klammer-Strip
+    assert parse_iso_date("[4th of July 2019]") == "2019-07-04"
+    assert parse_iso_date("(the 15th of June 2020)") == "2020-06-15"
+    # Grenzfaelle: ungueltige Tage/Monate/Jahre -> None
+    assert parse_iso_date("the 32nd of June 2020") is None  # Tag > 31
+    assert parse_iso_date("the 30th of February 2020") is None  # 30. Feb existiert nicht
+    assert parse_iso_date("the 31st of April 2020") is None  # 31. April existiert nicht
+    assert parse_iso_date("the 4th of Foo 2019") is None  # Unbekannter Monat
+    assert parse_iso_date("the 4th of July 1700") is None  # Jahr vor 1800
+    assert parse_iso_date("the 4th of July 3000") is None  # Jahr nach 2999
+    # Regress-Anker: bestehende Formen bleiben gueltig
+    assert parse_iso_date("15th June 2020") == "2020-06-15"
+    assert parse_iso_date("June 15th, 2020") == "2020-06-15"
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    # Disjunktheit: Ohne "of" faellt der Match durch auf _DAY_MONTH_YEAR /
+    # _ENGLISH_MONTH_DAY_YEAR (die "of" nicht kennen)
+    assert parse_iso_date("15th June 2020") == "2020-06-15"  # ohne of -> _DAY_MONTH_YEAR
+
+
 def test_parse_iso_date_compact_iso():
     """ISO 8601 compact YYYYMMDD (kommt in Dateinamen/Log-Stempeln vor)."""
     assert parse_iso_date("20240613") == "2024-06-13"

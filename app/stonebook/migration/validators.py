@@ -893,6 +893,41 @@ _ENGLISH_MONTH_DAY_YEAR = re.compile(
     r"^\s*([A-Za-z]+)\s*[./\-]?\s*(\d{1,2})(?:st|nd|rd|th)?\s*[,./\-]?\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
+# Englische "day of month" Ordinal-Konstruktion mit "of"-Praeposition:
+# "the 4th of July 2019", "15th of June 2020", "1st of January 2020",
+# "22nd of December, 2020", "the 3rd of March 1985". In englischen Sammler-
+# Notizen, Foto-Captions und Auktions-Beschreibungen die idiomatische Form
+# der Tages-vor-Monat-Reihenfolge ("the 4th of July" ist die Standard-
+# Feiertag-Notation, "the 15th of June" die typische Prosa-Datums-Angabe in
+# englischer Sprache aus geerbten Sammlungen mit US-/UK-Vorbesitzer,
+# Auktions-Katalog-Eintragen "Purchased on the 15th of June 2019" und aus
+# englisch verfassten Fund-Berichten). Bisher fielen alle "of"-Konstruktionen
+# stille auf None, weil :data:`_DAY_MONTH_YEAR` nur den direkten Whitespace-
+# oder Punkt-/Slash-/Bindestrich-Separator zwischen Tag und Monatsname
+# akzeptierte und das Wort "of" den strukturellen ``$``-Anker-Match blockte -
+# aus einem typischen Auktions-Eintrag "Acquired the 4th of July 1985 in
+# Tucson" wurde silenter Funddatum-Datenverlust bei der Migration.
+#
+# Optionaler ``the``-Artikel-Praefix ("the 4th of July" / "4th of July" sind
+# beide idiomatisch, "the" wird oft in Prosa gesetzt und in Kompakt-Notizen
+# weggelassen). Optionales Tag-Ordinal-Suffix ``st|nd|rd|th`` spiegelt
+# :data:`_DAY_MONTH_YEAR` - grammatisch korrekt ist die Ordinal-Form
+# ("the 15th of June"), aber Sammler-Kompakt-Notizen lassen den Ordinal-
+# Suffix manchmal weg ("15 of June 2020"). Monatsname muss valide sein
+# (via :func:`_normalize_month_name`), sonst faellt der Match durch.
+# Vor dem Jahr optionales Komma ("the 15th of June, 2020" - EN-Print-
+# Konvention aus Zeitungs-/Journal-Stil).
+#
+# Disjunktheit zu :data:`_DAY_MONTH_YEAR` (verlangt Whitespace/Punkt/Slash/
+# Bindestrich zwischen Tag und Monatsname, kein Wort dazwischen) und zu
+# :data:`_ENGLISH_MONTH_DAY_YEAR` (verlangt Monatsname als erstes Feld). Die
+# "of"-Praeposition als Pflicht-Trenner macht die Struktur eindeutig
+# (kein anderes Datums-Pattern kennt "of" als semantisches Zeichen).
+_DAY_OF_MONTH_YEAR = re.compile(
+    r"^\s*(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+of\s+"
+    r"([A-Za-z]+)\.?\s*,?\s*(\d{4})\s*$",
+    re.IGNORECASE,
+)
 # "Juni 2024" / "Juni, 2024" / "Juni/2024" / "Juni-2024" / "Jun-2024" / "Juni.2024".
 # Bindestrich-Form ist symmetrisch zur DD-Mon-YYYY-Notation (Oracle/Log-Exporte):
 # Reports lassen den Tag oft weg, wenn nur eine Monatsangabe vorliegt
@@ -2492,6 +2527,25 @@ def parse_iso_date(text) -> str | None:
                 else:
                     day = (datetime.date(year, month + 1, 1)
                            - datetime.timedelta(days=1)).day
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
+    # Englische "day of month" Ordinal-Form ("the 4th of July 2019",
+    # "15th of June 2020"). Vor :data:`_DAY_MONTH_YEAR` geprueft, weil das
+    # obligatorische Wort "of" die Struktur spezifischer macht (kein anderes
+    # Datums-Pattern kennt "of" als Trenner). Ordinal-Suffix optional, Artikel-
+    # Praefix "the" optional, Komma vor Jahr optional - deckt beide EN-Register
+    # (Prosa-Feiertags-Notation "the 4th of July" und Kompakt-Notiz
+    # "15 of June 2020") ab. Monatsname wird ueber :func:`_normalize_month_name`
+    # validiert; ungueltiger Name (z.B. "the 4th of Foo 2019") faellt durch
+    # auf die restlichen Pattern.
+    m = _DAY_OF_MONTH_YEAR.match(s)
+    if m:
+        day = int(m.group(1))
+        month = _normalize_month_name(m.group(2))
+        year = int(m.group(3))
+        if month and 1 <= day <= 31 and 1800 <= year <= 2999:
             try:
                 return datetime.date(year, month, day).isoformat()
             except ValueError:
