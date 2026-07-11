@@ -5407,3 +5407,77 @@ def test_parse_coordinates_wkt_point():
     # Fehlende Klammern -> kein WKT-Match, fallback auf _DECIMAL_PAIR
     # (das dann silente Vertauschung liefert - erwartet und dokumentiert)
     assert parse_coordinates("POINT 7.5 46.5") == (7.5, 46.5)
+
+
+def test_parse_iso_date_monat_underscore_separator():
+    """Monatsname-Notation mit Underscore ``_`` als Filename-sicherem Separator
+    zwischen Monatsname und Jahr: ``Juni_2024`` / ``July_2020`` / ``Sep_1985``.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[,./ \\-]`` von
+    :data:`_MONTH_YEAR` um den Underscore. In Foto-/Sammlungs-Archiven ist der
+    Underscore der zuverlaessigste Cross-Plattform-Filename-Trenner (kein
+    Reserved-Char in Windows/POSIX, keine locale-abhaengige Interpretation);
+    Foto-Software-Auto-Rename und massenhafte Datei-Umbenennung normalisieren
+    Leerzeichen typischerweise auf ``_``. Bisher fielen alle Filename-
+    abgeleiteten Monatsname-Jahr-Formen mit Underscore auf None (silenter
+    Funddatum-Datenverlust). Mapping identisch zur Ein-Zeichen-Separator-Form
+    (erster Tag des Monats).
+    """
+    # Voll ausgeschriebene DE-Monatsnamen mit Underscore
+    assert parse_iso_date("Januar_2024") == "2024-01-01"
+    assert parse_iso_date("Juni_2024") == "2024-06-01"
+    assert parse_iso_date("Juli_2020") == "2020-07-01"
+    assert parse_iso_date("Dezember_1985") == "1985-12-01"
+    assert parse_iso_date("August_2020") == "2020-08-01"
+    # Voll ausgeschriebene EN-Monatsnamen mit Underscore
+    assert parse_iso_date("January_2024") == "2024-01-01"
+    assert parse_iso_date("July_2020") == "2020-07-01"
+    assert parse_iso_date("December_1985") == "1985-12-01"
+    assert parse_iso_date("August_2020") == "2020-08-01"
+    # Abgekuerzte Monatsnamen (DE/EN) mit Underscore
+    assert parse_iso_date("Jan_2024") == "2024-01-01"
+    assert parse_iso_date("Jun_2024") == "2024-06-01"
+    assert parse_iso_date("Sep_1985") == "1985-09-01"
+    assert parse_iso_date("Dec_1985") == "1985-12-01"
+    # Abgekuerzte Monatsnamen mit Punkt-Suffix und Underscore ("Jun._2024",
+    # "Sep._1985") - Kombination der ``\\.?``-Punkt-Toleranz mit dem neuen
+    # Underscore-Separator; kommt in Foto-Software-Auto-Rename-Regeln vor,
+    # die den Punkt der Abkuerzung nicht strippen und nur Whitespace auf
+    # Underscore mappen.
+    assert parse_iso_date("Jun._2024") == "2024-06-01"
+    assert parse_iso_date("Sep._1985") == "1985-09-01"
+    # Case-Insensitivitaet (Foto-Software mit uppercase-Auto-Rename)
+    assert parse_iso_date("JUNI_2024") == "2024-06-01"
+    assert parse_iso_date("juli_2020") == "2020-07-01"
+    assert parse_iso_date("SEP_1985") == "1985-09-01"
+    # Kombiniert mit Annaeherungspraefix / Klammer-Strip
+    assert parse_iso_date("ca. Juni_2024") == "2024-06-01"
+    assert parse_iso_date("[Juli_2020]") == "2020-07-01"
+    # Kollisionsschutz: unbekannte Nicht-Monatsname-Woerter mit Underscore-
+    # Jahr-Struktur fallen weiterhin auf None (nur eindeutige Monatsnamen
+    # sollen matchen)
+    assert parse_iso_date("Foo_2024") is None
+    assert parse_iso_date("Sample_2024") is None
+    assert parse_iso_date("Bar_1985") is None
+    # Kollisionsschutz: mehrere Underscores in Folge (fehlerhafte Filename-
+    # Auto-Rename-Regel) mangeln die Struktur und liefern None statt einer
+    # silenten Fehl-Interpretation ("Juni__2024" hat 2 Underscores und
+    # matcht die Separator-Klasse nicht als Einzel-Zeichen).
+    assert parse_iso_date("Juni__2024") is None
+    # Kollisionsschutz: Underscore-Kompositum ohne Monatsname faellt auf
+    # None (nur der Monatsname-Slot ist ausgeschriebener Wort-Slot).
+    assert parse_iso_date("_Juni_2024") is None
+    assert parse_iso_date("Juni_2024_") is None
+    # Kollisionsschutz: Underscore mit Praeposition-Kombination faellt auf
+    # den bereits vorhandenen Praepositions-Zweig durch - "Juli_von_2024"
+    # ist keine natuerlichsprachige Notation und liefert None.
+    assert parse_iso_date("Juli_von_2024") is None
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert und die Praepositions-Alternante bleibt aktiv.
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Juni-2024") == "2024-06-01"
+    assert parse_iso_date("Juni/2024") == "2024-06-01"
+    assert parse_iso_date("Juni.2024") == "2024-06-01"
+    assert parse_iso_date("Juni, 2024") == "2024-06-01"
+    assert parse_iso_date("Juli von 2024") == "2024-07-01"
+    assert parse_iso_date("July of 2024") == "2024-07-01"

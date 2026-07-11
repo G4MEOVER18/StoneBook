@@ -1003,8 +1003,31 @@ _DAY_OF_MONTH_YEAR = re.compile(
 # ``von``/``of`` ist bereits in ihrer natuerlichen Kleinbuchstaben-Form
 # (Grossbuchstaben-Varianten aus Uppercase-Titeln sind semantisch
 # identisch, aber praktisch selten im Prosa-Kontext).
+#
+# Underscore ``_`` als Separator zwischen Monatsname und Jahr - der de-facto
+# Filename-sichere Trenner in Foto-/Sammlungs-Archiven und Ordner-Struktur-
+# Namen ("Fund_Juni_2024.jpg", "Ausflug_July_2020.pdf", "Sammlung_Sep_1985/",
+# "Aare_Mai_2024_UV.png"). In der Praxis das zentrale Muster, wenn ein
+# Sammler den Fund/Auftritt/Foto-Ordner nach Monat und Jahr benennt und den
+# Ordner-/Datei-Namen dann als Datums-Feld in die App uebernimmt (Copy-paste
+# aus Datei-Explorer, Massen-Umbenennen mit Sammlungs-Tag). Auf Datei-Achse
+# stehen ``[space]``, ``[.]``, ``[-]``, ``[/]`` haeufig unter Ausschluss der
+# Windows-/POSIX-Reserved-Char-Konvention (Slash) oder sind in Foto-Software
+# durch Auto-Rename-Regeln zu ``_`` normalisiert - der Underscore ist damit
+# der zuverlaessigste Cross-Plattform-Filename-Trenner. Bisher fielen alle
+# Filename-abgeleiteten Monatsname-Jahr-Formen mit Underscore-Separator
+# ("Juni_2024" -> None, "Sep_1985" -> None, "August_2020" -> None) still auf
+# None, weil die Separator-Klasse ``[,./ \-]`` den Filename-Trenner nicht
+# kannte - typische Foto-Ordner-Namen und massenkonvertierte Datei-Batches
+# gingen als silenter Funddatum-Datenverlust in die Migration. Der Unicode-
+# Underscore hat im Datums-Kontext keine andere Bedeutung (kein Trenner in
+# einer publizierten Datums-Notation), damit ist die Erweiterung verlustfrei
+# und kollisionsfrei zu allen bestehenden Datums-Notationen. Symmetrisch zur
+# etablierten Underscore-Behandlung in :func:`_strip_locale_thousands`
+# (Zahl-Achse, Python/Java/JS-Digit-Grouping), die den Underscore als
+# domaenen-neutralen Sekundaer-Separator behandelt.
 _MONTH_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[,./ \-]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[,./ _\-]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 
