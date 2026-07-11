@@ -1420,9 +1420,28 @@ _ISO_WEEK_DATE = re.compile(
 # Separator schuetzen vor False-Positives an Standalone-W-Tokens
 # (``W25`` allein, ``W3.5`` Messwert, ``W-4`` Sortier-Code) - alle
 # fallen mangels vollstaendiger Struktur unangetastet auf None.
+# Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Wochen-Zahl und Jahr
+# deckt die natuerlichsprachige DE-/EN-Form ``KW 25 von 2024`` /
+# ``Kalenderwoche 25 von 2024`` / ``week 25 of 2024`` / ``CW 25 of 2024`` ab,
+# die in Prosa-Etiketten und Sammler-Notizen die uebliche Verbindungs-Form
+# zwischen Wochen-Nummer und Jahr ist ("Fund KW 25 von 2024 im Aaregebiet",
+# "Bergtour week 40 of 2019 Tucson-Boerse"). Spiegelt die "of"-Praepositions-
+# Erweiterung aus :data:`_DAY_OF_MONTH_YEAR` (englische Ordinal-Konstruktion
+# "the 4th of July 2019") auf die Wochen-Achse und ergaenzt symmetrisch die
+# DE-Preposition ``von``. Beide Praepositionen verlangen Whitespace auf
+# beiden Seiten (``\s+...\s+``), sodass Kompositum-Formen wie ``vondel`` /
+# ``vonof`` / ``von2024`` (ohne Trennwhitespace) still fehl-matchen und
+# ``KW 25`` allein (ohne Jahr) unveraendert None liefert. Bisher fielen
+# alle Praepositions-Formen still auf None, weil die Separator-Klasse
+# ``[/.\-, ]`` nur Ein-Zeichen-Trenner kennt und die Wort-Praeposition
+# nicht abdeckt - typische Prosa-Notizen aus Fund-Tagebuechern gingen als
+# silenter Funddatum-Datenverlust in die Migration. Case-Insensitivitaet
+# spiegelt die uebrigen Marker-Alternativen (KW/kw, Kalenderwoche/
+# kalenderwoche); ``VON``/``OF`` in Grossbuchstaben aus Excel-Auto-Fill /
+# Uppercase-Titeln matchen ohne Regel-Doppel-Pflege.
 _KW_YEAR = re.compile(
     r"^\s*(?:KW|CW|Kalenderwoche|Woche|calendar\s*week|W)\.?\s*(\d{1,2})"
-    r"\s*[/.\-, ]\s*(\d{4})\s*$",
+    r"(?:\s*[/.\-, ]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Year-first KW-Notation: "2024 KW 25", "2024/KW25", "2024-Kalenderwoche 25",

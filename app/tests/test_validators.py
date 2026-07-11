@@ -3645,6 +3645,72 @@ def test_parse_iso_date_kw_year_first():
     assert parse_iso_date("Kalenderwoche 25 2024") == "2024-06-17"
 
 
+def test_parse_iso_date_kw_praeposition_von_of():
+    """KW-Notation mit Wort-Praeposition ``von`` (DE) / ``of`` (EN) zwischen
+    Wochen-Zahl und Jahr: ``KW 25 von 2024`` / ``week 25 of 2024``.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[/.\\-, ]`` von :data:`_KW_YEAR`
+    um die Wort-Praepositions-Trenner ``von`` (DE) und ``of`` (EN). In
+    Prosa-Etiketten und Sammler-Notizen die uebliche natuerlichsprachige
+    Verbindungs-Form zwischen Wochen-Nummer und Jahr ("Fund KW 25 von 2024
+    im Aaregebiet", "Bergtour week 40 of 2019 Tucson-Boerse"). Mapping
+    identisch zur Ein-Zeichen-Separator-Form (Montag der genannten Woche).
+    Beide Praepositionen verlangen Whitespace auf beiden Seiten, sodass
+    Kompositum-Formen (``vondel``, ``vonof``, ``von2024``) und angehaengte
+    Formen (``KW 25von 2024``) unangetastet auf None fallen.
+    """
+    # DE-Praeposition ``von`` mit allen KW-Marker-Alternativen
+    assert parse_iso_date("KW 25 von 2024") == "2024-06-17"
+    assert parse_iso_date("KW25 von 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25 von 2024") == "2024-06-17"
+    assert parse_iso_date("Woche 25 von 2024") == "2024-06-17"
+    assert parse_iso_date("W25 von 2024") == "2024-06-17"
+    assert parse_iso_date("W 25 von 2024") == "2024-06-17"
+    # EN-Praeposition ``of`` mit allen KW-Marker-Alternativen
+    assert parse_iso_date("KW 25 of 2024") == "2024-06-17"
+    assert parse_iso_date("CW 25 of 2024") == "2024-06-17"
+    assert parse_iso_date("CW25 of 2024") == "2024-06-17"
+    assert parse_iso_date("calendar week 25 of 2024") == "2024-06-17"
+    assert parse_iso_date("calendarweek 25 of 2024") == "2024-06-17"
+    assert parse_iso_date("W25 of 2024") == "2024-06-17"
+    # Case-Insensitivitaet (spiegelt die uebrigen Marker-Alternativen)
+    assert parse_iso_date("KW 25 VON 2024") == "2024-06-17"
+    assert parse_iso_date("kw 25 of 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25 VON 2024") == "2024-06-17"
+    assert parse_iso_date("CW 25 OF 2024") == "2024-06-17"
+    # Erste Woche (Grenzfall)
+    assert parse_iso_date("KW 1 von 2024") == "2024-01-01"
+    assert parse_iso_date("week 1 of 2024") is None  # kein reines 'week' als Marker
+    assert parse_iso_date("CW 1 of 2024") == "2024-01-01"
+    # Kombiniert mit Annaeherungspraefix / Klammern
+    assert parse_iso_date("ca. KW 25 von 2024") == "2024-06-17"
+    assert parse_iso_date("[Kalenderwoche 25 of 2024]") == "2024-06-17"
+    # Kein Match: Whitespace auf beiden Seiten der Praeposition obligatorisch
+    assert parse_iso_date("KW 25von 2024") is None
+    assert parse_iso_date("KW 25 von2024") is None
+    assert parse_iso_date("KW25vonof2024") is None
+    # Kein Match: Kompositum-Formen (vondel/vonof) mit Praeposition-Praefix
+    assert parse_iso_date("KW 25 vondel 2024") is None
+    assert parse_iso_date("KW 25 vonof 2024") is None
+    # Kein Match: andere DE-Praepositionen bleiben unangetastet (bewusst
+    # eng gefasste Alternante, nur ``von``/``of`` supported).
+    assert parse_iso_date("KW 25 vor 2024") is None
+    assert parse_iso_date("KW 25 nach 2024") is None
+    assert parse_iso_date("KW 25 im 2024") is None
+    # Kein Match: EN-``of`` mit falscher Fortsetzung (kein 4-Ziffer-Jahr)
+    assert parse_iso_date("KW 25 of course 2024") is None
+    # Ungueltig (Jahr / Woche ausserhalb)
+    assert parse_iso_date("KW 0 von 2024") is None
+    assert parse_iso_date("KW 54 von 2024") is None
+    assert parse_iso_date("KW 25 von 1700") is None
+    # Regress-Anker: die bisherigen Ein-Zeichen-Separator-Formen bleiben
+    # unveraendert.
+    assert parse_iso_date("KW 25 2024") == "2024-06-17"
+    assert parse_iso_date("KW25/2024") == "2024-06-17"
+    assert parse_iso_date("KW 25, 2024") == "2024-06-17"
+    assert parse_iso_date("Kalenderwoche 25/2024") == "2024-06-17"
+
+
 def test_parse_iso_date_w_marker_kurzform():
     """Einzelbuchstabe-Kurzform ``W`` als Wochen-Marker (``W25 2024`` / ``2024 W25``).
 
