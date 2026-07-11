@@ -611,6 +611,57 @@ _BRACKETED_SQUARE = re.compile(r"\[[^\[\]]*\]")
 _BRACKETED_CURLY = re.compile(r"\{[^{}]*\}")
 _HAS_DIGIT = re.compile(r"\d")
 
+# Explizit-Multiplikations-Form der wissenschaftlichen Zehnerpotenz auf die
+# Standard-Scientific-Notation ``NeM`` normalisieren, damit :data:`_NUM_RE`
+# den Wert als *eine* Zahl liest statt Mantisse und Exponent-Basis (10) als
+# zwei Range-Grenzen zu extrahieren. In Publikationen und Sammler-Notizen
+# aus wissenschaftlichen Quellen kommt die explizite Form (``2.5 · 10^3``,
+# ``2.5 × 10^-3``, ``2.5*10^3``, ``2.5x10^3``) haeufig statt der kompakten
+# E-Notation vor - Word/LaTeX/PDF-Autoformat setzt das Multiplikations-
+# Zeichen typografisch (``·`` U+00B7 MIDDLE DOT, ``×`` U+00D7 MULTIPLICATION
+# SIGN) und den Exponenten oft als Unicode-Superscript (``2.5·10³``,
+# ``2.5×10⁻³``). Ohne Normalisierung liest :data:`_NUM_RE` z.B. ``2.5·10^3``
+# als ``[2.5, 10, 3]`` (Middle-Dot ist kein Zahl-Teil, ``^3`` faellt aus dem
+# Zahl-Match); der ``if hi < lo``-Kollaps oder die letzte Zahl gewinnen als
+# vermeintliche Range-Grenze - der publizierte Faktor 10^3 geht stille
+# verloren. Beide Zweige (Caret + ASCII-Exp / Unicode-Superscript-Exp) werden
+# vor allen weiteren Zahl-Patterns via :func:`_normalize_explicit_mult_power10`
+# auf ``NeM`` umgeschrieben.
+_SUPERSCRIPT_TO_ASCII: dict[str, str] = {
+    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+    "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    "⁻": "-", "⁺": "+",
+}
+_EXPLICIT_MULT_POWER10_CARET = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"((?:(?<![\d.%‰])-)?(?:\.\d+|\d+(?:[.,]\d+)?))"
+    r"\s*[·×*xX]\s*"
+    r"10\s*\^\s*"
+    r"([-+]?\d+)"
+    r"(?![.,]?\d)"
+)
+_EXPLICIT_MULT_POWER10_SUPER = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"((?:(?<![\d.%‰])-)?(?:\.\d+|\d+(?:[.,]\d+)?))"
+    r"\s*[·×*xX]\s*"
+    r"10"
+    r"([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)"
+)
+
+
+def _normalize_explicit_mult_power10(s: str) -> str:
+    """``N · 10^M`` / ``N × 10³`` → ``NeM`` (Standard-Scientific-Notation)."""
+    def _caret(m: re.Match) -> str:
+        return f"{m.group(1)}e{m.group(2)}"
+
+    def _super(m: re.Match) -> str:
+        exp = "".join(_SUPERSCRIPT_TO_ASCII[c] for c in m.group(2))
+        return f"{m.group(1)}e{exp}"
+
+    s = _EXPLICIT_MULT_POWER10_CARET.sub(_caret, s)
+    s = _EXPLICIT_MULT_POWER10_SUPER.sub(_super, s)
+    return s
+
 # Unicode-Vulgar-Fraktionen (U+00BC/U+00BD/U+00BE und U+2150-U+215E) auf ihre
 # Dezimal-Aequivalente abbilden. In der Mineralogie ist die Halbschritt-
 # Notation ``5½`` bei Mohs-Haerte-Angaben die klassische Referenz-Tabellen-
@@ -1064,6 +1115,7 @@ def normalize_numeric_locale(text: str) -> str:
     in DE-Notation unbeabsichtigt zu Dezimalpunkten).
     """
     s = text.replace("'", "").replace("’", "").replace("−", "-")
+    s = _normalize_explicit_mult_power10(s)
     return _strip_locale_thousands(s)
 
 

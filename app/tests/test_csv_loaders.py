@@ -1024,6 +1024,95 @@ def test_parse_range_wissenschaftliche_notation():
     assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
 
 
+def test_parse_range_explizit_multiplikation_zehnerpotenz():
+    """Explizit-Multiplikations-Form ``N · 10^M`` / ``N × 10³`` als Scientific-Notation.
+
+    In wissenschaftlichen Publikationen und Sammler-Notizen aus PDF-/Word-/
+    LaTeX-Quellen ist die Explizit-Form haeufiger als die kompakte
+    E-Notation: Word- und LaTeX-Autoformat setzen das Multiplikations-
+    Zeichen typografisch (``·`` U+00B7, ``×`` U+00D7) und den Exponenten
+    als Unicode-Superscript (``10³`` / ``10⁻³``). Vor dem Fix las
+    :data:`_NUM_RE` z.B. ``"2.5·10^3"`` als drei Tokens ``[2.5, 10, 3]``,
+    liefert per ``if hi < lo``-Kollaps ``(2.5, 3.0)`` (Faktor 10^3 verloren)
+    - bei der Migration aus wissenschaftlichen Quellen entstand damit
+    silenter Groessenordnungs-Verlust in Absorptions-/Kalibrier-/HWZ-Werten.
+
+    :func:`_normalize_explicit_mult_power10` schreibt beide Zweige (Caret-
+    ASCII-Exponent und Unicode-Superscript-Exponent) auf die Standard-
+    E-Notation ``NeM`` um, die :data:`_NUM_RE` transparent als eine Zahl liest.
+    """
+    # ASCII-Caret-Form mit den vier gebrauchlichen Multiplikations-Zeichen
+    # (Middle-Dot U+00B7, Multiplication-Sign U+00D7, ASCII-Stern, ASCII-x).
+    assert csv_loaders.parse_range("2.5·10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5×10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5*10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5x10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5X10^3") == (2500.0, 2500.0)
+    # Whitespace zwischen Mantisse, Operator und ``10^`` toleriert (Print-/
+    # PDF-Setz mit klassischer Space-um-Operator-Konvention).
+    assert csv_loaders.parse_range("2.5 · 10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5 × 10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5 · 10 ^ 3") == (2500.0, 2500.0)
+    # Negativer Exponent (Absorptions-/Kalibrier-/HWZ-Werte < 1).
+    assert csv_loaders.parse_range("2.5·10^-3") == pytest.approx((0.0025, 0.0025))
+    assert csv_loaders.parse_range("2.5 × 10^-3") == pytest.approx((0.0025, 0.0025))
+    # Explizites Plus-Vorzeichen am Exponenten (Excel-DE-Auto-Format-Konvention).
+    assert csv_loaders.parse_range("2.5·10^+3") == (2500.0, 2500.0)
+    # Unicode-Superscript-Exponent statt Caret-ASCII: Word-/LaTeX-Autoformat
+    # setzt ``10^3`` als ``10³`` (U+00B3) und ``10^-3`` als ``10⁻³``
+    # (U+207B MINUS + U+00B3).
+    assert csv_loaders.parse_range("2.5·10³") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5×10³") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5·10⁻³") == pytest.approx((0.0025, 0.0025))
+    assert csv_loaders.parse_range("2.5×10⁻³") == pytest.approx((0.0025, 0.0025))
+    assert csv_loaders.parse_range("2.5×10⁺³") == (2500.0, 2500.0)
+    # Mehrstelliger Unicode-Superscript-Exponent (``10¹²`` fuer Avogadro-
+    # Groessenordnungen).
+    assert csv_loaders.parse_range("6.022·10²³") == pytest.approx((6.022e23, 6.022e23))
+    # DE-Komma-Dezimal in der Mantisse (DE-Publikationen, DE-Excel-Export
+    # schreiben ``2,5·10^3`` statt ``2.5·10^3``).
+    assert csv_loaders.parse_range("2,5·10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2,5·10³") == (2500.0, 2500.0)
+    # Negatives Vorzeichen an der Mantisse (thermische/isotopische Werte
+    # ausserhalb der klassischen Mineralogie).
+    assert csv_loaders.parse_range("-2.5·10^3") == (-2500.0, -2500.0)
+    assert csv_loaders.parse_range("-2.5·10³") == (-2500.0, -2500.0)
+    # Leading-Dot-Dezimal in der Mantisse (US-typographische Konvention).
+    assert csv_loaders.parse_range(".5·10^3") == (500.0, 500.0)
+    # Range mit Explizit-Form auf beiden Seiten (Kalibrier-/Absorptions-
+    # Spektrum-Grenzen, oft als ``N × 10^k – M × 10^k`` gesetzt).
+    assert csv_loaders.parse_range("1×10^3 to 2×10^3") == (1000.0, 2000.0)
+    assert csv_loaders.parse_range("1·10³ – 2·10³") == (1000.0, 2000.0)
+    # Trailing-Einheit ohne Whitespace-Problem (die Einheiten-Suffix-Zahl-
+    # Blockade aus dem ``cm3``/``m2``-Zweig bleibt unabhaengig gueltig).
+    assert csv_loaders.parse_range("2.5·10^3 g/cm³") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("0.5·10^-3 cm²") == pytest.approx((0.0005, 0.0005))
+    # Annaeherungs-Praefix vor der Explizit-Form (Sammler-Notiz "ca.").
+    assert csv_loaders.parse_range("ca. 2.5·10^3") == (2500.0, 2500.0)
+    # Regression: Kompakte E-Notation bleibt unveraendert (die Normalisierung
+    # macht Explizit → Kompakt, nicht umgekehrt).
+    assert csv_loaders.parse_range("2.5e3") == (2500.0, 2500.0)
+    # Regression: Multiplikations-Zeichen zwischen Zahlen OHNE ``10^``-Kern
+    # bleibt als getrennter Zahl-Trenner unbehelligt (Dimensions-Notation
+    # ``5cm × 3cm`` → ``5cm`` und ``3cm``, jede Zahl separat gelesen).
+    assert csv_loaders.parse_range("5 × 3") == (5.0, 3.0) or \
+        csv_loaders.parse_range("5 × 3") == (5.0, 5.0)  # inverted-collapse
+    assert csv_loaders.parse_range("5cm x 3cm") == (5.0, 3.0) or \
+        csv_loaders.parse_range("5cm x 3cm") == (5.0, 5.0)  # inverted-collapse
+    # Regression: ``10^N`` OHNE Mantisse-vor-dem-Operator bleibt unbehelligt -
+    # das Pattern verlangt strukturell die ``N × 10^M``-Signatur mit
+    # explizitem Multiplikations-Zeichen.
+    assert csv_loaders.parse_range("10^3") == (10.0, 10.0)
+    # Regression: SI-Einheiten-Bruch ``EUR·kg^-1`` hat keinen ``10``-Kern
+    # nach dem Middle-Dot, matcht das Explizit-Pattern nicht und bleibt
+    # in der bestehenden Zahl-Extraktion.
+    assert csv_loaders.parse_range("1 EUR·kg^-1") == (1.0, 1.0)
+    # Regression: Word-artige Multiplikation zwischen zwei nicht-Zehner-
+    # Werten (``5 × 3.14`` ist eine Berechnung, keine Groessenordnung).
+    result = csv_loaders.parse_range("5 × 3.14")
+    assert result == (5.0, 3.14) or result == (5.0, 5.0)
+
+
 def test_parse_range_scientific_notation_overflow():
     """Overflow der Exponent-Notation (``1e400`` -> ``inf``) faellt auf ``(None, None)``.
 
