@@ -498,6 +498,65 @@ _TRAILING_UHR_TIME = re.compile(
     r"[,\s]+\d{1,2}(?::\d{2}(?::\d{2})?)?\s*uhr\.?\s*$",
     re.IGNORECASE,
 )
+# DE-/EN-Tageszeit-Trailing-Marker OHNE konkrete Uhrzeit-Ziffer
+# ("13.06.2024 morgens", "13. Juni 2024 nachmittags", "2024-06-13 abends",
+# "13.06.2024, vormittags."). In Sammler-Notizen weit verbreitet als grobe
+# Tageszeit-Angabe zusaetzlich zum Fund-/Foto-Datum ("Fund am 13.06.2024
+# nachmittags", "Foto 13. Juni 2024 morgens", "Erwerb 2024-06-13 abends"),
+# wenn der genaue Uhrzeit-Zeitpunkt nicht mehr vorlag, aber die Tageszeit
+# als Erinnerungs-Anker im Etikett festgehalten wurde. Bisher fielen alle
+# diese Formen still auf None: weder :data:`_TRAILING_TIME` (verlangt eine
+# Ziffer im Suffix, z.B. ``14:30``) noch :data:`_TRAILING_UHR_TIME`
+# (verlangt Ziffer + "Uhr") noch :data:`_TRAILING_TZ_STANDALONE`
+# (Whitelist explizit auf IANA-/CLDR-TZ-Abkuerzungen begrenzt) fangen
+# die reine Adverb-Form ohne Uhrzeit-Ziffer - aus dem typischen
+# Sammler-Etikett "13.06.2024 nachmittags" wurde silenter Funddatum-
+# Datenverlust bei der Migration, obwohl das Datum vor dem Tageszeit-
+# Suffix eindeutig lesbar ist.
+#
+# Wortliste: strikte DE-Adverb-Formen der Tageszeit (``morgens``,
+# ``vormittags``, ``mittags``, ``nachmittags``, ``abends``, ``nachts``)
+# plus EN-Aequivalente (``morning``, ``afternoon``, ``evening``,
+# ``night``). Case-insensitive per re.IGNORECASE (Etiketten in
+# Grossbuchstaben, Satzanfang mit Grossbuchstabe). Die Alternation ist
+# von der laengsten zur kuerzesten Form sortiert, damit Python-re bei
+# gleichem Praefix zuerst die spezifischere Form probiert (irrelevant
+# hier, weil kein Prefix-Konflikt besteht - ``nachmittags`` und
+# ``nachts`` teilen nur ``nach``, dann divergieren sie in Position 4 -
+# aber Konvention).
+#
+# Der linke Trenner ``[,\s]+`` verlangt einen Whitespace-/Komma-Anker
+# vor der Adverb-Form, sodass eine reine Wort-Form ohne Datum-Kontext
+# (``"morgens"``, ``"abends"``) nicht matcht - das erste Zeichen ``m``
+# bzw. ``a`` ist weder Whitespace noch Komma, und ohne linken Kontext-
+# Anker faellt der Match nicht rein. Analog schuetzt das Anker-Paar
+# ``[,\s]+ ... \s*$`` vor Kollision mit dem Praefix-Fall ``vormittags
+# 1985``: dort steht die Tageszeit als *Praefix* vor der Jahreszahl,
+# die Regex ankert aber am Zeilenende (nach der Jahreszahl gibt es
+# keinen Tageszeit-Suffix), sodass der Trailing-Strip inaktiv bleibt
+# und der bestehende Boundary-Prefix-Reject-Test ``vormittags 1985 ->
+# None`` unangetastet bleibt.
+#
+# Der optionale ``[.,]?`` faengt Prosa-Abkuerzungs-Schlussformen
+# (``nachmittags.`` als Satz-Ende, ``morgens,`` als Aufzaehlungs-
+# Komma) - der abschliessende ``\s*$``-Anker macht die Match-Position
+# eindeutig am Zeilenende.
+#
+# Vor :data:`_TRAILING_TIME` einsortiert in :func:`parse_iso_date`,
+# analog zu :data:`_TRAILING_UHR_TIME`: _TRAILING_TIME wuerde an dieser
+# Position sowieso nicht matchen (keine Ziffer im Suffix), aber die
+# Reihenfolge-Konvention haelt die zwei komplementaeren "Uhrzeit-
+# Anmerkungen"-Zweige (Uhr / Tageszeit) direkt nebeneinander und macht
+# die Semantik lesbar. Strip + Rekursion analog _TRAILING_UHR_TIME: die
+# Tageszeit ist semantische Wert-Anmerkung, keine Datums-Modifikation -
+# das ISO-Datum-Output ist identisch zur reinen Datums-Form.
+_TRAILING_TAGESZEIT = re.compile(
+    r"[,\s]+"
+    r"(?:nachmittags|vormittags|morgens|mittags|abends|nachts"
+    r"|afternoon|evening|morning|night)"
+    r"[.,]?\s*$",
+    re.IGNORECASE,
+)
 # Standalone-Trailing-Zeitzone ohne Zeitanteil ("2024-06-13 UTC", "1985 GMT",
 # "13.06.2024 CET", "Juni 2020 MEZ", "2024-06-13Z"). Spiegelt die TZ-Suffix-
 # Konvention von :data:`_TRAILING_TIME` auf die Date-Only-Achse: wenn keine
@@ -3497,6 +3556,21 @@ def parse_iso_date(text) -> str | None:
     # Datums-Modifikation - das ISO-Datum-Output ist identisch zur reinen
     # Datums-Form.
     stripped = _TRAILING_UHR_TIME.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # DE-/EN-Tageszeit-Trailing-Marker OHNE Uhrzeit-Ziffer abstreifen
+    # ("13.06.2024 morgens", "13. Juni 2024 nachmittags", "2024-06-13 abends",
+    # "13.06.2024, vormittags."). Vor _TRAILING_TIME einsortiert analog
+    # _TRAILING_UHR_TIME: _TRAILING_TIME matcht hier sowieso nicht (keine
+    # Ziffer im Suffix), aber die Reihenfolge haelt die beiden komplementaeren
+    # "Uhrzeit-Anmerkungen"-Zweige (Uhr-Ziffer / Tageszeit-Adverb) direkt
+    # nebeneinander. Strip + Rekursion analog _TRAILING_UHR_TIME: die
+    # Tageszeit-Angabe ist semantische Wert-Anmerkung, keine Datums-
+    # Modifikation - das ISO-Datum-Output ist identisch zur reinen Form.
+    # Siehe :data:`_TRAILING_TAGESZEIT` fuer die Wortliste (DE-Adverb-
+    # Formen + EN-Aequivalente), den [,\s]+-Trenner-Zwang (schuetzt vor
+    # Bare-Adverb-Match) und die Reihenfolge-Analyse.
+    stripped = _TRAILING_TAGESZEIT.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.

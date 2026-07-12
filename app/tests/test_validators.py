@@ -6279,3 +6279,83 @@ def test_parse_iso_date_trailing_uhr_marker():
     # ISO-T-Notation die 24h-Zeit ohne Uhr-Suffix erwartet) unangetastet
     # auf None faellt.
     assert parse_iso_date("2024-06-13T10:00:00 Uhr") is None
+
+
+def test_parse_iso_date_trailing_tageszeit_marker():
+    """DE-/EN-Tageszeit-Trailing-Marker OHNE Uhrzeit-Ziffer wird abgestrippt.
+
+    Sammler-Notizen mit grober Tageszeit-Angabe zusaetzlich zum Fund-/Foto-
+    Datum ("13.06.2024 morgens", "13. Juni 2024 nachmittags",
+    "2024-06-13 abends", "13.06.2024, vormittags.") wurden bisher still
+    auf None geworfen: weder :data:`_TRAILING_TIME` (verlangt Ziffer im
+    Suffix) noch :data:`_TRAILING_UHR_TIME` (verlangt Ziffer + "Uhr")
+    noch :data:`_TRAILING_TZ_STANDALONE` (Whitelist auf IANA-/CLDR-TZ-
+    Abkuerzungen begrenzt) fangen die reine Adverb-Form ohne Uhrzeit-
+    Ziffer. :data:`_TRAILING_TAGESZEIT` deckt die DE-Adverb-Formen
+    (morgens, vormittags, mittags, nachmittags, abends, nachts) plus
+    EN-Aequivalente (morning, afternoon, evening, night) ab.
+    """
+    # DE-Adverb-Formen (Standard-Fall)
+    assert parse_iso_date("13.06.2024 morgens") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 vormittags") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 mittags") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 nachmittags") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 abends") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 nachts") == "2024-06-13"
+    # EN-Aequivalente
+    assert parse_iso_date("2024-06-13 morning") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 afternoon") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 evening") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 night") == "2024-06-13"
+    # Komma-Trenner (typische DE-Prosa-Notation "13. Juni 2024, nachmittags")
+    assert parse_iso_date("13.06.2024, nachmittags") == "2024-06-13"
+    assert parse_iso_date("13.06.2024, morgens") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024, abends") == "2024-06-13"
+    # Monatsname-Form + Tageszeit ohne Komma
+    assert parse_iso_date("13. Juni 2024 nachmittags") == "2024-06-13"
+    assert parse_iso_date("Juni 2024 morgens") == "2024-06-01"
+    # Case-Insensitivitaet (Kleinbuchstaben, GROSSBUCHSTABEN, Mixed)
+    assert parse_iso_date("13.06.2024 MORGENS") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 Nachmittags") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 AbEnDs") == "2024-06-13"
+    # Trailing Punkt/Komma (Prosa-Abkuerzungs-Schlussform, Aufzaehlungs-Komma)
+    assert parse_iso_date("13.06.2024 morgens.") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 nachmittags,") == "2024-06-13"
+    assert parse_iso_date("13.06.2024, morgens.") == "2024-06-13"
+    # Kombination mit Klammer-Annotation (Klammer zuerst gestrippt, dann Tageszeit)
+    assert parse_iso_date("13.06.2024 morgens (Foto)") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 nachmittags [Sammlung]") == "2024-06-13"
+    # Kombination mit Annaeherungs-Praefix
+    assert parse_iso_date("ca. 13.06.2024 morgens") == "2024-06-13"
+    assert parse_iso_date("circa 13.06.2024 nachmittags") == "2024-06-13"
+    # Kombination mit ISO-Datum + T-Trennung (keine Uhrzeit, nur Tageszeit)
+    assert parse_iso_date("2024-06-13 nachmittags") == "2024-06-13"
+
+    # Bare-Tageszeit ohne Datum -> None (keine False-Positive-Auswertung).
+    # Der [,\s]+-Trenner-Zwang der Regex verhindert einen Match ohne
+    # vorangehendes Datum-Wort.
+    assert parse_iso_date("morgens") is None
+    assert parse_iso_date("abends") is None
+    assert parse_iso_date("nachmittags") is None
+    assert parse_iso_date("morning") is None
+    assert parse_iso_date("night") is None
+    # Nur die Tageszeit ohne umgebende Datum-Ziffer -> None
+    assert parse_iso_date("am morgens") is None
+    assert parse_iso_date("gegen abends") is None
+
+    # Regress-Anker: der bestehende Boundary-Prefix-Reject-Fall
+    # "vormittags 1985" (Tageszeit als *Praefix* vor der Jahreszahl,
+    # Test aus test_parse_iso_date_boundary_praefix_wortanfang) bleibt
+    # unveraendert None - die Trailing-Regex ankert am Zeilenende, sodass
+    # der Praefix-Fall inaktiv bleibt.
+    assert parse_iso_date("vormittags 1985") is None
+    assert parse_iso_date("morgens 2024") is None
+
+    # Regress-Anker: bestehende Trailing-Time-Formen bleiben unveraendert
+    assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30 Uhr") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30 UTC") == "2024-06-13"
+    assert parse_iso_date("13.06.2024T14:30") == "2024-06-13"
+    # Regress-Anker: das reine Datum ohne Tageszeit-Anteil bleibt unveraendert
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
