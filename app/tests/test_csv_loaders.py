@@ -2150,6 +2150,73 @@ def test_load_standard_multiline_mit_semicolon_delimiter(tmp_path):
     assert data["OBJ_0001"]["notizen"] == "Zeile A\nZeile B"
 
 
+def test_detect_delimiter_ignoriert_quoted_kommas_in_header(tmp_path):
+    """Semikolon-CSV mit komma-haltigen quoted Feldnamen wird nicht als Komma-CSV
+    fehlgelesen.
+
+    Excel-DE-Export: Semikolon-Delimiter (DE-Locale), aber Feldnamen wie
+    ``"Wert, geschaetzt"`` oder ``"Feld mit, Komma, mehr, Kommas"`` enthalten
+    Kommas. Die naive Zeichen-Count-Heuristik zaehlt jede Komma-Vorkommnis,
+    sodass ein Header mit >=3 quoted Kommas den echten Semikolon-Trenner
+    ueberstimmen wuerde - der gesamte Datensatz zerfaellt dann zu einer
+    einzigen Zelle pro Zeile mit einem synthetischen Header aus Fragmenten
+    des ersten Feldnamens. Der Quoted-Span-Skip stellt sicher, dass nur
+    Zeichen ausserhalb ``"..."`` als Delimiter-Kandidaten zaehlen.
+    """
+    csv_path = tmp_path / "semi_quoted_kommas.csv"
+    csv_path.write_text(
+        '"ID";"Wert, geschaetzt";"Feld mit, Komma, mehr, Kommas";"Ort"\n'
+        '"OBJ_0001";"12,50";"beispielwert";"Zermatt"\n',
+        encoding="utf-8",
+    )
+    from stonebook.migration.csv_loaders import _read_csv_robust
+    rows = _read_csv_robust(csv_path)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["ID"] == "OBJ_0001"
+    assert row["Wert, geschaetzt"] == "12,50"
+    assert row["Feld mit, Komma, mehr, Kommas"] == "beispielwert"
+    assert row["Ort"] == "Zermatt"
+
+
+def test_detect_delimiter_quoted_spans_helper():
+    """Direkter Ankertest fuer die Quoted-Span-Zaehl-Heuristik.
+
+    Deckt die semantisch relevanten Faelle ab: naive Overcount bei quoted
+    Kommas in Semikolon-CSV, RFC-4180-Escape-Anfuehrungszeichen (``""``
+    bleibt Innen-Zeichen), unbalancierte Anfuehrungszeichen (Fallback auf
+    Roh-Zaehlung, damit ein einzelnes ``"`` in einem exotischen Header nicht
+    die halbe Zeile ausblendet), und Regress-Anker auf die ungequoteten
+    Basis-Formen fuer Komma/Semikolon/Tab/Pipe.
+    """
+    from stonebook.migration.csv_loaders import _detect_delimiter
+
+    # Quoted Kommas gegen echtes Semikolon: Semikolon gewinnt.
+    assert _detect_delimiter(
+        '"ID";"Feld mit, Komma, mehr, Kommas";"Ort"') == ';'
+    assert _detect_delimiter('"a";"b, c, d, e, f";"g"') == ';'
+    # Quoted Semikolons gegen echtes Komma: Komma gewinnt.
+    assert _detect_delimiter('"a","b","c;d;e;f;g"') == ','
+    # RFC-4180-Escape: "" ist ein literales " innerhalb des Feldes -
+    # zaehlt nicht als Feld-Ende und blendet die inneren Zeichen aus.
+    assert _detect_delimiter('"a""b";c;d') == ';'
+    # Nur eine Zahl-Vorkommen: fallback auf Komma.
+    assert _detect_delimiter('') == ','
+    assert _detect_delimiter('ID') == ','
+    # Unbalancierte Anfuehrungszeichen: konservativer Fallback auf Roh-
+    # Zaehlung, damit die Delimiter-Entscheidung nicht vom Restsatz abhaengt.
+    # In diesem Fall zaehlt die Roh-Zaehlung 2 Kommas und 1 Semikolon.
+    assert _detect_delimiter('a,b,"c;d') == ','
+    # Regress-Anker auf die Basis-Formen.
+    assert _detect_delimiter('ID,Name,Fundort') == ','
+    assert _detect_delimiter('ID;Name;Fundort') == ';'
+    assert _detect_delimiter('ID\tName\tFundort') == '\t'
+    assert _detect_delimiter('ID|Name|Fundort') == '|'
+    # Gemischt: hoechster Count gewinnt, Ties gehen an Komma per Iterations-
+    # Reihenfolge in ``_COMMON_DELIMS``.
+    assert _detect_delimiter('a;"b, c";"d, e, f";g') == ';'
+
+
 def test_load_standard_skip_blank_rows(tmp_path):
     csv_path = tmp_path / "blank.csv"
     csv_path.write_text(

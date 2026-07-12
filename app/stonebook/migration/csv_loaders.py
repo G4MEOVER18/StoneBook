@@ -1417,14 +1417,59 @@ def _read_text_any_encoding(path: Path) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _strip_quoted_spans(line: str) -> str:
+    """Entfernt Inhalt von RFC-4180-quoted Feldern aus der Zeile.
+
+    Zaehl-Grundlage fuer die Delimiter-Erkennung: nur Zeichen ausserhalb
+    ``"``-quoted Spans zaehlen, weil eingebettete Delimiter innerhalb eines
+    Feldnamens (``"Feld mit, Komma"``) semantisch nicht als Trenner wirken.
+    Verdoppelte Anfuehrungszeichen (``""``) sind der RFC-4180-Escape fuer ein
+    literales ``"`` und werden als Innen-Zeichen ueberschritten. Zeilen mit
+    unbalancierten Anfuehrungszeichen fallen auf den Original-String zurueck.
+
+    Nur fuer die Erst-Zeilen-Heuristik gedacht - der eigentliche CSV-Reader
+    (``csv.DictReader``) macht seine eigene, vollstaendige Quoting-Auswertung.
+    """
+    out: list[str] = []
+    in_quote = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if ch == '"':
+            if in_quote and i + 1 < len(line) and line[i + 1] == '"':
+                # Escape-Sequenz "" innerhalb eines quoted Feldes: verbleibt
+                # innen, ueberspringt beide Zeichen.
+                i += 2
+                continue
+            in_quote = not in_quote
+        elif not in_quote:
+            out.append(ch)
+        i += 1
+    if in_quote:
+        # Unbalanciertes Anfuehrungszeichen: konservativ auf Original zurueckfallen,
+        # damit ein einzelnes ``"`` in einem exotischen Header nicht die halbe
+        # Zeile ausblendet.
+        return line
+    return "".join(out)
+
+
 def _detect_delimiter(header_line: str) -> str:
     """Wählt das Trennzeichen mit den meisten Treffern in der Headerzeile.
 
+    Zeichen innerhalb RFC-4180-quoted Feldnamen (``"Feld mit, Komma"``) werden
+    per :func:`_strip_quoted_spans` ausgeblendet, damit ein Semikolon-CSV mit
+    komma-haltigen Header-Feldnamen nicht faelschlich als Komma-CSV erkannt
+    wird (Excel-DE-Export typisch: Semikolon-Delimiter, aber mehrere Kommas
+    im quoted Feldnamen wie ``"Wert, geschaetzt"`` wuerden bei nackter Count-
+    Heuristik den echten ``;``-Trenner ueberstimmen und die ganze Zeile zu
+    einer einzigen Zelle zerfallen lassen).
+
     Fällt auf Komma zurück, wenn keines der gängigen Zeichen vorkommt.
     """
+    unquoted = _strip_quoted_spans(header_line)
     best, best_n = ",", 0
     for d in _COMMON_DELIMS:
-        n = header_line.count(d)
+        n = unquoted.count(d)
         if n > best_n:
             best, best_n = d, n
     return best
