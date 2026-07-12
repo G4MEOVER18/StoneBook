@@ -167,6 +167,29 @@ def test_export_ids_from_file_datei_fehlt_gibt_2(migrated_db, tmp_path, capsys):
     assert not out.exists()
 
 
+def test_export_ids_from_file_utf8_bom_wird_transparent_gestrippt(
+        migrated_db, tmp_path):
+    """UTF-8-BOM (Windows-Notepad-Default) darf die erste ID nicht kaputt machen.
+
+    Ohne den ``utf-8-sig``-Fix in :func:`read_ids_from_file` wuerde die
+    erste ID mit U+FEFF beginnen (``﻿OBJ_0001``), von
+    :func:`normalize_id` als ungueltig zurueckgewiesen und der Aufruf
+    mit exit 2 abbrechen ("Ungueltige Objekt-ID: '﻿OBJ_0001'").
+    Sammler-Workflow: IDs in Notepad tippen (Default-Encoding auf
+    Windows 11 = UTF-8 mit BOM), speichern, ``--ids-from-file``
+    uebergeben. Ende-zu-Ende-Anker fuer den Direkt-Test in
+    :func:`tests.test_csv_loaders.test_read_ids_from_file_utf8_bom_wird_gestrippt`.
+    """
+    ids_file = tmp_path / "ids_bom.txt"
+    ids_file.write_bytes(b"\xef\xbb\xbfOBJ_0001\nOBJ_0043\n")
+    out = tmp_path / "sel.csv"
+    code = main(["export", "--ids-from-file", str(ids_file),
+                 "--out", str(out), "--db", str(migrated_db), "--quiet"])
+    assert code == 0
+    rows = _read_csv(out)
+    assert {r["ID"] for r in rows} == {"OBJ_0001", "OBJ_0043"}
+
+
 def test_export_all_gewinnt_gegen_ids_from_file(migrated_db, tmp_path):
     """--all uebergeht die ID-Datei (dokumentierte Praezedenz)."""
     ids_file = tmp_path / "ids.txt"

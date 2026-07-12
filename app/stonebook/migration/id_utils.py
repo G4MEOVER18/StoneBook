@@ -58,13 +58,29 @@ def read_ids_from_file(path: Path) -> list[str] | None:
     einheitlich mit den positionalen IDs via :func:`normalize_id`, damit
     dieselbe Fehlermeldung fliesst.
 
+    Das Encoding ``utf-8-sig`` strippt einen optionalen fuehrenden UTF-8-
+    BOM (``EF BB BF``, U+FEFF) transparent, ohne die uebrige UTF-8-
+    Semantik zu aendern (Dateien ohne BOM werden identisch gelesen wie
+    mit reinem ``utf-8``). Notwendig, weil Windows-Notepad, VS Code mit
+    Default-Encoding auf Windows und Excel-Text-Export standardmaessig
+    ein BOM voranstellen - ohne den Strip wuerde das erste Zeichen der
+    ersten ID zum U+FEFF-Praefix und :func:`normalize_id` liefert None,
+    sodass der Sammler-Workflow "IDs in Notepad tippen, speichern,
+    --ids-from-file uebergeben" mit einer kryptischen "Ungueltige
+    Objekt-ID: '﻿OBJ_0001'"-Meldung crasht statt die Liste
+    einzulesen. Nicht-UTF-8-Dateien (z.B. Excel-CSV-Export mit UTF-16-
+    LE-BOM oder cp1252-Fallback) loesen weiterhin ``UnicodeDecodeError``
+    aus, was auf ``None`` faellt - das Verhalten aendert sich nur fuer
+    den BOM-only-Fall (vorher: erste ID unlesbar; nachher: erste ID
+    korrekt).
+
     Rueckgabe:
         Liste der rohen ID-Strings (in Datei-Reihenfolge), oder ``None``
         wenn die Datei fehlt / nicht als UTF-8 lesbar ist. Der Aufrufer
         entscheidet ueber die Fehlermeldung.
     """
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeDecodeError):
         return None
     ids: list[str] = []

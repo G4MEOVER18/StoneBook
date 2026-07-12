@@ -181,6 +181,27 @@ def test_ids_from_file_datei_fehlt_gibt_2(migrated_db, tmp_path, capsys):
     assert "ID-Datei nicht lesbar" in err
 
 
+def test_ids_from_file_utf8_bom_wird_transparent_gestrippt(
+        migrated_db, tmp_path, capsys):
+    """UTF-8-BOM (Windows-Notepad-Default) darf die erste ID nicht kaputt machen.
+
+    Spiegelt den End-zu-End-Anker in csv_cli auf die DOCX-Batch-Achse:
+    ohne den ``utf-8-sig``-Fix in :func:`read_ids_from_file` wuerde die
+    erste ID mit U+FEFF beginnen und der Aufruf mit exit 2 abbrechen
+    ("Ungueltige Objekt-ID: '﻿OBJ_0001'"). ``--dry-run`` genuegt fuer
+    die Verifikation, weil der ID-Parse-Pfad identisch zum echten Lauf
+    ist - der Test bleibt schlank ohne DOCX-Dateien zu schreiben.
+    """
+    ids_file = tmp_path / "ids_bom.txt"
+    ids_file.write_bytes(b"\xef\xbb\xbfOBJ_0001\nOBJ_0043\n")
+    code = main(["--ids-from-file", str(ids_file), "--db", str(migrated_db),
+                 "--root", str(REPO), "--dry-run"])
+    assert code == 0
+    captured = capsys.readouterr()
+    ids = [line for line in captured.out.splitlines() if line.startswith("OBJ_")]
+    assert ids == ["OBJ_0001", "OBJ_0043"]
+
+
 def test_keine_ids_hilfetext_erwaehnt_ids_from_file(migrated_db, capsys):
     code = main(["--db", str(migrated_db), "--root", str(REPO)])
     assert code == 2

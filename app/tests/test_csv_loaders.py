@@ -4,7 +4,11 @@ import pytest
 
 from stonebook.fields import is_empty
 from stonebook.migration import csv_loaders
-from stonebook.migration.id_utils import normalize_id, display_name
+from stonebook.migration.id_utils import (
+    display_name,
+    normalize_id,
+    read_ids_from_file,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 CSV_DIR = REPO / "data" / "csv"
@@ -3203,3 +3207,107 @@ def test_parse_range_annaeherungs_praefix_mit_uncertainty():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
     assert csv_loaders.parse_range("100(2)") == pytest.approx((98.0, 102.0))
     assert csv_loaders.parse_range("5.5-7.5") == (5.5, 7.5)
+
+
+def test_read_ids_from_file_basisformen(tmp_path):
+    """Regress-Anker: Kommentare/Leerzeilen/Inline-Kommentare/Trim.
+
+    Deckt die bisher nur implizit ueber die csv_cli-/docx_cli-End-to-End-
+    Tests abgedeckte Verzweigungslogik des Helpers auf der Direkt-Ebene
+    ab, damit ein Regress in :func:`read_ids_from_file` sofort dort
+    sichtbar wird und nicht erst als CLI-Fehlermeldung ("Ungueltige
+    Objekt-ID") auftaucht - die eigentliche Ursache (Datei-Parsing)
+    wuerde sonst in der Fehlerkette versteckt bleiben.
+    """
+    p = tmp_path / "ids.txt"
+    p.write_text(
+        "# Erste Charge - Kommentar am Zeilenanfang wird uebersprungen\n"
+        "OBJ_0001\n"
+        "\n"                                # Leerzeile
+        "  OBJ-43   # inline-Kommentar\n"   # inline-Kommentar wird gestrippt
+        "Objekt 3\n"
+        "   \n"                             # nur Whitespace = leer
+        "  # eingerueckter Kommentar\n"
+        "3\n",
+        encoding="utf-8",
+    )
+    # Rohwerte in Datei-Reihenfolge, keine Normalisierung (obliegt Caller).
+    assert read_ids_from_file(p) == ["OBJ_0001", "OBJ-43", "Objekt 3", "3"]
+
+
+def test_read_ids_from_file_utf8_bom_wird_gestrippt(tmp_path):
+    """Windows-Notepad-Default-Encoding UTF-8-BOM darf die erste ID nicht kaputt machen.
+
+    Notepad und VS Code auf Windows schreiben bei "Save As" mit UTF-8-
+    Default ein fuehrendes BOM (``EF BB BF``, U+FEFF). Ohne den Strip
+    wuerde das erste Zeichen der ersten ID zum U+FEFF-Praefix und
+    :func:`normalize_id` liefert None fuer ``﻿OBJ_0001``, sodass
+    der Sammler-Workflow "IDs in Notepad tippen -> Speichern ->
+    ``--ids-from-file`` uebergeben" mit einer kryptischen
+    "Ungueltige Objekt-ID"-Meldung crasht statt die Liste einzulesen.
+    Fix: ``encoding='utf-8-sig'`` strippt das BOM transparent (ohne
+    Effekt auf Dateien ohne BOM).
+    """
+    p = tmp_path / "ids_bom.txt"
+    p.write_bytes(b"\xef\xbb\xbfOBJ_0001\nOBJ_0002\n")
+    # Vor dem Fix wuerde die erste ID mit U+FEFF beginnen - siehe die
+    # Regress-Assertion darunter.
+    result = read_ids_from_file(p)
+    assert result == ["OBJ_0001", "OBJ_0002"]
+    assert not result[0].startswith("﻿")
+
+
+def test_read_ids_from_file_ohne_bom_bleibt_unveraendert(tmp_path):
+    """Regress-Anker: Dateien ohne BOM werden identisch zu vorher gelesen.
+
+    ``utf-8-sig`` verhaelt sich fuer Dateien ohne fuehrendes BOM exakt
+    wie ``utf-8``; dieser Test verankert das Verhalten, damit ein
+    Regress im Encoding-Handling (versehentliches Strip von Byte-
+    Sequenzen, die zufaellig aussehen wie ein BOM) sichtbar wird.
+    """
+    p = tmp_path / "ids_plain.txt"
+    p.write_bytes(b"OBJ_0001\nOBJ_0002\n")
+    assert read_ids_from_file(p) == ["OBJ_0001", "OBJ_0002"]
+
+
+def test_read_ids_from_file_fehlend_liefert_none(tmp_path):
+    """Nicht vorhandene Datei -> None (Aufrufer entscheidet ueber Meldung)."""
+    assert read_ids_from_file(tmp_path / "fehlt.txt") is None
+
+
+def test_read_ids_from_file_nicht_utf8_liefert_none(tmp_path):
+    """UTF-16-/latin1-/binary-Dateien fallen auf None statt zu crashen.
+
+    Excel-CSV-Export mit UTF-16-LE-Encoding oder ein cp1252-Fallback aus
+    einem alten Editor sind reale Sammler-Faelle; ohne den
+    UnicodeDecodeError-Fang wuerde die CLI abstuerzen statt eine
+    verstaendliche "ID-Datei nicht lesbar"-Meldung auszugeben (der
+    Aufrufer bildet den None-Rueckgabewert auf die Nutzer-Meldung ab).
+    """
+    p = tmp_path / "utf16.txt"
+    p.write_text("OBJ_0001\nOBJ_0002\n", encoding="utf-16")
+    assert read_ids_from_file(p) is None
+
+
+def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
+    """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
+
+    Der Aufrufer (csv_cli/docx_cli) unterscheidet dann zwischen
+    ``None`` (Datei-Fehler) und ``[]`` (Datei gelesen, aber keine
+    verwertbare Zeile) - beides wird von den CLIs als "keine gueltige
+    Selektion" behandelt (aus verschiedenen Gruenden), aber die
+    Trennung erlaubt spezifischere Fehlermeldungen im Aufrufer.
+    """
+    p_empty = tmp_path / "leer.txt"
+    p_empty.write_text("", encoding="utf-8")
+    assert read_ids_from_file(p_empty) == []
+
+    p_comments = tmp_path / "nur_kommentare.txt"
+    p_comments.write_text(
+        "# Kopfzeile\n"
+        "\n"
+        "   # eingerueckter Kommentar\n"
+        "   \n",
+        encoding="utf-8",
+    )
+    assert read_ids_from_file(p_comments) == []
