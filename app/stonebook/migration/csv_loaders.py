@@ -217,6 +217,70 @@ _NUM_RE = re.compile(
     r")"
 )
 
+# Annaeherungs-Praefix am String-Anfang ("ca.", "circa", "about", "approx.",
+# "estimated", "um", "etwa", "vermutlich", "geschaetzt", "~", "≈" ...).
+# Spiegelt :data:`stonebook.migration.validators._APPROX_PREFIX` auf die
+# Wert-Achse: identische Vokabel-Liste, identisches Zweig-Layout, identische
+# Case-Insensitivitaet und identisches Symbol-Set (Tilde ``~`` U+007E,
+# Almost-Equal ``≈`` U+2248). In Publikationen, Auktions-Katalogen und
+# Sammler-Notizen wird die Approximations-Vokabel oft mit publizierter
+# Standard-Unsicherheit kombiniert ("ca. 2.65 ± 0.05 g/cm³", "approx 5.5 ±
+# 0.3 Mohs", "~7.4(15) HV", "circa 5.5(3) mm"). Bisher fielen alle
+# Kombinationen "Praefix + Uncertainty-Notation" still auf die Fallback-
+# Zahl-Extraktion durch, weil sowohl :data:`_PLUS_MINUS_UNCERTAINTY` als auch
+# :data:`_PARENTHESIS_UNCERTAINTY` per ``^...$``-Anker eine reine Zahl am
+# String-Anfang verlangen; der Approximations-Praefix stand vor der Center-
+# Zahl und verhinderte den Uncertainty-Match. Ohne diesen Fix lieferte
+# ``"ca. 5.5 ± 0.3"`` (5.5, 5.5) statt (5.2, 5.8), ``"approx 2.65(5)"``
+# ueber inverted-Range-Kollaps ebenfalls (2.65, 2.65) statt (2.60, 2.70) -
+# die publizierte Standard-Unsicherheit ging bei jeder mit Approximations-
+# Marker versehenen Wert-Zelle stille verloren, obwohl die Marker semantisch
+# nur die Praezision des Zentrums modifizieren, nicht die Toleranz-Struktur.
+# Bei der Migration aus wissenschaftlichen Publikationen (Sammler kopieren
+# Dichte-/Haerte-Werte samt Approximations-Marker aus IUCr-/NIST-Tabellen)
+# und aus Auktions-Katalogen (Preis-Schaetzungen mit publizierter Streuung)
+# entstand damit silenter Praezisions-Datenverlust auf jeder Wert-Achse mit
+# Approximations-Marker.
+#
+# Wird in :func:`parse_range` nach den Fraktions-Normalisierungen und vor
+# den Uncertainty-Patterns via ``.match`` erkannt und einmalig gestrippt
+# (analog zum :func:`stonebook.migration.validators.parse_iso_date`-Muster
+# mit :data:`_APPROX_PREFIX`); die verbleibende Wert-Struktur laeuft dann
+# in die normale Pipeline (Uncertainty-Match oder Fallback-Zahl-Suche) und
+# liefert die publizierte Toleranz korrekt als Bereichsgrenzen. Idempotent
+# bei mehrfacher Anwendung, weil die Fallback-Zahl-Suche bereits ohne Anker
+# arbeitet und daher jeden Wert korrekt findet - der Praefix-Strip fixt nur
+# die Uncertainty-Anker-Kollision.
+#
+# Wort-Vokabeln verlangen mindestens ein Leerzeichen zur Trennung von der
+# Wert-Zahl (``ca. 5.5`` OK, ``ca5.5`` blockt), damit "ca" nicht
+# irrtuemlich in Bezeichner-Namen (Sample-IDs "ca17", Mineral-Katalog-
+# Nummern "ca42") oder in Einheiten-Kompositionen (z.B. Compound-Namen)
+# als Approximations-Marker fehlgelesen wird. Die symbolischen Marker
+# ``~``/``≈`` erlauben auch null Leerzeichen (``~5.5`` und ``~ 5.5`` sind
+# beide semantisch gleich), spiegelt die Symbolic-Marker-Konvention aus
+# :data:`stonebook.migration.validators._APPROX_PREFIX`. Umlaut- und
+# Transliterations-Varianten (``ungef[äa]hr``/``ungefaehr``, ``sch[äa]tzungs-
+# weise``/``schaetzungsweise``, ``gesch[äa]tzt``/``geschaetzt``, ``m[öo]glicher-
+# weise``/``moeglicherweise``) parallel wie im Datums-Praefix - Windows-CP1252/
+# Excel-DE nativ vs. 7-bit-ASCII-Notizen aus Terminal-/E-Mail-/LaTeX-Quellen.
+_APPROX_VALUE_PREFIX = re.compile(
+    r"^\s*(?:"
+    r"(?:ca\.?|circa|approx\.?|approximately"
+    r"|around|about|roughly|estimated|est\."
+    r"|um|gegen|etwa|vermutlich"
+    r"|sch[äa]tzungsweise|schaetzungsweise"
+    r"|ungef[äa]hr|ungefaehr"
+    r"|gesch[äa]tzt|geschaetzt"
+    r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
+    r"|evtl\.?|eventuell"
+    r"|perhaps|possibly|maybe"
+    r")\s+"
+    r"|[~≈]\s*"
+    r")",
+    re.IGNORECASE,
+)
+
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
 # notieren: ``Dichte 2.65 ± 0.05`` = "Wert 2.65, Toleranz 0.05, Range [2.60, 2.70]".
@@ -1209,6 +1273,19 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # schuetzen vor Datums-/Katalog-/Ratio-Fragmenten - siehe
     # :func:`_normalize_ascii_mixed_fractions` fuer Details.
     s = _normalize_ascii_mixed_fractions(s)
+    # Annaeherungs-Praefix am String-Anfang strippen ("ca. 5.5 ± 0.3" ->
+    # "5.5 ± 0.3", "~2.65(5)" -> "2.65(5)"). Siehe :data:`_APPROX_VALUE_PREFIX`
+    # fuer Details: die Uncertainty-Patterns sind per ``^...$`` anker-gebunden
+    # und wuerden sonst still auf die Fallback-Zahl-Extraktion durchfallen und
+    # via ``[center, tol]``-inverted-Range-Kollaps ``(center, center)``
+    # liefern (Toleranz verloren). Der Praefix modifiziert nur die
+    # Praezisions-Angabe des Zentrums, nicht die Toleranz-Struktur - Strip
+    # + Rekursion analog zum :func:`stonebook.migration.validators.parse_iso_date`-
+    # Muster mit :data:`stonebook.migration.validators._APPROX_PREFIX`.
+    if _APPROX_VALUE_PREFIX.match(s):
+        rest = _APPROX_VALUE_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_range(rest)
     # ``N ± M``-Notation vor der generischen Zahlen-Extraktion pruefen: die
     # Toleranz ist strukturell an das Zentrum gebunden, nicht ein zweiter
     # unabhaengiger Wert. Ohne diesen Zweig wuerde ``5.5 ± 0.3`` als

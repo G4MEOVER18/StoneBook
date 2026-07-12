@@ -2985,3 +2985,154 @@ def test_load_v2_semicolon_delimiter(tmp_path):
     assert o["Mineral_Primaer"] == "Quarz"
     assert o["Mohs_Haerte_min"] == 7.0
     assert o["Mohs_Haerte_max"] == 7.0
+
+
+def test_parse_range_annaeherungs_praefix_mit_uncertainty():
+    """Annaeherungs-Praefix am Wert-Anfang ("ca.", "circa", "about", "approx.",
+    "estimated", "um", "etwa", "vermutlich", "geschaetzt", "wahrscheinlich",
+    "~", "≈" ...) wird gestrippt, damit die nachfolgende Uncertainty-Notation
+    (``±``-Langform oder ``N(M)``-Kompaktform) die publizierte Toleranz als
+    Bereichsgrenzen behaelt.
+
+    Vor dem Fix fielen alle Kombinationen "Approximations-Praefix +
+    Uncertainty" still auf die Fallback-Zahl-Extraktion durch, weil sowohl
+    :data:`_PLUS_MINUS_UNCERTAINTY` als auch :data:`_PARENTHESIS_UNCERTAINTY`
+    per ``^...$``-Anker eine reine Zahl am String-Anfang verlangen:
+
+    * ``"ca. 5.5 ± 0.3"``    -> ``[5.5, 0.3]`` -> (5.5, 5.5)  (Toleranz verloren)
+    * ``"circa 5.5(3)"``      -> ``[5.5, 3.0]`` -> (5.5, 5.5)  (dito IUCr-Kompakt)
+    * ``"~2.65 ± 0.05"``      -> ``[2.65, 0.05]`` -> (2.65, 2.65) (Toleranz verloren)
+    * ``"approx 100(2)"``     -> ``[100, 2]`` -> (100, 100)  (dito IUCr-Kompakt)
+    * ``"≈-1.5 ± 0.3 °C"``    -> ``[-1.5, 0.3]`` -> (-1.5, 0.3) (semantisch falsch)
+
+    In Publikationen, Auktions-Katalogen (Preis-Schaetzungen mit publizierter
+    Streuung "ca. 500 CHF ± 50") und Sammler-Notizen ist die Kombination
+    verbreitet, weil der Approximations-Marker die Praezision des Zentrums
+    beziffert waehrend die Uncertainty-Notation die Streuung um dieses
+    (approximative) Zentrum publiziert - beide Marker sind komplementaer,
+    nicht redundant.
+
+    Vokabel-Liste und Zweig-Layout spiegeln
+    :data:`stonebook.migration.validators._APPROX_PREFIX`: DE- und EN-
+    Vollformen und Abkuerzungen (``ca.``/``circa``/``approx.``/``about``/
+    ``roughly``/``estimated``/``est.``/``um``/``gegen``/``etwa``/
+    ``vermutlich``, ``sch[äa]tzungsweise``, ``ungef[äa]hr``, ``gesch[äa]tzt``,
+    ``wahrscheinlich``, ``m[öo]glicherweise``, ``evtl.``/``eventuell``,
+    ``perhaps``/``possibly``/``maybe``), sowie symbolische Marker
+    (Tilde ``~`` U+007E, Almost-Equal ``≈`` U+2248). Umlaut- und
+    Transliterations-Varianten parallel wie bei den Datums-Praefixen, damit
+    Windows-CP1252/Excel-DE nativ (``ungefähr``) und 7-bit-ASCII-Notizen
+    (``ungefaehr``) identisch behandelt werden.
+    """
+    # Wort-Praefix + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("ca. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ca 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("circa 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("etwa 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("about 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("approx 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("approx. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("approximately 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("around 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("roughly 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("estimated 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("est. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("um 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("gegen 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("vermutlich 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # DE-Vollform mit Umlaut und ASCII-Transliteration parallel.
+    assert csv_loaders.parse_range("ungefähr 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ungefaehr 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("geschätzt 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("geschaetzt 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("schätzungsweise 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("schaetzungsweise 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Wahrscheinlichkeits-/Vermutungs-Marker.
+    assert csv_loaders.parse_range("wahrscheinlich 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("möglicherweise 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("moeglicherweise 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("evtl. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("eventuell 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("perhaps 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("possibly 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("maybe 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Case-Insensitivitaet ist in :data:`_APPROX_VALUE_PREFIX` per re.IGNORECASE
+    # gesetzt, damit Sammler-Notizen mit uppercase Anfang ("Ca. 5.5") oder
+    # gemischtem Kanon ("CIRCA 5.5") identisch behandelt werden.
+    assert csv_loaders.parse_range("Ca. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("CIRCA 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ESTIMATED 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Symbolische Marker ``~`` und ``≈`` - null Leerzeichen erlaubt (spiegelt
+    # die Symbolic-Marker-Konvention aus _APPROX_PREFIX in validators.py).
+    assert csv_loaders.parse_range("~5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("~ 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≈5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≈ 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # ASCII-Ersatzformen der Uncertainty-Struktur bleiben mit Praefix erhalten.
+    assert csv_loaders.parse_range("ca. 5.5 +/- 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ca. 5.5+/-0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("~5.5+-0.3") == pytest.approx((5.2, 5.8))
+    # DE-Komma-Dezimal in der Uncertainty-Notation bleibt mit Praefix erhalten.
+    assert csv_loaders.parse_range("ca. 2,65 ± 0,05") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("~2,65 ± 0,05") == pytest.approx((2.60, 2.70))
+    # Wort-Praefix + IUCr-Kompakt-Uncertainty ``N(M)`` - der Praefix wird
+    # gestrippt, die publizierte Toleranz laeuft in den _PARENTHESIS_UNCERTAINTY-
+    # Zweig.
+    assert csv_loaders.parse_range("ca. 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("circa 2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("approx 100(2)") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("~5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≈2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("estimated 12.345(67)") == pytest.approx((12.278, 12.412))
+    # Negatives Zentrum mit Praefix (Kryo-/Isotopen-Werte in Publikationen
+    # oft mit Approximations-Marker).
+    assert csv_loaders.parse_range("ca. -1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("~-1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("circa -2.65(5)") == pytest.approx((-2.70, -2.60))
+    # Praefix + Uncertainty + Trailing-Einheit - die Einheit bleibt symmetrisch
+    # zur reinen Uncertainty-Notation erhalten.
+    assert csv_loaders.parse_range("ca. 2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("~5.5 ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("about 100 ± 2 HV") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("estimated -1.5 ± 0.3 °C") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("ca. 5.5(3) Mohs") == pytest.approx((5.2, 5.8))
+    # Praefix + Uncertainty + Trailing-Klammer-Annotation ((Literatur), [Ref]).
+    assert csv_loaders.parse_range("ca. 5.5 ± 0.3 (Literatur)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("~2.65(5) [Ref 42]") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Satzzeichen (Excel-CSV-Zeilen-Ende-
+    # Punkt/Komma aus Editor-Autocomplete).
+    assert csv_loaders.parse_range("ca. 5.5 ± 0.3.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("~2.65(5),") == pytest.approx((2.60, 2.70))
+    # Kollisionsschutz gegen fehlendes Trennungs-Whitespace bei Wort-Praefixen:
+    # ``ca5.5`` (ohne Space) ist kein Approximations-Marker - der Wort-Zweig
+    # verlangt mindestens ein Space, damit "ca" nicht in Bezeichner-Namen
+    # ("Sample-ca17", "Catalog-ca42") als Praefix fehlgelesen wird.
+    # Existierende Semantik (Fallback-Zahl-Extraktion findet ``.5`` als 0.5)
+    # bleibt unveraendert.
+    assert csv_loaders.parse_range("ca5.5") == (0.5, 0.5)
+    # Symbolische Marker OHNE nachfolgende Zahl fallen still auf None -
+    # ohne Zahl gibt es keinen Wert.
+    assert csv_loaders.parse_range("ca.") == (None, None)
+    assert csv_loaders.parse_range("circa") == (None, None)
+    assert csv_loaders.parse_range("~") == (None, None)
+    assert csv_loaders.parse_range("≈") == (None, None)
+    # Regress-Anker: Praefix vor reiner Zahl (ohne Uncertainty) bleibt
+    # rueckwaerts-kompatibel - der Praefix wird gestrippt und die reine
+    # Zahl-Extraktion laeuft weiter.
+    assert csv_loaders.parse_range("ca. 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("~5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("estimated 5.5") == (5.5, 5.5)
+    # Regress-Anker: Praefix vor Range-Notation (ohne Uncertainty) bleibt
+    # rueckwaerts-kompatibel - die Range-Grenzen laufen in die Fallback-
+    # Zahl-Extraktion nach dem Praefix-Strip.
+    assert csv_loaders.parse_range("ca. 5.5-7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("ca. 5.5 - 7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("~5.5-7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("estimated 5.5 to 7.5") == (5.5, 7.5)
+    # Regress-Anker: Werte OHNE Approximations-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("100(2)") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("5.5-7.5") == (5.5, 7.5)
