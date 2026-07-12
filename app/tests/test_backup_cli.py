@@ -175,6 +175,91 @@ def test_prune_gfs_ignoriert_fremde_dateien(tmp_path, capsys):
     assert fremd.exists() is True
 
 
+def test_gfs_preview_listet_prune_kandidaten_ohne_zu_loeschen(tmp_path, capsys):
+    """gfs-preview Subcommand: prune-gfs-Kandidaten listen, ohne zu loeschen.
+
+    Spiegelt :func:`test_stale_listet_alte_backups_ohne_zu_loeschen` (Zeit-Achse)
+    und :func:`test_excess_listet_alte_backups_ohne_zu_loeschen` (Count-Achse)
+    auf die Bucket-Achse: gleicher Aufbau wie :func:`test_prune_gfs_...`,
+    aber ``gfs-preview`` ist der check-Modus - Dateien bleiben, Kandidaten
+    werden nur ausgegeben. Exit-Code 1 bei Fund (spiegelt stale/excess).
+    """
+    import datetime as dt
+    backup_dir = tmp_path / "gfsp"
+    backup_dir.mkdir()
+    today = dt.date.today()
+    for days_back in range(10):
+        stamp = today - dt.timedelta(days=days_back)
+        p = (backup_dir /
+             f"stonebook_backup_{stamp.strftime('%Y%m%d')}_120000.json.gz")
+        p.write_bytes(b"")
+
+    exit_code = main(["gfs-preview", "--backup-dir", str(backup_dir),
+                      "--daily", "3", "--weekly", "0", "--monthly", "0"])
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    # Die aeltesten 7 Kalendertage waeren die Prune-Kandidaten.
+    for days_back in range(3, 10):
+        stamp = today - dt.timedelta(days=days_back)
+        assert stamp.strftime("%Y%m%d") in out
+    # Die juengsten 3 Kalendertage bleiben ausserhalb der Preview-Liste.
+    for days_back in range(3):
+        stamp = today - dt.timedelta(days=days_back)
+        assert stamp.strftime("%Y%m%d") not in out
+    # Nichts geloescht.
+    assert len(list(backup_dir.iterdir())) == 10
+
+
+def test_gfs_preview_ohne_kandidaten_exit_0(tmp_path, capsys):
+    """gfs-preview Subcommand: nichts zu prunen -> keine Ausgabe, Exit 0.
+
+    Cron-Reporter-Pfad: gruen bedeutet leere Ausgabe und Exit 0. Kein
+    Rausch-Log fuer "alles im Bucket". Spiegelt
+    :func:`test_stale_ohne_kandidaten_exit_0` /
+    :func:`test_excess_ohne_kandidaten_exit_0` auf die Bucket-Achse.
+    """
+    import datetime as dt
+    backup_dir = tmp_path / "gfspf"
+    backup_dir.mkdir()
+    today = dt.date.today()
+    p = (backup_dir /
+         f"stonebook_backup_{today.strftime('%Y%m%d')}_120000.json.gz")
+    p.write_bytes(b"")
+
+    exit_code = main(["gfs-preview", "--backup-dir", str(backup_dir),
+                      "--daily", "7", "--weekly", "4", "--monthly", "12"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+    assert p.exists() is True
+
+
+def test_gfs_preview_ignoriert_fremde_dateien(tmp_path, capsys):
+    """gfs-preview Subcommand ignoriert Fremd-Dateien im Backup-Ordner.
+
+    Spiegelt :func:`test_prune_gfs_ignoriert_fremde_dateien`: nur Dateien
+    nach dem Backup-Namensschema koennen als Prune-Kandidat auftauchen.
+    """
+    backup_dir = tmp_path / "gfspx"
+    backup_dir.mkdir()
+    alt = backup_dir / "stonebook_backup_19700101_000000.json.gz"
+    alt.write_bytes(b"")
+    fremd = backup_dir / "notes.md"
+    fremd.write_text("nicht angetastet", encoding="utf-8")
+
+    exit_code = main(["gfs-preview", "--backup-dir", str(backup_dir),
+                      "--daily", "0", "--weekly", "0", "--monthly", "0"])
+
+    assert exit_code == 1
+    out = capsys.readouterr().out
+    assert "19700101" in out
+    assert "notes.md" not in out
+    # Nichts geloescht.
+    assert alt.exists() is True
+    assert fremd.exists() is True
+
+
 def test_prune_age_ignoriert_fremde_dateien(tmp_path, capsys):
     """prune-age Subcommand: Dateien ausserhalb des Namensschemas bleiben.
 

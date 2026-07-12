@@ -10,6 +10,7 @@ from stonebook.export.docx_export import export_docx, export_docx_batch
 from stonebook.export.json_export import (BACKUP_FORMAT_VERSION,
                                           backup_directory_stats, export_json,
                                           find_excess_backups,
+                                          find_prunable_gfs_backups,
                                           find_stale_backups, import_json,
                                           inspect_backup, largest_backup,
                                           latest_backup, list_backups,
@@ -2789,6 +2790,155 @@ def test_find_excess_backups_ignoriert_fremde_dateien(tmp_path):
     assert excess[0].name.startswith("stonebook_backup_")
     assert "20240504" in excess[0].name
     db.close()
+
+
+def test_find_prunable_gfs_backups_listet_alte_ohne_zu_loeschen(tmp_path):
+    """find_prunable_gfs_backups liefert die Kandidaten fuer prune_backups_gfs.
+
+    Reine Lese-/Check-Variante von :func:`prune_backups_gfs`: identisches
+    Bucket-Rechenwerk (ueber :func:`_gfs_stamped_and_keep` geteilt), keine
+    Loeschung. Bildet damit das check-Ende des check/fix-Paares auf der
+    Bucket-Achse, spiegelt :func:`find_stale_backups` (Zeit-Achse) und
+    :func:`find_excess_backups` (Count-Achse). Nach dem Aufruf muessen
+    alle Backups unangetastet vorliegen.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (40, 20, 5, 1):
+        _pseudo_backup(backup_dir, now - datetime.timedelta(days=days_back))
+    assert len(list_backups(backup_dir)) == 4
+
+    kandidaten = find_prunable_gfs_backups(
+        backup_dir, daily=3, weekly=0, monthly=0, now=now)
+
+    # daily=3 haelt nur die letzten 3 Kalendertage - Tag -1 (12.06.) liegt
+    # im Fenster und bleibt; Tag -5, -20, -40 fallen als Prune-Kandidaten
+    # heraus (drei Datei-Kandidaten in aeltest-zuerst-Reihenfolge).
+    kandidaten_namen = {p.name for p in kandidaten}
+    assert len(kandidaten) == 3
+    assert any("20240504" in n for n in kandidaten_namen)   # Tag -40
+    assert any("20240524" in n for n in kandidaten_namen)   # Tag -20
+    assert any("20240608" in n for n in kandidaten_namen)   # Tag -5
+    # Nichts geloescht.
+    assert len(list_backups(backup_dir)) == 4
+
+
+def test_find_prunable_gfs_backups_leere_liste_wenn_alles_im_bucket(tmp_path):
+    """Sind alle Backups per GFS-Regel behaltbar, ist die Kandidatenliste leer.
+
+    Spiegelt :func:`test_find_stale_backups_leere_liste_wenn_alle_frisch`
+    auf die Bucket-Achse: monthly=12 mit einem einzigen Backup im aktuellen
+    Monat -> keine Prune-Kandidaten.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    _pseudo_backup(backup_dir, now - datetime.timedelta(days=1))
+    assert find_prunable_gfs_backups(
+        backup_dir, daily=0, weekly=0, monthly=12, now=now) == []
+
+
+def test_find_prunable_gfs_backups_negative_werte_raises(tmp_path):
+    """Negative Argumente werden abgelehnt (spiegelt prune_backups_gfs)."""
+    with pytest.raises(ValueError):
+        find_prunable_gfs_backups(tmp_path / "b", daily=-1)
+    with pytest.raises(ValueError):
+        find_prunable_gfs_backups(tmp_path / "b", weekly=-1)
+    with pytest.raises(ValueError):
+        find_prunable_gfs_backups(tmp_path / "b", monthly=-1)
+
+
+def test_find_prunable_gfs_backups_fehlender_ordner(tmp_path):
+    """Fehlender Backup-Ordner liefert [] (spiegelt list_backups)."""
+    assert find_prunable_gfs_backups(
+        tmp_path / "gibt-es-nicht",
+        daily=7, weekly=4, monthly=12) == []
+
+
+def test_find_prunable_gfs_backups_ignoriert_fremde_dateien(tmp_path):
+    """Fremd-Dateien werden nicht als Prune-Kandidaten gelistet.
+
+    Spiegelt :func:`test_find_stale_backups_ignoriert_fremde_dateien`:
+    nur Dateien nach dem ``stonebook_backup_YYYYMMDD_HHMMSS.json[.gz]``-
+    Muster koennen ueberhaupt als Kandidaten auftauchen.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    _pseudo_backup(backup_dir, now - datetime.timedelta(days=365))
+    fremd = backup_dir / "README.txt"
+    fremd.write_text("nicht ein Backup", encoding="utf-8")
+    fremdes_archiv = backup_dir / "andere_backup_20100101_000000.json.gz"
+    fremdes_archiv.write_bytes(b"")
+
+    kandidaten = find_prunable_gfs_backups(
+        backup_dir, daily=1, weekly=0, monthly=0, now=now)
+
+    assert len(kandidaten) == 1
+    assert kandidaten[0].name.startswith("stonebook_backup_")
+
+
+def test_find_prunable_gfs_backups_zukunfts_stempel_werden_nicht_gelistet(tmp_path):
+    """Backups mit Stempel > now bleiben ausserhalb der Prune-Kandidaten.
+
+    Spiegelt :func:`test_prune_backups_gfs_zukunfts_stempel_bleiben`:
+    Zukunfts-Stempel werden von :func:`_gfs_stamped_and_keep` in die
+    keep-Menge aufgenommen und tauchen deshalb nicht als Prune-Kandidat auf.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    _pseudo_backup(backup_dir, now + datetime.timedelta(hours=1))
+    _pseudo_backup(backup_dir, now - datetime.timedelta(days=365))
+    kandidaten = find_prunable_gfs_backups(
+        backup_dir, daily=1, weekly=0, monthly=0, now=now)
+    assert len(kandidaten) == 1
+    assert "20230614" in kandidaten[0].name
+
+
+def test_find_prunable_gfs_backups_reihenfolge_ist_aeltest_zuerst(tmp_path):
+    """Ausgabe-Reihenfolge = list_backups-Reihenfolge (aeltester Dateiname zuerst).
+
+    Spiegelt :func:`find_stale_backups` / :func:`find_excess_backups`:
+    beide preview-Funktionen liefern in der gleichen Reihenfolge, damit
+    ein Cron-Reporter oder ein Bestaetigungs-Dialog konsistent "aeltestes
+    zuerst" anzeigen kann.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    for days_back in (100, 50, 25, 10):
+        _pseudo_backup(backup_dir, now - datetime.timedelta(days=days_back))
+
+    kandidaten = find_prunable_gfs_backups(
+        backup_dir, daily=1, weekly=0, monthly=0, now=now)
+
+    # daily=1 -> nur Tag 0 (heute) waere im Fenster; alle 4 fallen raus.
+    # Erwartete Reihenfolge: aeltester zuerst.
+    stamps = [p.name for p in kandidaten]
+    assert stamps == sorted(stamps)
+
+
+def test_find_prunable_gfs_backups_matches_prune_kandidaten(tmp_path):
+    """find_prunable_gfs_backups liefert exakt die Menge, die prune_backups_gfs loeschen wuerde.
+
+    Vertrag: die Bucket-Semantik ist zwischen check (find_prunable_gfs_backups)
+    und fix (prune_backups_gfs) identisch, weil beide ueber die geteilte
+    :func:`_gfs_stamped_and_keep`-Berechnung entscheiden. Spiegelt
+    :func:`test_find_stale_backups_matches_prune_kandidaten` und
+    :func:`test_find_excess_backups_matches_prune_kandidaten`.
+    """
+    backup_dir = tmp_path / "b"
+    now = datetime.datetime(2024, 6, 13, 10, 0, 0)
+    # 30 taegliche Backups
+    for days_back in range(30):
+        _pseudo_backup(backup_dir, now - datetime.timedelta(days=days_back))
+
+    kandidaten_vorher = find_prunable_gfs_backups(
+        backup_dir, daily=3, weekly=2, monthly=1, now=now)
+    deleted = prune_backups_gfs(
+        backup_dir, daily=3, weekly=2, monthly=1, now=now)
+
+    assert {p.name for p in kandidaten_vorher} == {p.name for p in deleted}
+    # Nach dem Prune ist die Preview-Liste leer.
+    assert find_prunable_gfs_backups(
+        backup_dir, daily=3, weekly=2, monthly=1, now=now) == []
 
 
 def test_find_excess_backups_matches_prune_kandidaten(tmp_path):

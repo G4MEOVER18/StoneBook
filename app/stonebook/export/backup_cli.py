@@ -9,7 +9,8 @@ Beispiele:
     python -m stonebook.export.backup_cli smallest --backup-dir backups/
     python -m stonebook.export.backup_cli stats   --backup-dir backups/
     python -m stonebook.export.backup_cli prune-age --backup-dir backups/ --max-age-days 30
-    python -m stonebook.export.backup_cli prune-gfs --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
+    python -m stonebook.export.backup_cli prune-gfs   --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
+    python -m stonebook.export.backup_cli gfs-preview --backup-dir backups/ --daily 7 --weekly 4 --monthly 12
     python -m stonebook.export.backup_cli stale     --backup-dir backups/ --max-age-days 30
     python -m stonebook.export.backup_cli excess    --backup-dir backups/ --keep 10
     python -m stonebook.export.backup_cli inspect <file>
@@ -34,6 +35,7 @@ from stonebook.export.json_export import (backup_directory_stats,
                                           diff_backup_object_fields,
                                           diff_backup_to_db_object_fields,
                                           find_excess_backups,
+                                          find_prunable_gfs_backups,
                                           find_stale_backups, import_json,
                                           inspect_backup, largest_backup,
                                           latest_backup, list_backups,
@@ -238,6 +240,32 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     json.dump(info, sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")
     return 0
+
+
+def _cmd_gfs_preview(args: argparse.Namespace) -> int:
+    """Listet Backups, die ``prune-gfs`` mit denselben Werten loeschen wuerde.
+
+    Reine Lese-/Check-Variante von :func:`_cmd_prune_gfs`, symmetrisch zu
+    :func:`_cmd_stale` (Check-Variante von :func:`_cmd_prune_age` auf der
+    Zeit-Achse) und :func:`_cmd_excess` (Check-Variante von
+    :func:`_cmd_prune` auf der Count-Achse). Bildet den bisher fehlenden
+    Preview-Slot fuer die Bucket-Achse: prune-gfs war die einzige
+    Prune-Strategie ohne Pre-Flight-Report, was den Test-Deploy im
+    Cron-Job ("welche Backups gehen weg, wenn ich prune-gfs mit diesen
+    Parametern laufe?") ohne Datei-Kopie erschwerte. Geeignet als
+    Bestaetigungs-Dialog vor ``prune-gfs`` und als Monitoring-Check in
+    Cronjobs (Exit 1 signalisiert "GFS-Regel wuerde Backups loeschen"),
+    ohne dass der Cron-User Loesch-Rechte braucht.
+
+    Exit-Code 1 wenn Kandidaten gefunden wurden, sonst 0 (spiegelt das
+    check-Muster von ``stale`` / ``excess`` / ``fts-check`` / ``fkcheck``).
+    """
+    kandidaten = find_prunable_gfs_backups(
+        args.backup_dir,
+        daily=args.daily, weekly=args.weekly, monthly=args.monthly)
+    for p in kandidaten:
+        print(p)
+    return 1 if kandidaten else 0
 
 
 def _cmd_prune_gfs(args: argparse.Namespace) -> int:
@@ -498,6 +526,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sp.add_argument("--monthly", type=int, default=12,
                     help="Anzahl Kalendermonate (Default 12).")
     sp.set_defaults(func=_cmd_prune_gfs)
+
+    sp = sub.add_parser(
+        "gfs-preview",
+        help="Backups listen, die prune-gfs mit denselben Werten loeschen "
+             "wuerde, ohne zu loeschen (Pre-Flight-Report vor prune-gfs); "
+             "Exit 1 bei Fund.")
+    sp.add_argument("--backup-dir", type=Path, required=True)
+    sp.add_argument("--daily", type=int, default=7,
+                    help="Anzahl Kalendertage (Default 7, spiegelt prune-gfs).")
+    sp.add_argument("--weekly", type=int, default=4,
+                    help="Anzahl ISO-Kalenderwochen (Default 4, spiegelt prune-gfs).")
+    sp.add_argument("--monthly", type=int, default=12,
+                    help="Anzahl Kalendermonate (Default 12, spiegelt prune-gfs).")
+    sp.set_defaults(func=_cmd_gfs_preview)
 
     sp = sub.add_parser(
         "stale",

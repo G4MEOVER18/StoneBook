@@ -1355,6 +1355,37 @@ def prune_backups_gfs(backup_dir: Path, *,
     Parallel-Loeschung) werden uebersprungen statt zu crashen (spiegelt
     :func:`prune_old_backups`). Liefert die geloeschten Pfade zurueck.
     """
+    stamped, keep = _gfs_stamped_and_keep(
+        backup_dir, daily=daily, weekly=weekly, monthly=monthly, now=now)
+
+    deleted: list[Path] = []
+    for p, _stamp in stamped:
+        if p in keep:
+            continue
+        try:
+            p.unlink()
+            deleted.append(p)
+        except OSError:
+            pass
+    return deleted
+
+
+def _gfs_stamped_and_keep(
+        backup_dir: Path, *, daily: int, weekly: int, monthly: int,
+        now: datetime.datetime | None,
+) -> tuple[list[tuple[Path, datetime.datetime]], set[Path]]:
+    """Berechnet die (stamped, keep)-Doppelung fuer GFS-Prune-Entscheidungen.
+
+    Ausgelagerte Kernlogik von :func:`prune_backups_gfs` - liefert die
+    Backup-Liste (mit geparstem Zeitstempel, neuestes zuerst) und die
+    Menge der zu behaltenden Pfade nach der Grandfather-Father-Son-
+    Bucket-Regel. Wird von :func:`prune_backups_gfs` (Delete-Pfad) und
+    :func:`find_prunable_gfs_backups` (Preview-Pfad) geteilt, damit beide
+    exakt dieselbe Entscheidungsgrundlage haben und nicht unabhaengig
+    voneinander driften koennen.
+
+    Semantik siehe :func:`prune_backups_gfs`.
+    """
     if daily < 0 or weekly < 0 or monthly < 0:
         raise ValueError("daily/weekly/monthly muss >= 0 sein")
     now = now or datetime.datetime.now()
@@ -1440,16 +1471,45 @@ def prune_backups_gfs(backup_dir: Path, *,
             lambda s: (s.year, s.month),
         )
 
-    deleted: list[Path] = []
-    for p, _stamp in stamped:
-        if p in keep:
-            continue
-        try:
-            p.unlink()
-            deleted.append(p)
-        except OSError:
-            pass
-    return deleted
+    return stamped, keep
+
+
+def find_prunable_gfs_backups(
+        backup_dir: Path, *,
+        daily: int = 7, weekly: int = 4, monthly: int = 12,
+        now: datetime.datetime | None = None,
+) -> list[Path]:
+    """Listet Backups, die :func:`prune_backups_gfs` mit denselben Argumenten loeschen wuerde.
+
+    Reine Lese-/Check-Variante von :func:`prune_backups_gfs` - berechnet
+    die gleiche Kandidatenmenge (gleiche Bucket-Semantik, gleiches
+    Namensschema-Filter, gleicher ``now``-Parameter), loescht aber nichts.
+    Bildet damit das check-Ende des check/fix-Paares auf der Bucket-Achse,
+    symmetrisch zu :func:`find_excess_backups` (Count-Achse) und
+    :func:`find_stale_backups` (Zeit-Achse).
+
+    Nutzen: Cron-Reporter kann die Prune-Liste erst loggen, dann die
+    Loesch-Entscheidung treffen; ein Bestaetigungs-Dialog kann dem User
+    zeigen, welche konkreten Dateien beim naechsten ``prune-gfs`` verloren
+    gingen, bevor er OK klickt; ein Monitoring-Job kann ohne
+    Loesch-Rechte anzeigen, wieviele Backups die GFS-Regel als redundant
+    markiert.
+
+    Reihenfolge = ``list_backups``-Reihenfolge (aeltester Dateiname zuerst),
+    damit die Ausgabe deterministisch bleibt und mit
+    :func:`find_stale_backups` / :func:`find_excess_backups` das gleiche
+    Sortierverhalten hat.
+
+    Negative Argumente -> ``ValueError`` (spiegelt :func:`prune_backups_gfs`).
+    Fehlender/leerer Ordner -> ``[]`` (spiegelt :func:`list_backups` /
+    :func:`find_stale_backups`). Nicht-parsbare Zeitstempel im
+    Backup-Namen werden ignoriert (spiegelt :func:`prune_backups_gfs`, das
+    diese Dateien ebenfalls unberuehrt laesst).
+    """
+    _stamped, keep = _gfs_stamped_and_keep(
+        backup_dir, daily=daily, weekly=weekly, monthly=monthly, now=now)
+    return [p for p in list_backups(backup_dir)
+            if _parse_backup_stamp(p) is not None and p not in keep]
 
 
 def write_rotated_backup(conn: sqlite3.Connection, backup_dir: Path, *,
