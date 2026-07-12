@@ -778,3 +778,116 @@ def test_smallest_ignoriert_fremde_dateien(tmp_path, capsys):
     assert exit_code == 0
     out = capsys.readouterr().out.strip()
     assert out.endswith("stonebook_backup_20240102_000000.json.gz")
+
+
+def _prepend_utf8_bom(path: Path) -> None:
+    """Prependet ``EF BB BF`` an eine plain-JSON-Backup-Datei.
+
+    Simuliert eine externe Bearbeitungs-Kette, die das BOM einfuegt:
+    ``Backup in Notepad oeffnen -> Speichern`` schreibt auf Windows 11
+    per Default UTF-8-BOM voran. Wird von den BOM-Toleranz-Tests fuer
+    ``inspect`` / ``validate`` / ``restore`` und ``compare`` verwendet,
+    damit die BOM-Toleranz nicht nur auf der plain-JSON-Achse, sondern
+    auch fuer alle Backup-Lese-Pfade verifiziert ist. Die urspruengliche
+    JSON-Semantik bleibt intakt (nur das Byte-Level-BOM-Praefix aendert
+    sich); der :func:`_read_text`-``utf-8-sig``-Fix strippt es beim
+    Lesen transparent.
+    """
+    raw = path.read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return
+    path.write_bytes(b"\xef\xbb\xbf" + raw)
+
+
+def test_restore_toleriert_utf8_bom_prefix(migrated_db, tmp_path, capsys):
+    """Eine extern mit BOM re-gespeicherte Backup-Datei bleibt wiederherstellbar.
+
+    Vor dem ``utf-8-sig``-Fix in :func:`_read_text` haette
+    :func:`json.loads` mit ``JSONDecodeError: Unexpected UTF-8 BOM
+    (decode using utf-8-sig)`` abgebrochen und der Restore verweigert,
+    obwohl die Daten korrekt sind. Sammler-Workflow: Backup zur
+    Sichtung im Editor oeffnen, versehentlich speichern (Notepad-
+    Default-Encoding auf Windows 11 = UTF-8 mit BOM), spaeter Restore
+    versuchen -> vor dem Fix Fehlermeldung "Backup-Datei ist kein
+    gueltiges JSON", nach dem Fix normaler Restore.
+    """
+    backup_dir = tmp_path / "backup_bom"
+    exit_code = main(["write", "--backup-dir", str(backup_dir),
+                      "--db", str(migrated_db), "--no-compress"])
+    assert exit_code == 0
+    written = Path(capsys.readouterr().out.strip())
+    assert written.suffix == ".json"
+    _prepend_utf8_bom(written)
+    assert written.read_bytes().startswith(b"\xef\xbb\xbf")
+
+    new_db = tmp_path / "restored_bom.sqlite3"
+    exit_code = main(["restore", str(written), "--db", str(new_db)])
+    assert exit_code == 0
+    counts = json.loads(capsys.readouterr().out)
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
+
+
+def test_restore_toleriert_utf8_bom_prefix_gzip(migrated_db, tmp_path, capsys):
+    """Auch im gzip-Fall darf ein BOM im dekomprimierten JSON-Stream nicht crashen.
+
+    Symmetrisch zu :func:`test_restore_toleriert_utf8_bom_prefix` auf
+    den gzip-Zweig von :func:`_read_text`. Das BOM sitzt hier innerhalb
+    des komprimierten Streams (nicht am Anfang der ``.gz``-Datei),
+    kommt aber beim Dekomprimieren als U+FEFF-Praefix im Text-Stream
+    an - ohne den ``utf-8-sig``-Codec beim ``gzip.open`` bleibt der
+    BOM als U+FEFF stehen und :func:`json.loads` crasht identisch zum
+    plain-JSON-Fall. Realistisch: Sammler entpackt/re-komprimiert das
+    Backup mit einem GUI-Tool, das intern durch einen BOM-hinzufuegen-
+    den Editor laeuft (7-Zip mit einer Editor-Pipeline oder ein
+    Windows-Kontextmenue-Handler).
+    """
+    import gzip as _gzip
+
+    backup_dir = tmp_path / "backup_bom_gz"
+    exit_code = main(["write", "--backup-dir", str(backup_dir),
+                      "--db", str(migrated_db)])
+    assert exit_code == 0
+    written = Path(capsys.readouterr().out.strip())
+    assert written.suffix == ".gz"
+    # gzip -> decompress -> BOM voranstellen -> re-gzip: simuliert das
+    # oben beschriebene externe Bearbeitungs-Szenario auf der Byte-Ebene.
+    with _gzip.open(written, "rb") as f:
+        decompressed = f.read()
+    with _gzip.open(written, "wb") as f:
+        f.write(b"\xef\xbb\xbf" + decompressed)
+
+    new_db = tmp_path / "restored_bom_gz.sqlite3"
+    exit_code = main(["restore", str(written), "--db", str(new_db)])
+    assert exit_code == 0
+    counts = json.loads(capsys.readouterr().out)
+    assert counts == {"objects": 546, "images": 63, "aliases": 54, "ki_analysen": 0}
+
+
+def test_inspect_und_validate_tolerieren_utf8_bom_prefix(
+        migrated_db, tmp_path, capsys):
+    """``inspect`` und ``validate`` bleiben stabil, wenn die Datei ein BOM hat.
+
+    Spiegelt :func:`test_restore_toleriert_utf8_bom_prefix` auf die
+    Lese-/Report-Achse: der User sichtet ein extern re-gespeichertes
+    Backup vor dem Restore, und ohne den ``utf-8-sig``-Fix wuerden
+    beide Kommandos mit ``ValueError: Backup-Datei ist kein gueltiges
+    JSON`` abbrechen, obwohl die Datei semantisch korrekt ist.
+    """
+    backup_dir = tmp_path / "inspect_bom"
+    exit_code = main(["write", "--backup-dir", str(backup_dir),
+                      "--db", str(migrated_db), "--no-compress"])
+    assert exit_code == 0
+    written = Path(capsys.readouterr().out.strip())
+    _prepend_utf8_bom(written)
+
+    exit_code = main(["inspect", str(written)])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    # Ankert die Basis-Struktur der Inspect-Ausgabe (counts-Block); die
+    # exakten Zahlen kommen aus der migrierten Referenz-DB.
+    assert info["counts"]["objects"] == 546
+
+    exit_code = main(["validate", str(written)])
+    assert exit_code == 0
+    info = json.loads(capsys.readouterr().out)
+    assert info["ok"] is True

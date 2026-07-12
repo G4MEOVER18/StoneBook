@@ -32,10 +32,33 @@ def _write_text(path: Path, text: str) -> None:
 
 
 def _read_text(path: Path) -> str:
+    """Liest die Backup-Datei (gzip oder plain) und liefert den Text.
+
+    Encoding ``utf-8-sig`` strippt einen optionalen fuehrenden UTF-8-BOM
+    (``EF BB BF``, U+FEFF) transparent, ohne die uebrige UTF-8-Semantik
+    zu aendern. Notwendig, weil externe Bearbeitungs-Ketten am Backup
+    (Sammler-Workflow "Backup zur Sichtung in Notepad/VS Code oeffnen ->
+    Speichern -> Restore versuchen", Cloud-Sync-Services mit stiller
+    Re-Encoding-Norm, Email-Attachment-Gateways) das BOM einfuegen
+    koennen, und :func:`json.loads` reagiert auf ein BOM mit einem
+    ``JSONDecodeError: Unexpected UTF-8 BOM (decode using utf-8-sig)``,
+    was in :func:`_load_backup_dict` als ``Backup-Datei ist kein
+    gueltiges JSON`` bei einer im Kern gueltigen Datei landet - der
+    Restore verweigert die Wiederherstellung, obwohl die Daten korrekt
+    sind. Python's json-Modul empfiehlt explizit ``utf-8-sig`` als Fix
+    (die Fehlermeldung selbst nennt es), spiegelt die BOM-Toleranz in
+    :func:`stonebook.migration.id_utils.read_ids_from_file` auf die
+    Backup-Achse. Fuer BOM-freie Dateien (der Standard-Fall aus
+    :func:`_write_text`) ist ``utf-8-sig`` identisch zu ``utf-8`` -
+    kein Verhaltens-Unterschied fuer intern geschriebene Backups.
+    Nicht-UTF-8-Dateien loesen weiterhin ``UnicodeDecodeError`` aus
+    (wird in :func:`_load_backup_dict` nicht speziell behandelt und
+    propagiert an den Aufrufer, wie bisher).
+    """
     if _is_gzip_path(path):
-        with gzip.open(path, "rt", encoding="utf-8") as f:
+        with gzip.open(path, "rt", encoding="utf-8-sig") as f:
             return f.read()
-    return Path(path).read_text(encoding="utf-8")
+    return Path(path).read_text(encoding="utf-8-sig")
 
 
 def _load_backup_dict(path: Path) -> dict:
