@@ -108,7 +108,8 @@ class ImportReport:
 
 
 def import_csv(conn: sqlite3.Connection, path: Path, *,
-               create_missing: bool = True, merge_only: bool = False) -> ImportReport:
+               create_missing: bool = True, merge_only: bool = False,
+               dry_run: bool = False) -> ImportReport:
     """Liest eine Standard-CSV (Format von :func:`export_csv`) zurück in die DB.
 
     Bestehende Objekte werden mit den nicht-leeren Spalten aktualisiert
@@ -117,6 +118,22 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
     bestehenden Objekten nur leere Felder gefuellt; abweichende vorhandene
     Werte bleiben erhalten und landen in ``report.konflikte``. Toleriert
     Auto-Delimiter (siehe ``load_standard``).
+
+    ``dry_run=True`` liefert denselben :class:`ImportReport` (angelegt/
+    aktualisiert/uebersprungen/konflikte/duplikate/zeilen_ohne_id/
+    funddatum_invalid/numeric_invalid), aber es werden KEINE ``INSERT``-/
+    ``UPDATE``-Anweisungen ausgefuehrt - kein Objekt wird angelegt, kein Feld
+    ueberschrieben, ``refresh_status_all`` bleibt aus. So kann der Aufrufer
+    (CLI ``--dry-run``, GUI-Import-Vorschau) einer nutzer-editierten CSV
+    inspizieren, welche Zeilen als neu, welche als Update, welche als
+    ``uebersprungen`` (mit ``create_missing=False``) und welche als
+    Merge-Konflikt (mit ``merge_only=True``) landen wuerden, bevor die
+    tatsaechliche Migration den DB-Zustand mutiert. Silent-Drop-Reports
+    (``duplikate``, ``zeilen_ohne_id``, ``funddatum_invalid``,
+    ``numeric_invalid``) sind unabhaengig vom Schreibmodus, weil sie aus
+    dem File-Scan stammen, nicht aus der DB-Interaktion - der User sieht
+    also im Dry-Run dieselben Warnungen zu formell defekten Quell-Zeilen
+    wie im echten Lauf.
     """
     data = load_standard(path)
     objects = ObjectRepo(conn)
@@ -129,17 +146,18 @@ def import_csv(conn: sqlite3.Connection, path: Path, *,
         clean = {k: v for k, v in fields_.items() if not is_empty(v)}
         if objects.exists(obj_id):
             if merge_only:
-                conflicts = objects.merge_nonempty(obj_id, clean)
+                conflicts = objects.merge_nonempty(obj_id, clean, dry_run=dry_run)
                 if conflicts:
                     rep.konflikte[obj_id] = conflicts
-            else:
+            elif not dry_run:
                 objects.update_fields(obj_id, clean)
             rep.aktualisiert.append(obj_id)
         elif create_missing:
-            objects.create(obj_id, **clean)
+            if not dry_run:
+                objects.create(obj_id, **clean)
             rep.angelegt.append(obj_id)
         else:
             rep.uebersprungen.append(obj_id)
-    if rep.angelegt or rep.aktualisiert:
+    if not dry_run and (rep.angelegt or rep.aktualisiert):
         objects.refresh_status_all()
     return rep

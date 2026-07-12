@@ -1972,8 +1972,15 @@ class ObjectRepo:
                           [*fields.values(), obj_id])
         self.conn.commit()
 
-    def merge_nonempty(self, obj_id: str, fields: dict) -> list[str]:
-        """Setzt nur nicht-leere Werte; gibt Liste der Konfliktfelder zurück (vorhandener Wert != neuer Wert)."""
+    def merge_nonempty(self, obj_id: str, fields: dict,
+                       *, dry_run: bool = False) -> list[str]:
+        """Setzt nur nicht-leere Werte; gibt Liste der Konfliktfelder zurück (vorhandener Wert != neuer Wert).
+
+        ``dry_run=True`` unterdrueckt das ``update_fields``-Schreiben; die
+        Konflikt-Erkennung laeuft unveraendert, sodass ein Aufrufer die
+        Merge-Wirkung ohne Datenaenderung inspizieren kann (siehe
+        :func:`stonebook.export.csv_export.import_csv` mit ``dry_run=True``).
+        """
         current = self.get(obj_id)
         if current is None:
             return []
@@ -1986,7 +1993,7 @@ class ObjectRepo:
                 conflicts.append(k)
                 continue
             updates[k] = v
-        if updates:
+        if updates and not dry_run:
             self.update_fields(obj_id, updates)
         return conflicts
 

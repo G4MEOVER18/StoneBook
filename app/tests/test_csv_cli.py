@@ -404,3 +404,103 @@ def test_export_import_roundtrip(migrated_db, tmp_path):
     assert "Quarz" in row["Mineral_Primaer"]
     assert row["Gewicht_g"] == 41.0
     c.close()
+
+
+def test_import_dry_run_meldet_neue_ohne_zu_schreiben(tmp_path, capsys):
+    """--dry-run zeigt "Angelegt: 1", legt aber in der DB nichts an."""
+    src = tmp_path / "src.csv"
+    src.write_text(
+        "ID,Mineral_Primaer,Gewicht_g\nOBJ_0999,Calcit,12.5\n",
+        encoding="utf-8",
+    )
+    # DB existiert bereits (leer, aber initialisiert), damit --dry-run
+    # keinen Anlege-Fehler wirft.
+    from stonebook.db.database import open_db
+    db = tmp_path / "dry.sqlite3"
+    open_db(db).close()
+
+    code = main(["import", str(src), "--db", str(db), "--dry-run"])
+    assert code == 0
+    captured = capsys.readouterr().out
+    assert "Dry-Run" in captured
+    assert "Angelegt: 1" in captured
+    # DB blieb unveraendert
+    import sqlite3
+    c = sqlite3.connect(str(db))
+    n = c.execute("SELECT COUNT(*) FROM objects").fetchone()[0]
+    c.close()
+    assert n == 0
+
+
+def test_import_dry_run_meldet_updates_ohne_zu_schreiben(tmp_path, capsys):
+    """--dry-run zeigt "Aktualisiert: 1", laesst den DB-Wert aber unangetastet."""
+    from stonebook.db.database import open_db
+    db = tmp_path / "dryupd.sqlite3"
+    src1 = tmp_path / "src1.csv"
+    src1.write_text(
+        "ID,Mineral_Primaer,Gewicht_g\nOBJ_0001,Quarz,10.0\n",
+        encoding="utf-8",
+    )
+    main(["import", str(src1), "--db", str(db), "--quiet"])
+    capsys.readouterr()
+
+    src2 = tmp_path / "src2.csv"
+    src2.write_text(
+        "ID,Gewicht_g\nOBJ_0001,42.0\n",
+        encoding="utf-8",
+    )
+    code = main(["import", str(src2), "--db", str(db), "--dry-run"])
+    assert code == 0
+    captured = capsys.readouterr().out
+    assert "Dry-Run" in captured
+    assert "Aktualisiert: 1" in captured
+    # DB blieb beim alten Gewicht
+    import sqlite3
+    c = sqlite3.connect(str(db))
+    c.row_factory = sqlite3.Row
+    row = c.execute(
+        "SELECT Gewicht_g FROM objects WHERE obj_id='OBJ_0001'").fetchone()
+    c.close()
+    assert row["Gewicht_g"] == 10.0
+
+
+def test_import_dry_run_json_merge_only_konflikt(tmp_path, capsys):
+    """--dry-run --merge-only --json meldet Konflikte ohne DB-Aenderung."""
+    from stonebook.db.database import open_db
+    db = tmp_path / "drym.sqlite3"
+    src1 = tmp_path / "1.csv"
+    src1.write_text("ID,Mineral_Primaer\nOBJ_0001,Quarz\n", encoding="utf-8")
+    main(["import", str(src1), "--db", str(db), "--quiet"])
+    capsys.readouterr()
+
+    src2 = tmp_path / "2.csv"
+    src2.write_text(
+        "ID,Mineral_Primaer,Farbe_beobachtet\nOBJ_0001,Calcit,rot\n",
+        encoding="utf-8",
+    )
+    code = main(["import", str(src2), "--db", str(db),
+                 "--merge-only", "--dry-run", "--json"])
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["aktualisiert"] == ["OBJ_0001"]
+    assert report["konflikte"] == {"OBJ_0001": ["Mineral_Primaer"]}
+    # DB blieb beim alten Wert; das leere Farbe-Feld wurde NICHT gefuellt.
+    import sqlite3
+    c = sqlite3.connect(str(db))
+    c.row_factory = sqlite3.Row
+    row = c.execute("SELECT * FROM objects WHERE obj_id='OBJ_0001'").fetchone()
+    c.close()
+    assert row["Mineral_Primaer"] == "Quarz"
+    assert row["Farbe_beobachtet"] in (None, "")
+
+
+def test_import_dry_run_ohne_db_datei_gibt_2(tmp_path, capsys):
+    """--dry-run auf fehlender DB gibt 2 zurueck und legt KEINE leere DB an."""
+    src = tmp_path / "src.csv"
+    src.write_text("ID,Mineral_Primaer\nOBJ_0001,Quarz\n", encoding="utf-8")
+    db = tmp_path / "fehlt.sqlite3"
+    code = main(["import", str(src), "--db", str(db), "--dry-run"])
+    assert code == 2
+    assert not db.exists()
+    err = capsys.readouterr().err
+    assert "Dry-Run" in err

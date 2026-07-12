@@ -7,6 +7,7 @@ Beispiele:
     python -m stonebook.export.csv_cli import import.csv
     python -m stonebook.export.csv_cli import import.csv --merge-only
     python -m stonebook.export.csv_cli import import.csv --no-create-missing
+    python -m stonebook.export.csv_cli import import.csv --dry-run
 
 Ergaenzt :mod:`stonebook.export.docx_cli` und :mod:`stonebook.export.backup_cli`
 um die noch fehlende CSV-Verwaltung auf der Kommandozeile.
@@ -71,9 +72,17 @@ def _cmd_import(args: argparse.Namespace) -> int:
     db_file = args.db if args.db else default_db_file()
     # Beim Import ist es legitim, eine frische DB anzulegen, wenn das Ziel
     # noch leer ist - open_db ruft init_db auf. Bei vorhandener DB wird
-    # connect verwendet (kein Schema-Re-Init noetig).
+    # connect verwendet (kein Schema-Re-Init noetig). Bei --dry-run wird die
+    # bestehende DB read-only inspiziert und nicht mutiert; existiert die DB
+    # noch nicht, verweigert der Dry-Run das Anlegen einer leeren Schema-DB
+    # (das waere eine sichtbare Nebenwirkung entgegen der Zusage "nichts
+    # veraendern") und meldet stattdessen als Fehler.
     if db_file.is_file():
         conn = connect(db_file)
+    elif args.dry_run:
+        print(f"DB-Datei fehlt: {db_file} (Dry-Run legt keine leere DB an)",
+              file=sys.stderr)
+        return 2
     else:
         conn = open_db(db_file)
     try:
@@ -81,6 +90,7 @@ def _cmd_import(args: argparse.Namespace) -> int:
             conn, args.path,
             create_missing=not args.no_create_missing,
             merge_only=args.merge_only,
+            dry_run=args.dry_run,
         )
     finally:
         conn.close()
@@ -88,6 +98,8 @@ def _cmd_import(args: argparse.Namespace) -> int:
         json.dump(rep.as_dict(), sys.stdout, ensure_ascii=False, indent=1)
         sys.stdout.write("\n")
     elif not args.quiet:
+        if args.dry_run:
+            print("Dry-Run: keine DB-Aenderung, folgende Wirkung waere eingetreten:")
         print(f"Angelegt: {len(rep.angelegt)}")
         print(f"Aktualisiert: {len(rep.aktualisiert)}")
         print(f"Uebersprungen: {len(rep.uebersprungen)}")
@@ -167,6 +179,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                          "Konflikte werden gemeldet).")
     sp.add_argument("--no-create-missing", action="store_true",
                     help="Unbekannte obj_ids ueberspringen statt anlegen.")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="Nur vorhersagen, was passieren wuerde: keine "
+                         "INSERT/UPDATE, keine Statusaktualisierung. Zeigt "
+                         "trotzdem den vollstaendigen Import-Report "
+                         "(angelegt/aktualisiert/uebersprungen/konflikte/"
+                         "Silent-Drop-Warnungen).")
     sp.add_argument("--json", action="store_true",
                     help="Report als JSON auf stdout (mit angelegt/aktualisiert/"
                          "uebersprungen/konflikte).")
