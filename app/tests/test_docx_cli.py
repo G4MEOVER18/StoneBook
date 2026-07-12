@@ -104,3 +104,98 @@ def test_falscher_root_gibt_2(migrated_db, tmp_path, capsys):
     assert code == 2
     err = capsys.readouterr().err
     assert "objects/" in err
+
+
+def test_dry_run_listet_ids_und_schreibt_nichts(migrated_db, tmp_path, capsys):
+    out = tmp_path / "dry"
+    # --dry-run darf --out-dir ignorieren; die Datei soll NICHT entstehen.
+    code = main(["OBJ_0001", "43", "--db", str(migrated_db), "--root", str(REPO),
+                 "--out-dir", str(out), "--dry-run"])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "OBJ_0001" in captured.out
+    assert "OBJ_0043" in captured.out
+    assert "Dry-Run: 2 Objekte" in captured.out
+    # kein DOCX-Output
+    assert not out.exists() or not list(out.glob("*.docx"))
+
+
+def test_dry_run_quiet_unterdrueckt_summary_aber_nicht_ids(migrated_db, capsys):
+    code = main(["OBJ_0001", "--db", str(migrated_db), "--root", str(REPO),
+                 "--dry-run", "--quiet"])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "OBJ_0001"
+
+
+def test_ids_from_file_akzeptiert_kommentare_und_leerzeilen(migrated_db, tmp_path):
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text(
+        "# Erste Charge\n"
+        "OBJ_0001\n"
+        "\n"
+        "  OBJ-43   # inline-Kommentar\n"
+        "Objekt 3\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "berichte"
+    code = main(["--ids-from-file", str(ids_file), "--db", str(migrated_db),
+                 "--root", str(REPO), "--out-dir", str(out), "--quiet"])
+    assert code == 0
+    namen = {p.name for p in out.glob("*.docx")}
+    assert namen == {"Objekt_001_Analysebericht.docx",
+                     "Objekt_003_Analysebericht.docx",
+                     "Objekt_043_Analysebericht.docx"}
+
+
+def test_ids_from_file_und_positional_werden_vereinigt_und_dedupliziert(
+        migrated_db, tmp_path, capsys):
+    ids_file = tmp_path / "ids.txt"
+    # OBJ_0001 kommt sowohl aus der Datei als auch positional -> nur einmal.
+    ids_file.write_text("OBJ_0001\n3\n", encoding="utf-8")
+    code = main(["43", "OBJ_0001", "--ids-from-file", str(ids_file),
+                 "--db", str(migrated_db), "--root", str(REPO), "--dry-run"])
+    assert code == 0
+    captured = capsys.readouterr()
+    ids = [line for line in captured.out.splitlines() if line.startswith("OBJ_")]
+    # Datei zuerst, dann positional; OBJ_0001 nur einmal.
+    assert ids == ["OBJ_0001", "OBJ_0003", "OBJ_0043"]
+
+
+def test_ids_from_file_ungueltige_id_gibt_2(migrated_db, tmp_path, capsys):
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text("OBJ_0001\nQuatsch\n", encoding="utf-8")
+    code = main(["--ids-from-file", str(ids_file), "--db", str(migrated_db),
+                 "--root", str(REPO)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Ungueltige Objekt-ID" in err
+    assert "Quatsch" in err
+
+
+def test_ids_from_file_datei_fehlt_gibt_2(migrated_db, tmp_path, capsys):
+    code = main(["--ids-from-file", str(tmp_path / "fehlt.txt"),
+                 "--db", str(migrated_db), "--root", str(REPO)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "ID-Datei nicht lesbar" in err
+
+
+def test_keine_ids_hilfetext_erwaehnt_ids_from_file(migrated_db, capsys):
+    code = main(["--db", str(migrated_db), "--root", str(REPO)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "--ids-from-file" in err
+
+
+def test_all_gewinnt_gegen_ids_from_file(migrated_db, tmp_path, capsys):
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text("OBJ_0001\n", encoding="utf-8")
+    code = main(["--ids-from-file", str(ids_file), "--all",
+                 "--db", str(migrated_db), "--root", str(REPO), "--dry-run"])
+    assert code == 0
+    captured = capsys.readouterr()
+    ids = [line for line in captured.out.splitlines() if line.startswith("OBJ_")]
+    # --all liefert weit mehr als 1 Objekt.
+    assert len(ids) > 1
+    assert "OBJ_0001" in ids
