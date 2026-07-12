@@ -16,33 +16,7 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
 from stonebook.export.docx_export import export_docx_batch
-from stonebook.migration.id_utils import normalize_id
-
-
-def _read_ids_from_file(path: Path) -> list[str] | None:
-    """Liest eine ID-Liste (eine ID pro Zeile). ``#``-Zeilen und Leerzeilen werden
-    ignoriert; Inline-Kommentare nach ``#`` ebenfalls gestrippt. Rohwerte werden
-    hier NICHT normalisiert - das uebernimmt :func:`_collect_obj_ids` weiter unten
-    einheitlich mit den positionalen IDs, damit dieselbe Fehlermeldung fliesst.
-    ``None`` = Datei fehlt/nicht lesbar (Aufrufer meldet).
-    """
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    ids: list[str] = []
-    for line in raw.splitlines():
-        # Inline-Kommentar ab ``#`` (Whitespace davor toleriert, aber Hash-
-        # ID-Praefix ``#43`` beginnt am Zeilenanfang und wird von der
-        # Leading-Strip nicht angetastet).
-        hash_pos = line.find("#")
-        if hash_pos > 0:
-            line = line[:hash_pos]
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        ids.append(stripped)
-    return ids
+from stonebook.migration.id_utils import normalize_id, read_ids_from_file
 
 
 def _collect_obj_ids(conn, args: argparse.Namespace) -> list[str]:
@@ -61,7 +35,7 @@ def _collect_obj_ids(conn, args: argparse.Namespace) -> list[str]:
             (args.status,)).fetchall()]
     raw_ids: list[str] = []
     if args.ids_from_file is not None:
-        file_ids = _read_ids_from_file(args.ids_from_file)
+        file_ids = read_ids_from_file(args.ids_from_file)
         if file_ids is None:
             print(f"ID-Datei nicht lesbar: {args.ids_from_file}", file=sys.stderr)
             return []

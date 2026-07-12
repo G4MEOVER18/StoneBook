@@ -1,5 +1,6 @@
 """Normalisierung der Objekt-IDs: OBJ-001 / OBJ_0001 / 'Objekt 1' / 1 → OBJ_0001."""
 import re
+from pathlib import Path
 
 # Reihenfolge ist Priorität: spezifischere/strengere Muster zuerst, damit
 # allgemeinere (z.B. ``^(\d+)$``) nicht ein anderes Muster ueberschatten.
@@ -41,3 +42,38 @@ def obj_number(obj_id: str) -> int:
 
 def display_name(obj_id: str) -> str:
     return f"Objekt {obj_number(obj_id)}"
+
+
+def read_ids_from_file(path: Path) -> list[str] | None:
+    """Liest eine ID-Liste aus einer Textdatei (eine ID pro Zeile).
+
+    ``#``-Kommentarzeilen (auch mit fuehrendem Whitespace) und Leerzeilen
+    werden uebergangen; Inline-Kommentare nach ``#`` werden gestrippt.
+    Ein ``#`` am Zeilenanfang gilt als Kommentar-Marker, sodass die Hash-
+    Praefix-ID-Form ``#43`` bewusst nicht erkannt wird - diese Form ist
+    ein Freitext-Notation-Idiom und in einer ID-Datei mehrdeutig zum
+    Kommentar-Marker; per :func:`normalize_id` gilt sie nur inline.
+
+    Rohwerte werden NICHT normalisiert - das uebernimmt der Aufrufer
+    einheitlich mit den positionalen IDs via :func:`normalize_id`, damit
+    dieselbe Fehlermeldung fliesst.
+
+    Rueckgabe:
+        Liste der rohen ID-Strings (in Datei-Reihenfolge), oder ``None``
+        wenn die Datei fehlt / nicht als UTF-8 lesbar ist. Der Aufrufer
+        entscheidet ueber die Fehlermeldung.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    ids: list[str] = []
+    for line in raw.splitlines():
+        hash_pos = line.find("#")
+        if hash_pos > 0:
+            line = line[:hash_pos]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        ids.append(stripped)
+    return ids
