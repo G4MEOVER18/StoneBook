@@ -6211,3 +6211,71 @@ def test_parse_coordinates_google_place_3d_4d_fragment():
         "https://www.openstreetmap.org/?mlat=46.5&mlon=7.5") == (46.5, 7.5)
     # Regression: GeoURI-Form bleibt unveraendert
     assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
+
+
+def test_parse_iso_date_trailing_uhr_marker():
+    """DE-Uhrzeit-Trailing-Suffix "Uhr" wird abgestrippt und das Datum korrekt geparst.
+
+    Sammler-Notizen mit erhaltener Uhrzeit ("Fund am 13.06.2024 um 14:30 Uhr",
+    "Foto 13. Juni 2024, 14 Uhr", "2024-06-13 14:30:00 Uhr.") wurden bisher
+    still auf None geworfen: der Colon-Zweig von :data:`_TRAILING_TIME`
+    strippt zwar ``14:30``, laesst aber ``13.06.2024 Uhr`` uebrig - das
+    Uhr-Wort matcht die case-sensitive [A-Z]{2,5}-Whitelist nur als "UHR"
+    (unueblich). Die Hour-only-Form ("14 Uhr") wird vom Colon-Zweig sowieso
+    nicht gefangen. :data:`_TRAILING_UHR_TIME` deckt beide Formen ab.
+    """
+    # Colon-Zeit + Uhr
+    assert parse_iso_date("13.06.2024 14:30 Uhr") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30:00 Uhr") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30 Uhr.") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30 Uhr") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30:00 Uhr") == "2024-06-13"
+    # Hour-only + Uhr
+    assert parse_iso_date("13.06.2024 14 Uhr") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 8 Uhr") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14 Uhr") == "2024-06-13"
+    # Komma-Trenner (typische DE-Prosa-Notation "13. Juni 2024, 14 Uhr")
+    assert parse_iso_date("13.06.2024, 14:30 Uhr") == "2024-06-13"
+    assert parse_iso_date("13.06.2024, 14 Uhr") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024, 14:30 Uhr") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024, 14 Uhr") == "2024-06-13"
+    # Monatsname-Form + Zeit ohne Komma
+    assert parse_iso_date("13. Juni 2024 14:30 Uhr") == "2024-06-13"
+    # Case-Insensitivitaet (Kleinbuchstaben, GROSSBUCHSTABEN, Mixed)
+    assert parse_iso_date("13.06.2024 14:30 uhr") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30 UHR") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30 UhR") == "2024-06-13"
+    # Uhr mit trailing Punkt (Prosa-Abkuerzungs-Schlussform)
+    assert parse_iso_date("13.06.2024 14 Uhr.") == "2024-06-13"
+    assert parse_iso_date("13.06.2024, 14:30 uhr.") == "2024-06-13"
+    # Kollision mit temporaler Praeposition + Uhr: der Praefix-Strip
+    # ("Fund am ...") passiert an anderer Stelle; hier nur die reine
+    # Datum+Uhrzeit-Form testen.
+    # Kombination mit Klammer-Annotation (Uhr zuerst, dann Klammer)
+    assert parse_iso_date("13.06.2024 14:30 Uhr (Foto)") == "2024-06-13"
+    # Kombination mit Annaeherungs-Praefix
+    assert parse_iso_date("ca. 13.06.2024 14:30 Uhr") == "2024-06-13"
+
+    # Bare-Time ohne Datum -> None (keine False-Positive-Auswertung)
+    assert parse_iso_date("14:30 Uhr") is None
+    assert parse_iso_date("14 Uhr") is None
+    assert parse_iso_date("Uhr") is None
+    # Nur die Uhrzeit ohne umgebende Datum-Ziffer -> None
+    assert parse_iso_date("um 14 Uhr") is None
+
+    # Regress-Anker: bestehende Trailing-Time-Formen ohne Uhr bleiben unveraendert
+    assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 14:30 UTC") == "2024-06-13"
+    assert parse_iso_date("13.06.2024T14:30") == "2024-06-13"
+    assert parse_iso_date("20240613T143200") == "2024-06-13"
+    # Regress-Anker: das reine Datum ohne Zeit-Anteil bleibt unveraendert
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    # Regress-Anker: die bestehende false-positive-freie Behandlung von
+    # "T-Separator + Uhr" (kein Whitespace zwischen Datum und Zeit-Ziffer)
+    # bleibt bestehen - _TRAILING_UHR_TIME verlangt einen [,\s]+-Trenner
+    # vor der Stunde-Ziffer, sodass "T10:00:00 Uhr" nicht matcht und die
+    # Formal-Kombination "ISO-T + DE-Uhr" (semantisch unueblich, weil
+    # ISO-T-Notation die 24h-Zeit ohne Uhr-Suffix erwartet) unangetastet
+    # auf None faellt.
+    assert parse_iso_date("2024-06-13T10:00:00 Uhr") is None

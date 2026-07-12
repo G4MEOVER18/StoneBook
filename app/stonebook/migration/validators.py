@@ -460,6 +460,44 @@ _TRAILING_TIME = re.compile(
     r")"
     r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2}|\s+[A-Z]{2,5})?\s*$"
 )
+# DE-Uhrzeit-Trailing-Suffix mit dem "Uhr"-Wortmarker: "13.06.2024 14:30 Uhr",
+# "13. Juni 2024, 14 Uhr", "2024-06-13 14:30:00 Uhr.", auch case-insensitive
+# ("uhr", "UHR"). In DE-Sammler-Notizen und geerbten Etiketten die uebliche
+# Notation, wenn zusaetzlich zum Fund-/Foto-Datum die Uhrzeit erhalten geblieben
+# ist ("Fund am 13.06.2024 um 14:30 Uhr", "Foto 13. Juni 2024, 14 Uhr"). Ohne
+# expliziten Uhr-Strip fielen alle diese Formen still auf None: der Colon-
+# Zweig von :data:`_TRAILING_TIME` strippt zwar den ``14:30``-Teil, laesst
+# aber ``13.06.2024 Uhr`` zurueck (der Suffix-Whitelist [A-Z]{2,5} matcht
+# das gemischt-case "Uhr" nicht - "UHR" wuerde matchen, ist aber unueblich).
+# Die Hour-only-Form "14 Uhr" (Stunde ohne Minuten, DE-Sprech-Alltag: "um
+# 14 Uhr") wird vom Colon-Zweig sowieso nicht gefangen, weil dort ``:MM``
+# zwingend ist.
+#
+# Diese Regex fangt beide Formen (Colon-Zeit + Uhr, Hour-only + Uhr) in einem
+# Schritt: ``[,\s]+`` als Trenner (Whitespace oder Komma-Praefix wie ``",
+# 14:30 Uhr"``), dann 1-2 Stunden-Ziffern, dann optional ``:MM`` und
+# ``:SS``, dann optional Whitespace, dann das ``uhr``-Wort (case-insensitive)
+# mit optionalem trailing Punkt (``Uhr.`` als abgekuerzte Schlussform in
+# Prosa-Notizen). Der abschliessende ``\s*$``-Anker macht die Match-Position
+# eindeutig am Zeilenende.
+#
+# Vor :data:`_TRAILING_TIME` gestrippt in :func:`parse_iso_date`, damit die
+# Uhr-Variante nicht durch den Colon-Zweig ohne Uhr-Suffix-Konsum zerfallt
+# (der wuerde ``14:30`` strippen und ``13.06.2024 Uhr`` uebriglassen, was
+# als kein bekanntes Datum-Muster still auf None faellt). Kein Konflikt mit
+# reinen TZ-Suffixen (``UTC``/``CET`` etc.): die brauchen keine vorangehende
+# Zeit-Ziffer und werden weiter unten via :data:`_TRAILING_TZ_STANDALONE`
+# behandelt.
+#
+# Bare-Time-Kollisions-Schutz: die Regex verlangt vor der Ziffer einen
+# Trenner ``[,\s]+``, sodass ``"14:30 Uhr"`` (keine vorangehende Datum-Zahl)
+# nicht matcht - das erste Zeichen ``1`` ist weder Whitespace noch Komma,
+# und ohne linken Kontext-Anker faellt der Match nicht rein. Analog fuer
+# ``"14 Uhr"`` allein (ohne Datum).
+_TRAILING_UHR_TIME = re.compile(
+    r"[,\s]+\d{1,2}(?::\d{2}(?::\d{2})?)?\s*uhr\.?\s*$",
+    re.IGNORECASE,
+)
 # Standalone-Trailing-Zeitzone ohne Zeitanteil ("2024-06-13 UTC", "1985 GMT",
 # "13.06.2024 CET", "Juni 2020 MEZ", "2024-06-13Z"). Spiegelt die TZ-Suffix-
 # Konvention von :data:`_TRAILING_TIME` auf die Date-Only-Achse: wenn keine
@@ -3445,6 +3483,20 @@ def parse_iso_date(text) -> str | None:
     # :data:`_TRAILING_FOLLOWING_SUFFIX` fuer die Kompakt-/Whitespace-
     # Positions-Klassen und die Kollisionsfreiheits-Analyse.
     stripped = _TRAILING_FOLLOWING_SUFFIX.sub("", s).strip()
+    if stripped and stripped != s:
+        return parse_iso_date(stripped)
+    # DE-Uhrzeit-Trailing-Suffix "Uhr" abstreifen ("13.06.2024 14:30 Uhr",
+    # "13. Juni 2024, 14 Uhr", "2024-06-13 14:30:00 Uhr."). Vor _TRAILING_TIME
+    # einsortiert, weil der reine Colon-Zweig von _TRAILING_TIME zwar den
+    # ``14:30``-Teil strippen wuerde, aber ``13.06.2024 Uhr`` uebrig liesse -
+    # das Uhr-Wort matcht die case-sensitive [A-Z]{2,5}-Whitelist nur als
+    # "UHR"-Grosschrift (unueblich), sodass die gemischt-case DE-Form still auf
+    # None faellt. Diese Regex fangt beide Formen (Colon-Zeit + Uhr,
+    # Hour-only + Uhr) in einem Schritt. Strip + Rekursion analog
+    # :data:`_TRAILING_TIME`: die Uhrzeit ist semantische Wert-Anmerkung, keine
+    # Datums-Modifikation - das ISO-Datum-Output ist identisch zur reinen
+    # Datums-Form.
+    stripped = _TRAILING_UHR_TIME.sub("", s).strip()
     if stripped and stripped != s:
         return parse_iso_date(stripped)
     # Letzter Versuch: trailing Time-Suffix abschneiden und Datum allein parsen.
