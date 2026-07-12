@@ -228,8 +228,31 @@ _APPROX_PREFIX = re.compile(
     # Wahrscheinlichkeits-/Vermutungs-Marker (DE)
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
+    # Hearsay-/Zuschreibungs-Marker (DE): der Vorbesitzer notierte das Datum
+    # nicht aus eigener Beobachtung, sondern aufgrund einer Zuschreibung
+    # (Verkaeufer-Angabe, Vorbesitzer-Erzaehlung, Katalog-Referenz). In
+    # geerbten Sammlungs-Notizen und Museums-Etiketten sehr verbreitet,
+    # wenn die Provenienz aus zweiter Hand kommt und der aktuelle Kurator
+    # die Datums-Zuverlaessigkeit relativieren will ("angeblich 1985 im
+    # Aare-Gebiet gefunden", "angeblich Juni 2024 vom Vorbesitzer erworben").
+    # Semantisch identisch zu "vermutlich"/"wahrscheinlich" (Unsicherheits-
+    # Marker mit dokumentierter Herkunfts-Fragezeichen), aber auf der Hearsay-
+    # Achse (Datum stammt aus Erzaehlung, nicht Beobachtung) - Strip + Rekursion
+    # wie bei den uebrigen Wahrscheinlichkeits-Marken, das ISO-Datum-Output
+    # ist identisch zur reinen Form (der Hearsay-Marker gehoert konzeptionell
+    # in die notizen-Spalte).
+    r"|angeblich"
     # Wahrscheinlichkeits-/Vermutungs-Marker (EN)
-    r"|perhaps|possibly|maybe"
+    r"|perhaps|possibly|maybe|presumably"
+    # Hearsay-/Zuschreibungs-Marker (EN): spiegelt DE ``angeblich`` auf die
+    # englische Achse. In EN-Sammler-Notizen aus Auktions-Katalogen und
+    # US-/UK-Mineral-Boersen sehr verbreitet, wenn die Provenienz-Angabe
+    # aus zweiter Hand kommt ("allegedly 1985 from an Aar valley find",
+    # "supposedly June 2024 acquired from the previous owner", "reportedly
+    # collected 1995 in Tucson"). ``purportedly`` ist die
+    # akademisch-formellere Variante, verbreitet in Museums-Katalogen und
+    # wissenschaftlichen Publikationen.
+    r"|allegedly|supposedly|reportedly|purportedly"
     r")\s+"
     r"|[~≈]\s*"
     r")",
@@ -864,7 +887,18 @@ _TRAILING_APPROX_SUFFIX = re.compile(
     r"|gesch[äa]tzt|geschaetzt"
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
-    r"|perhaps|possibly|maybe"
+    # Hearsay-/Zuschreibungs-Marker (DE ``angeblich``, EN ``allegedly`` /
+    # ``supposedly`` / ``reportedly`` / ``purportedly`` / ``presumably``) -
+    # spiegelt den gleichnamigen Block in :data:`_APPROX_PREFIX` auf die
+    # Trailing-Achse. Sammler-Notizen mit Datum-voran + Provenienz-Marker
+    # nachgeschoben ("1985 angeblich vom Aare-Gebiet", "Juni 2024 supposedly
+    # von Zermatt-Boerse", "1995 reportedly Tucson-Fund"). Konvention
+    # identisch zu den uebrigen Wahrscheinlichkeits-Marken: Strip + Rekursion,
+    # das ISO-Datum-Output bleibt zur reinen Form identisch, der Hearsay-
+    # Marker gehoert konzeptionell in die notizen-Spalte.
+    r"|angeblich"
+    r"|perhaps|possibly|maybe|presumably"
+    r"|allegedly|supposedly|reportedly|purportedly"
     r")\s*$",
     re.IGNORECASE,
 )

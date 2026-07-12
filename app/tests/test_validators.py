@@ -6359,3 +6359,78 @@ def test_parse_iso_date_trailing_tageszeit_marker():
     # Regress-Anker: das reine Datum ohne Tageszeit-Anteil bleibt unveraendert
     assert parse_iso_date("13.06.2024") == "2024-06-13"
     assert parse_iso_date("2024-06-13") == "2024-06-13"
+
+
+def test_parse_iso_date_hearsay_marker():
+    """Hearsay-/Zuschreibungs-Marker (DE ``angeblich``, EN ``allegedly`` /
+    ``supposedly`` / ``reportedly`` / ``purportedly`` / ``presumably``) als
+    Praefix und Suffix vor/nach dem Datum.
+
+    Geerbte Sammlungs-Notizen und Museums-Etiketten mit Datum aus zweiter
+    Hand (Verkaeufer-Angabe, Vorbesitzer-Erzaehlung, Katalog-Referenz) sind
+    in Provenienz-Ketten sehr verbreitet, wenn der aktuelle Kurator die
+    Datums-Zuverlaessigkeit relativieren will ("angeblich 1985 vom Aare-
+    Gebiet gefunden", "1985 allegedly Tucson-Fund", "supposedly Juni 2024
+    vom Vorbesitzer erworben"). Semantisch identisch zu ``vermutlich`` /
+    ``wahrscheinlich`` (Unsicherheits-Marker mit dokumentierter Herkunfts-
+    Fragezeichen), aber auf der Hearsay-Achse (Datum stammt aus Erzaehlung,
+    nicht Beobachtung). Vor dem Fix fielen alle Formen still auf None:
+    :data:`_APPROX_PREFIX` listete keinen Hearsay-Marker, :data:`_TRAILING_APPROX_SUFFIX`
+    spiegelbildlich auch nicht.
+    """
+    # Deutsche Marker als Praefix
+    assert parse_iso_date("angeblich 1985") == "1985-01-01"
+    assert parse_iso_date("angeblich Juni 2024") == "2024-06-01"
+    assert parse_iso_date("angeblich 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("angeblich Sommer 1985") == "1985-06-01"
+    # Englische Marker als Praefix
+    assert parse_iso_date("allegedly 1985") == "1985-01-01"
+    assert parse_iso_date("supposedly 1985") == "1985-01-01"
+    assert parse_iso_date("reportedly 1985") == "1985-01-01"
+    assert parse_iso_date("purportedly 1985") == "1985-01-01"
+    assert parse_iso_date("presumably 1985") == "1985-01-01"
+    assert parse_iso_date("allegedly Juni 2024") == "2024-06-01"
+    assert parse_iso_date("supposedly 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("presumably Sommer 1985") == "1985-06-01"
+    # Case-Insensitivitaet (Etiketten in GROSS/klein/Mixed)
+    assert parse_iso_date("Angeblich 1985") == "1985-01-01"
+    assert parse_iso_date("ANGEBLICH 1985") == "1985-01-01"
+    assert parse_iso_date("Allegedly 1985") == "1985-01-01"
+    assert parse_iso_date("SUPPOSEDLY 1985") == "1985-01-01"
+    assert parse_iso_date("Presumably 1985") == "1985-01-01"
+    # Verkettet mit anderen Praefixen (Rekursion loest sequentiell auf)
+    assert parse_iso_date("angeblich ca. 1985") == "1985-01-01"
+    assert parse_iso_date("allegedly circa 1985") == "1985-01-01"
+    assert parse_iso_date("supposedly around 1985") == "1985-01-01"
+    assert parse_iso_date("angeblich Mitte 19. Jahrhundert") == "1850-01-01"
+    # Deutsche Marker als Suffix
+    assert parse_iso_date("1985 angeblich") == "1985-01-01"
+    assert parse_iso_date("Juni 2024 angeblich") == "2024-06-01"
+    assert parse_iso_date("13.06.2024 angeblich") == "2024-06-13"
+    # Englische Marker als Suffix
+    assert parse_iso_date("1985 allegedly") == "1985-01-01"
+    assert parse_iso_date("1985 supposedly") == "1985-01-01"
+    assert parse_iso_date("1985 reportedly") == "1985-01-01"
+    assert parse_iso_date("1985 purportedly") == "1985-01-01"
+    assert parse_iso_date("1985 presumably") == "1985-01-01"
+    assert parse_iso_date("Juni 2024 supposedly") == "2024-06-01"
+    # Case-Insensitivitaet der Trailing-Form
+    assert parse_iso_date("1985 ANGEBLICH") == "1985-01-01"
+    assert parse_iso_date("1985 Allegedly") == "1985-01-01"
+    assert parse_iso_date("1985 REPORTEDLY") == "1985-01-01"
+    # Kombination mit Klammer-Annotation (Klammer zuerst gestrippt)
+    assert parse_iso_date("angeblich 1985 (Etikett-Notiz)") == "1985-01-01"
+    assert parse_iso_date("allegedly 1985 [Provenienz]") == "1985-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest -> None
+    assert parse_iso_date("angeblich") is None
+    assert parse_iso_date("allegedly") is None
+    assert parse_iso_date("supposedly abc") is None
+    assert parse_iso_date("reportedly 1700") is None  # ausserhalb 1800-2999
+    # Regress-Anker: bestehende Wahrscheinlichkeits-Marker bleiben unveraendert
+    assert parse_iso_date("wahrscheinlich 1985") == "1985-01-01"
+    assert parse_iso_date("vermutlich 1985") == "1985-01-01"
+    assert parse_iso_date("perhaps 1985") == "1985-01-01"
+    assert parse_iso_date("possibly 1985") == "1985-01-01"
+    assert parse_iso_date("maybe 1985") == "1985-01-01"
+    assert parse_iso_date("1985 wahrscheinlich") == "1985-01-01"
+    assert parse_iso_date("1985 vermutlich") == "1985-01-01"
