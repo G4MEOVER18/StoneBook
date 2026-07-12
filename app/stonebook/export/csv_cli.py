@@ -4,6 +4,7 @@ Beispiele:
     python -m stonebook.export.csv_cli export OBJ_0001 OBJ_0043 --out export.csv
     python -m stonebook.export.csv_cli export --status aktiv --out aktiv.csv
     python -m stonebook.export.csv_cli export --all --out voll.csv
+    python -m stonebook.export.csv_cli export --ids-from-file liste.txt --out sel.csv
     python -m stonebook.export.csv_cli import import.csv
     python -m stonebook.export.csv_cli import import.csv --merge-only
     python -m stonebook.export.csv_cli import import.csv --no-create-missing
@@ -21,28 +22,52 @@ from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file, open_db
 from stonebook.export.csv_export import export_csv, import_csv
-from stonebook.migration.id_utils import normalize_id
+from stonebook.migration.id_utils import normalize_id, read_ids_from_file
 
 
-def _collect_obj_ids(conn, args: argparse.Namespace) -> list[str] | None:
+# Sentinel fuer "ID-Datei fehlt/nicht lesbar" - unterscheidet sich vom leeren
+# Wahl-Ergebnis (leere Datei ohne Kommentare = 0 IDs = ebenfalls Fehler, aber
+# aus anderer Ursache) und vom "kein Filter"-None. Der Aufrufer prueft auf
+# Identity und beendet mit exit 2, nachdem die stderr-Meldung schon geflossen
+# ist.
+_IDS_ERROR = object()
+
+
+def _collect_obj_ids(conn, args: argparse.Namespace) -> list[str] | None | object:
     """Stellt die zu exportierende ID-Liste zusammen oder ``None`` (= alle).
 
     Spiegelt :func:`stonebook.export.docx_cli._collect_obj_ids`: Bei ``--all``
     wird ``None`` zurueckgegeben (entspricht dem ``obj_ids=None``-Default von
     :func:`export_csv` = kein Filter, alle Objekte). ``--status`` wird vom
-    Caller separat verwendet; positionalen IDs werden hier normalisiert und
-    bei Ungueltigkeit mit ``[]`` quittiert (Fehlermeldung auf stderr).
+    Caller separat verwendet; positionale IDs und die per
+    ``--ids-from-file`` eingelesene Liste werden vereinigt (Datei zuerst,
+    dann positional) und reihenfolge-erhaltend dedupliziert, spiegelt
+    :func:`stonebook.export.docx_cli._collect_obj_ids`. Bei Ungueltigkeit
+    einer ID / nicht lesbarer Datei wird der Sentinel ``_IDS_ERROR``
+    zurueckgegeben (Fehlermeldung auf stderr, exit 2 im Aufrufer).
     """
     if args.all:
         return None
-    if not args.obj_ids:
+    if not args.obj_ids and args.ids_from_file is None:
         return None
+    raw_ids: list[str] = []
+    if args.ids_from_file is not None:
+        file_ids = read_ids_from_file(args.ids_from_file)
+        if file_ids is None:
+            print(f"ID-Datei nicht lesbar: {args.ids_from_file}", file=sys.stderr)
+            return _IDS_ERROR
+        raw_ids.extend(file_ids)
+    raw_ids.extend(args.obj_ids)
     ids: list[str] = []
-    for raw in args.obj_ids:
+    seen: set[str] = set()
+    for raw in raw_ids:
         norm = normalize_id(raw)
         if norm is None:
             print(f"Ungueltige Objekt-ID: {raw!r}", file=sys.stderr)
-            return []
+            return _IDS_ERROR
+        if norm in seen:
+            continue
+        seen.add(norm)
         ids.append(norm)
     return ids
 
@@ -55,7 +80,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
     conn = connect(db_file)
     try:
         obj_ids = _collect_obj_ids(conn, args)
-        if obj_ids == []:
+        if obj_ids is _IDS_ERROR:
             return 2
         n = export_csv(conn, args.out, obj_ids=obj_ids, status=args.status)
     finally:
@@ -163,6 +188,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                        help="Alle Objekte exportieren (Default ohne IDs).")
     group.add_argument("--status", default=None,
                        help="Nur Objekte mit diesem Lebenszyklus-Status (z.B. 'aktiv').")
+    sp.add_argument("--ids-from-file", type=Path, default=None, metavar="PATH",
+                    help="Textdatei mit einer Objekt-ID pro Zeile ('#'-Kommentare "
+                         "und Leerzeilen erlaubt). Wird mit positionalen IDs "
+                         "vereinigt (Datei zuerst); von --all/--status ueberschrieben. "
+                         "Spiegelt --ids-from-file von docx_cli.")
     sp.add_argument("--quiet", action="store_true",
                     help="Keine Status-Zeile auf stdout.")
     sp.set_defaults(func=_cmd_export)

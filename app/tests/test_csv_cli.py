@@ -93,6 +93,107 @@ def test_export_fehlende_db_gibt_2(tmp_path, capsys):
     assert "DB-Datei fehlt" in err
 
 
+def test_export_ids_from_file_akzeptiert_kommentare_und_leerzeilen(
+        migrated_db, tmp_path):
+    """--ids-from-file liest eine ID pro Zeile, ignoriert Kommentare/Leerzeilen.
+
+    Spiegelt das Verhalten von docx_cli --ids-from-file, damit die beiden
+    Export-CLIs kompatible Ausdruecke akzeptieren (Sammler-Workflow: eine
+    Datei = eine Selektion, egal ob Berichte oder CSV gebraucht werden).
+    """
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text(
+        "# Erste Charge\n"
+        "OBJ_0001\n"
+        "\n"
+        "  OBJ-43   # inline-Kommentar\n"
+        "Objekt 3\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "sel.csv"
+    code = main(["export", "--ids-from-file", str(ids_file),
+                 "--out", str(out), "--db", str(migrated_db), "--quiet"])
+    assert code == 0
+    rows = _read_csv(out)
+    assert {r["ID"] for r in rows} == {"OBJ_0001", "OBJ_0003", "OBJ_0043"}
+
+
+def test_export_ids_from_file_und_positional_werden_vereinigt_und_dedupliziert(
+        migrated_db, tmp_path):
+    """Datei-IDs + positionale IDs werden dedupliziert (Datei zuerst).
+
+    Analog docx_cli: OBJ_0001 aus Datei + OBJ_0001 aus Kommandozeile
+    landen nur einmal im Export. Die frueher naive positional-Liste (kein
+    Dedup) haette hier zwei Zeilen mit derselben ID erzeugt.
+    """
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text("OBJ_0001\n3\n", encoding="utf-8")
+    out = tmp_path / "sel.csv"
+    code = main(["export", "43", "OBJ_0001",
+                 "--ids-from-file", str(ids_file),
+                 "--out", str(out), "--db", str(migrated_db), "--quiet"])
+    assert code == 0
+    rows = _read_csv(out)
+    ids = [r["ID"] for r in rows]
+    # Ergebnis-Reihenfolge folgt der DB (export_csv sortiert nach obj_id),
+    # nicht der Aufruf-Reihenfolge - relevant ist nur, dass jede ID genau
+    # einmal auftaucht und alle drei Zielobjekte enthalten sind.
+    assert sorted(ids) == ["OBJ_0001", "OBJ_0003", "OBJ_0043"]
+    assert len(ids) == 3
+
+
+def test_export_ids_from_file_ungueltige_id_gibt_2(migrated_db, tmp_path, capsys):
+    """Nicht normalisierbare Zeile in der ID-Datei -> exit 2, keine Ausgabe-Datei."""
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text("OBJ_0001\nQuatsch\n", encoding="utf-8")
+    out = tmp_path / "sel.csv"
+    code = main(["export", "--ids-from-file", str(ids_file),
+                 "--out", str(out), "--db", str(migrated_db)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Ungueltige Objekt-ID" in err
+    assert "Quatsch" in err
+    assert not out.exists()
+
+
+def test_export_ids_from_file_datei_fehlt_gibt_2(migrated_db, tmp_path, capsys):
+    """Nicht lesbare Datei -> exit 2 mit spezifischer stderr-Meldung."""
+    out = tmp_path / "sel.csv"
+    code = main(["export", "--ids-from-file", str(tmp_path / "fehlt.txt"),
+                 "--out", str(out), "--db", str(migrated_db)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "ID-Datei nicht lesbar" in err
+    assert not out.exists()
+
+
+def test_export_all_gewinnt_gegen_ids_from_file(migrated_db, tmp_path):
+    """--all uebergeht die ID-Datei (dokumentierte Praezedenz)."""
+    ids_file = tmp_path / "ids.txt"
+    ids_file.write_text("OBJ_0001\n", encoding="utf-8")
+    out = tmp_path / "all.csv"
+    code = main(["export", "--all", "--ids-from-file", str(ids_file),
+                 "--out", str(out), "--db", str(migrated_db), "--quiet"])
+    assert code == 0
+    # Volles Set trotz einzelner ID in der Datei
+    assert len(_read_csv(out)) == 546
+
+
+def test_export_status_gewinnt_gegen_ids_from_file(migrated_db, tmp_path):
+    """--status uebergeht die ID-Datei (Praezedenz symmetrisch zu --all)."""
+    ids_file = tmp_path / "ids.txt"
+    # Absichtlich eine ID, die vermutlich NICHT status=aktiv hat, damit
+    # der Test bei falscher Praezedenz sichtbar bricht.
+    ids_file.write_text("OBJ_0001\n", encoding="utf-8")
+    out = tmp_path / "aktiv.csv"
+    code = main(["export", "--status", "aktiv",
+                 "--ids-from-file", str(ids_file),
+                 "--out", str(out), "--db", str(migrated_db), "--quiet"])
+    assert code == 0
+    rows = _read_csv(out)
+    assert all(r["status"] == "aktiv" for r in rows)
+
+
 def test_import_legt_neue_objekte_an(tmp_path, capsys):
     src = tmp_path / "src.csv"
     src.write_text(
