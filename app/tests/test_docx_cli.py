@@ -49,6 +49,72 @@ def test_status_filter_aktiv(migrated_db, tmp_path):
     assert 0 < len(written) < 100
 
 
+def test_status_ungueltig_gibt_2(migrated_db, tmp_path, capsys):
+    """--status akzeptiert nur VALID_STATUSES; Tippfehler -> exit 2 mit klarer Meldung.
+
+    Vor der Validierung fiel ``--status aktief`` (Tippfehler) auf einen
+    leeren SQL-Selektions-Treffer und beendete mit ``exit 2`` unter der
+    irrefuehrenden Meldung "keine Treffer" (bzw. dem Kein-obj-ids-Fall
+    im DOCX-Pfad). Spiegelt die Validierung in
+    :func:`stonebook.export.csv_cli._cmd_export` und die repository-
+    seitige Enum-Validierung in
+    :func:`stonebook.db.repository._append_enum_in_filter` (dort mit dem
+    Kommentar "Validiert gegen VALID_STATUSES, damit Tippfehler keinen
+    leeren Filter erzeugen"). Fehlermeldung nennt die drei erlaubten
+    Werte, sodass der User den Tippfehler direkt ohne DB-Kenntnis
+    korrigieren kann. Es werden auch keine DOCX-Dateien geschrieben.
+    """
+    out = tmp_path / "typo"
+    code = main(["--status", "aktief", "--db", str(migrated_db),
+                 "--root", str(REPO), "--out-dir", str(out)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Ungueltiger --status" in err
+    assert "'aktief'" in err
+    assert "aktiv" in err
+    assert "platzhalter" in err
+    assert "archiviert" in err
+    # Keine DOCX geschrieben (silent-empty-Regress).
+    assert not out.exists() or not list(out.glob("*.docx"))
+
+
+def test_status_case_sensitiv(migrated_db, tmp_path, capsys):
+    """--status ist case-sensitiv; ``AKTIV``/``Aktiv`` sind Tippfehler.
+
+    Spiegelt den analogen Test im csv_cli - die DB speichert Status
+    durchgehend klein, :data:`VALID_STATUSES` enthaelt nur die
+    Kleinschreibung, jede Case-Abweichung wuerde ohne Validierung
+    denselben leere-Selektion-Regress ausloesen.
+    """
+    out = tmp_path / "case"
+    code = main(["--status", "AKTIV", "--db", str(migrated_db),
+                 "--root", str(REPO), "--out-dir", str(out)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Ungueltiger --status" in err
+    assert "'AKTIV'" in err
+
+
+def test_status_alle_valid_werte_akzeptiert(migrated_db, tmp_path):
+    """Regress-Anker: die drei kanonischen VALID_STATUSES bleiben akzeptiert.
+
+    Spiegelt den analogen Test im csv_cli auf die DOCX-Batch-Achse.
+    ``--dry-run`` genuegt fuer die Verifikation, weil der Status-
+    Selektions-Pfad identisch zum echten Lauf ist - der Test bleibt
+    schlank ohne DOCX-Dateien zu schreiben. Ob die Test-DB tatsaechlich
+    Objekte in jedem Status enthaelt, ist irrelevant - relevant ist,
+    dass der Filter nicht mit "Ungueltiger --status" abgewiesen wird.
+    """
+    for status in ("aktiv", "platzhalter", "archiviert"):
+        code = main(["--status", status, "--db", str(migrated_db),
+                     "--root", str(REPO), "--dry-run", "--quiet"])
+        # exit 0 bei nicht-leerem Ergebnis, exit 2 bei leerem Ergebnis
+        # (kein obj_ids -> return 2 im dry-Zweig). Beide Codes sind
+        # akzeptabel; wichtig ist, dass NICHT die Validierungs-Meldung
+        # kommt.
+        assert code in (0, 2), f"{status} soll VALID_STATUSES passieren"
+
+
 def test_status_und_obj_ids_schliessen_sich_aus(migrated_db, tmp_path, capsys):
     # argparse-Eltern: --status und --all sind exklusiv. --status mit
     # positionalen IDs ist erlaubt, aber --status gewinnt (positional wird

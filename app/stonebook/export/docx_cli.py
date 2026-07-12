@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file
+from stonebook.db.repository import VALID_STATUSES
 from stonebook.export.docx_export import export_docx_batch
 from stonebook.migration.id_utils import normalize_id, read_ids_from_file
 
@@ -95,6 +96,22 @@ def main(argv: list[str] | None = None) -> int:
             and args.ids_from_file is None):
         print("Bitte Objekt-IDs angeben oder --status / --all / --ids-from-file setzen.",
               file=sys.stderr)
+        return 2
+    # --status wird gegen VALID_STATUSES validiert, damit ein Tippfehler
+    # ("aktief" statt "aktiv") nicht still eine leere Selektion erzeugt
+    # und mit exit 2 unter der irrefuehrenden Meldung "keine Treffer"
+    # abbricht. Spiegelt die gleichartige Validierung in
+    # :func:`stonebook.export.csv_cli._cmd_export` und in
+    # :func:`stonebook.db.repository._append_enum_in_filter` (dort mit
+    # dem Kommentar "Validiert gegen VALID_STATUSES, damit Tippfehler
+    # keinen leeren Filter erzeugen"). Fehlermeldung nennt die drei
+    # erlaubten Werte, sodass der User den Tippfehler direkt ohne
+    # DB-Kenntnis korrigieren kann.
+    if args.status is not None and args.status not in VALID_STATUSES:
+        print(
+            f"Ungueltiger --status: {args.status!r} "
+            f"(erwartet einen aus {sorted(VALID_STATUSES)})",
+            file=sys.stderr)
         return 2
 
     db_file = args.db if args.db else default_db_file()

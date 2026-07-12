@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from stonebook.db.database import connect, default_db_file, open_db
+from stonebook.db.repository import VALID_STATUSES
 from stonebook.export.csv_export import export_csv, import_csv
 from stonebook.migration.id_utils import normalize_id, read_ids_from_file
 
@@ -73,6 +74,24 @@ def _collect_obj_ids(conn, args: argparse.Namespace) -> list[str] | None | objec
 
 
 def _cmd_export(args: argparse.Namespace) -> int:
+    # --status wird gegen VALID_STATUSES validiert, damit ein Tippfehler
+    # ("aktief" statt "aktiv", "ARCHIVIERT" mit Case-Abweichung) nicht
+    # still eine leere CSV mit Exit 0 erzeugt - der Filter in export_csv
+    # verwendet exakte String-Gleichheit, sodass jede Abweichung von den
+    # drei kanonischen Lebenszyklus-Status ("aktiv"/"platzhalter"/
+    # "archiviert") das Ergebnis auf 0 Zeilen reduziert. Spiegelt die
+    # gleichartige Validierung in :func:`stonebook.db.repository.ObjectRepo.list_objects`
+    # ueber :func:`_append_enum_in_filter` (dort mit dem Kommentar
+    # "Validiert gegen VALID_STATUSES, damit Tippfehler keinen leeren
+    # Filter erzeugen"), auf die CLI-Grenze gezogen - Fehlermeldung
+    # nennt die drei erlaubten Werte, sodass der User den Tippfehler
+    # direkt ohne DB-Kenntnis korrigieren kann.
+    if args.status is not None and args.status not in VALID_STATUSES:
+        print(
+            f"Ungueltiger --status: {args.status!r} "
+            f"(erwartet einen aus {sorted(VALID_STATUSES)})",
+            file=sys.stderr)
+        return 2
     db_file = args.db if args.db else default_db_file()
     if not db_file.is_file():
         print(f"DB-Datei fehlt: {db_file}", file=sys.stderr)

@@ -65,6 +65,77 @@ def test_export_status_filter(migrated_db, tmp_path):
     assert all(r["status"] == "aktiv" for r in rows)
 
 
+def test_export_ungueltiger_status_gibt_2(migrated_db, tmp_path, capsys):
+    """--status akzeptiert nur VALID_STATUSES; Tippfehler -> exit 2 mit klarer Meldung.
+
+    Vor der Validierung erzeugte ein Tippfehler wie ``--status aktief`` still
+    eine leere CSV mit Exit 0 (Filter in :func:`export_csv` per exakter
+    String-Gleichheit -> 0 Treffer, geschrieben mit "Geschrieben: 0 Objekte
+    -> aktief.csv"), sodass der User die Ursache erst am unerwartet
+    leeren Ergebnis merkte. Spiegelt die Validierung in
+    :func:`stonebook.db.repository._append_enum_in_filter` (dort mit dem
+    Kommentar "Validiert gegen VALID_STATUSES, damit Tippfehler keinen
+    leeren Filter erzeugen") auf die CLI-Grenze, damit der Fehler an
+    der Aufruf-Stelle sichtbar wird und die Fehlermeldung die drei
+    erlaubten Werte nennt, ohne dass der User in die DB / das Feld-
+    Woerterbuch schauen muss.
+    """
+    out = tmp_path / "typo.csv"
+    code = main(["export", "--status", "aktief",
+                 "--out", str(out), "--db", str(migrated_db)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Ungueltiger --status" in err
+    assert "'aktief'" in err
+    # Die drei kanonischen Werte werden in der Fehlermeldung genannt,
+    # damit der User den Tippfehler direkt korrigieren kann.
+    assert "aktiv" in err
+    assert "platzhalter" in err
+    assert "archiviert" in err
+    # Bei Fehler darf die Zieldatei nicht entstehen (silent-empty-Regress).
+    assert not out.exists()
+
+
+def test_export_status_case_sensitiv(migrated_db, tmp_path, capsys):
+    """--status ist case-sensitiv; ``AKTIV``/``Aktiv`` sind Tippfehler.
+
+    Die DB speichert Status durchgehend klein ("aktiv"/"platzhalter"/
+    "archiviert"), :data:`VALID_STATUSES` enthaelt nur die Kleinschreibung.
+    Case-Abweichung ohne Validierung wuerde denselben leere-CSV-Regress
+    wie unbekannte Werte ausloesen - dieser Test verankert die
+    Case-Strenge symmetrisch zur repository-seitigen Validierung.
+    """
+    out = tmp_path / "case.csv"
+    code = main(["export", "--status", "AKTIV",
+                 "--out", str(out), "--db", str(migrated_db)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "Ungueltiger --status" in err
+    assert "'AKTIV'" in err
+    assert not out.exists()
+
+
+def test_export_status_alle_valid_werte_akzeptiert(migrated_db, tmp_path):
+    """Regress-Anker: die drei kanonischen VALID_STATUSES bleiben akzeptiert.
+
+    Waehrend die vorstehenden Tests die Rejection ungueltiger Werte
+    verankern, verankert dieser Test die andere Seite - jeder der drei
+    kanonischen Werte fuehrt weiter zu Exit 0 (die Anzahl Treffer kann
+    0 sein, z.B. wenn die Test-DB keine archivierten Objekte enthaelt,
+    aber der Filter darf nicht abgewiesen werden).
+    """
+    for status in ("aktiv", "platzhalter", "archiviert"):
+        out = tmp_path / f"{status}.csv"
+        code = main(["export", "--status", status,
+                     "--out", str(out), "--db", str(migrated_db), "--quiet"])
+        assert code == 0, f"{status} soll akzeptiert werden"
+        rows = _read_csv(out)
+        # Nur pruefen, dass jede zurueckgegebene Zeile den erwarteten
+        # Status traegt - die Test-DB muss nicht zwingend jeden Status
+        # tatsaechlich enthalten.
+        assert all(r["status"] == status for r in rows)
+
+
 def test_export_all_flag_ist_aequivalent_zu_kein_filter(migrated_db, tmp_path):
     out = tmp_path / "all.csv"
     code = main(["export", "--all",
