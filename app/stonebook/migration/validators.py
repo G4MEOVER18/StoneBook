@@ -1289,6 +1289,111 @@ _SEASON_YEAR_FIRST = re.compile(
     r"^\s*(\d{4})\s*[/.\-, _]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
 )
 
+# Fixed-Date-Feiertag + Jahr ("Weihnachten 2023", "Silvester 2020", "Neujahr
+# 2024", "Halloween 2019", "Nikolaustag 2022", "Heiligabend 2023", "Tag der
+# Arbeit 2024", "Tag der deutschen Einheit 2023", "Heilige Drei Koenige 2024",
+# "Bundesfeier 2023"). Sehr verbreitet in Sammlungs-Notizen, Foto-Captions und
+# Tagebuch-Eintraegen, wenn der Sammler das Fund-/Kauf-/Foto-Datum nicht exakt
+# notierte, sondern sich an dem markanten Feiertag orientierte ("Am
+# Weihnachten 2023 vom Vater geschenkt bekommen", "Silvester-Fund 2020 in
+# Rhein-Kies", "Halloween-Auktion 2019 seltener Chalcedon"). Bisher fielen
+# alle Feiertags-Formen still auf None, obwohl der Feiertag semantisch einen
+# eindeutigen Kalendertag anmarkiert - :data:`_MONTH_YEAR` matcht das Pattern
+# (ein Wort + Jahr), aber :func:`_normalize_month_name` liefert fuer den
+# Feiertag-Namen None, dieselbe Fall-Through-Semantik gilt fuer
+# :data:`_SEASON_YEAR` mit :func:`_normalize_season_name`.
+#
+# Whitelist der Fixed-Date-Feiertage (DACH + Standard-EN-Termine). Variable
+# Feiertage (Ostern, Karfreitag, Ostermontag, Pfingsten, Christi Himmelfahrt,
+# Fronleichnam, Muttertag, Vatertag) sind bewusst NICHT eingeschlossen -
+# sie erfordern jaehrlich unterschiedliche Datums-Berechnung (Osterberechnung
+# via Butcher/Meeus-Algorithmus, Muttertag = zweiter Mai-Sonntag, Vatertag
+# = 40 Tage nach Ostern in DE) und werden aus Konservativitaets-Gruenden
+# in einem separaten spaeteren Fix behandelt.
+_HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
+    # Januar
+    "neujahr": (1, 1),
+    "neujahrstag": (1, 1),
+    "newyear": (1, 1),
+    "newyearsday": (1, 1),
+    "dreikoenigstag": (1, 6),
+    "heiligedreikoenige": (1, 6),
+    "epiphany": (1, 6),
+    # Februar
+    "valentinstag": (2, 14),
+    "valentinesday": (2, 14),
+    # Mai
+    "tagderarbeit": (5, 1),
+    "arbeiterfeiertag": (5, 1),
+    "arbeiterkampftag": (5, 1),
+    "labourday": (5, 1),
+    "laborday": (5, 1),
+    "mayday": (5, 1),
+    # August
+    "bundesfeier": (8, 1),
+    "schweizernationalfeiertag": (8, 1),
+    "swissnationalday": (8, 1),
+    # Oktober
+    "tagderdeutscheneinheit": (10, 3),
+    "germanunityday": (10, 3),
+    "halloween": (10, 31),
+    # November
+    "allerheiligen": (11, 1),
+    "allsaintsday": (11, 1),
+    # Dezember
+    "nikolaus": (12, 6),
+    "nikolaustag": (12, 6),
+    "stnicholasday": (12, 6),
+    "heiligabend": (12, 24),
+    "christmaseve": (12, 24),
+    "weihnachten": (12, 25),
+    "weihnachtstag": (12, 25),
+    "erstenweihnachtsfeiertag": (12, 25),
+    "ersterweihnachtsfeiertag": (12, 25),
+    "christmas": (12, 25),
+    "christmasday": (12, 25),
+    "stephanstag": (12, 26),
+    "stefanstag": (12, 26),
+    "zweitenweihnachtsfeiertag": (12, 26),
+    "zweiterweihnachtsfeiertag": (12, 26),
+    "boxingday": (12, 26),
+    "silvester": (12, 31),
+    "silvesterabend": (12, 31),
+    "newyearseve": (12, 31),
+}
+# Feiertag-Name (ein oder mehrere Woerter, keine Ziffern) + Trenner + Jahr.
+# Die Zeichenklasse deckt Multi-Wort-Formen ("Heilige Drei Koenige"), Apostrophe
+# (ASCII ``'``, typografisch ``’``/``‘`` aus Word-Autoformat), Punkte
+# ("St. Nicholas Day") und Bindestriche ("St-Stephens-Day") ab. Trenner-Klasse
+# ``[\s,_/]+`` verlangt mindestens einen Trenner zwischen Name und Jahr, sodass
+# angehaengte Formen ohne Whitespace (``Weihnachten2023``) mangels vollstaendiger
+# Struktur unangetastet auf None fallen - konsistent zur natuerlichsprachigen
+# Notation, die immer Trenner setzt. Bindestrich bewusst NICHT im Trenner, weil
+# er in Multi-Wort-Namen (``St-Stephens-Day``) selbst Teil des Namens ist und
+# die non-greedy Name-Auswahl nicht sicher zwischen Namens-Bindestrich und
+# Trenner-Bindestrich unterscheidet. Praeposition ``von``/``of`` als Wort-
+# Trenner symmetrisch zu :data:`_MONTH_YEAR` / :data:`_SEASON_YEAR`.
+_HOLIDAY_YEAR = re.compile(
+    r"^\s*([A-Za-zÄÖÜäöüß.’‘' \-]+?)"
+    r"(?:[\s,_/]+|\s+(?:von|of)\s+)"
+    r"(\d{4})\s*$",
+    re.IGNORECASE,
+)
+# Year-first Feiertag-Notation ("2023 Weihnachten", "2020-Silvester",
+# "2024/Halloween", "2019 Nikolaustag"). Spiegelt :data:`_HOLIDAY_YEAR` auf
+# die Year-First-Reihenfolge, analog zu :data:`_SEASON_YEAR_FIRST` gegenueber
+# :data:`_SEASON_YEAR`. In Sammlungs-Notizen mit Excel-Auto-Fill oder Ordner-
+# Struktur ("2023/Weihnachten/...") oder in narrativen Tagebuch-Eintraegen
+# ("Sammlung 2024 Halloween-Auktion"), die das Jahr als sortierenden Praefix
+# voranstellen. Konvention identisch zur Year-Last-Form: der Feiertag-Tag
+# aus :data:`_HOLIDAY_MONTH_DAY`.
+_HOLIDAY_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})"
+    r"(?:[\s,_/\-]+|\s+(?:von|of)\s+)"
+    r"([A-Za-zÄÖÜäöüß.’‘' \-]+?)\s*$",
+    re.IGNORECASE,
+)
+
 # Quartal + Jahr ("Q1 2024", "Q3/1985", "1. Quartal 2024", "3. Quarter 1985",
 # "1Q2024", "Quartal 1 2024"). Konvention: Quartals-Startmonat (Jan/Apr/Jul/Okt).
 # Akzeptiert sowohl deutsche ("Quartal") als auch englische ("Quarter") Schreibweise.
@@ -2020,6 +2125,32 @@ def _normalize_month_name(name: str) -> int | None:
 def _normalize_season_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
     return _SEASON_MONTHS.get(key)
+
+
+def _normalize_holiday_name(name: str) -> tuple[int, int] | None:
+    """Normalisiert Feiertag-Namen (Umlaut-Ersatz, Whitespace-/Punkt-/
+    Apostroph-/Bindestrich-Strip, Case-Fold) und liefert (Monat, Tag) oder
+    None fuer unbekannte Namen.
+
+    Die Normalisierung mappt alle typografischen Schreibvarianten auf denselben
+    Dict-Key: ``"St. Nicholas Day"`` -> ``"stnicholasday"``,
+    ``"New Year's Day"`` / ``"New Year’s Day"`` -> ``"newyearsday"``,
+    ``"Heilige Drei Koenige"`` / ``"Heilige Drei Könige"`` -> ``"heiligedreikoenige"``,
+    ``"Tag der Arbeit"`` -> ``"tagderarbeit"``. Damit sind die Multi-Wort-
+    Feiertage in :data:`_HOLIDAY_MONTH_DAY` mit ihrer kanonischen
+    Einzel-Token-Form gefuehrt und der Aufrufer muss keine Wort-Grenzen
+    beruecksichtigen. Umlaut-Transliteration (ae/oe/ue/ss) spiegelt die
+    identische Behandlung in :func:`_normalize_month_name` /
+    :func:`_normalize_season_name`.
+    """
+    key = name.strip().lower()
+    key = (
+        key.replace("ä", "ae").replace("ö", "oe")
+        .replace("ü", "ue").replace("ß", "ss")
+    )
+    # Whitespace, Punkte, Bindestriche, Apostrophe (ASCII + typografisch) raus.
+    key = re.sub(r"[\s.\-'’‘`]+", "", key)
+    return _HOLIDAY_MONTH_DAY.get(key)
 # DMS: 46°30'15" N  /  7° 30' 0'' O  /  46°30'15.5"S
 #
 # Prime-Zeichen fuer Minuten (Einfach-Prime): ASCII-Apostroph ``'`` (U+0027),
@@ -3235,6 +3366,43 @@ def parse_iso_date(text) -> str | None:
         month = _normalize_season_name(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # Fixed-Date-Feiertag + Jahr ("Weihnachten 2023", "Silvester 2020",
+    # "Neujahr 2024", "Halloween 2019"). Nach den Season-Zweigen einsortiert,
+    # damit "Sommer 2024" / "Herbst 1985" zuerst als Saison behandelt werden
+    # (der breitere Semantik-Anspruch), und der Feiertag-Zweig nur greift,
+    # wenn der Name weder Monat noch Saison ist. Die Fall-Through-Semantik
+    # der beiden vorherigen Zweige (Match ohne Return bei unbekanntem Namen)
+    # macht die Reihenfolge korrektheits-unabhaengig, aber die "spezifisches-
+    # vor-allgemeinerem"-Reihenfolge folgt der Konvention der uebrigen
+    # Patterns. Multi-Wort-Namen ("Heilige Drei Koenige 2024", "Tag der
+    # deutschen Einheit 2023") werden durch die Namen-Zeichenklasse
+    # ``[A-Za-zÄÖÜäöüß.’‘' \-]+?`` erfasst (non-greedy, keine Ziffern), die
+    # Normalisierung in :func:`_normalize_holiday_name` mappt alle
+    # Whitespace-/Umlaut-/Apostroph-Varianten auf denselben kanonischen
+    # Einzel-Token-Key. Variable Feiertage (Ostern, Pfingsten, Muttertag,
+    # Vatertag) sind bewusst NICHT in :data:`_HOLIDAY_MONTH_DAY` gelistet
+    # und liefern hier weiterhin None (Fall-Through zum Rest der Kaskade).
+    m = _HOLIDAY_YEAR.match(s)
+    if m:
+        hd = _normalize_holiday_name(m.group(1))
+        if hd is not None:
+            year = int(m.group(2))
+            if 1800 <= year <= 2999:
+                month, day = hd
+                return f"{year:04d}-{month:02d}-{day:02d}"
+    # Year-first Feiertag-Notation ("2023 Weihnachten", "2020-Silvester").
+    # Spiegelt _HOLIDAY_YEAR auf die Year-First-Reihenfolge, symmetrisch zu
+    # :data:`_SEASON_YEAR_FIRST` / :data:`_QUARTER_YEAR_FIRST` gegenueber
+    # ihren Year-Last-Basisformen. Nach _SEASON_YEAR_FIRST einsortiert
+    # analog zur Year-Last-Reihenfolge.
+    m = _HOLIDAY_YEAR_FIRST.match(s)
+    if m:
+        hd = _normalize_holiday_name(m.group(2))
+        if hd is not None:
+            year = int(m.group(1))
+            if 1800 <= year <= 2999:
+                month, day = hd
+                return f"{year:04d}-{month:02d}-{day:02d}"
     # Trailing Aera-Marker abstreifen ("1985 n. Chr.", "500 v. Chr.", "1985 AD",
     # "1985 BCE"). Aera-Marker gehoert nicht zum Datum selbst; das Jahr bleibt
     # der bekannte Anker, die Zeitrechnungs-Konvention ist semantische Wert-

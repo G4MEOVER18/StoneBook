@@ -1127,6 +1127,141 @@ def test_parse_iso_date_kompositum_saison():
     assert parse_iso_date("Spätherbst 2023-2024") is None
 
 
+def test_parse_iso_date_fixed_date_feiertage():
+    """Fixed-Date-Feiertag + Jahr (Weihnachten, Silvester, Neujahr,
+    Halloween, Nikolaus, Heiligabend, Bundesfeier, Tag der Arbeit, Tag der
+    deutschen Einheit, Heilige Drei Koenige, Valentinstag, Allerheiligen,
+    Stephans-/Stefanstag).
+
+    Whitelist (DACH + Standard-EN-Termine); variable Feiertage (Ostern,
+    Karfreitag, Pfingsten, Muttertag, Vatertag) fallen weiter auf None.
+    """
+    # Basis-Formen DE
+    assert parse_iso_date("Neujahr 2024") == "2024-01-01"
+    assert parse_iso_date("Neujahrstag 2024") == "2024-01-01"
+    assert parse_iso_date("Valentinstag 2024") == "2024-02-14"
+    assert parse_iso_date("Tag der Arbeit 2024") == "2024-05-01"
+    assert parse_iso_date("Arbeiterfeiertag 2024") == "2024-05-01"
+    assert parse_iso_date("Arbeiterkampftag 2024") == "2024-05-01"
+    assert parse_iso_date("Bundesfeier 2023") == "2023-08-01"
+    assert parse_iso_date("Schweizer Nationalfeiertag 2023") == "2023-08-01"
+    assert parse_iso_date("Tag der deutschen Einheit 2023") == "2023-10-03"
+    assert parse_iso_date("Halloween 2019") == "2019-10-31"
+    assert parse_iso_date("Allerheiligen 2020") == "2020-11-01"
+    assert parse_iso_date("Nikolaus 2022") == "2022-12-06"
+    assert parse_iso_date("Nikolaustag 2022") == "2022-12-06"
+    assert parse_iso_date("Heiligabend 2023") == "2023-12-24"
+    assert parse_iso_date("Weihnachten 2023") == "2023-12-25"
+    assert parse_iso_date("Weihnachtstag 2023") == "2023-12-25"
+    assert parse_iso_date("Stefanstag 2023") == "2023-12-26"
+    assert parse_iso_date("Stephanstag 2023") == "2023-12-26"
+    assert parse_iso_date("Silvester 2020") == "2020-12-31"
+    assert parse_iso_date("Silvesterabend 2020") == "2020-12-31"
+    assert parse_iso_date("Heilige Drei Koenige 2024") == "2024-01-06"
+    assert parse_iso_date("Heilige Drei Könige 2024") == "2024-01-06"
+    assert parse_iso_date("Dreikoenigstag 2024") == "2024-01-06"
+    # Basis-Formen EN
+    assert parse_iso_date("New Year 2024") == "2024-01-01"
+    assert parse_iso_date("New Year's Day 2024") == "2024-01-01"
+    assert parse_iso_date("New Year’s Day 2024") == "2024-01-01"  # Curly-Apostroph
+    assert parse_iso_date("Epiphany 2024") == "2024-01-06"
+    assert parse_iso_date("Valentine's Day 2024") == "2024-02-14"
+    assert parse_iso_date("Labour Day 2024") == "2024-05-01"
+    assert parse_iso_date("Labor Day 2024") == "2024-05-01"
+    assert parse_iso_date("May Day 2024") == "2024-05-01"
+    assert parse_iso_date("Swiss National Day 2023") == "2023-08-01"
+    assert parse_iso_date("German Unity Day 2023") == "2023-10-03"
+    assert parse_iso_date("All Saints Day 2020") == "2020-11-01"
+    assert parse_iso_date("St. Nicholas Day 2022") == "2022-12-06"
+    assert parse_iso_date("St Nicholas Day 2022") == "2022-12-06"
+    assert parse_iso_date("Christmas Eve 2023") == "2023-12-24"
+    assert parse_iso_date("Christmas 2023") == "2023-12-25"
+    assert parse_iso_date("Christmas Day 2023") == "2023-12-25"
+    assert parse_iso_date("Boxing Day 2023") == "2023-12-26"
+    assert parse_iso_date("New Year's Eve 2020") == "2020-12-31"
+    assert parse_iso_date("New Year’s Eve 2020") == "2020-12-31"
+    # Case-Insensitivitaet
+    assert parse_iso_date("weihnachten 2023") == "2023-12-25"
+    assert parse_iso_date("WEIHNACHTEN 2023") == "2023-12-25"
+    assert parse_iso_date("CHRISTMAS 2023") == "2023-12-25"
+    assert parse_iso_date("silvester 2020") == "2020-12-31"
+    # Trenner-Varianten (Komma / Slash / Kombination)
+    assert parse_iso_date("Weihnachten, 2023") == "2023-12-25"
+    assert parse_iso_date("Weihnachten/2023") == "2023-12-25"
+    assert parse_iso_date("Silvester 2020") == "2020-12-31"
+    # Praepositions-Trenner (von / of), spiegelt _SEASON_YEAR / _MONTH_YEAR
+    assert parse_iso_date("Weihnachten von 2023") == "2023-12-25"
+    assert parse_iso_date("Silvester von 2020") == "2020-12-31"
+    assert parse_iso_date("Christmas of 2023") == "2023-12-25"
+    assert parse_iso_date("New Year of 2024") == "2024-01-01"
+    # Year-first Reihenfolge (spiegelt _SEASON_YEAR_FIRST)
+    assert parse_iso_date("2023 Weihnachten") == "2023-12-25"
+    assert parse_iso_date("2020-Silvester") == "2020-12-31"
+    assert parse_iso_date("2024/Halloween") == "2024-10-31"
+    assert parse_iso_date("2019 Nikolaustag") == "2019-12-06"
+    assert parse_iso_date("2023 Christmas") == "2023-12-25"
+    # Umlaut- vs ASCII-Transliteration (Umlaut- und ae/oe/ue-Form aequivalent)
+    assert parse_iso_date("Heilige Drei Könige 2024") == "2024-01-06"
+    assert parse_iso_date("Heilige Drei Koenige 2024") == "2024-01-06"
+    # Annaeherungspraefix (ca./circa) + Feiertag
+    assert parse_iso_date("ca. Weihnachten 2023") == "2023-12-25"
+    assert parse_iso_date("circa Silvester 2020") == "2020-12-31"
+    assert parse_iso_date("~ Halloween 2019") == "2019-10-31"
+    # Temporale Praeposition + Feiertag
+    assert parse_iso_date("an Weihnachten 2023") is None  # "an" nicht in _TEMPORAL_PREFIX
+    assert parse_iso_date("zu Weihnachten 2023") is None  # "zu" nicht in _TEMPORAL_PREFIX
+    # Klammern-/Anfuehrungszeichen-Strip vor der Feiertag-Aufloesung
+    assert parse_iso_date("(Weihnachten 2023)") == "2023-12-25"
+    assert parse_iso_date('"Silvester 2020"') == "2020-12-31"
+    # Trailing-Satzzeichen-Strip vor der Feiertag-Aufloesung
+    assert parse_iso_date("Weihnachten 2023.") == "2023-12-25"
+    assert parse_iso_date("Silvester 2020!") == "2020-12-31"
+    # Trailing-Klammer-Annotation-Strip vor der Feiertag-Aufloesung
+    assert parse_iso_date("Weihnachten 2023 (Foto)") == "2023-12-25"
+    assert parse_iso_date("Silvester 2020 [Auktion]") == "2020-12-31"
+    # Variable Feiertage bleiben None (nicht in _HOLIDAY_MONTH_DAY)
+    assert parse_iso_date("Ostern 2024") is None
+    assert parse_iso_date("Ostermontag 2024") is None
+    assert parse_iso_date("Karfreitag 2024") is None
+    assert parse_iso_date("Pfingsten 2024") is None
+    assert parse_iso_date("Pfingstmontag 2024") is None
+    assert parse_iso_date("Christi Himmelfahrt 2024") is None
+    assert parse_iso_date("Fronleichnam 2024") is None
+    assert parse_iso_date("Muttertag 2024") is None
+    assert parse_iso_date("Vatertag 2024") is None
+    assert parse_iso_date("Easter 2024") is None
+    assert parse_iso_date("Good Friday 2024") is None
+    assert parse_iso_date("Mother's Day 2024") is None
+    # Unbekannte Namen fallen auf None
+    assert parse_iso_date("Notaholiday 2024") is None
+    assert parse_iso_date("Foobar 2024") is None
+    assert parse_iso_date("2024 Notaholiday") is None
+    # Jahr ausserhalb 1800-2999 -> None
+    assert parse_iso_date("Weihnachten 1799") is None
+    assert parse_iso_date("Weihnachten 3000") is None
+    assert parse_iso_date("Silvester 1500") is None
+    # Regress-Anker: Basis-Saisons und Monatsnamen unveraendert
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("Herbst 2024") == "2024-09-01"
+    assert parse_iso_date("Winter 2024") == "2024-12-01"
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("June 2024") == "2024-06-01"
+    assert parse_iso_date("March 2024") == "2024-03-01"
+    # Regress-Anker: Standard-ISO/DE-Formate unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    # Regress-Anker: Quartal / Halbjahr / KW unveraendert (kein
+    # kruemliger Match auf die Feiertag-Fallback-Kaskade)
+    assert parse_iso_date("Q1 2024") == "2024-01-01"
+    assert parse_iso_date("H2 2024") == "2024-07-01"
+    assert parse_iso_date("KW 12 2024") == "2024-03-18"
+    # Regress-Anker: Approximations-Marker allein (ohne Feiertag) bleibt None
+    assert parse_iso_date("ca.") is None
+    assert parse_iso_date("Weihnachten") is None  # Feiertag ohne Jahr -> None
+    assert parse_iso_date("Silvester") is None
+
+
 def test_parse_iso_date_relative_jahresposition():
     """Anfang/Mitte/Ende + Jahr (analog Saison): Jan / Jul / Dez im genannten Jahr."""
     # Deutsch
