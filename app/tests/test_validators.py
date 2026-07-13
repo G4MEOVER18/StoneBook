@@ -6213,6 +6213,100 @@ def test_parse_coordinates_google_place_3d_4d_fragment():
     assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_yandex_maps_ll_lon_lat_order():
+    """Yandex-Maps-URL-Konvention: ``ll=`` und ``pt=`` sind (Longitude, Latitude).
+
+    Yandex Maps ist der einzige verbreitete Karten-Anbieter, dessen Share-URL-
+    Konvention der Google/Apple/Bing/OSM-Standard-Reihenfolge (Latitude, Longitude)
+    widerspricht - die offizielle Yandex-Maps-API-Doku gibt ``ll=<longitude>,
+    <latitude>`` fix vor, und der Placemark-Parameter ``pt=<lon>,<lat>[,<marker>]``
+    folgt derselben Konvention. Vor dem Fix wurde jede Yandex-Share-URL vom
+    generischen :data:`_DECIMAL_PAIR`-Zweig als (Lat, Lon) fehlinterpretiert und
+    lieferte silente Achsen-Vertauschung: aus ``ll=7.5,46.5`` (Longitude 7.5,
+    Latitude 46.5) wurde ``(7.5, 46.5)`` (Latitude 7.5, Longitude 46.5). Der
+    Fix spiegelt strukturell den WKT-POINT-, den GeoJSON-Point- und den
+    OSM-Hash-Map-Zweig auf die Yandex-URL-Achse.
+    """
+    # Basis-URL mit ll= (Longitude 7.5, Latitude 46.5)
+    assert parse_coordinates("https://yandex.com/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    # Regionale TLDs (Yandex laeuft in mehreren Laenderdomains)
+    assert parse_coordinates("https://yandex.ru/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("yandex.by/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("yandex.kz/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("yandex.com.tr/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("yandex.ua/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("yandex.uz/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("yandex.fr/maps/?ll=7.5,46.5") == (46.5, 7.5)
+    # ymaps.ru URL-Shortener
+    assert parse_coordinates("ymaps.ru/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("https://ymaps.ru/?ll=7.5,46.5") == (46.5, 7.5)
+    # Historischer maps.yandex.<tld>-Subdomain-Pfad
+    assert parse_coordinates("https://maps.yandex.ru/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("maps.yandex.com/?ll=7.5,46.5") == (46.5, 7.5)
+    # Trailing Zoom-Parameter
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=7.5,46.5&z=15") == (46.5, 7.5)
+    # Mehrere Query-Params vor ll=
+    assert parse_coordinates(
+        "https://yandex.com/maps/?text=Zermatt&ll=7.5,46.5&z=10") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?mode=search&text=quartz&ll=7.5,46.5"
+    ) == (46.5, 7.5)
+    # pt= Placemark-Parameter (identische Lon-Lat-Konvention)
+    assert parse_coordinates("https://yandex.com/maps/?pt=7.5,46.5") == (46.5, 7.5)
+    # pt= mit Marker-Style-Suffix (dritter Wert, wird ignoriert)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?pt=7.5,46.5,pm2rdm") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?pt=7.5,46.5,flag") == (46.5, 7.5)
+    # URL-encoded Komma (%2C) - vom generischen Preprocess-Strip normalisiert
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=7.5%2C46.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=7.5%2c46.5") == (46.5, 7.5)
+    # Suedhalbkugel (negativer Lat)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=7.5,-46.5") == (-46.5, 7.5)
+    # Westhalbkugel (negativer Lon)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=-7.5,46.5") == (46.5, -7.5)
+    # Beide negativ
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=-7.5,-46.5") == (-46.5, -7.5)
+    # Case-Insensitivitaet auf Domain (Browser-Kopier-Puffer schreibt oft Caps)
+    assert parse_coordinates("HTTPS://YANDEX.COM/MAPS/?ll=7.5,46.5") == (46.5, 7.5)
+    assert parse_coordinates("YANDEX.RU/maps/?LL=7.5,46.5") == (46.5, 7.5)
+    # Out-of-Range Lon (>180) -> None (Validierung greift auf Yandex-Reihenfolge)
+    assert parse_coordinates("https://yandex.com/maps/?ll=181,46.5") is None
+    assert parse_coordinates("https://yandex.com/maps/?ll=-181,46.5") is None
+    # Out-of-Range Lat (>90 oder <-90) -> None
+    assert parse_coordinates("https://yandex.com/maps/?ll=7.5,91.0") is None
+    assert parse_coordinates("https://yandex.com/maps/?ll=7.5,-91.0") is None
+    # Grenzfaelle (Aequator/Null-Meridian)
+    assert parse_coordinates("https://yandex.com/maps/?ll=0,0") == (0.0, 0.0)
+    assert parse_coordinates("https://yandex.com/maps/?ll=180,90") == (90.0, 180.0)
+    assert parse_coordinates(
+        "https://yandex.com/maps/?ll=-180,-90") == (-90.0, -180.0)
+    # Integer-only (keine Dezimalstellen)
+    assert parse_coordinates("https://yandex.com/maps/?ll=7,46") == (46.0, 7.0)
+    # Regression: Non-Yandex-Domain mit demselben ll=-Parameter
+    # (Google/Apple/Bing verwenden weiterhin Lat,Lon-Reihenfolge)
+    assert parse_coordinates(
+        "https://www.google.com/maps/?ll=46.5,7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://maps.google.com/?ll=46.5,7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://maps.apple.com/?ll=46.5,7.5") == (46.5, 7.5)
+    # Regression: Freitext mit "yandex" ohne Maps-URL matcht nicht mehr
+    assert parse_coordinates("Yandex says location is 46.5, 7.5") == (46.5, 7.5)
+    # Regression: bestehende Formen bleiben (kein Regress durch neue Domain-Prue)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)
+    assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
+
+
 def test_parse_iso_date_trailing_uhr_marker():
     """DE-Uhrzeit-Trailing-Suffix "Uhr" wird abgestrippt und das Datum korrekt geparst.
 

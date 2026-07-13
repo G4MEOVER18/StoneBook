@@ -2858,6 +2858,49 @@ _GOOGLE_PLACE_3D_4D = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# Yandex-Maps-URL-Konvention: die Query-Parameter ``ll=`` (map center) und
+# ``pt=`` (placemark) verwenden Yandex-typische (Longitude, Latitude)-Reihenfolge,
+# entgegen der von Google/Apple/Bing/OSM benutzten (Latitude, Longitude)-
+# Konvention. Yandex Maps API-Dokumentation gibt die Reihenfolge fix vor:
+# ``ll`` = "longitude and latitude of the map center, comma-separated";
+# ``pt=<lon>,<lat>[,<marker_style>]`` fuer Placemarks (der optionale dritte
+# Wert kodiert das Marker-Icon, keine Koordinaten-Semantik). Ohne diesen
+# Zweig fiel jede Yandex-Share-URL durch das generische :data:`_DECIMAL_PAIR`
+# und lieferte silente Achsen-Vertauschung: ``"https://yandex.com/maps/?ll=7.5,46.5"``
+# wurde als ``(lat=7.5, lon=46.5)`` gelesen, obwohl der publizierte Wert
+# lat=46.5, lon=7.5 meint. Aus dem typischen Sammler-Workflow "Fundort in
+# Yandex Maps anzeigen -> Share-URL aus Browser-Adress-Feld kopieren -> ins
+# Fundort-Feld einfuegen" entstand damit silenter Koordinaten-Datenverlust
+# bei der Migration; besonders schwer erkennbar, weil ein Zahl-Paar mit
+# vertauschten Achsen typisch immer noch innerhalb des :func:`_validate`-
+# Range-Bandes liegen kann und keine None-Rueckgabe ausloest (die App
+# landet einfach am falschen Ort in der Karte). Spiegelt strukturell den
+# :data:`_WKT_POINT`-, :data:`_GEOJSON_POINT_COORDS`- und :data:`_OSM_HASH_MAP`-
+# Zweig auf die Yandex-URL-Achse: alle Anbieter-spezifischen Konventionen,
+# die dem generischen (Lat, Lon)-Standard widersprechen, gehoeren in eigene
+# Zweige VOR der generischen Zahl-Paar-Extraktion. Domain-Alternative deckt
+# die regionalen Yandex-TLDs ab (yandex.com/ru/by/kz/com.tr/ua/uz/fr/com.ge)
+# sowie den Yandex-URL-Shortener ymaps.ru und den historischen
+# maps.yandex.<tld>-Subdomain-Pfad. Case-Insensitiv, weil URLs aus
+# Browser-Kopier-Puffern gelegentlich in Grossbuchstaben landen. DE-Komma-
+# Dezimal in Yandex-URLs kommt in der Praxis nicht vor (URL-Parameter
+# folgen Punkt-Dezimal-Konvention), wird aber vom Zahl-Pattern trotzdem
+# akzeptiert (spiegelt die Toleranz der uebrigen URL-Zweige). Der %2C-
+# URL-encoded Komma wird durch den generischen Pre-Processing-Strip
+# (:func:`parse_coordinates`) auf ASCII-Komma normalisiert und braucht
+# hier keine eigene Alternante.
+_YANDEX_LL = re.compile(
+    r"""(?:yandex\.(?:com|ru|by|kz|com\.tr|ua|uz|fr|com\.ge)/maps
+          |ymaps\.ru
+          |maps\.yandex\.(?:com|ru|by|kz|com\.tr|ua|uz|fr|com\.ge))
+        [^#\s]*?
+        [?&](?:ll|pt)=
+        ([-+]?\d+(?:[.,]\d+)?)
+        ,
+        ([-+]?\d+(?:[.,]\d+)?)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -3792,6 +3835,22 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     m = _GOOGLE_PLACE_3D_4D.search(s)
     if m:
         return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
+    # Yandex-Maps-URL-Konvention: ``ll=<lon>,<lat>`` / ``pt=<lon>,<lat>[,...]``
+    # verwendet (Longitude, Latitude)-Reihenfolge - entgegen der von Google/Apple/
+    # Bing/OSM benutzten (Latitude, Longitude). Vor allen Zahl-Paar-Patterns
+    # extrahieren, damit die generische :data:`_DECIMAL_PAIR`-Search die Yandex-
+    # Zahl-Reihenfolge nicht als (Lat, Lon) fehlinterpretiert. Match ist definitiv:
+    # wenn die Yandex-Domain-Signatur plus das ``ll=``/``pt=``-Parameter erkannt
+    # wird, ist die Zahl-Reihenfolge eindeutig (Lon, Lat), und ein Fallback auf
+    # :data:`_DECIMAL_PAIR` wuerde exakt die Vertauschung reintroduzieren, die
+    # dieser Zweig fixt. Return des :func:`_validate`-Ergebnisses mit
+    # umgesortierter Rueckgabe (Lat, Lon), analog zu :data:`_WKT_POINT` und
+    # :data:`_GEOJSON_POINT_COORDS`.
+    m = _YANDEX_LL.search(s)
+    if m:
+        lon = _to_float(m.group(1))
+        lat = _to_float(m.group(2))
+        return _validate(lat, lon)
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):
