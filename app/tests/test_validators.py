@@ -6307,6 +6307,123 @@ def test_parse_coordinates_yandex_maps_ll_lon_lat_order():
     assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_kml_point():
+    """KML-Point-Notation (OGC KML 2.2): ``<Point><coordinates>lon,lat[,alt]``.
+
+    Google Earth, .kml/.kmz-Dateien, QGIS-KML-Export, ogr2ogr -f KML und alle
+    KML-basierten Karten-Ketten serialisieren Punkt-Geometrien als ``<Point>``-
+    Element mit ``<coordinates>lon,lat[,alt]</coordinates>``. Die KML-Spec gibt
+    die Reihenfolge fix (Lon, Lat, [Alt]) - spiegelt die WKT-/GeoJSON-Konvention
+    aus OGC Simple Features und RFC 7946. Ohne diesen Zweig fiel jeder KML-
+    Point-Text durch :data:`_DECIMAL_PAIR` und lieferte silente Achsen-
+    Vertauschung (7.5, 46.5) statt (46.5, 7.5). Match ist definitiv nur bei
+    Point-Marker + Coordinates-Marker (analog zur konservativen GeoJSON-
+    Marker-Kombination).
+    """
+    # Basis-Form mit Point-Wrapper
+    assert parse_coordinates(
+        "<Point><coordinates>7.5,46.5</coordinates></Point>") == (46.5, 7.5)
+    # Mit Altitude (drittes Element, wird ignoriert)
+    assert parse_coordinates(
+        "<Point><coordinates>7.5,46.5,800</coordinates></Point>") == (46.5, 7.5)
+    assert parse_coordinates(
+        "<Point><coordinates>7.5,46.5,0</coordinates></Point>") == (46.5, 7.5)
+    # Whitespace/Newlines innerhalb der Coordinates (Google-Earth-Pretty-Print)
+    assert parse_coordinates(
+        "<Point>  <coordinates>  7.5,46.5  </coordinates>  </Point>"
+    ) == (46.5, 7.5)
+    assert parse_coordinates(
+        "<Point>\n  <coordinates>\n    7.5,46.5,0\n  </coordinates>\n</Point>"
+    ) == (46.5, 7.5)
+    # KML-Namespace-Prefix ``<kml:Point>``/``<kml:coordinates>``
+    assert parse_coordinates(
+        "<kml:Point><kml:coordinates>7.5,46.5</kml:coordinates></kml:Point>"
+    ) == (46.5, 7.5)
+    # gx:-Namespace (Google-Earth-Extensions)
+    assert parse_coordinates(
+        "<gx:Point><gx:coordinates>7.5,46.5</gx:coordinates></gx:Point>"
+    ) == (46.5, 7.5)
+    # Vollstaendige Placemark-Notation (typische Google-Earth-Copy-KML-Ausgabe)
+    kml_placemark = (
+        "<Placemark>\n"
+        "  <name>Fundort</name>\n"
+        "  <Point>\n"
+        "    <coordinates>7.5,46.5,0</coordinates>\n"
+        "  </Point>\n"
+        "</Placemark>"
+    )
+    assert parse_coordinates(kml_placemark) == (46.5, 7.5)
+    # Beide negativ (Sued-West)
+    assert parse_coordinates(
+        "<Point><coordinates>-7.5,-46.5</coordinates></Point>"
+    ) == (-46.5, -7.5)
+    # Nur ein Vorzeichen (Nord-West-/Sued-Ost-Kombination)
+    assert parse_coordinates(
+        "<Point><coordinates>-7.5,46.5,800</coordinates></Point>") == (46.5, -7.5)
+    assert parse_coordinates(
+        "<Point><coordinates>7.5,-46.5</coordinates></Point>") == (-46.5, 7.5)
+    # Case-Insensitivitaet (unterschiedliche KML-Ausgabepfade)
+    assert parse_coordinates(
+        "<POINT><COORDINATES>7.5,46.5</COORDINATES></POINT>") == (46.5, 7.5)
+    assert parse_coordinates(
+        "<point><coordinates>7.5,46.5</coordinates></point>") == (46.5, 7.5)
+    # Point-Tag mit Attributen (id="", gx:altitudeMode="clampToGround" etc.)
+    assert parse_coordinates(
+        '<Point id="p1"><coordinates>7.5,46.5</coordinates></Point>'
+    ) == (46.5, 7.5)
+    assert parse_coordinates(
+        '<Point><altitudeMode>relativeToGround</altitudeMode>'
+        '<coordinates>7.5,46.5,100</coordinates></Point>'
+    ) == (46.5, 7.5)
+    # Scientific Notation in Koordinaten (KML-Spec erlaubt sie)
+    assert parse_coordinates(
+        "<Point><coordinates>7.5e0,4.65e1</coordinates></Point>") == (46.5, 7.5)
+    # Grenzfaelle Aequator/Null-Meridian
+    assert parse_coordinates(
+        "<Point><coordinates>0,0</coordinates></Point>") == (0.0, 0.0)
+    assert parse_coordinates(
+        "<Point><coordinates>180,90</coordinates></Point>") == (90.0, 180.0)
+    assert parse_coordinates(
+        "<Point><coordinates>-180,-90</coordinates></Point>") == (-90.0, -180.0)
+    # Ganzzahlige Koordinaten
+    assert parse_coordinates(
+        "<Point><coordinates>7,46</coordinates></Point>") == (46.0, 7.0)
+    # Out-of-Range Lon (>180) -> None
+    assert parse_coordinates(
+        "<Point><coordinates>181,7.5</coordinates></Point>") is None
+    # Out-of-Range Lat (>90) -> None
+    assert parse_coordinates(
+        "<Point><coordinates>7.5,91</coordinates></Point>") is None
+    # LineString ohne Point-Marker: kein KML-Point-Match, faellt auf
+    # bestehendes _DECIMAL_PAIR-Verhalten zurueck (dokumentierte
+    # silente Vertauschung fuer semantisch nicht-Point-Daten, analog zur
+    # MULTIPOINT-Regression im WKT-Test).
+    assert parse_coordinates(
+        "<LineString><coordinates>7.5,46.5 7.6,46.6</coordinates></LineString>"
+    ) == (7.5, 46.5)
+    # LinearRing ohne Point-Marker: gleicher Fallback
+    assert parse_coordinates(
+        "<LinearRing><coordinates>7.5,46.5 7.6,46.6 7.7,46.7 7.5,46.5"
+        "</coordinates></LinearRing>"
+    ) == (7.5, 46.5)
+    # Bare-<coordinates> ohne Point-Wrapper: kein KML-Point-Match,
+    # bewusster Fallback (User haette den Point-Wrapper mitkopieren muessen).
+    assert parse_coordinates(
+        "<coordinates>7.5,46.5</coordinates>") == (7.5, 46.5)
+    # Point-Marker ohne Coordinates-Tag: kein KML-Point-Match
+    assert parse_coordinates(
+        "<Point><name>ohne Koordinaten</name></Point>") is None
+    # Regression: bestehende Formen bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
+    # Regression: GeoJSON-Form bleibt unveraendert
+    assert parse_coordinates(
+        '{"type":"Point","coordinates":[7.5,46.5]}') == (46.5, 7.5)
+
+
 def test_parse_iso_date_trailing_uhr_marker():
     """DE-Uhrzeit-Trailing-Suffix "Uhr" wird abgestrippt und das Datum korrekt geparst.
 

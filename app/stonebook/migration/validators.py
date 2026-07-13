@@ -2901,6 +2901,73 @@ _YANDEX_LL = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# KML-Point-Notation (OGC KML 2.2 / ISO 19153) - Standard-Serialisierungs-Form
+# fuer Punkt-Geometrien aus Google-Earth-Exporten, .kml/.kmz-Dateien,
+# QGIS-KML-Export, ogr2ogr -f KML, ArcGIS-KML-Konverter und jeder Karten-Kette,
+# die auf dem KML-XML-Standard basiert. Die KML-Achsen-Konvention ist fix
+# vorgegeben (KML Reference "coordinates"): "Tuple of comma-separated floating-
+# point values (longitude, latitude, altitude) that specifies a coordinate.
+# Longitude and latitude values are in decimal degrees ... Altitude values
+# are optional." - also (Lon, Lat, [Alt]), spiegelt die WKT-/GeoJSON-Konvention
+# aus OGC Simple Features und RFC 7946. Vor diesem Pattern fiel jeder KML-Point-
+# Text durch :data:`_DECIMAL_PAIR` (Komma-Separator zwischen den zwei Zahlen
+# im ``<coordinates>``-Element) und lieferte silente Achsen-Vertauschung:
+# ``<coordinates>7.5,46.5,0</coordinates>`` wurde als ``(lat=7.5, lon=46.5)``
+# gelesen, obwohl der publizierte Wert lat=46.5, lon=7.5 meint. Aus dem
+# typischen Sammler-Workflow "Fundort in Google Earth setzen -> Placemark
+# als KML exportieren / Copy-KML -> ins Fundort-Feld einfuegen" oder aus
+# einem geerbten .kmz-Archiv mit Fund-Punkten aus einer alten Exkursion
+# entstand damit silenter Achsen-Vertauschungs-Fehler bei der Migration;
+# besonders schwer erkennbar, weil ``(7.5, 46.5)`` formal ein gueltiges
+# Lat/Lon-Paar ist (Nord-Atlantik) und die _validate-Range-Pruefung
+# erfolgreich durchlaeuft - keine None-Rueckgabe, kein Fehler-Report, der
+# Datenpunkt landet einfach am falschen Ort in der Karte. Match ist definitiv
+# nur, wenn BEIDE Marker (``<Point>``-Tag mit optionalem Namespace-Prefix
+# UND ``<coordinates>``-Tag) vorhanden sind - dann ist die (Lon, Lat)-
+# Reihenfolge per KML-Spec eindeutig, spiegelt die konservative
+# GeoJSON-Marker-Kombination (Type=Point + Coordinates-Array). Fehlt der
+# Point-Marker (``<LineString>``/``<LinearRing>``/``<Polygon>``), enthaelt
+# das Coordinates-Element semantisch einen Pfad/Ring/Polygon mit mehreren
+# Tupeln - die App fuehrt keine Pfad-Achse, daher fallen diese Formen
+# bewusst auf den bestehenden Fallback zurueck (analog zur MULTIPOINT-
+# Regression im WKT-Test und zur MultiPoint-Rejection in _GEOJSON_POINT).
+# Namespace-Prefix ``<kml:Point>``/``<kml:coordinates>`` sowie andere
+# XML-Namespaces (``<gx:Point>``, custom-prefix aus xmlns-Declarations)
+# werden via ``(?:\w+:)?``-Optionaler-Prefix akzeptiert. Case-Insensitive,
+# weil verschiedene KML-Ausgabepfade unterschiedliche Case-Konventionen
+# haben (Google Earth ``Point``/``coordinates``, ogr2ogr manchmal
+# lowercase, ArcGIS Titlecase). Der Coordinates-Elementinhalt darf durch
+# Whitespace/Newlines eingeruegt sein (Google-Earth-Pretty-Print,
+# XML-Formatter-Ausgabe), das Pattern strippt fuehrende Whitespace/Newline
+# vor der Zahl-Extraktion via ``\s*`` nach dem oeffnenden Tag.
+# Multi-Tupel-Coordinates (LineString/LinearRing/Polygon-Fall MIT
+# ``<Point>``-Marker im selben String) waeren pathologisch (KML-Spec
+# verbietet die Kombination) - der Zweig nimmt in diesem Fall das
+# erste Tupel, symmetrisch zum WKT-Zweig, der auch nur den ersten
+# POINT-Tupel greift. Reine JSON-Numeric-Notation (Punkt-Dezimal,
+# scientific E±N) analog zu :data:`_GEOJSON_POINT_COORDS`; DE-Komma-
+# Dezimal (``7,5,46,5``) waere in KML mehrdeutig (das Feld-Trennzeichen
+# und der Dezimal-Trenner waeren identisch) und wird NICHT akzeptiert,
+# spiegelt die KML-Spec (die ``.`` als Dezimal-Trenner fix vorgibt).
+# Kollisionsfrei zu :data:`_COORD_LABEL` (weder ``point`` noch
+# ``coordinates`` sind dort gelistet), zu :data:`_GEOJSON_POINT_COORDS`
+# (das JSON-Bracket-Array-Syntax verlangt statt XML-Tag), zu
+# :data:`_WKT_POINT` (das POINT-Keyword ohne Angle-Bracket verlangt) und
+# zu :data:`_GEO_URI` / :data:`_GEO_URI_ANDROID_QUERY` (die den geo:-
+# Scheme verlangen).
+_KML_POINT_MARKER = re.compile(
+    r"""<(?:\w+:)?Point\b[^>]*>""",
+    re.IGNORECASE,
+)
+_KML_COORDINATES = re.compile(
+    r"""<(?:\w+:)?coordinates\b[^>]*>\s*
+        ([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)   # X = Longitude
+        \s*,\s*
+        ([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)   # Y = Latitude
+        (?:\s*,\s*[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)?   # optionale Altitude
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # Gelaeufige Bezeichner vor den eigentlichen Koordinaten: "Lat: 46.5, Lon: 7.5",
 # "Breite 46.5 Länge 7.5", "latitude=46.5 longitude=7.5". Werden vor dem
 # Pattern-Matching entfernt; die Himmelsrichtung im Label (N/E/S/W als Buchstabe
@@ -3851,6 +3918,23 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         lon = _to_float(m.group(1))
         lat = _to_float(m.group(2))
         return _validate(lat, lon)
+    # KML-Point-Notation (OGC KML 2.2): ``<Point>...<coordinates>lon,lat[,alt]
+    # </coordinates>...</Point>``. Match ist definitiv nur, wenn BEIDE Marker
+    # (Point-Tag + Coordinates-Tag) vorhanden sind - dann ist die (Lon, Lat)-
+    # Reihenfolge per KML-Spec eindeutig, analog zur konservativen GeoJSON-
+    # Marker-Kombination (Type=Point + Coordinates-Array). Fehlt der
+    # Point-Marker (LineString/LinearRing/Polygon), enthaelt das Coordinates-
+    # Element semantisch einen Pfad/Ring mit mehreren Tupeln - die App
+    # fuehrt keine Pfad-Achse, daher fallen diese Formen bewusst auf das
+    # bestehende Verhalten zurueck (analog zur MultiPoint-Rejection im
+    # WKT-/GeoJSON-Test). Fallback auf _DECIMAL_PAIR wuerde exakt die
+    # Vertauschung reintroduzieren, die dieser Zweig fixt.
+    if _KML_POINT_MARKER.search(s):
+        m = _KML_COORDINATES.search(s)
+        if m:
+            lon = _to_float(m.group(1))
+            lat = _to_float(m.group(2))
+            return _validate(lat, lon)
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):
