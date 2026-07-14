@@ -2228,6 +2228,66 @@ def test_parse_iso_date_mehrjahres_spanne_wortform_ungueltig():
     assert parse_iso_date("1950 oder 1960") is None
 
 
+def test_parse_iso_date_range_word_through_thru():
+    """Englische Range-Trenner "through" (formal) und "thru" (colloquial) auf
+    allen drei Range-Achsen (Mehrjahres-Spanne, Monat-Range, Tages-Range).
+
+    "Through" ist der US-Standard-Range-Ausdruck ("Monday through Friday",
+    "1950 through 1960", "June through July") und in amerikanischen
+    Auktions-Katalogen, Mineral-Society-Publikationen und Sammler-Notizen
+    aus US-Quellen verbreitet. "Thru" ist die alltagssprachliche Kurzform,
+    typisch in Foto-Captions, Social-Media-Postings und informellen Feld-
+    Tagebuechern. Bisher fielen alle Formen still auf None, weil die
+    :data:`_YEAR_RANGE_WORD`-, :data:`_MONTH_RANGE_YEAR`- und
+    :data:`_DAY_RANGE_MONTH_YEAR`-Alternanten nur ``bis|to|till|until``
+    enthielten - aus einer typischen US-Sammler-Notiz "collected June
+    through July 2020 in Arizona" wurde silenter Funddatum-Datenverlust
+    bei der Migration."""
+    # Mehrjahres-Spanne mit through
+    assert parse_iso_date("1950 through 1960") == "1950-01-01"
+    assert parse_iso_date("1985 through 1990") == "1985-01-01"
+    assert parse_iso_date("2000 through 2024") == "2000-01-01"
+    # Mehrjahres-Spanne mit thru (colloquial)
+    assert parse_iso_date("1950 thru 1960") == "1950-01-01"
+    assert parse_iso_date("1985 thru 1990") == "1985-01-01"
+    # Monat-Range mit through
+    assert parse_iso_date("June through July 2024") == "2024-06-01"
+    assert parse_iso_date("Juni through Juli 2024") == "2024-06-01"
+    assert parse_iso_date("March through April 2020") == "2020-03-01"
+    # Monat-Range mit thru
+    assert parse_iso_date("June thru July 2024") == "2024-06-01"
+    assert parse_iso_date("Mar thru Apr 2020") == "2020-03-01"
+    # Tages-Range innerhalb Monat mit through
+    assert parse_iso_date("5 through 7 June 2024") == "2024-06-05"
+    assert parse_iso_date("5th through 7th June 2024") == "2024-06-05"
+    assert parse_iso_date("1 through 15 March 2020") == "2020-03-01"
+    # Tages-Range mit thru
+    assert parse_iso_date("5 thru 7 June 2024") == "2024-06-05"
+    assert parse_iso_date("5th thru 7th June 2024") == "2024-06-05"
+    # Case-Insensitivitaet (Caps-Lock aus Excel-Auto-Fill / Header-Notation)
+    assert parse_iso_date("1950 THROUGH 1960") == "1950-01-01"
+    assert parse_iso_date("June THROUGH July 2024") == "2024-06-01"
+    assert parse_iso_date("June Through July 2024") == "2024-06-01"
+    assert parse_iso_date("June THRU July 2024") == "2024-06-01"
+    # Kombination mit Annaeherungspraefix
+    assert parse_iso_date("ca. 1950 through 1960") == "1950-01-01"
+    assert parse_iso_date("approx. June through July 2024") == "2024-06-01"
+    # Regress-Anker: bestehende Range-Trenner bleiben unveraendert
+    assert parse_iso_date("1950 bis 1960") == "1950-01-01"
+    assert parse_iso_date("1950 to 1960") == "1950-01-01"
+    assert parse_iso_date("1950 till 1960") == "1950-01-01"
+    assert parse_iso_date("1950 until 1960") == "1950-01-01"
+    assert parse_iso_date("June to July 2024") == "2024-06-01"
+    assert parse_iso_date("5th to 7th June 2024") == "2024-06-05"
+    # Regress: symbolische Trenner (Bindestrich/en-dash) bleiben
+    assert parse_iso_date("1950-1960") == "1950-01-01"
+    assert parse_iso_date("Juni-Juli 2024") == "2024-06-01"
+    # Grenzfaelle: Jahr ausserhalb Range
+    assert parse_iso_date("1700 through 1960") is None
+    # Ohne Whitespace um das Schluesselwort kein Match (Satzform-Prinzip)
+    assert parse_iso_date("1950through1960") is None
+
+
 def test_parse_iso_date_mehrjahres_spanne_zwischen():
     """Umschliessende Range-Form 'zwischen X und Y' / 'between X and Y'
     spiegelt _YEAR_RANGE_WORD auf die bilaterale Konjunktions-Notation

@@ -137,7 +137,7 @@ _YEAR_RANGE = re.compile(r"^\s*(\d{4})\s*[-–—−/]\s*(\d{4})\s*$")
 # (das auf "(4 Ziffern) Separator (1-2 Ziffern)" matched) - kollisionsfrei,
 # weil beide Jahre hier 4 Ziffern haben.
 _YEAR_RANGE_WORD = re.compile(
-    r"^\s*(\d{4})\s+(?:bis|to|till|until)\s+(\d{4})\s*$",
+    r"^\s*(\d{4})\s+(?:bis|to|till|until|through|thru)\s+(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Umschliessende Range-Form "zwischen X und Y" / "between X and Y" - spiegelt
@@ -1240,7 +1240,7 @@ _MONTH_YEAR = re.compile(
 # Zahl, kein Monatsname) und wird von _MONTH_YEAR aufgeloest.
 _MONTH_RANGE_YEAR = re.compile(
     r"^\s*([A-Za-zÄÖÜäöü]+)\.?"
-    r"\s*(?:[-–—/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"\s*(?:[-–—/]\s*|\s+(?:bis|to|till|until|through|thru)\s+)"
     r"([A-Za-zÄÖÜäöü]+)\.?"
     r"\s+(\d{4})\s*$",
     re.IGNORECASE,
@@ -1291,7 +1291,7 @@ _MONTH_RANGE_YEAR = re.compile(
 _DAY_RANGE_MONTH_YEAR = re.compile(
     r"""^\s*
         (\d{1,2})(?:st|nd|rd|th)?\.?
-        (?:\s*[-–—]\s*|\s+(?:bis|to|till|until)\s+)
+        (?:\s*[-–—]\s*|\s+(?:bis|to|till|until|through|thru)\s+)
         (\d{1,2})(?:st|nd|rd|th)?\.?
         \s+
         ([A-Za-zÄÖÜäöü]+)\.?
