@@ -3660,6 +3660,88 @@ def test_parse_iso_date_trailing_aera_marker_uz_vuz():
     assert parse_iso_date("500 BCE") is None
 
 
+def test_parse_iso_date_anno_domini():
+    """Lateinische Vollform ``Anno Domini`` wird als Aera-Marker abgestrippt,
+    spiegelt die AD/A.D.-Semantik auf die museal-latinisierte Vollform.
+
+    Anno Domini (deutsch: "im Jahr des Herrn") ist die ursprungliche
+    kirchen-lateinische Notation, aus der die verbreitete Kurzform
+    ``AD``/``A.D.`` hervorgegangen ist. In geerbten Sammlungen mit
+    museal-ecclesialer Provenienz (Reliquiare, Kloster-Bestaende,
+    Grabinschriften-Fotografie-Sammlungen, historisch-archaeologische
+    Publikationen aus dem 18./19. Jhdt. mit puristischer Latein-
+    Konvention) sowie in modernen kalligrafisch-formalen Etiketten
+    (Sonderausstellungen, "In Memoriam"-Karten mit Fund-/Erwerbsdatum)
+    taucht die Vollform statt der Kurzform auf. Vor dem Fix fielen alle
+    Vollform-Etiketten stille auf None, obwohl semantisch identisch zur
+    bereits unterstuetzten Kurzform "AD 1985" / "1985 AD". Konzept
+    identisch zu :func:`test_parse_iso_date_leading_aera_marker` /
+    :func:`test_parse_iso_date_trailing_aera_marker`: Strip + Rekursion,
+    das ISO-Datum-Output ist identisch zur reinen Form.
+    """
+    # Leading-Form (Anno Domini vor dem Datum)
+    assert parse_iso_date("Anno Domini 1985") == "1985-01-01"
+    assert parse_iso_date("Anno Domini 2024") == "2024-01-01"
+    assert parse_iso_date("Anno Domini 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("Anno Domini 2024-06-13") == "2024-06-13"
+    assert parse_iso_date("Anno Domini 13. Juni 2024") == "2024-06-13"
+    # Trailing-Form (Anno Domini nach dem Datum)
+    assert parse_iso_date("1985 Anno Domini") == "1985-01-01"
+    assert parse_iso_date("2024 Anno Domini") == "2024-01-01"
+    assert parse_iso_date("13.06.2024 Anno Domini") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 Anno Domini") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024 Anno Domini") == "2024-06-13"
+    # Case-Insensitivitaet (Etiketten in klein/GROSS/Mixed)
+    assert parse_iso_date("anno domini 1985") == "1985-01-01"
+    assert parse_iso_date("ANNO DOMINI 1985") == "1985-01-01"
+    assert parse_iso_date("Anno domini 1985") == "1985-01-01"
+    assert parse_iso_date("aNnO dOmInI 1985") == "1985-01-01"
+    assert parse_iso_date("1985 anno domini") == "1985-01-01"
+    assert parse_iso_date("1985 ANNO DOMINI") == "1985-01-01"
+    # Whitespace-Toleranz zwischen anno und domini (Doppel-Space aus Excel-
+    # Auto-Fill, Tab-Trenner aus TSV-Export)
+    assert parse_iso_date("Anno  Domini 1985") == "1985-01-01"
+    assert parse_iso_date("Anno\tDomini 1985") == "1985-01-01"
+    assert parse_iso_date("1985 Anno  Domini") == "1985-01-01"
+    # Kombiniert mit Jahrhundert-Notation (Arabisch und Roemisch)
+    assert parse_iso_date("Anno Domini 19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("Anno Domini 19th century") == "1800-01-01"
+    assert parse_iso_date("Anno Domini XIX. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19. Jahrhundert Anno Domini") == "1800-01-01"
+    # Kombiniert mit Annaeherungs-Praefix ("ca. Anno Domini 1985"), Rekursion
+    # loest zuerst ca. auf, dann Anno Domini
+    assert parse_iso_date("ca. Anno Domini 1985") == "1985-01-01"
+    assert parse_iso_date("circa Anno Domini 1985") == "1985-01-01"
+    # Redundante Kombination Leading + Trailing (semantisch doppelt, aber
+    # praktisch in ueberformatierten Etiketten moeglich): Rekursion loest
+    # beide Achsen auf.
+    assert parse_iso_date("Anno Domini 1985 AD") == "1985-01-01"
+    assert parse_iso_date("AD 1985 Anno Domini") == "1985-01-01"
+    # Bestehende Kurzform-Marker bleiben unveraendert (kein Regress zu AD/A.D.)
+    assert parse_iso_date("1985 AD") == "1985-01-01"
+    assert parse_iso_date("AD 1985") == "1985-01-01"
+    assert parse_iso_date("1985 A.D.") == "1985-01-01"
+    assert parse_iso_date("A.D. 1985") == "1985-01-01"
+    # Bestehende Formen ohne Aera-Marker bleiben unveraendert
+    assert parse_iso_date("1985") == "1985-01-01"
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    # Reine Aera-Markierung ohne Datum bleibt None (kein Freitext-Ratespiel)
+    assert parse_iso_date("Anno Domini") is None
+    assert parse_iso_date("anno domini") is None
+    # Bare Anno ohne Domini ist KEIN Aera-Marker (semantisch reines "im Jahr");
+    # bleibt derzeit None, weil weder :data:`_TEMPORAL_PREFIX` noch
+    # :data:`_LEADING_ERA_MARKER` das Wort einzeln kennt. Kein Regress zu
+    # den vorhandenen Aera-Markern.
+    assert parse_iso_date("Anno 1985") is None
+    assert parse_iso_date("1985 Anno") is None
+    # Domini allein ohne Anno ist KEIN Aera-Marker
+    assert parse_iso_date("Domini 1985") is None
+    assert parse_iso_date("1985 Domini") is None
+    # Non-Marker-Suffix darf NICHT als Anno-Domini gedeutet werden
+    assert parse_iso_date("1985 Anno Museum") is None
+    assert parse_iso_date("1985 Anno-Fund") is None
+
+
 def test_parse_iso_date_iso_ordinaldatum():
     """ISO 8601 Ordinal-Datum (Tag des Jahres) wird auf das Kalenderdatum projeziert."""
     # ISO-Standard mit Bindestrich

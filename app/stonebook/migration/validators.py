@@ -772,12 +772,52 @@ def _strip_trailing_balanced_bracket(s: str) -> str | None:
 # spiegelt die BCE-vor-BC-Reihenfolge, sonst konsumiert die u. Z.-Alter-
 # nation nur den "u. Z."-Anteil und laesst "v." als trailing zurueck, was
 # nach dem _TRAILING_PUNCT-Strip zu "1985 v" fuehrt (nicht parsierbar).
+# Lateinische Vollform ``Anno Domini`` (deutsch: "im Jahr des Herrn") ist die
+# ursprungliche kirchen-lateinische Notation, aus der die verbreitete Kurzform
+# ``A.D.``/``AD`` hervorgegangen ist. In geerbten Sammlungen mit museal-
+# ecclesialer Provenienz (Reliquiare, kirchliche Reliquien-/Mineralien-
+# Sammlungen aus Kloster-Bestaenden, aeltere Auktions-Kataloge mit
+# Papst-Aera-Bezug, Grabinschriften-Fotografie-Sammlungen, historisch-
+# archaeologische Publikationen aus dem 18./19. Jhdt. mit puristischer
+# Latein-Konvention) sowie in modernen kalligrafisch-formalen Etiketten
+# (Sonderausstellungen, festliche Gedenktafeln, "In Memoriam"-Karten mit
+# Fund-/Erwerbsdatum) taucht die Vollform statt der Kurzform auf. Bisher
+# fielen alle Etiketten mit ``Anno Domini``-Marke stille auf None: die
+# vorhandene ``a\.?\s*d\.?``-Alternante deckt nur die Kurzform ab, und die
+# Vollform ``Anno Domini`` matcht nicht (``anno`` steht vor dem ``d``, das
+# Pattern verlangt aber ``a`` unmittelbar vor optionalem ``.`` und dann
+# ``d``). Aus einem typischen Museums-Etikett "1985 Anno Domini" wurde
+# damit silenter Funddatum-Datenverlust; die Kurzform "1985 AD" liefert
+# das gleiche Ergebnis "1985-01-01", aber die Vollform-Etiketten (die
+# gerade in kunsthistorischen/kirchenhistorischen Sammlungen die
+# formell-korrekte Notation sind) blieben in der Migration unerkannt.
+# Semantisch identisch zur Kurzform ``AD``/``A.D.`` (Christlich-Positive-
+# Aera): der Strip laesst den Jahres-Anker unveraendert, die Aera-Info
+# gehoert in Freitext (notizen). Trennwhitespace ``\s+`` zwischen ``anno``
+# und ``domini`` deckt sowohl die typografisch-saubere ``Anno Domini``-
+# Form ab als auch die Kompakt-Notation ``Anno  Domini`` (Doppel-Space
+# aus Excel-Auto-Fill) und ``Anno\tDomini`` (Tab-Trenner aus TSV-Exports).
+# Case-Insensitivitaet spiegelt die uebrigen Aera-Marker-Alternanten
+# (``AD``/``ad``/``Ad`` transparent identisch). Kollisionsfrei zu bereits
+# vorhandenen Marker-Alternanten: ``anno`` ist kein Praefix von ``n.
+# chr.``/``v. chr.``/``a. d.``/``b. c.``/``c. e.``/``u. z.``, und ``domini``
+# ist kein Wort in irgendeiner der uebrigen Marker-Klassen. Kollisionsfrei
+# zu :data:`_APPROX_PREFIX` (``anno`` ist kein Praezisions-Marker),
+# :data:`_TRAILING_APPROX_SUFFIX` (spiegelbildlich), :data:`_TEMPORAL_PREFIX`
+# (dort sind ``jahr``/``jahre``/``year`` gelistet, nicht ``anno``).
+# Position VOR ``a\.?\s*d\.?``: die Kurzform-Alternante wuerde bei
+# case-insensitiven Match den ``a``-Praefix von ``anno`` verschlingen (weil
+# ``\.?\s*`` optional ist und der ``d`` gefolgt von whitespace matchen
+# koennte), daher muss die spezifischere Vollform links stehen. Analog
+# zur BCE-vor-BC-Reihenfolge (spezifischer zuerst) und zur v.u.Z.-vor-
+# u.Z.-Reihenfolge (Praefix-Vermeidung).
 _TRAILING_ERA_MARKER = re.compile(
     r"\s+(?:"
     r"n\.?\s*chr\.?"           # n. Chr. / n.Chr. / n Chr. / nChr.
     r"|nach\s+christus"        # nach Christus (Vollform)
     r"|v\.?\s*chr\.?"          # v. Chr. / v.Chr. / v Chr. / vChr.
     r"|vor\s+christus"         # vor Christus (Vollform)
+    r"|anno\s+domini"          # Anno Domini (Latein-Vollform von A.D.)
     r"|a\.?\s*d\.?"            # AD / A.D. / A. D. / A D
     r"|b\.?\s*c\.?\s*e\.?"     # BCE / B.C.E. / B. C. E. (vor BC-Muster!)
     r"|b\.?\s*c\.?"            # BC / B.C. / B. C. / B C
@@ -829,6 +869,7 @@ _LEADING_ERA_MARKER = re.compile(
     r"|nach\s+christus"        # nach Christus (Vollform)
     r"|v\.?\s*chr\.?"          # v. Chr. / v.Chr. / v Chr. / vChr.
     r"|vor\s+christus"         # vor Christus (Vollform)
+    r"|anno\s+domini"          # Anno Domini (Latein-Vollform von A.D.)
     r"|a\.?\s*d\.?"            # AD / A.D. / A. D. / A D
     r"|b\.?\s*c\.?\s*e\.?"     # BCE / B.C.E. / B. C. E. (vor BC-Muster!)
     r"|b\.?\s*c\.?"            # BC / B.C. / B. C. / B C
