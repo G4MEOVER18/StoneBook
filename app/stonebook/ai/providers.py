@@ -39,6 +39,55 @@ def _known_data_text(object_data: dict) -> str:
             + "\n\nBestimme das Objekt und fülle alle ableitbaren Felder aus.")
 
 
+def _coerce_confidence(raw) -> int:
+    """Robuste Konvertierung eines Confidence-Werts auf ``int`` in ``[0, 100]``.
+
+    KI-Modelle geben Confidence-Werte gern in Text-Notation zurueck ("80%",
+    "80 %", "80 Prozent", "80 percent") oder als Float-String ("80.5",
+    "80,5" mit DE-Komma-Dezimal) - beide sind semantisch klar 80, wurden
+    aber vom Vor-Fix-Pfad ``int(entry.get("confidence_prozent") or 0)``
+    still auf 0 abgewiesen (``int("80%")`` und ``int("80.5")`` werfen beide
+    ``ValueError``, der in einem Bare-``except (ValueError, TypeError)``-
+    Zweig auf ``conf = 0`` fiel). Aus dem typischen Modell-Antwort-Pfad
+    entstand damit silent-data-loss auf jeder Confidence-Achse mit einem
+    Trailing-Einheit-Token oder Dezimal-Anteil - der Feld-Confidence-Wert
+    landete als 0 in der DB, obwohl das Modell 80 gemeint hatte.
+
+    Der Fix wendet dieselbe Zahl-Extraktions-Kette wie fuer den ``wert``-
+    Kanal an: :func:`normalize_numeric_locale` strippt Locale-Tausender
+    (kommt bei Confidence 0..100 nicht vor, aber schadet nicht) und
+    normalisiert Whitespace-/Apostroph-Tausender; :data:`_LEADING_NUMBER`
+    extrahiert die fuehrende Zahl (mit optionalem Vorzeichen, Punkt-/
+    Komma-Dezimal); ``float`` konvertiert und ``int`` schneidet die
+    Dezimalstellen ab (80.5 -> 80). Anschliessend wird das Ergebnis auf
+    ``[0, 100]`` geklemmt (spiegelt die vorhandene Clamp-Semantik).
+
+    ``bool`` ist eine Subklasse von ``int``, aber semantisch keine
+    Confidence-Zahl - ``True``/``False`` von einem KI-Modell ist ein
+    Formatfehler, nicht 1%/0%; wir liefern 0 statt eines irrefuehrenden
+    ``True -> 1`` / ``False -> 0``.
+    """
+    if raw is None or isinstance(raw, bool):
+        return 0
+    if isinstance(raw, (int, float)):
+        try:
+            return max(0, min(100, int(raw)))
+        except (ValueError, OverflowError):
+            return 0
+    text = str(raw).strip()
+    if not text:
+        return 0
+    cleaned = normalize_numeric_locale(text)
+    m = _LEADING_NUMBER.search(cleaned)
+    if m is None:
+        return 0
+    try:
+        num = float(m.group(0).replace(",", "."))
+    except (ValueError, OverflowError):
+        return 0
+    return max(0, min(100, int(num)))
+
+
 def coerce_result(raw: dict) -> dict:
     """Validiert/normalisiert eine (ggf. unsaubere) Modellantwort in das Standardformat."""
     result: dict = {}
@@ -71,19 +120,12 @@ def coerce_result(raw: dict) -> dict:
                     wert = int(num) if name in num_fields else num
                 except ValueError:
                     wert = None
-        try:
-            conf = int(entry.get("confidence_prozent") or 0)
-        except (ValueError, TypeError):
-            conf = 0
         result[name] = {
             "wert": wert,
-            "confidence_prozent": max(0, min(100, conf)),
+            "confidence_prozent": _coerce_confidence(entry.get("confidence_prozent")),
             "begruendung": str(entry.get("begruendung") or ""),
         }
-    try:
-        result["gesamt_confidence"] = max(0, min(100, int(raw.get("gesamt_confidence") or 0)))
-    except (ValueError, TypeError):
-        result["gesamt_confidence"] = 0
+    result["gesamt_confidence"] = _coerce_confidence(raw.get("gesamt_confidence"))
     result["zusammenfassung"] = str(raw.get("zusammenfassung") or "")
     return result
 
