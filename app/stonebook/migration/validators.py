@@ -3194,6 +3194,13 @@ def _normalize_direction_words(text: str) -> str:
     return _DIRECTION_WORD.sub(_replace, text)
 
 
+_TYPOGRAPHIC_DASH_BETWEEN_DIGITS = re.compile(
+    r"(?<=\d)[–—](?=\d)"                                  # 13–06 / 06–2024
+    r"|(?<=\d)[–—](?=[A-Za-zÄÖÜäöü])"                     # 13–June, 13–Juni (Oracle-Log)
+    r"|(?<=[A-Za-zÄÖÜäöü])[–—](?=\d)"                     # June–2024, JAN–2024 (Oracle-Log)
+)
+
+
 def parse_iso_date(text) -> str | None:
     """Konvertiert verschiedene Datumsschreibweisen in ISO YYYY-MM-DD.
 
@@ -3205,6 +3212,34 @@ def parse_iso_date(text) -> str | None:
     s = str(text).strip()
     if not s or s.lower() in DATE_NO_DATA_MARKERS:
         return None
+    # Typografischer En-Dash (U+2013) / Em-Dash (U+2014) ZWISCHEN Ziffern auf
+    # ASCII-Hyphen normalisieren. Word/Outlook/LibreOffice-AutoFormat, PDF-
+    # Text-Extraktion und viele Office-Autokorrektur-Ketten wandeln ASCII-
+    # Hyphen in Zahl-Kombinationen automatisch in typografische Dashes um
+    # (Excel-Autoformat, Word-Standard-Autoformat, LaTeX-Textrender ``--`` ->
+    # ``–``, PDF-Copy-Extraktion aus formatierten Vorlagen). Aus dem typischen
+    # Sammler-Workflow "Fund-Datum in Word/Outlook-Notiz getippt (13-06-2024)
+    # wird Autoformat-konvertiert zu 13–06–2024, dann in die Sammlung kopiert"
+    # entstand damit silenter Funddatum-Datenverlust bei der Migration - die
+    # strptime-Loops in :data:`_DATE_FORMATS` verlangen ASCII-Hyphen (``%d-%m-%Y``
+    # matcht nur ``13-06-2024``, nicht ``13–06–2024``), und die uebrigen
+    # Named-Pattern-Regexes ohne Range-Semantik akzeptieren typografische Dashes
+    # nur in ihren dedizierten Range-Klassen (:data:`_YEAR_RANGE` etc.).
+    #
+    # Sicherheitsschranke: nur den Bereich ZWISCHEN zwei Ziffern normalisieren
+    # (via ``(?<=\\d)[–—](?=\\d)``). Whitespace-getrennte Dashes (``2020 – 2024``
+    # als Jahr-Range mit Print-Konvention "Whitespace um en-dash") bleiben
+    # unangetastet, weil die Range-Semantik in :data:`_YEAR_RANGE` /
+    # :data:`_YEAR_RANGE_BETWEEN` etc. die Dashes bereits explizit als Trenner
+    # akzeptiert - dort ist die Whitespace-Bindung Teil der Range-Konvention
+    # ("Fund 2020–2024" = "Fund in einem Jahr zwischen 2020 und 2024", nicht
+    # "Fund am 2020. Tag/Monat/Jahr im 2024"). Dashe an Wort-Grenzen bleiben
+    # ebenfalls unangetastet (nur direkt zwischen Ziffern greift die Normalis-
+    # ierung). Kein-Whitespace-Range wie ``2020–2024`` wird durch die Regel
+    # zwar auf ``2020-2024`` normalisiert, matcht dann aber die identische
+    # :data:`_YEAR_RANGE`-Alternante ``[-–—−/]`` und liefert dasselbe Ergebnis -
+    # kollisionsfrei durch die Symmetrie der Range-Klasse.
+    s = _TYPOGRAPHIC_DASH_BETWEEN_DIGITS.sub("-", s)
     # Umschliessende Klammern/Anfuehrungszeichen abstreifen ("(2024)", '"2024-06-13"').
     # Strip + Rekursion; tiefere Schachtelung loest sich automatisch auf.
     for op, cl in _BRACKET_PAIRS:

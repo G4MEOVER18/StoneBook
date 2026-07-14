@@ -333,6 +333,63 @@ def test_parse_iso_date_englische_of_konstruktion():
     assert parse_iso_date("15th June 2020") == "2020-06-15"  # ohne of -> _DAY_MONTH_YEAR
 
 
+def test_parse_iso_date_typografische_dash_zwischen_ziffern():
+    """En-Dash (U+2013) und Em-Dash (U+2014) als Trenner INNERHALB eines
+    Datums werden auf ASCII-Hyphen normalisiert. Word/Outlook/LibreOffice-
+    AutoFormat, PDF-Text-Extraktion und Office-Autokorrektur-Ketten wandeln
+    ASCII-Hyphen in Zahl-Kombinationen automatisch in typografische Dashes
+    um (Excel-Autoformat, Word-Standard-Autoformat, LaTeX-Textrender
+    ``--`` -> ``–``, PDF-Copy-Extraktion aus formatierten Vorlagen).
+
+    Bisher fielen alle Formen still auf None, weil die strptime-Loops in
+    :data:`_DATE_FORMATS` ASCII-Hyphen verlangen (``%d-%m-%Y`` matcht nur
+    ``13-06-2024``, nicht ``13–06–2024``) und die uebrigen Named-Pattern-
+    Regexes ohne Range-Semantik akzeptieren typografische Dashes nur in
+    ihren dedizierten Range-Klassen. Aus dem typischen Sammler-Workflow
+    "Fund-Datum in Word/Outlook-Notiz getippt (13-06-2024) wird Autoformat-
+    konvertiert zu 13–06–2024, dann in die Sammlung kopiert" entstand
+    damit silenter Funddatum-Datenverlust bei der Migration.
+    """
+    # En-Dash zwischen Ziffern (Word-Autoformat-typisch)
+    assert parse_iso_date("13–06–2024") == "2024-06-13"
+    assert parse_iso_date("2024–06–13") == "2024-06-13"
+    assert parse_iso_date("06–13–2024") == "2024-06-13"  # US-Format
+    # Em-Dash zwischen Ziffern
+    assert parse_iso_date("13—06—2024") == "2024-06-13"
+    assert parse_iso_date("2024—06—13") == "2024-06-13"
+    # Gemischt En- und Em-Dash
+    assert parse_iso_date("13–06—2024") == "2024-06-13"
+    assert parse_iso_date("2024—06–13") == "2024-06-13"
+    # Zwischen Ziffer und Monatsname (Oracle-Log-Konvention "01-JAN-2024")
+    assert parse_iso_date("13–June–2024") == "2024-06-13"
+    assert parse_iso_date("13–Juni–2024") == "2024-06-13"
+    assert parse_iso_date("01–JAN–2024") == "2024-01-01"
+    assert parse_iso_date("June–2024") == "2024-06-01"
+    # Case-Insensitivitaet auf dem Monatsnamen
+    assert parse_iso_date("13–JUNI–2024") == "2024-06-13"
+    assert parse_iso_date("13–june–2024") == "2024-06-13"
+    # Kombination mit Approx-Praefix
+    assert parse_iso_date("ca. 13–06–2024") == "2024-06-13"
+    # Regress-Anker: bestehende ASCII-Hyphen-Formen bleiben unveraendert
+    assert parse_iso_date("13-06-2024") == "2024-06-13"
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13-Jun-2024") == "2024-06-13"
+    # Regress: Whitespace-getrennte typografische Dashes bleiben Range-Trenner
+    # ("2020 – 2024" ist Jahr-Range, nicht Datum) - hier wird der Dash NICHT
+    # als Datums-Separator normalisiert, weil Whitespace zwischen ihm und
+    # den Ziffern steht (Lookbehind/Lookahead verlangen direkte Adjazenz).
+    assert parse_iso_date("2020 – 2024") == "2020-01-01"  # Range-Start-Jahr
+    # Regress: Kein-Whitespace-Jahr-Range "2020–2024" wird auf "2020-2024"
+    # normalisiert und matcht dann die :data:`_YEAR_RANGE`-Klasse mit ASCII-
+    # Hyphen - identisches Ergebnis via unveraendertem Pfad.
+    assert parse_iso_date("2020–2024") == "2020-01-01"
+    # Regress: Monatsnamen-Range ("Juni–Juli 2024") bleibt intakt, weil
+    # Lookbehind/Lookahead fuer Buchstaben-zu-Buchstaben-Dashes nicht triggern.
+    assert parse_iso_date("Juni–Juli 2024") == "2024-06-01"
+    # Ungueltige Fall: Jahr < 1800 bleibt None
+    assert parse_iso_date("13–06–1700") is None
+
+
 def test_parse_iso_date_compact_iso():
     """ISO 8601 compact YYYYMMDD (kommt in Dateinamen/Log-Stempeln vor)."""
     assert parse_iso_date("20240613") == "2024-06-13"
