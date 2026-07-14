@@ -5494,6 +5494,108 @@ def test_parse_coordinates_prefix_dms():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_prefix_ddm_ohne_prime_marker():
+    """Prefix-DDM-Notation ohne Prime-Marker: ``N 46°30.5 E 7°45.3`` /
+    ``N 46° 30.5 E 7° 45.3``. Standard-Ausgabe-Modus fuer alle Consumer-GPS-
+    Geraete-Anzeigen (Garmin/Magellan/TomTom im "hddd° mm.mmm'"-Modus),
+    marine/Luftfahrt-Kartensysteme (BSH-Karten, IHO-S-57), Wikipedia-Coord-
+    Template-Ausgabe (``{{Coord|46|30.5|N|7|45.3|E}}``) sowie GPS-Log-Textfelder
+    ohne typografische Prime-Zeichen.
+
+    Bisher fiel die DDM-Notation ohne Prime-Marker still auf einen partiellen
+    Match des _DMS_PREFIX-Zweigs: die Minuten-Gruppe scheiterte am fehlenden
+    ``'``, das Pattern-Match brach nach dem Grad-Teil ab, und die naechste
+    findall-Iteration griff den Rest als eigenen (Dir, Deg)-Match - die
+    Dezimalminuten ``.5``/``.3`` gingen dabei silent verloren
+    (``N 46°30.5 E 7°45.3`` -> (46.0, 7.0) statt (46.508..., 7.755)).
+
+    Der Dezimalpunkt-Zwang der prime-losen Alternante ``\\d+[.,]\\d+`` schuetzt
+    vor Kollision mit Integer-Anhaeufungen ohne Marker (``N 46° 30 E`` bleibt
+    (46.0, ...), weil ``30`` keine Dezimalstellen hat und die Prime-lose
+    Alternante nicht matcht - die Ambiguitaet zu Katalog-Nummer/Sample-ID/
+    Anzahl-Vermerk ueberwiegt den Erkennungs-Gewinn).
+    """
+    expected_lat = 46.0 + 30.5 / 60  # 46.508333...
+    expected_lon = 7.0 + 45.3 / 60   # 7.755
+    # Basisform ohne Whitespace zwischen Grad und Minuten
+    lat, lon = parse_coordinates("N 46°30.5 E 7°45.3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Mit Whitespace zwischen Grad und Minuten
+    lat, lon = parse_coordinates("N 46° 30.5 E 7° 45.3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # DE-Komma-Dezimal (Excel-DE-Export)
+    lat, lon = parse_coordinates("N 46°30,5 E 7°45,3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Compact ohne Whitespace um Richtung
+    lat, lon = parse_coordinates("N46°30.5E7°45.3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Suedhalbkugel / Westhalbkugel
+    lat, lon = parse_coordinates("S 46°30.5 W 7°45.3")
+    assert abs(lat - -expected_lat) < 1e-9
+    assert abs(lon - -expected_lon) < 1e-9
+    # Case-insensitive
+    lat, lon = parse_coordinates("n 46°30.5 e 7°45.3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Vollnamen der Himmelsrichtungen werden vorher auf N/O normalisiert
+    lat, lon = parse_coordinates("Nord 46°30.5 Ost 7°45.3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # O = Ost (DE-Notation)
+    lat, lon = parse_coordinates("N 46°30.5 O 7°45.3")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Reihenfolge lon, lat (Prefix-Direction reorientiert korrekt via _orient)
+    lat, lon = parse_coordinates("E 7°45.3 N 46°30.5")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Nur einer der beiden hat Dezimalstellen (die Integer-Seite bleibt reine
+    # Grad-Form, die Decimal-Seite wird als DDM erkannt)
+    lat, lon = parse_coordinates("N 46°30.5 E 7°")
+    assert abs(lat - expected_lat) < 1e-9
+    assert lon == 7.0
+    # Umgekehrt: Grad ohne Minuten auf Lat, DDM auf Lon
+    lat, lon = parse_coordinates("N 46° E 7°45.3")
+    assert lat == 46.0
+    assert abs(lon - expected_lon) < 1e-9
+    # Grenzfaelle Aequator/Null-Meridian
+    assert parse_coordinates("N 0°0.0 E 0°0.0") == (0.0, 0.0)
+    # +/-90/+/-180-Extreme
+    lat, lon = parse_coordinates("N 89°59.9 E 179°59.9")
+    assert abs(lat - (89.0 + 59.9 / 60)) < 1e-9
+    assert abs(lon - (179.0 + 59.9 / 60)) < 1e-9
+    # Out-of-Range Lat/Lon bleibt None
+    assert parse_coordinates("N 100°30.5 E 7°45.3") is None
+    assert parse_coordinates("N 46°30.5 E 200°45.3") is None
+    # Regress-Anker: bestehende Formen bleiben unveraendert
+    # Prime-Form mit Dezimal-Minuten (DDM mit Prime)
+    lat, lon = parse_coordinates("N 46°30.5' E 7°45.3'")
+    assert abs(lat - expected_lat) < 1e-9
+    assert abs(lon - expected_lon) < 1e-9
+    # Ganzzahl-Minuten mit Prime (DMS klassisch)
+    lat, lon = parse_coordinates("N 46°30' E 7°45'")
+    assert abs(lat - 46.5) < 1e-9
+    assert abs(lon - (7.0 + 45.0 / 60)) < 1e-9
+    # Vollstaendige DMS mit Sekunden (Prime obligatorisch)
+    lat, lon = parse_coordinates("N 46°30'15\" E 7°45'30\"")
+    assert abs(lat - (46.5 + 15 / 3600)) < 1e-9
+    assert abs(lon - (7.0 + 45.0 / 60 + 30 / 3600)) < 1e-9
+    # Ganzzahl-Minuten OHNE Prime bleibt ambig: nur Grad-Anteil wird gelesen
+    # (Kollisions-Schutz gegen Katalog-Nummer/Sample-ID/Anzahl-Vermerk)
+    assert parse_coordinates("N 46° 30 E 7°") == (46.0, 7.0)
+    # Reine Prefix-Decimal (kein Grad-Marker) weiter via _PREFIX_PAIR
+    assert parse_coordinates("N 46.5 E 7.5") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    # Suffix-DMS-Form (Direction NACH Zahl) weiter via _DMS
+    assert parse_coordinates("46°30'15\" N, 7°45'30\" E") == (
+        46.5 + 15 / 3600, 7.0 + 45 / 60 + 30 / 3600,
+    )
+
+
 def test_parse_coordinates_osm_hash_map_fragment():
     """OSM-URL-Hash-Fragment "#map=<zoom>/<lat>/<lon>" korrekt entpacken.
 

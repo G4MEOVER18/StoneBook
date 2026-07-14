@@ -2459,11 +2459,40 @@ _DMS_LETTERS = re.compile(
 # geprueft, damit die spezifischere DMS-Struktur den zu-greedy-_PREFIX_PAIR-
 # Match ueberholt. Capture-Reihenfolge (dir, deg, min, sec) muss beim Aufruf
 # von _dms_to_decimal(deg, min, sec, dir) umsortiert werden.
+#
+# Minuten-Prime-Marker ist optional, WENN die Minuten-Zahl einen Dezimalpunkt
+# enthaelt (Degrees-Decimal-Minutes-Notation, DDM). DDM ist der Standard-Ausgabe-
+# Modus fuer alle Consumer-GPS-Geraete-Anzeigen (Garmin/Magellan/TomTom im
+# "hddd° mm.mmm'"-Modus), marine/Luftfahrt-Kartensysteme (BSH-Karten, IHO-S-57-
+# Karten, IALA-Aids-to-Navigation-Notation) und die Wikipedia-Coord-Template-
+# Ausgabe ``{{Coord|46|30.5|N|7|45.3|E}}``. Bisher fiel die DDM-Notation ohne
+# Prime-Marker (``N 46°30.5 E 7°45.3``) still auf einen partiellen Match des
+# _DMS_PREFIX-Zweigs: die Minuten-Gruppe scheiterte am fehlenden ``'``, das
+# Pattern-Match brach nach dem Grad-Teil ab, und die naechste findall-Iteration
+# griff den Rest als eigenen (Dir, Deg)-Match - die Dezimalminuten ``.5``/``.3``
+# gingen dabei silent verloren. Aus dem typischen Sammler-Workflow "Fund auf
+# Garmin-Handheld-Display gelesen, Werte im Feld notiert und in Excel getippt"
+# oder "Wikipedia-Coord-Template-Wert in die Sammlung uebernommen" wurde damit
+# silenter Koordinaten-Datenverlust bei der Migration; besonders schwer erkennbar,
+# weil (46.0, 7.0) formal ein gueltiges Lat/Lon-Paar ist (Nord-Atlantik) und
+# die _validate-Range-Pruefung erfolgreich durchlaeuft. Der Dezimalpunkt-Zwang
+# ``\d+[.,]\d+`` an der prime-losen Alternante schuetzt vor Kollision mit
+# Integer-Anhaeufungen ohne Marker: ``N 46° 30 E`` (30 als potentieller Minuten-
+# Wert) bleibt weiterhin (46.0, ...) - die Ambiguitaet von integer-Zahlen ohne
+# Prime (Katalog-Nummer, Sample-ID, Anzahl-Vermerk) ueberwiegt den Erkennungs-
+# Gewinn, und Consumer-GPS-Displays geben Minuten IMMER mit Dezimal aus (die
+# Praezision der GPS-Position uebersteigt Ganzzahl-Minuten deutlich). Alternante
+# mit Prime bleibt Ganzzahl-tolerant (Minute-15 ohne Dezimal weiter valide,
+# wenn ``'`` folgt). Sekunden-Prime bleibt obligatorisch, weil DDM per Definition
+# keine Sekunden-Komponente hat (das ist der Grad-Minuten-Standard, entweder
+# DDM ODER DMS, nie beides).
 _DMS_PREFIX = re.compile(
     r"""([NSEWOnsewo])                          # Himmelsrichtung (obligatorisch, vorne)
         \s*(\d+(?:[.,]\d+)?)\s*°                # Grad + obligatorisches °
-        (?:\s*(\d+(?:[.,]\d+)?)\s*['′])?        # optional Minuten
-        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:["″]|''))? # optional Sekunden
+        (?:\s*(?:(?:(\d+(?:[.,]\d+)?)\s*['′])   # Minuten: Ganzzahl/Dezimal MIT Prime
+            |(\d+[.,]\d+))                      # ODER Dezimal-Minuten OHNE Prime (DDM)
+        )?
+        (?:\s*(\d+(?:[.,]\d+)?)\s*(?:["″]|''))? # optional Sekunden (Prime obligatorisch)
     """,
     re.VERBOSE,
 )
@@ -4022,12 +4051,16 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     # gepruft, damit die spezifischere DMS-Struktur den zu-greedy-Match des
     # decimal-Prefix-Patterns ueberholt (dieses wuerde nur (Direction+Deg)
     # matchen und Minuten/Sekunden ignorieren). Capture-Reihenfolge im Pattern
-    # ist (dir, deg, min, sec) - umsortieren zu (deg, min, sec, dir) fuer den
-    # _dms_to_decimal-Aufruf.
+    # ist (dir, deg, min_with_prime, min_ddm_no_prime, sec) - Minuten-Alternanten
+    # zusammenfuehren (nur eine der beiden kann bei einem Match belegt sein,
+    # die jeweils andere ist ''), dann umsortieren zu (deg, min, sec, dir) fuer
+    # den _dms_to_decimal-Aufruf.
     dms_prefix_hits = _DMS_PREFIX.findall(s)
     if len(dms_prefix_hits) >= 2:
-        d1, deg1, min1, sec1 = dms_prefix_hits[0]
-        d2, deg2, min2, sec2 = dms_prefix_hits[1]
+        d1, deg1, min1a, min1b, sec1 = dms_prefix_hits[0]
+        d2, deg2, min2a, min2b, sec2 = dms_prefix_hits[1]
+        min1 = min1a or min1b
+        min2 = min2a or min2b
         a = _dms_to_decimal(deg1, min1, sec1, d1)
         b = _dms_to_decimal(deg2, min2, sec2, d2)
         lat, lon = _orient(a, d1, b, d2)
