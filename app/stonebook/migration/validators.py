@@ -1533,6 +1533,113 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "silvesterabend": (12, 31),
     "newyearseve": (12, 31),
 }
+# Variable Feiertage: Osterdatums-relative Offsets in Tagen (positive = nach
+# Ostersonntag, negative = davor). Der konkrete Kalendertag jedes Feiertags
+# haengt vom jahresspezifisch berechneten Ostersonntag ab (Computus /
+# Butcher-Meeus Gregorian-Algorithmus in :func:`_easter_sunday`) und wird zur
+# Migrationszeit fuer das gegebene Jahr aufgeloest. Der Osterzyklus liefert
+# Fest-Termine, die kirchlicher und weltlicher Konvention nach in DACH und im
+# angelsaechsischen Raum an einheitlichen Offset-Positionen liegen (Karfreitag
+# = 2 Tage vor Ostern, Christi Himmelfahrt = 39 Tage nach Ostern, Pfingsten
+# = 49 Tage nach Ostern, Fronleichnam = 60 Tage nach Ostern; alle vom Konzil
+# von Nicaea 325 bzw. der Gregorianischen Kalender-Reform 1582 verbindlich
+# festgelegt). Muttertag/Vatertag sind bewusst NICHT enthalten - deren
+# Definitionen weichen zwischen den Kultur- und Rechtsraeumen ab (DE-Muttertag
+# = zweiter Mai-Sonntag mit Sonderregel-Verschiebung bei Kollision mit
+# Pfingstsonntag; US-Muttertag = zweiter Mai-Sonntag ohne Sonderregel;
+# DE-Vatertag = Christi Himmelfahrt, US-Vatertag = dritter Juni-Sonntag). Ohne
+# Locale-Marker im Datums-Feld ist die richtige Auswahl mehrdeutig, und ein
+# stillschweigend gewaehlter Default wuerde in bis zu 50% der Faelle das
+# falsche Datum vergeben. Norm-Schluessel spiegelt die Normalisierung in
+# :func:`_normalize_holiday_name` (lowercase, Umlaut -> ae/oe/ue/ss,
+# Whitespace/Punkt/Bindestrich/Apostroph gestrippt): "Christi Himmelfahrt" ->
+# "christihimmelfahrt", "Palm Sunday" -> "palmsunday", "Gründonnerstag" ->
+# "gruendonnerstag".
+_HOLIDAY_EASTER_OFFSET: dict[str, int] = {
+    # Karwoche vor Ostersonntag
+    "palmsonntag": -7,
+    "palmsunday": -7,
+    "gruendonnerstag": -3,
+    "maundythursday": -3,
+    "holythursday": -3,
+    "karfreitag": -2,
+    "goodfriday": -2,
+    "karsamstag": -1,
+    "karsonnabend": -1,
+    "holysaturday": -1,
+    # Ostersonntag = Anker (0)
+    "ostern": 0,
+    "ostersonntag": 0,
+    "easter": 0,
+    "eastersunday": 0,
+    # Osterwoche
+    "ostermontag": 1,
+    "eastermonday": 1,
+    # Fastnachtszeit vor Ostern (relativ zu Aschermittwoch)
+    "aschermittwoch": -46,
+    "ashwednesday": -46,
+    "fastnachtsdienstag": -47,
+    "faschingsdienstag": -47,
+    "fasnachtsdienstag": -47,
+    "shrovetuesday": -47,
+    "mardigras": -47,
+    "fattuesday": -47,
+    "pancakeday": -47,
+    "rosenmontag": -48,
+    "weiberfastnacht": -52,
+    "weiberfasnacht": -52,
+    "weiberfasnet": -52,
+    "schmotzigerdonnerstag": -52,
+    # Nach Ostern
+    "christihimmelfahrt": 39,
+    "himmelfahrt": 39,
+    "ascensionday": 39,
+    "ascension": 39,
+    "ascensionofchrist": 39,
+    "ascensionofourlord": 39,
+    "pfingsten": 49,
+    "pfingstsonntag": 49,
+    "pentecost": 49,
+    "whitsun": 49,
+    "whitsunday": 49,
+    "pfingstmontag": 50,
+    "whitmonday": 50,
+    "pentecostmonday": 50,
+    "trinitatis": 56,
+    "trinitysunday": 56,
+    "fronleichnam": 60,
+    "corpuschristi": 60,
+}
+
+
+def _easter_sunday(year: int) -> tuple[int, int]:
+    """Osterdatum (Monat, Tag) via Butcher-Meeus Gregorian-Algorithmus.
+
+    Anonymer Gregorianischer Osterrechen-Algorithmus (Butcher 1876, ueberliefert
+    ueber Jean Meeus' "Astronomical Algorithms"). Deckt alle Jahre >= 1583 (also
+    das gesamte Fenster des :func:`parse_iso_date`-1800..2999-Bandes) korrekt
+    ab. Berechnet den ersten Sonntag nach dem ersten Vollmond nach der
+    Fruehjahrs-Tag-und-Nacht-Gleiche gemaess der Gregorianischen Reform von 1582
+    und dem Konzil von Nicaea 325 - Standarddefinition der Westkirche
+    (Katholisch, Lutherisch, Anglikanisch, Reformiert); die orthodoxe Kirche
+    verwendet den Julianischen Kalender fuer die Berechnung, aber deren
+    Konvention ist im DACH-Sammler-Kontext irrelevant und der Feiertag "Ostern"
+    ohne Konfessions-Marker bezeichnet dort ausschliesslich das westliche
+    Datum. Rueckgabe (Monat, Tag) mit Monat in {3, 4} und Tag in [22..25]
+    fuer Maerz bzw. [1..25] fuer April.
+    """
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    ll = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ll) // 451
+    month = (h + ll - 7 * m + 114) // 31
+    day = ((h + ll - 7 * m + 114) % 31) + 1
+    return month, day
 # Feiertag-Name (ein oder mehrere Woerter, keine Ziffern) + Trenner + Jahr.
 # Die Zeichenklasse deckt Multi-Wort-Formen ("Heilige Drei Koenige"), Apostrophe
 # (ASCII ``'``, typografisch ``’``/``‘`` aus Word-Autoformat), Punkte
@@ -2315,14 +2422,53 @@ def _normalize_holiday_name(name: str) -> tuple[int, int] | None:
     identische Behandlung in :func:`_normalize_month_name` /
     :func:`_normalize_season_name`.
     """
+    key = _holiday_key(name)
+    return _HOLIDAY_MONTH_DAY.get(key)
+
+
+def _holiday_key(name: str) -> str:
+    """Kanonischer Einzel-Token-Schluessel fuer Feiertag-Namen.
+
+    Aus :func:`_normalize_holiday_name` heraus faktorisiert, damit die
+    identische Normalisierung von :func:`_normalize_variable_holiday`
+    genutzt werden kann - beide Dicts (:data:`_HOLIDAY_MONTH_DAY` und
+    :data:`_HOLIDAY_EASTER_OFFSET`) sind gegen denselben Norm-Schluessel
+    indiziert, und ein aus dem :data:`_HOLIDAY_YEAR`-Regex gefallener Name
+    wird pro Aufruf nur einmal normalisiert.
+    """
     key = name.strip().lower()
     key = (
         key.replace("ä", "ae").replace("ö", "oe")
         .replace("ü", "ue").replace("ß", "ss")
     )
-    # Whitespace, Punkte, Bindestriche, Apostrophe (ASCII + typografisch) raus.
-    key = re.sub(r"[\s.\-'’‘`]+", "", key)
-    return _HOLIDAY_MONTH_DAY.get(key)
+    return re.sub(r"[\s.\-'’‘`]+", "", key)
+
+
+def _normalize_variable_holiday(name: str) -> int | None:
+    """Osterdatums-relativer Offset fuer variable Feiertag-Namen; None fuer
+    unbekannte Namen. Spiegelt :func:`_normalize_holiday_name` auf die
+    Osterzyklus-Achse und nutzt denselben :func:`_holiday_key`-Norm-Schluessel.
+    """
+    return _HOLIDAY_EASTER_OFFSET.get(_holiday_key(name))
+
+
+def _variable_holiday_iso(name: str, year: int) -> str | None:
+    """ISO-Datum fuer einen variablen Feiertag im gegebenen Jahr, oder None
+    wenn der Name unbekannt ist bzw. das Jahr ausserhalb des unterstuetzten
+    1800..2999-Bandes liegt. Osterdatum via :func:`_easter_sunday`, dann
+    Offset in Tagen aus :data:`_HOLIDAY_EASTER_OFFSET` mittels
+    :class:`datetime.timedelta` addiert - die Datumsarithmetik traegt den
+    Monat-/Jahres-Uebergang automatisch (z.B. Aschermittwoch 2016 = 10.02.
+    faellt vom April-Ostern des Vorjahres in den Vorfebruar).
+    """
+    offset = _normalize_variable_holiday(name)
+    if offset is None:
+        return None
+    if not 1800 <= year <= 2999:
+        return None
+    e_month, e_day = _easter_sunday(year)
+    d = datetime.date(year, e_month, e_day) + datetime.timedelta(days=offset)
+    return d.isoformat()
 # DMS: 46°30'15" N  /  7° 30' 0'' O  /  46°30'15.5"S
 #
 # Prime-Zeichen fuer Minuten (Einfach-Prime): ASCII-Apostroph ``'`` (U+0027),
@@ -3811,12 +3957,25 @@ def parse_iso_date(text) -> str | None:
     # und liefern hier weiterhin None (Fall-Through zum Rest der Kaskade).
     m = _HOLIDAY_YEAR.match(s)
     if m:
-        hd = _normalize_holiday_name(m.group(1))
-        if hd is not None:
-            year = int(m.group(2))
-            if 1800 <= year <= 2999:
+        name = m.group(1)
+        year = int(m.group(2))
+        if 1800 <= year <= 2999:
+            hd = _normalize_holiday_name(name)
+            if hd is not None:
                 month, day = hd
                 return f"{year:04d}-{month:02d}-{day:02d}"
+            # Variable Feiertage (Osterzyklus): Ostersonntag jahresspezifisch
+            # via Computus, dann Offset in Tagen aus :data:`_HOLIDAY_EASTER_OFFSET`.
+            # Nach der Fixed-Date-Whitelist einsortiert, damit unbekannte Fixed-
+            # Date-Namen weiterhin ohne Kollision auf None fallen; kein Feiertag
+            # ist in beiden Dicts eingetragen (Karfreitag/Ostern/Pfingsten liegen
+            # ausschliesslich in :data:`_HOLIDAY_EASTER_OFFSET`,
+            # Weihnachten/Silvester/Halloween ausschliesslich in
+            # :data:`_HOLIDAY_MONTH_DAY`), sodass die Reihenfolge korrektheits-
+            # unabhaengig ist.
+            iso = _variable_holiday_iso(name, year)
+            if iso is not None:
+                return iso
     # Year-first Feiertag-Notation ("2023 Weihnachten", "2020-Silvester").
     # Spiegelt _HOLIDAY_YEAR auf die Year-First-Reihenfolge, symmetrisch zu
     # :data:`_SEASON_YEAR_FIRST` / :data:`_QUARTER_YEAR_FIRST` gegenueber
@@ -3824,12 +3983,16 @@ def parse_iso_date(text) -> str | None:
     # analog zur Year-Last-Reihenfolge.
     m = _HOLIDAY_YEAR_FIRST.match(s)
     if m:
-        hd = _normalize_holiday_name(m.group(2))
-        if hd is not None:
-            year = int(m.group(1))
-            if 1800 <= year <= 2999:
+        year = int(m.group(1))
+        name = m.group(2)
+        if 1800 <= year <= 2999:
+            hd = _normalize_holiday_name(name)
+            if hd is not None:
                 month, day = hd
                 return f"{year:04d}-{month:02d}-{day:02d}"
+            iso = _variable_holiday_iso(name, year)
+            if iso is not None:
+                return iso
     # Trailing Aera-Marker abstreifen ("1985 n. Chr.", "500 v. Chr.", "1985 AD",
     # "1985 BCE"). Aera-Marker gehoert nicht zum Datum selbst; das Jahr bleibt
     # der bekannte Anker, die Zeitrechnungs-Konvention ist semantische Wert-

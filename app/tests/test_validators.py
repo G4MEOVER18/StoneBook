@@ -1276,19 +1276,14 @@ def test_parse_iso_date_fixed_date_feiertage():
     # Trailing-Klammer-Annotation-Strip vor der Feiertag-Aufloesung
     assert parse_iso_date("Weihnachten 2023 (Foto)") == "2023-12-25"
     assert parse_iso_date("Silvester 2020 [Auktion]") == "2020-12-31"
-    # Variable Feiertage bleiben None (nicht in _HOLIDAY_MONTH_DAY)
-    assert parse_iso_date("Ostern 2024") is None
-    assert parse_iso_date("Ostermontag 2024") is None
-    assert parse_iso_date("Karfreitag 2024") is None
-    assert parse_iso_date("Pfingsten 2024") is None
-    assert parse_iso_date("Pfingstmontag 2024") is None
-    assert parse_iso_date("Christi Himmelfahrt 2024") is None
-    assert parse_iso_date("Fronleichnam 2024") is None
+    # Variable Feiertage werden ueber den Osterzyklus aufgeloest (siehe
+    # test_parse_iso_date_variable_easter_feiertage). Muttertag/Vatertag
+    # bleiben None (Locale-Ambiguitaet, siehe Docstring bei
+    # :data:`_HOLIDAY_EASTER_OFFSET`).
     assert parse_iso_date("Muttertag 2024") is None
     assert parse_iso_date("Vatertag 2024") is None
-    assert parse_iso_date("Easter 2024") is None
-    assert parse_iso_date("Good Friday 2024") is None
     assert parse_iso_date("Mother's Day 2024") is None
+    assert parse_iso_date("Father's Day 2024") is None
     # Unbekannte Namen fallen auf None
     assert parse_iso_date("Notaholiday 2024") is None
     assert parse_iso_date("Foobar 2024") is None
@@ -1317,6 +1312,99 @@ def test_parse_iso_date_fixed_date_feiertage():
     assert parse_iso_date("ca.") is None
     assert parse_iso_date("Weihnachten") is None  # Feiertag ohne Jahr -> None
     assert parse_iso_date("Silvester") is None
+
+
+def test_parse_iso_date_variable_easter_feiertage():
+    """Variable Feiertage im Osterzyklus (DE/EN): Datum wird jahresspezifisch
+    aus Ostersonntag (Computus/Butcher-Meeus) plus Offset in Tagen berechnet.
+
+    Ostersonntag als Anker fuer Karfreitag (-2), Karsamstag (-1), Ostermontag
+    (+1), Palmsonntag (-7), Gruendonnerstag (-3), Aschermittwoch (-46),
+    Rosenmontag (-48), Fastnachtsdienstag (-47), Christi Himmelfahrt (+39),
+    Pfingsten (+49), Pfingstmontag (+50), Fronleichnam (+60).
+    """
+    # Kanonische Ostersonntag-Referenzdaten (unabhaengig verifiziert):
+    # 2024 -> 31.03., 2023 -> 09.04., 2022 -> 17.04., 2020 -> 12.04.,
+    # 2000 -> 23.04., 1900 -> 15.04., 1954 -> 18.04.
+    assert parse_iso_date("Ostern 2024") == "2024-03-31"
+    assert parse_iso_date("Ostersonntag 2024") == "2024-03-31"
+    assert parse_iso_date("Easter 2024") == "2024-03-31"
+    assert parse_iso_date("Easter Sunday 2024") == "2024-03-31"
+    assert parse_iso_date("Ostern 2023") == "2023-04-09"
+    assert parse_iso_date("Ostern 2022") == "2022-04-17"
+    assert parse_iso_date("Ostern 2020") == "2020-04-12"
+    assert parse_iso_date("Ostern 2000") == "2000-04-23"
+    assert parse_iso_date("Ostern 1900") == "1900-04-15"
+    assert parse_iso_date("Ostern 1954") == "1954-04-18"
+    # Karwoche (Offset relativ zu Ostersonntag)
+    assert parse_iso_date("Karfreitag 2024") == "2024-03-29"
+    assert parse_iso_date("Good Friday 2024") == "2024-03-29"
+    assert parse_iso_date("Karsamstag 2024") == "2024-03-30"
+    assert parse_iso_date("Holy Saturday 2024") == "2024-03-30"
+    assert parse_iso_date("Ostermontag 2024") == "2024-04-01"
+    assert parse_iso_date("Easter Monday 2024") == "2024-04-01"
+    assert parse_iso_date("Palmsonntag 2024") == "2024-03-24"
+    assert parse_iso_date("Palm Sunday 2024") == "2024-03-24"
+    assert parse_iso_date("Gründonnerstag 2024") == "2024-03-28"
+    assert parse_iso_date("Gruendonnerstag 2024") == "2024-03-28"
+    assert parse_iso_date("Maundy Thursday 2024") == "2024-03-28"
+    # Fastnachtszeit
+    assert parse_iso_date("Aschermittwoch 2024") == "2024-02-14"
+    assert parse_iso_date("Ash Wednesday 2024") == "2024-02-14"
+    assert parse_iso_date("Rosenmontag 2024") == "2024-02-12"
+    assert parse_iso_date("Fastnachtsdienstag 2024") == "2024-02-13"
+    assert parse_iso_date("Faschingsdienstag 2024") == "2024-02-13"
+    assert parse_iso_date("Shrove Tuesday 2024") == "2024-02-13"
+    assert parse_iso_date("Mardi Gras 2024") == "2024-02-13"
+    assert parse_iso_date("Pancake Day 2024") == "2024-02-13"
+    # Nach Ostern
+    assert parse_iso_date("Christi Himmelfahrt 2024") == "2024-05-09"
+    assert parse_iso_date("Himmelfahrt 2024") == "2024-05-09"
+    assert parse_iso_date("Ascension Day 2024") == "2024-05-09"
+    assert parse_iso_date("Pfingsten 2024") == "2024-05-19"
+    assert parse_iso_date("Pfingstsonntag 2024") == "2024-05-19"
+    assert parse_iso_date("Pentecost 2024") == "2024-05-19"
+    assert parse_iso_date("Whitsun 2024") == "2024-05-19"
+    assert parse_iso_date("Whit Sunday 2024") == "2024-05-19"
+    assert parse_iso_date("Pfingstmontag 2024") == "2024-05-20"
+    assert parse_iso_date("Whit Monday 2024") == "2024-05-20"
+    assert parse_iso_date("Fronleichnam 2024") == "2024-05-30"
+    assert parse_iso_date("Corpus Christi 2024") == "2024-05-30"
+    assert parse_iso_date("Trinitatis 2024") == "2024-05-26"
+    assert parse_iso_date("Trinity Sunday 2024") == "2024-05-26"
+    # Year-first Reihenfolge (spiegelt _HOLIDAY_YEAR_FIRST)
+    assert parse_iso_date("2024 Ostern") == "2024-03-31"
+    assert parse_iso_date("2024-Karfreitag") == "2024-03-29"
+    assert parse_iso_date("2024/Pfingsten") == "2024-05-19"
+    assert parse_iso_date("2024 Christi Himmelfahrt") == "2024-05-09"
+    # Case-Insensitivitaet + Praepositions-Trenner
+    assert parse_iso_date("ostern 2024") == "2024-03-31"
+    assert parse_iso_date("OSTERN 2024") == "2024-03-31"
+    assert parse_iso_date("EASTER 2024") == "2024-03-31"
+    assert parse_iso_date("Ostern von 2024") == "2024-03-31"
+    assert parse_iso_date("Easter of 2024") == "2024-03-31"
+    # Praeposition + Feiertag-Praefix (spiegelt Fixed-Date-Verhalten)
+    assert parse_iso_date("ca. Ostern 2024") == "2024-03-31"
+    assert parse_iso_date("circa Karfreitag 2024") == "2024-03-29"
+    # Klammern-/Anfuehrungszeichen-/Trailing-Punct-Strip
+    assert parse_iso_date("(Ostern 2024)") == "2024-03-31"
+    assert parse_iso_date('"Karfreitag 2024"') == "2024-03-29"
+    assert parse_iso_date("Ostern 2024.") == "2024-03-31"
+    assert parse_iso_date("Pfingsten 2024 (Foto)") == "2024-05-19"
+    # Monat-Uebergang: Aschermittwoch 2016 (Ostersonntag 27.03.2016 - 46 Tage
+    # = 10.02.2016) faellt von April- in Februar-Datum via datetime.timedelta.
+    assert parse_iso_date("Ostern 2016") == "2016-03-27"
+    assert parse_iso_date("Aschermittwoch 2016") == "2016-02-10"
+    # Jahr ausserhalb 1800-2999 -> None
+    assert parse_iso_date("Ostern 1799") is None
+    assert parse_iso_date("Karfreitag 3000") is None
+    # Unbekannte variable Feiertage bleiben None (Locale-Ambiguitaet)
+    assert parse_iso_date("Muttertag 2024") is None
+    assert parse_iso_date("Vatertag 2024") is None
+    # Regress-Anker: Fixed-Date-Feiertage weiterhin ueber die eigene Whitelist
+    assert parse_iso_date("Weihnachten 2024") == "2024-12-25"
+    assert parse_iso_date("Silvester 2024") == "2024-12-31"
+    assert parse_iso_date("Neujahr 2024") == "2024-01-01"
 
 
 def test_parse_iso_date_relative_jahresposition():
