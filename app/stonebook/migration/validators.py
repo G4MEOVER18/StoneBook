@@ -2641,6 +2641,87 @@ _ISO6709_COMPACT_DM = re.compile(
     """,
     re.VERBOSE,
 )
+# NMEA-0183 Sentence-Form: ``DDMM.mmmm,N,DDDMM.mmmm,E`` bzw. mit Whitespace-
+# Trenner ``DDMM.mmmm N DDDMM.mmmm E``. Struktur identisch zu ISO 6709
+# Compact-DM (2 Ziffern Grad + 2 Ziffern Minuten mit Dezimal fuer Lat,
+# 3 Ziffern Grad + 2 Ziffern Minuten mit Dezimal fuer Lon), aber mit N/S/E/W-
+# Richtungs-Buchstaben statt Vorzeichen und mit Komma statt Ohne-Trenner
+# als Field-Separator. Standard-Ausgabe des NMEA-0183-Protokolls, das jedes
+# GPS-Geraet als Rohdaten-Ausgabe unterstuetzt (Serial-Port, USB-Debug,
+# gpsd-Ausgabe, viele Handheld-GPS-Empfaenger im "NMEA-Dump"-Modus) und
+# jede GPX-/KML-Konverter-Kette als Zwischenformat verwendet. Verbreitet
+# in Rohdaten-Logs aus Fahrzeug-/Boots-Navigationsgeraeten, in exiftool-XMP-
+# GPS-Exporten (die die EXIF-GPSPosition in NMEA-Format serialisieren),
+# in gpsbabel-Ausgabe im "$GPGGA"-/"$GPRMC"-Sentence-Format und in Marine-
+# /Luftfahrt-Navigations-Log-Files. Die Achsen-Konvention ist fix vorgegeben
+# durch das NMEA-Sentence-Layout: erst Latitude (mit N/S), dann Longitude
+# (mit E/W); die Reihenfolge kann von der Freitextzeile abweichen, dann
+# reorientiert :func:`_orient` via Direction-Buchstaben.
+#
+# Bisher fielen alle NMEA-Notationen still auf None:
+#   - :data:`_ISO6709_COMPACT_DM` verlangt obligatorische ±-Vorzeichen (Anker
+#     ``([+-])(\\d{2})...``) und hat keine Alternante fuer N/S/E/W-Buchstaben,
+#     die NMEA-Sentences als Richtungs-Marker verwenden.
+#   - :data:`_DECIMAL_PAIR` liest den NMEA-Latitude "4630.500" als reine
+#     Dezimalzahl 4630.5 (ausserhalb ±90-Bereich), fiele bei _validate durch,
+#     lieferte None.
+#   - :data:`_SUFFIX_PAIR_NO_SEP` und :data:`_PREFIX_PAIR` gehen von Grad-
+#     Dezimal-Notation aus und wuerden das Grad+Min-Zusammensetz-Format
+#     (2-Ziffer-Grad + 2-Ziffer-Min ohne Trenner) falsch als reine Dezimal
+#     lesen.
+#
+# Aus dem typischen Sammler-Workflow "GPS-Log aus dem Handheld exportiert
+# und die Roh-NMEA-Zeile ins Fundort-Feld kopiert" oder "GPX-Datei mit exif-
+# tool -x GPSPosition-Ausgabe (im NMEA-Format) uebernommen" entstand damit
+# silenter Koordinaten-Datenverlust bei der Migration; besonders schwer
+# erkennbar, weil die (46.508333, 7.755)-Werte ohne Fehler-Report einfach
+# als None gespeichert wurden.
+#
+# Ziffernbreite-Zwang macht das Pattern eindeutig:
+#   - Lat: exakt 2 Ziffern Grad + exakt 2 Ziffern Minuten (Ganzzahl-Anteil vor
+#     Dezimal). Reine Dezimal-Grad wie "46.5" hat nur 2 Ziffern vor dem Punkt
+#     und faellt nicht in den 4-Ziffer-Ganzzahl-Match.
+#   - Lon: exakt 3 Ziffern Grad + exakt 2 Ziffern Minuten (Ganzzahl-Anteil).
+#     Reine Dezimal-Grad wie "7.5" hat nur 1 Ziffer, "07.5" nur 2 - Ambiguitaet
+#     zu 007° (Dreistellen-Grad mit fuehrenden Nullen) waere theoretisch
+#     moeglich, aber NMEA-Konvention verlangt IMMER die fuehrende Null-Padding
+#     bei Longitude (``007`` statt ``7``), also ``00745`` (5 Ziffern) - reine
+#     Dezimal-Formen erreichen die 5-Ziffer-Klasse nur mit einer Ganzzahl >= 10000,
+#     was ausserhalb des ±180-Bereichs liegt und via _validate ausgefiltert wird.
+#
+# Kollisionsfrei zu bestehenden Patterns:
+#   - :data:`_DECIMAL_PAIR` (Separator [ \\t,;/&~|]): das ``4630.500,N,00745.300,E``-
+#     Muster koennte auf ``4630.500,N`` das DECIMAL_PAIR-Pattern treffen (Zahl +
+#     Komma + Direction), aber die Ganzzahl ``4630.500`` > 90 faellt in
+#     _validate durch und liefert None; der NMEA-Zweig laeuft VOR _DECIMAL_PAIR.
+#   - :data:`_ISO6709_COMPACT_DM` (verlangt ±-Vorzeichen): NMEA hat N/S/E/W-
+#     Buchstaben stattdessen, keine Ambiguitaet.
+#   - :data:`_PREFIX_PAIR`/:data:`_SUFFIX_PAIR_NO_SEP`: die 4/5-Ziffer-Kompakt-
+#     Grad-Minuten-Struktur ist strukturell disjunkt zur ein-/zwei-Ziffer-Dezimal-
+#     Grad-Form (46.5, 7.5) - der NMEA-Match verlangt zusammenhaengende 4-Ziffer-
+#     Lat und 5-Ziffer-Lon vor der Dezimalstelle, was Dezimal-Grad-Formen nicht
+#     erfuellen.
+#
+# Trenner zwischen den vier Feldern (Lat-Zahl, Lat-Dir, Lon-Zahl, Lon-Dir) ist
+# entweder Komma (NMEA-Standard), Whitespace (informal Copy-Paste) oder beide -
+# das Pattern akzeptiert Komma-Whitespace-Kombinationen via ``\\s*,?\\s*`` (analog
+# zu :data:`_DECIMAL_PAIR`, wo die Kombination optionaler Whitespace um Komma
+# etabliert ist). Die Direction-Buchstaben sind case-insensitive (Caps-Lock-
+# Notizen aus geerbten Sammlungs-Etiketten). ``O`` als deutsche Ost-Notation
+# spiegelt die :data:`_DMS`-/:data:`_PREFIX_PAIR`-Konvention (in NMEA selbst
+# ist nur ``E`` Standard, aber der DE-Nutzer schreibt oft ``O``).
+_NMEA_LATLON = re.compile(
+    r"""(?:^|[\s,;/$])                    # Anker: String-Anfang oder Trenner
+        (\d{2})(\d{2}(?:[.,]\d+)?)        # Lat: 2 Ziffern Grad + 2 Ziffern Min(.frac)
+        \s*,?\s*                          # Komma und/oder Whitespace
+        ([NSns])                          # Lat-Direction (case-insensitive)
+        \s*,?\s*                          # Komma und/oder Whitespace
+        (\d{3})(\d{2}(?:[.,]\d+)?)        # Lon: 3 Ziffern Grad + 2 Ziffern Min(.frac)
+        \s*,?\s*                          # Komma und/oder Whitespace
+        ([EWewOo])                        # Lon-Direction (case-insensitive)
+    """,
+    re.VERBOSE,
+)
 # ISO 6709 Compact-DMS-Form: ``+DDMMSS+DDDMMSS/`` bzw. ``+DDMMSS.SS+DDDMMSS.SS/``
 # - Grad + Minuten + Sekunden ohne Trenner, Dezimalstellen (optional) haengen
 # an den Sekunden. Ziffernbreite: Lat = 2+2+2 = 6 Ganzzahl-Ziffern, Lon =
@@ -4072,6 +4153,27 @@ def parse_coordinates(text) -> tuple[float, float] | None:
         a = _to_float(n1) * _sign(d1)
         b = _to_float(n2) * _sign(d2)
         lat, lon = _orient(a, d1, b, d2)
+        return _validate(lat, lon)
+
+    # NMEA-0183 Sentence-Form: "4630.500,N,00745.300,E" - Grad+Minuten-Kompakt-
+    # Struktur mit N/S/E/W-Direction-Buchstaben statt Vorzeichen (siehe
+    # :data:`_NMEA_LATLON`-Kommentar). Vor :data:`_DECIMAL_PAIR` geprueft, weil
+    # das generische Zahl-Paar-Pattern die 4-Ziffer-Latitude "4630.500" als reine
+    # Dezimal 4630.5 lesen wuerde - via _validate faellt der Wert ausserhalb
+    # ±90 durch und liefert None, was die NMEA-Erkennung blockt. Nach
+    # :data:`_PREFIX_PAIR` einsortiert, weil die generischen Prefix-Direction-
+    # Formen ("N 46 E 7") die typische Notation ohne Grad-Minuten-Kompakt-
+    # Struktur behandeln - kollisionsfrei, weil NMEA obligatorische 4/5-Ziffer-
+    # Ganzzahl-Vorstand-Struktur verlangt, die die einfache Dezimal-Form nicht
+    # erfuellt.
+    m = _NMEA_LATLON.search(s)
+    if m:
+        deg_a, min_a, dir_a, deg_b, min_b, dir_b = m.groups()
+        a = _to_float(deg_a) + _to_float(min_a) / 60
+        b = _to_float(deg_b) + _to_float(min_b) / 60
+        a *= _sign(dir_a)
+        b *= _sign(dir_b)
+        lat, lon = _orient(a, dir_a, b, dir_b)
         return _validate(lat, lon)
 
     m = _DECIMAL_PAIR.search(s)

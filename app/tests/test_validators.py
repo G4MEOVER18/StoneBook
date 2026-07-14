@@ -4953,6 +4953,97 @@ def test_parse_coordinates_iso6709_compact_ambiguity():
     assert lat == pytest.approx(46.504166667, abs=1e-6)
 
 
+def test_parse_coordinates_nmea_0183_sentence():
+    """NMEA-0183 Sentence-Form: ``DDMM.mmmm,N,DDDMM.mmmm,E`` mit N/S/E/W-
+    Direction-Buchstaben statt Vorzeichen und Komma als Field-Separator.
+
+    Standard-Ausgabe des NMEA-0183-Protokolls, das jedes GPS-Geraet als
+    Rohdaten-Ausgabe unterstuetzt (Serial-Port, USB-Debug, gpsd-Ausgabe,
+    viele Handheld-GPS-Empfaenger im "NMEA-Dump"-Modus) und jede GPX-/KML-
+    Konverter-Kette als Zwischenformat verwendet. Verbreitet in Rohdaten-
+    Logs aus Fahrzeug-/Boots-Navigationsgeraeten, in exiftool-XMP-GPS-
+    Exporten und in gpsbabel-Ausgabe im "$GPGGA"-/"$GPRMC"-Sentence-Format.
+
+    Bisher fielen alle NMEA-Notationen still auf None: _ISO6709_COMPACT_DM
+    verlangt ±-Vorzeichen, _DECIMAL_PAIR liest "4630.500" als 4630.5 (out-of-
+    range, _validate liefert None), _PREFIX_PAIR/_SUFFIX_PAIR_NO_SEP gehen
+    von Dezimal-Grad-Notation aus.
+    """
+    expected_lat = 46.0 + 30.5 / 60  # 46.508333...
+    expected_lon = 7.0 + 45.3 / 60   # 7.755
+
+    # NMEA-Standard mit Komma-Trenner
+    lat, lon = parse_coordinates("4630.500,N,00745.300,E")
+    assert abs(lat - expected_lat) < 1e-6
+    assert abs(lon - expected_lon) < 1e-6
+
+    # Copy-Paste-Variante mit Whitespace statt Komma
+    lat, lon = parse_coordinates("4630.500 N 00745.300 E")
+    assert abs(lat - expected_lat) < 1e-6
+    assert abs(lon - expected_lon) < 1e-6
+
+    # Compact ohne Trenner um die Direction-Buchstaben
+    lat, lon = parse_coordinates("4630.500N 00745.300E")
+    assert abs(lat - expected_lat) < 1e-6
+    assert abs(lon - expected_lon) < 1e-6
+
+    # Mixed: Komma zwischen Zahl und Direction, Whitespace zwischen Feld-Paaren
+    lat, lon = parse_coordinates("4630.500,N 00745.300,E")
+    assert abs(lat - expected_lat) < 1e-6
+    assert abs(lon - expected_lon) < 1e-6
+
+    # Suedhalbkugel/Westhalbkugel
+    lat, lon = parse_coordinates("4630.500,S,00745.300,W")
+    assert abs(lat - -expected_lat) < 1e-6
+    assert abs(lon - -expected_lon) < 1e-6
+
+    # Case-insensitive
+    lat, lon = parse_coordinates("4630.500,n,00745.300,e")
+    assert abs(lat - expected_lat) < 1e-6
+
+    # DE ``O`` als Ost (Sammler-typische DE-Notation)
+    lat, lon = parse_coordinates("4630.500,N,00745.300,O")
+    assert abs(lon - expected_lon) < 1e-6
+
+    # Vollstaendige GPGGA-NMEA-Sentence (aus Roh-GPS-Log)
+    lat, lon = parse_coordinates(
+        "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"
+    )
+    assert abs(lat - (48.0 + 7.038 / 60)) < 1e-6
+    assert abs(lon - (11.0 + 31.000 / 60)) < 1e-6
+
+    # Integer-only NMEA (Minuten ohne Dezimal, spec-erlaubt)
+    lat, lon = parse_coordinates("4630N 00745E")
+    assert abs(lat - 46.5) < 1e-6
+    assert abs(lon - 7.75) < 1e-6
+
+    # Grenzfaelle Aequator/Greenwich (00 00.000 in beiden Achsen)
+    assert parse_coordinates("0000.000,N,00000.000,E") == (0.0, 0.0)
+
+    # Extremer Rand ±90 Lat / ±180 Lon (Nordpol / 180° Meridian)
+    lat, lon = parse_coordinates("8959.9,N,17959.9,E")
+    assert lat == pytest.approx(89.99833, abs=1e-4)
+    assert lon == pytest.approx(179.99833, abs=1e-4)
+
+    # Out-of-Range: Latitude > 90 (95° geht nicht)
+    assert parse_coordinates("9530.5,N,00745.3,E") is None
+    # Out-of-Range: Longitude > 180 (185° geht nicht)
+    assert parse_coordinates("4630.5,N,18530.3,E") is None
+
+    # Regress-Anker: bestehende Formen bleiben unveraendert
+    # Reine Dezimal-Grad (kein NMEA)
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    # Suffix mit Direction ohne NMEA-Struktur
+    assert parse_coordinates("46.5N 7.5E") == (46.5, 7.5)
+    # ISO-6709-Compact-DM mit ±-Vorzeichen bleibt
+    assert parse_coordinates("+4630+00745") == (46.5, 7.75)
+    lat, lon = parse_coordinates("+4630.500+00745.300")
+    assert abs(lat - expected_lat) < 1e-6
+    # DMS Suffix-Form bleibt (Grad-Symbol vorhanden)
+    lat, lon = parse_coordinates("46°30'15\" N, 7°45'30\" E")
+    assert abs(lat - (46.5 + 15/3600)) < 1e-6
+
+
 def test_parse_coordinates_typografisches_minus():
     """U+2212 (Minus-Zeichen) wird wie ASCII-Hyphen als Negativ-Vorzeichen behandelt."""
     # Negative Latitude (Suedhalbkugel)
