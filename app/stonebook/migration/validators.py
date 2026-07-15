@@ -128,6 +128,45 @@ _DECADE = re.compile(
     r"^\s*(\d{4})(?:[\- ]?(?:ern|er|s))(?:[-\s]+jahren?)?\s*$",
     re.IGNORECASE,
 )
+# Dekaden-Spanne ("1980er-1990er", "1980s-1990s", "1980er - 1990er",
+# "1980er/1990er", "1980er–1990er", "1980er bis 1990er", "1980s to 1990s",
+# "1980er-Jahre - 1990er-Jahre") - spiegelt _YEAR_RANGE / _YEAR_RANGE_WORD auf
+# die Dekaden-Achse. In geerbten Sammler-/Museums-Notizen sehr verbreitet,
+# wenn der Vorbesitzer den Erwerbs-/Fund-Zeitraum nur ungefaehr auf zwei
+# aufeinanderfolgende Dekaden datieren konnte ("Erwerb 1980er-1990er",
+# "Sammlungsaufbau 1980s to 2000s"). Ohne dedizierte Spanne-Erkennung fielen
+# alle Formen stille auf None, weil _DECADE ein einzelnes Jahrzehnt verlangt
+# und _YEAR_RANGE zwei reine 4-Ziffer-Anker ohne er/s-Suffix erwartet - ein
+# stiller Datenverlust auf einer sehr typischen Erbschafts-/Import-Notation.
+#
+# Konvention identisch zu _YEAR_RANGE / _YEAR_RANGE_WORD / _DECADE: Startjahr
+# der linken Dekade als ISO-Datum (1980er-1990er -> 1980-01-01), die Range-
+# Annotation bleibt im Freitext (notizen). Inverted Spanne ("1990er-1980er",
+# Tippfehler) liefert die linke Dekade, spiegelt _YEAR_RANGE-Konvention.
+#
+# Beide Enden erlauben die vollen Dekaden-Suffix-Alternanten aus _DECADE
+# (ern/er/s) samt optionalem [\-\s]?-Trenner vor dem Suffix ("1980-er"-Form)
+# und dem optionalen [-\s]+jahren?-Trailer ("1980er Jahre", "1980er-Jahre",
+# "1980er Jahren") - Mischformen wie "1980er-1990s" oder "1980s bis 1990er"
+# werden toleriert (in Sammler-Notizen kommen DE-/EN-Suffixe gemischt vor).
+#
+# Symbolischer Separator [-–—−/] deckt ASCII-Bindestrich, En-Dash (U+2013),
+# Em-Dash (U+2014), Minus-Zeichen (U+2212) und Slash (Tagebuch-Notation) ab -
+# identisch zur _YEAR_RANGE-Separator-Klasse. Wort-Separator (bis/to/till/
+# until) verlangt Whitespace links und rechts, spiegelt _YEAR_RANGE_WORD;
+# ohne Whitespace ("1980erbis1990er") kein Match, weil die Wort-Form von der
+# natuerlichen Satzform lebt.
+#
+# Vor _DECADE geprueft, damit die Spanne-Form (die ein einzelnes Dekaden-
+# Pattern strukturell enthaelt) nicht vom base _DECADE geblockt wird.
+# Kollisionsfrei zu _YEAR_RANGE (dort keine er/s-Suffixe) und zu _RELATIVE_
+# DECADE (dort obligatorischer Anfang/Mitte/Ende-Praefix).
+_DECADE_RANGE = re.compile(
+    r"^\s*(\d{4})(?:[\- ]?(?:ern|er|s))(?:[-\s]+jahren?)?"
+    r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"(\d{4})(?:[\- ]?(?:ern|er|s))(?:[-\s]+jahren?)?\s*$",
+    re.IGNORECASE,
+)
 # Mehrjahres-Spanne ("1950-1960", "1950–1960", "1950/1960", "1950 - 1960") -
 # verbreitet in geerbten Sammlungs-Notizen mit unsicherem Funddatum, wenn der
 # vorherige Besitzer den Fund nicht genauer datieren konnte ("zwischen 1950
@@ -3726,6 +3765,19 @@ def parse_iso_date(text) -> str | None:
         year = int(m.group(1))
         if 1800 <= year <= 2999:
             return f"{year:04d}-01-01"
+        return None
+    # Dekaden-Spanne ("1980er-1990er", "1980s to 1990s", "1980er - 1990er",
+    # "1980er/1990er"). Vor _DECADE geprueft, damit die Spanne-Form (die
+    # strukturell ein einzelnes Dekaden-Pattern enthaelt) nicht vom base
+    # _DECADE-Pattern geblockt wird. Konvention identisch zu _YEAR_RANGE /
+    # _YEAR_RANGE_WORD: Startjahr der linken Dekade als ISO-Datum (spiegelt
+    # _DECADE 1980er -> 1980-01-01). Inverted Spanne ("1990er-1980er",
+    # Tippfehler) liefert das erste Jahrzehnt.
+    m = _DECADE_RANGE.match(s)
+    if m:
+        year_start, year_end = int(m.group(1)), int(m.group(2))
+        if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
+            return f"{year_start:04d}-01-01"
         return None
     # Jahrzehnt-Notation ("1980er", "1980s") → Dekaden-Startjahr. Vor _YEAR_MONTH
     # ist nicht noetig (das Match endet auf 'er'/'s'), aber vor allen anderen

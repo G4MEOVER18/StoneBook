@@ -2846,6 +2846,87 @@ def test_parse_iso_date_mehrjahres_spanne_zwischen_ungueltig():
     assert parse_iso_date("between 1800 and 3000") is None
 
 
+def test_parse_iso_date_dekaden_spanne():
+    """Dekaden-Spanne ('1980er-1990er', '1980s to 1990s') spiegelt _YEAR_RANGE /
+    _YEAR_RANGE_WORD auf die Dekaden-Achse: Startjahr der linken Dekade als
+    ISO-Datum, spiegelt die _DECADE-Konvention ('1980er' -> '1980-01-01').
+
+    In geerbten Sammler-/Museums-Notizen sehr verbreitet, wenn der Vorbesitzer
+    den Erwerbs-/Fund-Zeitraum nur ungefaehr auf zwei aufeinanderfolgende
+    Dekaden datieren konnte ('Erwerb 1980er-1990er', 'Sammlungsaufbau 1980s
+    to 2000s'). Vor der Erweiterung fielen alle Formen still auf None (kein
+    stiller Datenverlust auf typischer Erbschafts-/Import-Notation).
+    """
+    # Symbolischer Separator (ASCII-Bindestrich als Basisform)
+    assert parse_iso_date("1980er-1990er") == "1980-01-01"
+    assert parse_iso_date("1980s-1990s") == "1980-01-01"
+    # Symbolische Separator-Varianten spiegeln _YEAR_RANGE-Klasse
+    assert parse_iso_date("1980er - 1990er") == "1980-01-01"
+    assert parse_iso_date("1980er–1990er") == "1980-01-01"   # En-Dash
+    assert parse_iso_date("1980er—1990er") == "1980-01-01"   # Em-Dash
+    assert parse_iso_date("1980er−1990er") == "1980-01-01"   # U+2212 Minus
+    assert parse_iso_date("1980er/1990er") == "1980-01-01"
+    assert parse_iso_date("1980er / 1990er") == "1980-01-01"
+    # Wort-Separator (DE bis / EN to/till/until) spiegelt _YEAR_RANGE_WORD
+    assert parse_iso_date("1980er bis 1990er") == "1980-01-01"
+    assert parse_iso_date("1980s to 1990s") == "1980-01-01"
+    assert parse_iso_date("1980s till 1990s") == "1980-01-01"
+    assert parse_iso_date("1980s until 1990s") == "1980-01-01"
+    # Case-insensitiv (BIS/TO aus Caps-Lock-Notizen)
+    assert parse_iso_date("1980ER-1990ER") == "1980-01-01"
+    assert parse_iso_date("1980S TO 1990S") == "1980-01-01"
+    # Gemischte DE-/EN-Suffixe (in Sammler-Notizen kommen DE/EN vor)
+    assert parse_iso_date("1980er-1990s") == "1980-01-01"
+    assert parse_iso_date("1980s bis 1990er") == "1980-01-01"
+    # Dativ-Plural-Substantiviert (spiegelt _DECADE-Alternante 'ern')
+    assert parse_iso_date("1980ern-1990ern") == "1980-01-01"
+    assert parse_iso_date("1980ern bis 1990ern") == "1980-01-01"
+    # Mit Jahre-Trailer (Nominativ und Dativ-Plural)
+    assert parse_iso_date("1980er Jahre - 1990er Jahre") == "1980-01-01"
+    assert parse_iso_date("1980er Jahren bis 1990er Jahren") == "1980-01-01"
+    # Duden-Kompositum (hyphenierter Trailer)
+    assert parse_iso_date("1980er-Jahre - 1990er-Jahre") == "1980-01-01"
+    # Inverted Spanne (Tippfehler) liefert die linke Dekade, spiegelt _YEAR_RANGE
+    assert parse_iso_date("1990er-1980er") == "1990-01-01"
+    # Kombinationen mit bestehenden Modifikatoren (ca./Klammern/Trailing-Punkt)
+    assert parse_iso_date("ca. 1980er-1990er") == "1980-01-01"
+    assert parse_iso_date("circa 1980s to 1990s") == "1980-01-01"
+    assert parse_iso_date("(1980er-1990er)") == "1980-01-01"
+    assert parse_iso_date("[1980er-1990er]") == "1980-01-01"
+    assert parse_iso_date("1980er-1990er.") == "1980-01-01"
+    # Kombination mit _TEMPORAL_PREFIX (Standard-praepositionale Wendung
+    # "in den 1980er-1990er Jahren" = Praeposition "in" + Artikel "den" +
+    # Dekaden-Spanne + Trailer)
+    assert parse_iso_date("in den 1980er-1990er Jahren") == "1980-01-01"
+    # Whitespace-Toleranz
+    assert parse_iso_date("  1980er - 1990er  ") == "1980-01-01"
+
+
+def test_parse_iso_date_dekaden_spanne_ungueltig():
+    """Jahr ausserhalb [1800, 2999] oder fehlender Wort-Separator-Whitespace → None."""
+    # Beide Dekaden muessen im gueltigen Bereich sein
+    assert parse_iso_date("1700er-1900er") is None
+    assert parse_iso_date("1980er-3000er") is None
+    assert parse_iso_date("1500er-1600er") is None
+    # Zweistellige Kurzform bleibt mehrdeutig (spiegelt _DECADE)
+    assert parse_iso_date("80er-90er") is None
+    assert parse_iso_date("80s-90s") is None
+    # Fehlender Suffix auf einer Seite kein Match (waere sonst _YEAR_RANGE)
+    assert parse_iso_date("1980-1990er") is None
+    assert parse_iso_date("1980er-1990") is None
+    # Ohne Whitespace um das Wort-Schluesselwort kein Match (lebt von Satzform)
+    assert parse_iso_date("1980erbis1990er") is None
+    assert parse_iso_date("1980sto1990s") is None
+    # Unbekanntes Schluesselwort
+    assert parse_iso_date("1980er oder 1990er") is None
+    # Bestehende Formen bleiben unveraendert (kein Regress)
+    assert parse_iso_date("1980er") == "1980-01-01"        # Dekade
+    assert parse_iso_date("1980er-Jahre") == "1980-01-01"  # Kompositum
+    assert parse_iso_date("1950-1960") == "1950-01-01"     # Jahres-Spanne
+    assert parse_iso_date("1950 bis 1960") == "1950-01-01" # Jahres-Wort-Spanne
+    assert parse_iso_date("1980") == "1980-01-01"          # Einzeljahr
+
+
 def test_parse_iso_date_quartale():
     """Quartal + Jahr ergeben den Quartals-Startmonat (Jan/Apr/Jul/Okt)."""
     # Kurzform "Q1 2024" mit verschiedenen Separatoren
