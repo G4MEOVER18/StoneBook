@@ -2629,6 +2629,73 @@ _CENTURY_ROMAN_EN = re.compile(
     re.IGNORECASE,
 )
 
+# Jahrhundert-Spanne ("19.-20. Jahrhundert", "19th to 20th century",
+# "XIX.-XX. Jahrhundert") - spiegelt _YEAR_RANGE / _YEAR_RANGE_WORD /
+# _DECADE_RANGE auf die Jahrhundert-Achse. In Museums-Etiketten und geerbten
+# Sammlungs-Notizen sehr verbreitet, wenn der Vorbesitzer die Provenienz nur
+# ungefaehr auf zwei aufeinanderfolgende Jahrhunderte einordnen konnte
+# ("Erwerb aus dem 19.-20. Jahrhundert", "Sammlung aus dem XIX.-XX. Jhdt.").
+# Bisher fielen alle Formen still auf None, weil _CENTURY_* eine einzelne
+# Jahrhundert-Zahl verlangen (\$-Anker nach dem Wort-Suffix) - stiller Daten-
+# verlust auf einer sehr typischen Provenienz-Datierungs-Notation, besonders
+# bei generationsuebergreifenden Museums-Sammlungen mit vager Zeit-Achse.
+#
+# Konvention identisch zu _YEAR_RANGE / _YEAR_RANGE_WORD / _DECADE_RANGE /
+# _CENTURY_*: Startjahr des linken Jahrhunderts als ISO-Datum
+# ("19.-20. Jahrhundert" -> "1800-01-01"). Inverted Spanne ("20.-19. Jhdt.",
+# Tippfehler) liefert das linke Jahrhundert (spiegelt _YEAR_RANGE-Konvention).
+#
+# Separator-Alternante vereinigt die Symbol-Klasse [-–—−/] (ASCII-Bindestrich,
+# En-Dash U+2013, Em-Dash U+2014, Minus U+2212, Slash) und die Wort-Klasse
+# (bis/to/till/until mit obligatorischem Whitespace) - spiegelt _YEAR_RANGE /
+# _DECADE_RANGE. Der Wort-Zweig verlangt Whitespace, weil "19bis20" nie in
+# natuerlicher Notation vorkommt.
+#
+# DE-Arabisch akzeptiert die volle _CENTURY_DE-Suffix-Menge (jahrhundert/
+# jahrhdt/jahrh/jhrdt/jhdt/jhrd/jhd/jh) mit optionalem trailing Punkt sowie
+# den optionalen Ordinal-Punkt nach jeder Jahrhundert-Zahl ("19.", "20.").
+# EN-Arabisch spiegelt _CENTURY_EN mit optionalem Ordinalsuffix (st/nd/rd/th)
+# an jeder Jahrhundert-Zahl und der EN-Suffix-Menge (century/cent./c.).
+# DE-Roemisch spiegelt _CENTURY_ROMAN_DE mit der [IVXLCM]+ Zeichenklasse
+# und Lookup ueber _ROMAN_CENTURY_VALUES. EN-Roemisch spiegelt
+# _CENTURY_ROMAN_EN (keine Ordinal-Suffixe fuer Roemisch in EN).
+#
+# Vor _CENTURY_* geprueft, damit die Spanne-Form (die strukturell ein
+# einzelnes Jahrhundert-Pattern enthaelt) nicht vom base _CENTURY_*-
+# Pattern via \$-Anker geblockt wird. Kollisionsfrei zu _YEAR_RANGE (dort
+# vier Ziffern, hier nur ein bis zwei Ziffern plus Wort-Suffix), zu
+# _DECADE_RANGE (dort er/s-Suffix, hier Jahrhundert-Suffix), zu
+# _RELATIVE_CENTURY_* (dort obligatorischer Anfang/Mitte/Ende-Praefix,
+# hier keiner).
+_CENTURY_RANGE_DE = re.compile(
+    r"^\s*(\d{1,2})\s*\.?\s*"
+    r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"(\d{1,2})\s*\.?\s*"
+    r"(?:jahrhundert|jahrhdt|jahrh|jhrdt|jhdt|jhrd|jhd|jh)\.?\s*$",
+    re.IGNORECASE,
+)
+_CENTURY_RANGE_EN = re.compile(
+    r"^\s*(\d{1,2})(?:st|nd|rd|th)?"
+    r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"(\d{1,2})(?:st|nd|rd|th)?"
+    r"\s+(?:century|cent\.?|c\.)\s*$",
+    re.IGNORECASE,
+)
+_CENTURY_RANGE_ROMAN_DE = re.compile(
+    r"^\s*([IVXLCM]+)\s*\.?\s*"
+    r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"([IVXLCM]+)\s*\.?\s*"
+    r"(?:jahrhundert|jahrhdt|jahrh|jhrdt|jhdt|jhrd|jhd|jh)\.?\s*$",
+    re.IGNORECASE,
+)
+_CENTURY_RANGE_ROMAN_EN = re.compile(
+    r"^\s*([IVXLCM]+)\.?"
+    r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"([IVXLCM]+)\.?"
+    r"\s+(?:century|cent\.?|c\.)\s*$",
+    re.IGNORECASE,
+)
+
 # Relative Position innerhalb eines Jahrhunderts ("Anfang 19. Jahrhundert",
 # "Mitte 20. Jahrhundert", "Ende 19. Jhdt.", "early 19th century",
 # "mid-19th century", "late 20th c."). Spiegelt _RELATIVE_DECADE (relative
@@ -3820,6 +3887,36 @@ def parse_iso_date(text) -> str | None:
             year = (century - 1) * 100 + offset
             if 1800 <= year <= 2999:
                 return f"{year:04d}-01-01"
+        return None
+    # Jahrhundert-Spanne ("19.-20. Jahrhundert", "19th to 20th century",
+    # "XIX.-XX. Jahrhundert"). Vor _CENTURY_* geprueft, damit die Spanne-Form
+    # (die strukturell ein einzelnes Jahrhundert-Pattern enthaelt) nicht vom
+    # base _CENTURY_*-Pattern via \$-Anker geblockt wird. Konvention identisch
+    # zu _YEAR_RANGE / _DECADE_RANGE / _CENTURY_*: Startjahr des linken
+    # Jahrhunderts als ISO-Datum. Inverted Spanne ("20.-19. Jhdt.", Tippfehler)
+    # liefert das linke Jahrhundert.
+    m = _CENTURY_RANGE_DE.match(s) or _CENTURY_RANGE_EN.match(s)
+    if m:
+        century_start, century_end = int(m.group(1)), int(m.group(2))
+        year_start = (century_start - 1) * 100
+        year_end = (century_end - 1) * 100
+        if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
+            return f"{year_start:04d}-01-01"
+        return None
+    # Roemisch-Jahrhundert-Spanne ("XIX.-XX. Jahrhundert", "XIX to XX century").
+    # Spiegelt _CENTURY_RANGE_DE/_EN auf die Roemisch-Achse - Museums-Etiketten
+    # mit gemischter Roemisch-Notation aus geerbten europaeischen Sammlungen.
+    # Non-kanonische Roemisch-Tokens (nicht im :data:`_ROMAN_CENTURY_VALUES`-
+    # Map) fallen auf None.
+    m = _CENTURY_RANGE_ROMAN_DE.match(s) or _CENTURY_RANGE_ROMAN_EN.match(s)
+    if m:
+        century_start = _ROMAN_CENTURY_VALUES.get(m.group(1).upper())
+        century_end = _ROMAN_CENTURY_VALUES.get(m.group(2).upper())
+        if century_start is not None and century_end is not None:
+            year_start = (century_start - 1) * 100
+            year_end = (century_end - 1) * 100
+            if 1800 <= year_start <= 2999 and 1800 <= year_end <= 2999:
+                return f"{year_start:04d}-01-01"
         return None
     # Jahrhundert-Notation ("19. Jahrhundert", "19th century", "20. Jh."). Auf
     # das Jahrhundert-Startjahr abgebildet (Konvention analog Dekaden-Notation:

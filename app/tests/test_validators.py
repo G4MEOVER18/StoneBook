@@ -2433,6 +2433,104 @@ def test_parse_iso_date_relative_jahrhundert():
     assert parse_iso_date("Ende 30. Jahrhundert") == "2999-01-01"
 
 
+def test_parse_iso_date_jahrhundert_spanne():
+    """Jahrhundert-Spanne ('19.-20. Jahrhundert', '19th to 20th century',
+    'XIX.-XX. Jahrhundert') spiegelt _YEAR_RANGE / _DECADE_RANGE auf die
+    Jahrhundert-Achse: Startjahr des linken Jahrhunderts als ISO-Datum,
+    spiegelt die _CENTURY_*-Konvention ('19. Jahrhundert' -> '1800-01-01').
+
+    In Museums-Etiketten und geerbten Sammlungs-Notizen sehr verbreitet, wenn
+    der Vorbesitzer die Provenienz nur ungefaehr auf zwei aufeinanderfolgende
+    Jahrhunderte einordnen konnte. Vor der Erweiterung fielen alle Formen
+    still auf None (stiller Datenverlust auf typischer Provenienz-Notation).
+    """
+    # DE-Arabisch symbolischer Separator
+    assert parse_iso_date("19.-20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19. - 20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19-20 Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19./20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19.–20. Jahrhundert") == "1800-01-01"  # En-Dash
+    assert parse_iso_date("19.—20. Jahrhundert") == "1800-01-01"  # Em-Dash
+    assert parse_iso_date("19.−20. Jahrhundert") == "1800-01-01"  # U+2212 Minus
+    # DE-Arabisch mit Duden-Kurzformen (jhdt/jh/jhrd)
+    assert parse_iso_date("19.-20. Jhdt.") == "1800-01-01"
+    assert parse_iso_date("19.-20. Jh.") == "1800-01-01"
+    assert parse_iso_date("19.-20.Jhdt.") == "1800-01-01"
+    # DE-Arabisch Wort-Separator (bis/to/till/until)
+    assert parse_iso_date("19. bis 20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19 bis 20 Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("19 to 20 Jahrhundert") == "1800-01-01"
+    # EN-Arabisch symbolischer Separator
+    assert parse_iso_date("19th-20th century") == "1800-01-01"
+    assert parse_iso_date("19-20 century") == "1800-01-01"
+    assert parse_iso_date("19-20 c.") == "1800-01-01"
+    assert parse_iso_date("19th - 20th century") == "1800-01-01"
+    assert parse_iso_date("19th/20th century") == "1800-01-01"
+    assert parse_iso_date("19th–20th century") == "1800-01-01"
+    # EN-Arabisch Wort-Separator
+    assert parse_iso_date("19th to 20th century") == "1800-01-01"
+    assert parse_iso_date("19th till 20th century") == "1800-01-01"
+    assert parse_iso_date("19th until 20th century") == "1800-01-01"
+    # DE-Roemisch symbolisch und Wort
+    assert parse_iso_date("XIX.-XX. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("XIX-XX Jhdt.") == "1800-01-01"
+    assert parse_iso_date("XIX–XX Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("XIX. bis XX. Jhdt.") == "1800-01-01"
+    # EN-Roemisch
+    assert parse_iso_date("XIX-XX century") == "1800-01-01"
+    assert parse_iso_date("XIX to XX century") == "1800-01-01"
+    assert parse_iso_date("XIX.-XX. c.") == "1800-01-01"
+    # Case-insensitiv (BIS/TO aus Caps-Lock-Notizen)
+    assert parse_iso_date("19. BIS 20. JAHRHUNDERT") == "1800-01-01"
+    assert parse_iso_date("19TH TO 20TH CENTURY") == "1800-01-01"
+    # Inverted Spanne (Tippfehler) liefert linkes Jahrhundert
+    assert parse_iso_date("20.-19. Jahrhundert") == "1900-01-01"
+    assert parse_iso_date("XX.-XIX. Jhdt.") == "1900-01-01"
+    # Kombinationen mit bestehenden Modifikatoren
+    assert parse_iso_date("ca. 19.-20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("(19.-20. Jahrhundert)") == "1800-01-01"
+    assert parse_iso_date("[19.-20. Jahrhundert]") == "1800-01-01"
+    assert parse_iso_date("19.-20. Jahrhundert.") == "1800-01-01"
+    # Kombination mit _TEMPORAL_PREFIX ("aus dem 19.-20. Jahrhundert")
+    assert parse_iso_date("aus dem 19.-20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("im 19.-20. Jhdt.") == "1800-01-01"
+    # Whitespace-Toleranz
+    assert parse_iso_date("  19.  -  20.  Jahrhundert  ") == "1800-01-01"
+
+
+def test_parse_iso_date_jahrhundert_spanne_ungueltig():
+    """Jahrhundert-Zahlen ausserhalb des 1800-2999-Bandes, non-kanonische
+    Roemisch-Tokens, fehlender Wort-Separator-Whitespace, oder fehlender
+    Suffix -> None."""
+    # 18. Jahrhundert (1700-1799) < 1800 - beide Enden unter Untergrenze
+    assert parse_iso_date("17.-18. Jahrhundert") is None
+    assert parse_iso_date("18.-19. Jahrhundert") is None
+    assert parse_iso_date("XVII.-XVIII. Jhdt.") is None
+    # 31. Jahrhundert (3000+) > 2999 - beide Enden ueber Obergrenze
+    assert parse_iso_date("30.-31. Jahrhundert") is None
+    assert parse_iso_date("19.-31. Jahrhundert") is None
+    # Non-kanonische Roemisch-Tokens (nicht in _ROMAN_CENTURY_VALUES)
+    assert parse_iso_date("IIII-XX Jahrhundert") is None
+    assert parse_iso_date("XIX-XXXV Jahrhundert") is None
+    # Ohne Whitespace um das Wort-Schluesselwort kein Match
+    assert parse_iso_date("19bis20 Jahrhundert") is None
+    assert parse_iso_date("19thto20th century") is None
+    # Ohne Century-Suffix keine Range (waere sonst reines Jahres-Range)
+    assert parse_iso_date("19.-20.") is None
+    assert parse_iso_date("XIX.-XX.") is None
+    # Bestehende Formen bleiben unveraendert (kein Regress)
+    assert parse_iso_date("19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("20th century") == "1900-01-01"
+    assert parse_iso_date("XIX. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("XX century") == "1900-01-01"
+    # Relative Formen bleiben unveraendert
+    assert parse_iso_date("Anfang 19. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("Mitte XIX. Jhdt.") == "1850-01-01"
+    # Dekaden-Spanne und Jahres-Spanne bleiben unveraendert
+    assert parse_iso_date("1980er-1990er") == "1980-01-01"
+    assert parse_iso_date("1950-1960") == "1950-01-01"
+
+
 def test_parse_iso_date_relative_jahrhundert_ungueltig():
     """Ausserhalb des 1800-2999-Bandes, ohne Wort-Suffix, oder Kollisionen -> None."""
     # 18. Jahrhundert = 1700-1799, komplett unter der 1800-Untergrenze
