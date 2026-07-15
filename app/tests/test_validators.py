@@ -43,6 +43,67 @@ def test_parse_iso_date_us_format_fallback():
     assert parse_iso_date("06/13/1500") is None
 
 
+def test_parse_iso_date_de_zweistelliges_jahr():
+    """DE-Kompakt-Datum mit zweistelligem Jahr ("13.06.24", "1.6.24", "13/06/24",
+    "13-06-24") mit Sammler-typischem Pivot 30 (00-30 -> 20YY, 31-99 -> 19YY).
+
+    Verbreitet in handschriftlichen Sammler-Notizen, aus Kassen-/Auktions-
+    Beleg-Scans, aus alten Excel-Tabellen mit Default-2-Ziffer-Jahr-Anzeige
+    und aus DE-/CH-typischen Beschriftungs-Etiketten, wo die verkuerzte
+    Notation Platz spart. Vor dem Fix fielen alle Formen still auf None,
+    weil das Feld dann in strptime auf keinem der 4-Ziffer-Formate matchte
+    und ``%y`` bewusst nicht in :data:`_DATE_FORMATS` steht (Python-strptime
+    nutzt Pivot 68/69, der ``13.06.68`` als 2068-06-13 lesen wuerde - 42
+    Jahre in der Zukunft, sicher nicht der Sammler-Intent). Nach dem Fix
+    greift eine dedizierte Regex-Vorpruefung vor dem strptime-Loop.
+    """
+    # Basisform: DD.MM.YY mit Punkt-Separator (DE-Standard)
+    assert parse_iso_date("13.06.24") == "2024-06-13"
+    assert parse_iso_date("1.6.24") == "2024-06-01"
+    # Ein- und zweistelliger Tag/Monat
+    assert parse_iso_date("1.1.24") == "2024-01-01"
+    assert parse_iso_date("31.12.24") == "2024-12-31"
+    # Slash- und Bindestrich-Separator (symmetrisch zu den 4-Ziffer-Formen)
+    assert parse_iso_date("13/06/24") == "2024-06-13"
+    assert parse_iso_date("13-06-24") == "2024-06-13"
+    # Pivot-Konvention: YY <= 30 -> 20YY, YY >= 31 -> 19YY
+    assert parse_iso_date("13.06.00") == "2000-06-13"
+    assert parse_iso_date("13.06.30") == "2030-06-13"
+    assert parse_iso_date("13.06.31") == "1931-06-13"
+    assert parse_iso_date("13.06.85") == "1985-06-13"
+    assert parse_iso_date("13.06.99") == "1999-06-13"
+    # Whitespace-Toleranz aussen
+    assert parse_iso_date("  13.06.24  ") == "2024-06-13"
+
+
+def test_parse_iso_date_de_zweistelliges_jahr_ungueltig():
+    """Ungueltige DD.MM.YY-Formen fallen auf None.
+
+    Semantisch ungueltige Kombinationen (Tag > 31, Monat > 12, nicht existente
+    Kalender-Tage wie 30. Februar) und strukturell nicht passende Formen
+    (Whitespace zwischen Zahl-Trennern, gemischte Separatoren, 1- oder
+    3-Ziffer-Jahr) werden abgewiesen.
+    """
+    # Tag > 31 / Monat > 12
+    assert parse_iso_date("32.13.24") is None
+    assert parse_iso_date("32.06.24") is None
+    assert parse_iso_date("13.13.24") is None
+    # Nicht existenter Kalendertag (Feb 30)
+    assert parse_iso_date("30.02.24") is None
+    # Whitespace zwischen Zahl-Trennern
+    assert parse_iso_date("13. 06. 24") is None
+    # Gemischte Separatoren (Back-Reference \2 verlangt Symmetrie)
+    assert parse_iso_date("13.06/24") is None
+    assert parse_iso_date("13/06.24") is None
+    assert parse_iso_date("13-06/24") is None
+    # Nur ein-Ziffer-Jahr (kein Match; strptime %y verlangt exakt zwei Ziffern)
+    assert parse_iso_date("13.06.2") is None
+    # 4-Ziffer-Jahr faellt weiter durch die etablierten Formate, nicht durch
+    # den neuen 2-Ziffer-Zweig (Regress-Anker)
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("1.1.2020") == "2020-01-01"
+
+
 def test_parse_iso_date_year_only():
     assert parse_iso_date("2024") == "2024-01-01"
     assert parse_iso_date("1999") == "1999-01-01"

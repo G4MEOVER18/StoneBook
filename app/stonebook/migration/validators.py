@@ -2230,6 +2230,44 @@ _COMPACT_YEAR_MONTH = re.compile(
     r"^\s*(\d{4})(\d{2})\s*$"
 )
 
+# DE-Kompakt-Datum mit zweistelligem Jahr: "13.06.24", "1.6.24", "13/06/24",
+# "13-06-24". Verbreitet in handschriftlichen Sammler-Notizen, aus Kassen-/
+# Auktions-Beleg-Scans, aus alten Excel-Tabellen mit Default-2-Ziffer-Jahr-
+# Anzeige und aus DE-/CH-typischen Beschriftungs-Etiketten, wo die verkuerzte
+# Notation Platz spart. Bisher fiel jede Form still auf None, weil die
+# :data:`_DATE_FORMATS`-strptime-Kette nur 4-Ziffer-Jahre kennt (``%Y``) und
+# ``%y`` bewusst nicht enthalten war (Python-strptime nutzt einen fixen
+# POSIX-Pivot bei 68/69, der fuer eine Mineral-Sammlung ungeeignet ist:
+# ``13.06.68`` wuerde als 2068 gelesen - 42 Jahre in der Zukunft, sicher
+# nicht der Sammler-Intent). Aus dem typischen Migrations-Workflow "alte
+# Excel-Datei mit DD.MM.YY-Spalte importieren" oder "Kassen-Beleg vom
+# Mineral-Boersen-Kauf abschreiben" entstand damit silenter Funddatum-
+# Datenverlust auf der zweistelligen Kurzform.
+#
+# Der Fix legt eine spezifische Regex-Vorpruefung VOR dem strptime-Loop,
+# die die drei DE-Separatoren (``.`` / ``/`` / ``-``) mit obligatorischer
+# Separator-Symmetrie via Back-Reference ``\2`` abdeckt (verhindert Mix-
+# Formen wie ``13.06/24``, die semantisch inkonsistent sind) und das
+# zweistellige Jahr mit einem sammler-typischen Pivot 30 aufloest:
+# ``YY <= 30`` -> ``20YY`` (00-30 auf 2000-2030), ``YY >= 31`` -> ``19YY``
+# (31-99 auf 1931-1999). Der Pivot 30 gibt einige Jahre Puffer fuer geplante
+# Foto-Sessions und Ausstellungs-Termine bis 2030, mappt aber alle
+# aelteren Sammler-Notizen mit YY >= 31 korrekt in das 20. Jhdt.
+# (Boersen-Kaeufe der 80er/90er, geerbte Museums-Etiketten der 30er-70er).
+# Kollisionsfrei zu :data:`_YEAR_ONLY` (vier Ziffern) und zu den strptime-
+# Formaten mit ``%Y`` (auch vier Ziffern) - die 2-Ziffer-Form wird nur
+# durch diese dedizierte Regex behandelt und faellt nicht in den strptime-
+# Loop durch. Tag/Monat-Validierung ueber :class:`datetime.date`-
+# Konstruktor (Feb 30 -> ValueError -> None). Kein Match bei Whitespace
+# innerhalb der Zahl-Trenner (``13. 06. 24`` matcht nicht, weil ``\2``
+# den identischen Separator ohne Whitespace verlangt) und keine
+# US-Interpretation (MM.DD.YY, MM/DD/YY, MM-DD-YY werden weiter nicht
+# unterstuetzt - die DE-Konvention ist im Schweizer Sammlungs-Kontext
+# dominant, US-Kompakt-Formen ohne Trenner-Symmetrie waeren mehrdeutig).
+_DAY_MONTH_2Y = re.compile(
+    r"^\s*(\d{1,2})([./-])(\d{1,2})\2(\d{2})\s*$"
+)
+
 # ISO 8601 Wochendatum: "2024-W25", "2024W25" (compact), "2024-W25-3" (mit Tag).
 # Konvention: ohne expliziten Wochentag → Montag der Woche (ISO-Wochenstart).
 # Verbreitet in Log-/Build-Stempeln und manchen Sammlungs-Notizen ("KW25 2024").
@@ -4075,6 +4113,34 @@ def parse_iso_date(text) -> str | None:
                 return datetime.date(year, month, day).isoformat()
             except ValueError:
                 return None
+    # Zweistelliges Jahr in DE-Kompakt-Notation ("13.06.24", "1.6.24",
+    # "13/06/24", "13-06-24") vor dem strptime-Loop aufloesen: die
+    # :data:`_DATE_FORMATS`-Kette fuehrt bewusst kein ``%y``-Format, weil
+    # Python-strptime einen fixen POSIX-Pivot 68/69 nutzt (00-68 -> 20YY,
+    # 69-99 -> 19YY), der fuer eine Mineral-Sammlung ungeeignet ist -
+    # ``13.06.68`` wuerde als 2068-06-13 gelesen (42 Jahre in der Zukunft
+    # zur aktuellen Sammlungs-Domaene). Der Pivot 30 (00-30 -> 20YY,
+    # 31-99 -> 19YY) spiegelt den sammler-typischen Datums-Kontext:
+    # aktuelle Boersen-Kaeufe und geplante Foto-Sessions bis 2030 bleiben
+    # im 21. Jhdt., alle YY >= 31 werden ins 20. Jhdt. mit den Sammlungs-
+    # klassischen Boersen-Kaufjahren 1931-1999 gemappt. Kollisionsfrei zu
+    # :data:`_YEAR_MONTH` (vier Ziffern erforderlich), :data:`_MONTH_NUMERIC_YEAR`
+    # (vier Ziffern als Jahr), :data:`_YEAR_RANGE` (zwei 4-Ziffer-Anker) und
+    # zu den 4-Ziffer-strptime-Formaten (``%Y`` verlangt vier Ziffern). Siehe
+    # :data:`_DAY_MONTH_2Y` fuer Details zu Struktur-Guards und Separator-
+    # Symmetrie.
+    m = _DAY_MONTH_2Y.match(s)
+    if m:
+        day = int(m.group(1))
+        month = int(m.group(3))
+        yy = int(m.group(4))
+        year = 2000 + yy if yy <= 30 else 1900 + yy
+        if 1 <= day <= 31 and 1 <= month <= 12:
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
+        return None
     for fmt in _DATE_FORMATS:
         try:
             d = datetime.datetime.strptime(s, fmt).date()
