@@ -330,6 +330,62 @@ def test_parse_iso_date_voll_datum_range_de():
     assert parse_iso_date("2024-06-13") == "2024-06-13"
 
 
+def test_parse_iso_date_iso_datum_range():
+    """ISO-Datum-Range wird auf das Start-Datum aufgeloest.
+
+    ``2024-06-13/2024-06-15`` (ISO-8601-Slash-Trenner), ``2024-06-13 - 2024-06-15``
+    (Bindestrich-Trenner mit Whitespace), ``2024-06-13 bis 2024-06-15``
+    (DE-Wort-Trenner), ``2024-06-13–2024-06-15`` (En-/Em-Dash) sind die
+    verbreiteten Notationen fuer Datums-Ranges aus Datenbank-Exporten,
+    wissenschaftlichen Publikationen, GIS-/CSV-Interchange-Formaten und
+    modernen Sammler-Notizen mit ISO-Datum-Standard.
+
+    Vor dem Fix fielen alle Formen still auf None, weil :data:`_DATE_FORMATS`
+    strptime-anchored ist und der Range-Separator zwischen den beiden Datums-
+    Feldern keinen Match zulaesst - silenter Funddatum-Datenverlust bei der
+    Migration aus Zeitraum-Notationen mit ISO-Datum.
+
+    Konvention identisch zu den uebrigen Range-Patterns: der Range-Start
+    liefert das ISO-Datum, das End-Datum wird nicht in die Rueckgabe
+    eingerechnet (Fund-Datum in der Sammlungs-DB ist Einzel-Punkt).
+    """
+    # ISO-Slash-Trenner (offizieller ISO-8601-Range-Separator)
+    assert parse_iso_date("2024-06-13/2024-06-15") == "2024-06-13"
+    assert parse_iso_date("2020-01-01/2020-12-31") == "2020-01-01"
+    assert parse_iso_date("2024-06-13 / 2024-06-15") == "2024-06-13"
+    # ASCII-Bindestrich mit Whitespace
+    assert parse_iso_date("2024-06-13 - 2024-06-15") == "2024-06-13"
+    # ASCII-Bindestrich ohne Whitespace (durch _TYPOGRAPHIC_DASH-Normalisierung
+    # nachgelagert entstehende Form aus En-/Em-Dash-Eingaben)
+    assert parse_iso_date("2024-06-13-2024-06-15") == "2024-06-13"
+    # En-/Em-Dash ohne Whitespace
+    assert parse_iso_date("2024-06-13–2024-06-15") == "2024-06-13"
+    assert parse_iso_date("2024-06-13—2024-06-15") == "2024-06-13"
+    # DE-Wort-Trenner
+    assert parse_iso_date("2024-06-13 bis 2024-06-15") == "2024-06-13"
+    assert parse_iso_date("1985-05-30 bis 1985-06-05") == "1985-05-30"
+    # EN-Wort-Trenner
+    assert parse_iso_date("2024-06-13 to 2024-06-15") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 through 2024-06-15") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 until 2024-06-15") == "2024-06-13"
+    # Case-Insensitivitaet auf Wort-Trenner
+    assert parse_iso_date("2024-06-13 BIS 2024-06-15") == "2024-06-13"
+    # Einstellige Monate/Tage
+    assert parse_iso_date("2024-6-1/2024-6-15") == "2024-06-01"
+    # Ungueltige Start-Grenze -> None (End-Grenze wird nicht validiert, weil
+    # sie nicht in die Rueckgabe eingerechnet wird - konsistent zur Semantik
+    # der uebrigen Range-Patterns).
+    assert parse_iso_date("2024-13-13/2024-06-15") is None
+    assert parse_iso_date("2024-06-32/2024-06-15") is None
+    assert parse_iso_date("1500-06-13/2024-06-15") is None
+    # Regress: Einzel-ISO-Datum bleibt unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    # Regress: Mehrjahres-Spanne (YYYY-YYYY) bleibt unveraendert
+    assert parse_iso_date("2020-2024") == "2020-01-01"
+    # Regress: DE-Voll-Datum-Range bleibt unveraendert
+    assert parse_iso_date("13.06.2024-15.07.2024") == "2024-06-13"
+
+
 def test_parse_iso_date_englische_monatsnamen():
     """Englische Monatsnamen (EXIF, Foto-Bibliotheks-Exporte): 'Month DD, YYYY'."""
     # Kurz + lang

@@ -1445,6 +1445,37 @@ _FULL_DATE_RANGE_DE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# ISO-Datum-Range: "2024-06-13/2024-06-15" (Slash-Trenner, ISO-8601-konform),
+# "2024-06-13 - 2024-06-15" (Bindestrich-Trenner mit Whitespace), "2024-06-13
+# bis 2024-06-15", "2024-06-13–2024-06-15" (En-/Em-Dash). Verbreitet in
+# Datenbank-Exporten, wissenschaftlichen Publikationen, GIS-/CSV-Interchange-
+# Formaten und modernen Sammler-Notizen, die ISO-Datum als Standard-Form
+# verwenden. Bisher fielen alle Formen still auf None, weil :data:`_DATE_
+# FORMATS` strptime-anchored ist und den Range-Separator nicht toleriert.
+#
+# Konvention identisch zu den uebrigen Range-Patterns: der Range-Start
+# liefert das ISO-Datum, das End-Datum wird nicht in die Rueckgabe
+# eingerechnet. Trenner-Klasse akzeptiert ASCII-Hyphen ohne obligatorisches
+# Whitespace: die Voll-ISO-Struktur ``\d{4}-\d{1,2}-\d{1,2}`` auf beiden
+# Seiten schuetzt vor Ambiguitaet mit der internen Hyphen-Struktur des
+# ISO-Datums (kein False-Positive auf einzelne ISO-Daten wie ``2024-06-13``
+# oder Range-Fragmente wie ``2024-06-13-14``, weil die Zweit-Seite nicht
+# nur eine Tag-Zahl sondern ein volles YYYY-MM-DD-Tripel matchen muss).
+# Die Toleranz auf bare-Bindestrich ist wichtig, weil
+# :data:`_TYPOGRAPHIC_DASH_BETWEEN_DIGITS` vor diesem Match Unicode-Dashes
+# zwischen Ziffern auf ASCII-Hyphens normalisiert und die whitespace-lose
+# En-Dash-Range ``2024-06-13–2024-06-15`` bei diesem Handler bereits als
+# ``2024-06-13-2024-06-15`` ankommt.
+_ISO_DATE_RANGE = re.compile(
+    r"""^\s*
+        (\d{4})-(\d{1,2})-(\d{1,2})
+        (?:\s*/\s*|\s*[–—]\s*|\s*-\s*|\s+(?:bis|to|till|until|through|thru)\s+)
+        (\d{4})-(\d{1,2})-(\d{1,2})
+        \s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 # Year-first Notation mit Monatsnamen: "2024-Juni" / "2024 June" / "2024-Jun" /
 # "2024.Juni" / "2024/Juni" / "2024, June". Spiegelt _MONTH_YEAR ("Juni 2024")
 # auf die Year-First-Reihenfolge - die ISO-/sortierbare Form mit ausgeschriebenem
@@ -3903,6 +3934,21 @@ def parse_iso_date(text) -> str | None:
         day1 = int(m.group(1))
         month1 = int(m.group(2))
         year1 = int(m.group(3)) if m.group(3) else int(m.group(6))
+        if (1 <= day1 <= 31 and 1 <= month1 <= 12
+                and 1800 <= year1 <= 2999):
+            try:
+                return datetime.date(year1, month1, day1).isoformat()
+            except ValueError:
+                return None
+    # ISO-Datum-Range ("2024-06-13/2024-06-15", "2024-06-13 - 2024-06-15",
+    # "2024-06-13 bis 2024-06-15", "2024-06-13–2024-06-15"). Der Range-Start
+    # liefert das ISO-Datum, das End-Datum wird nicht in die Rueckgabe
+    # eingerechnet.
+    m = _ISO_DATE_RANGE.match(s)
+    if m:
+        year1 = int(m.group(1))
+        month1 = int(m.group(2))
+        day1 = int(m.group(3))
         if (1 <= day1 <= 31 and 1 <= month1 <= 12
                 and 1800 <= year1 <= 2999):
             try:
