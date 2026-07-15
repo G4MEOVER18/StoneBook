@@ -2033,6 +2033,137 @@ def test_normalize_numeric_locale_typografisches_minus_u2212():
     assert csv_loaders.normalize_numeric_locale("5.5 — 7.5") == "5.5 — 7.5"
 
 
+def test_parse_range_repetierte_einheit_wird_gestrippt():
+    """Repetierte-Einheit-Range ``<Wert><Einheit>-<Wert><Einheit>`` (``3mm-5mm``,
+    ``1.5g-2.5g``, ``5cm-10cm``, ``10kg-15kg``) wird als Bereich mit beiden
+    Grenzen erkannt, statt still auf den ersten Wert zu kollabieren.
+
+    In Sammler-Notizen und Fund-Etiketten ist die kompakte Repetitions-
+    Schreibweise (Einheit an beiden Bereichs-Grenzen) verbreitet, weil der
+    Sammler die Einheit als Teil des jeweiligen Wertes ansieht und nicht als
+    trailing-suffix: "Rauchquarz-Cluster 3mm-5mm", "Chalkopyrit 10g-50g",
+    "Amethyst-Druse 5cm-10cm". Ohne Fix fielen alle Formen still auf
+    ``(lo, lo)`` (obere Bereichs-Grenze verloren):
+
+    * ``"3mm-5mm"``    -> ``(3.0, 3.0)``   statt ``(3.0, 5.0)``
+    * ``"1.5g-2.5g"``  -> ``(1.5, 1.5)``   statt ``(1.5, 2.5)``
+    * ``"5cm-10cm"``   -> ``(5.0, 5.0)``   statt ``(5.0, 10.0)``
+    * ``"10kg-15kg"``  -> ``(10.0, 10.0)`` statt ``(10.0, 15.0)``
+
+    Ursache: der Sign-Lookbehind ``(?<![A-Za-z^]-)`` in :data:`_NUM_RE`
+    blockiert den ``m-`` -> ``2`` Uebergang (Buchstabe + Hyphen ergibt Sign-
+    Bindung, die verhindert dass die obere Grenze als eigenstaendige Zahl
+    gelesen wird). Der ``\\d+``-Fallback matcht dann nur den Ziffern-Rest
+    der oberen Grenze (``20`` -> ``0``, ``15`` -> ``5``), und der Range-
+    Zahl-Extract kollabiert via ``hi < lo``-Fallback auf ``(lo, lo)``.
+
+    Fix: :func:`_strip_repeated_unit` erkennt die Repetition per Backreference
+    ``\\2`` und transformiert ``3mm-5mm`` -> ``3-5 mm`` (Trailing-Einheit-Form
+    wie ``5-10 mm``, die schon vor dem Fix korrekt behandelt wurde). Die
+    Transformation ist semantisch aequivalent (dieselbe Einheit gilt fuer
+    beide Grenzen) und nicht-invasiv (die weiteren parse_range-Pfade bleiben
+    unveraendert).
+    """
+    # Basis-Formen: SI-Basis-Einheiten (mm, cm, dm, m, km) mit Ganzzahl-Bereich.
+    assert csv_loaders.parse_range("3mm-5mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("5cm-10cm") == (5.0, 10.0)
+    assert csv_loaders.parse_range("10km-20km") == (10.0, 20.0)
+    assert csv_loaders.parse_range("100mm-200mm") == (100.0, 200.0)
+    # Gewichts-Einheiten (g, kg, mg) - fuer Sammlungs-Ueberblick-Notation.
+    assert csv_loaders.parse_range("10g-50g") == (10.0, 50.0)
+    assert csv_loaders.parse_range("1kg-3kg") == (1.0, 3.0)
+    assert csv_loaders.parse_range("100mg-500mg") == (100.0, 500.0)
+    # Dezimal-Werte in beiden Grenzen mit US-Punkt-Konvention.
+    assert csv_loaders.parse_range("1.5g-2.5g") == pytest.approx((1.5, 2.5))
+    assert csv_loaders.parse_range("0.5kg-1.5kg") == pytest.approx((0.5, 1.5))
+    assert csv_loaders.parse_range("3.5mm-7.5mm") == pytest.approx((3.5, 7.5))
+    # Dezimal-Werte mit DE-Komma-Konvention - Excel-DE-Export-typisch.
+    assert csv_loaders.parse_range("1,5g-2,5g") == pytest.approx((1.5, 2.5))
+    assert csv_loaders.parse_range("0,5kg-1,5kg") == pytest.approx((0.5, 1.5))
+    assert csv_loaders.parse_range("3,5mm-7,5mm") == pytest.approx((3.5, 7.5))
+    # Whitespace zwischen Wert und Einheit auf beiden Seiten - vor dem Fix
+    # ebenfalls fehlerhaft (``m-2`` = Buchstabe+Hyphen).
+    assert csv_loaders.parse_range("3 mm-5 mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("1.5 g-2.5 g") == pytest.approx((1.5, 2.5))
+    assert csv_loaders.parse_range("10 kg-15 kg") == (10.0, 15.0)
+    # Whitespace um den Bindestrich (mit repetierter Einheit) - der Fix
+    # muss auch die "hoefliche" Notation behandeln.
+    assert csv_loaders.parse_range("3mm - 5mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("1.5g - 2.5g") == pytest.approx((1.5, 2.5))
+    # Umschliessende Klammern - der Klammer-Strip laesst ``(3mm-5mm)`` als
+    # Wert-Traeger unangetastet (Wert-selbst-in-Klammern-Ruecksetzung), aber
+    # die _NUM_RE-Extraktion greift trotzdem korrekt nach der Repetitions-
+    # Normalisierung.
+    assert csv_loaders.parse_range("(3mm-5mm)") == (3.0, 5.0)
+    assert csv_loaders.parse_range("[1.5g-2.5g]") == pytest.approx((1.5, 2.5))
+    assert csv_loaders.parse_range("{10kg-15kg}") == (10.0, 15.0)
+    # Freitext-Praefix vor der Range - typische Sammler-Notation mit
+    # Prosa-Kontext ("Groesse: 3mm-5mm", "Gewicht 10g-50g").
+    assert csv_loaders.parse_range("Groesse 3mm-5mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("Gewicht 10g-50g") == (10.0, 50.0)
+    assert csv_loaders.parse_range("size 3mm-5mm") == (3.0, 5.0)
+    # Trenner-Varianten: en-dash und em-dash (typografisch aus Print-Quellen).
+    assert csv_loaders.parse_range("3mm–5mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("3mm—5mm") == (3.0, 5.0)
+    # Kombinierbar mit Annaeherungs-Praefix (``ca.``, ``~``).
+    assert csv_loaders.parse_range("ca. 3mm-5mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("~3mm-5mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("circa 1.5g-2.5g") == pytest.approx((1.5, 2.5))
+    # Regress-Anker: gleiche Einheit ist Pflicht - Mixed-Unit-Formen
+    # (``3mm-5cm``) bleiben unangetastet und kollabieren wie bisher.
+    assert csv_loaders.parse_range("3mm-5cm") == (3.0, 3.0)
+    assert csv_loaders.parse_range("10g-50kg") == (10.0, 10.0)
+    # Regress-Anker: Einheit nur auf einer Seite bleibt unangetastet
+    # (der Trailing-Einheit-Form ``5-10 mm`` matcht schon vor dem Fix korrekt).
+    assert csv_loaders.parse_range("3-5 mm") == (3.0, 5.0)
+    assert csv_loaders.parse_range("3-5mm") == (3.0, 5.0)
+    # Einheit nur an der ersten Grenze (``3mm-5``): der Fix greift NICHT
+    # (die Backreference ``\\2`` verlangt exakte Einheit auf beiden Seiten).
+    # Die _NUM_RE-Sign-Blockierung ``(?<![A-Za-z^]-)`` blockiert die ``-5``
+    # weiterhin, das Verhalten bleibt vor-Fix-identisch (kollabiert auf
+    # ``(3.0, 3.0)``). Dieser Grenzfall ist ausserhalb der Fix-Scope,
+    # weil die Notation ``<Wert><Einheit>-<Wert>`` ohne repetierte Einheit
+    # in Sammler-Notizen praktisch nicht vorkommt.
+    assert csv_loaders.parse_range("3mm-5") == (3.0, 3.0)
+    # Regress-Anker: der Sicherheits-Guard verhindert False-Positives an
+    # eingebetteten Positionen wie ``field-1abc-2abc`` (dort ist ``1abc-
+    # 2abc`` von ``-`` und Buchstabe umgeben, nicht von Whitespace/Anfang).
+    assert csv_loaders.parse_range("field-1abc-2abc") == (None, None)
+    # Regress-Anker: Prozent- und Promille-Range unveraendert (die Sign-
+    # Blockierung ``(?<![\\d.%‰])-`` behandelt %/‰ als eigenen Wert-
+    # Terminator; die neue Repetitions-Klasse ``[A-Za-zµ°]{1,4}`` enthaelt
+    # ``%``/``‰`` nicht und beruehrt diese Formen nicht).
+    assert csv_loaders.parse_range("5%-10%") == (5.0, 10.0)
+    assert csv_loaders.parse_range("0.5‰-2.5‰") == pytest.approx((0.5, 2.5))
+    # Regress-Anker: wissenschaftliche E-Notation ``1e3-2e3`` bleibt
+    # unangetastet (``e3`` matcht die Einheit-Klasse nicht als vollstaendige
+    # Einheit - der Trailing-Guard scheitert am nachfolgenden ``-``).
+    assert csv_loaders.parse_range("1e3-2e3") == (1000.0, 2000.0)
+    # Regress-Anker: g/cm³ und aehnliche zusammengesetzte Einheiten bleiben
+    # unangetastet (die Einheit-Klasse enthaelt ``/``/``³``/``²`` nicht;
+    # die bestehende Trailing-Einheit-Form ``2.65 g/cm³ - 5.5 g/cm³`` greift
+    # per Whitespace-um-Bindestrich-Trenner in ``_NUM_RE``).
+    assert csv_loaders.parse_range("2.65 g/cm³ - 5.5 g/cm³") == pytest.approx((2.65, 5.5))
+    # Regress-Anker: Einzelwert mit Einheit unveraendert (kein Range-
+    # Separator - der Regex matcht nicht).
+    assert csv_loaders.parse_range("5mm") == (5.0, 5.0)
+    assert csv_loaders.parse_range("2.5g") == pytest.approx((2.5, 2.5))
+    # Regress-Anker: plain Range ohne Einheit unveraendert.
+    assert csv_loaders.parse_range("3-5") == (3.0, 5.0)
+    assert csv_loaders.parse_range("1.5-2.5") == pytest.approx((1.5, 2.5))
+    # Regress-Anker: Uncertainty-Notation unveraendert (der ±-Zweig matcht
+    # vor der Range-Zahl-Extraktion; die Repetition-Normalisierung greift
+    # nur wenn ein Bindestrich zwischen zwei Zahl+Einheit-Tupeln liegt).
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 mm ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    # Grenzfall: Groessere Ganzzahlen mit repetierter Einheit.
+    assert csv_loaders.parse_range("100g-500g") == (100.0, 500.0)
+    assert csv_loaders.parse_range("1000mm-2000mm") == (1000.0, 2000.0)
+    # Grenzfall: Repetierte Einheit mit gleichen Werten (kein echter Range,
+    # aber der Regex greift trotzdem und die Extraktion liefert (n, n)).
+    assert csv_loaders.parse_range("5mm-5mm") == (5.0, 5.0)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data

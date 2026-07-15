@@ -1092,6 +1092,91 @@ def _strip_bracketed_annotations(s: str) -> str:
     return s
 
 
+# Range-Notation ``<Wert><Einheit>-<Wert><Einheit>`` mit identischer Einheit auf
+# beiden Seiten des Bindestrichs (``3mm-5mm``, ``1.5g-2.5g``, ``5cm-10cm``,
+# ``10kg-15kg``). In Sammler-Notizen und Fund-Etiketten die kompakte Schreibweise,
+# wenn der Sammler die Einheit an beiden Bereichs-Grenzen wiederholt (statt der
+# etablierten Trailing-Einheit-Form ``3-5 mm`` mit Einheit nur nach der oberen
+# Grenze). Praxis-Beispiele: Kristall-Groessen-Ranges auf Etiketten aus Mineralien-
+# Boersen ("Rauchquarz-Cluster, Einzelkristalle 3mm-5mm"), Gewichts-Ranges bei
+# Sammlungs-Ueberblick ("Chalkopyrit-Stufen 10g-50g"), Groessen-Klassen in
+# Auktions-Katalogen ("Amethyst-Druse 5cm-10cm").
+#
+# Bisher fielen alle Formen still auf den ersten Wert (``3mm-5mm`` -> ``(3.0,
+# 3.0)``, ``1.5g-2.5g`` -> ``(1.5, 1.5)``, ``10kg-15kg`` -> ``(10.0, 10.0)``),
+# weil die Sign-Blockierung ``(?<![A-Za-z^]-)`` in :data:`_NUM_RE` den ``m-``->
+# ``2`` Uebergang als Sign-Bindung interpretiert und die obere Bereichs-Grenze
+# unmatched laesst. Der ``\d+``-Fallback matcht dann nur den Ziffern-Rest hinter
+# der ersten Ziffer der oberen Grenze (``20`` -> ``0``, ``15`` -> ``5``, ``2.5``
+# -> ``.5``) - die Zahl-Menge wird ``[lo, teil-von-hi]`` und faellt via
+# ``hi < lo``-Kollaps auf ``(lo, lo)``. Silenter Datenverlust auf der oberen
+# Bereichs-Grenze, ohne dass der User einen Hinweis auf den Fehler bekommt.
+#
+# Transformation strippt die erste Einheit (``3mm-5mm`` -> ``3-5 mm``, ``1.5g-
+# 2.5g`` -> ``1.5-2.5 g``), damit die generische Range-Zahl-Extraktion die
+# beiden Werte findet. Semantisch aequivalent: die Trailing-Einheit-Form ist
+# der etablierte Kanon in wissenschaftlichen Publikationen und in der
+# bestehenden Test-Suite (``5-10 mm``, ``10-20 g``, ``5.5-10.5 mm``); die
+# hier gestrippte Repetition ist reine Notations-Redundanz ohne semantische
+# Differenz. Nach der Transformation greift die vorhandene Trailing-Einheit-
+# Semantik unveraendert.
+#
+# Sicherheits-Guards:
+# * Leading-Guard ``(?:^|(?<=[\s(\[{,;:]))`` verhindert False-Positives an
+#   eingebetteten Positionen wie ``field-1abc-2abc`` (dort ist ``1abc-2abc``
+#   von ``-`` und Buchstabe umgeben, nicht von Whitespace/Anfang/Klammer/
+#   Komma/Semikolon/Colon) - der Match beginnt nur an einer strukturell
+#   erwarteten Wert-Start-Position.
+# * Trailing-Guard ``(?![A-Za-z0-9])`` nach dem zweiten Einheit-Token
+#   verhindert, dass eine dritte laengere Einheit den Match teilt
+#   (``3mm-5mm2`` waere kein Match; ``3mm-5mmol`` waere kein Match, weil
+#   die tatsaechliche Einheit ``mmol`` ist und ``mm`` nur ein Teil davon).
+# * Einheiten-Zeichenklasse ``[A-Za-zµ°]{1,4}`` beschraenkt die Einheit auf
+#   1-4 Buchstaben (deckt praktisch alle SI-/Nicht-SI-Basis-Einheiten ab:
+#   mm/cm/dm/m/km/nm/µm/g/kg/mg/µg/ng/l/ml/dl/cl/s/min/h/°C/°F/°K/pt/oz/lb/
+#   in/ft/yd) und laesst zusammengesetzte Einheiten mit ``/``/``^``/``³``/
+#   ``²`` (``g/cm³``, ``mol/l``, ``m/s``) unbetroffen - dort wuerde die
+#   Trailing-Einheit-Form ``2.65 g/cm³ - 5.5 g/cm³`` schon vor dem Fix per
+#   Whitespace-um-Bindestrich-Trenner korrekt in ``_NUM_RE`` fallen.
+# * Kollisionsfrei zum ``%``/``‰``-Sign-Blocker aus dem Prozent-/Promille-
+#   Range-Fix (``5%-10%``, ``0.5‰-2.5‰``): ``%`` und ``‰`` sind nicht in
+#   der Einheiten-Zeichenklasse enthalten, der bestehende Zweig greift
+#   unveraendert.
+# * Kollisionsfrei zur wissenschaftlichen ``E``-Notation (``1e3-2e3``): der
+#   Regex-Trailing-Guard ``\2`` verlangt exakte Einheit auf beiden Seiten;
+#   die e-Notation-Ziffern hinter dem ersten ``e`` verhindern, dass eine
+#   symmetrische Einheit gefunden wird (``1e3-2e3`` matcht nicht, weil
+#   nach ``1`` als Zahl der Rest ``e3-2e3`` fuer die Einheit-Position ``e``
+#   und dann ``\s*[-–—]\s*`` erwartet, aber ``3`` folgt).
+_REPEATED_UNIT_RANGE = re.compile(
+    r"(?:^|(?<=[\s(\[{,;:]))"
+    r"(\d+(?:[.,]\d+)?)"
+    r"\s*"
+    r"([A-Za-zµ°]{1,4})"
+    r"(\s*[-–—]\s*)"
+    r"(\d+(?:[.,]\d+)?)"
+    r"\s*"
+    r"\2"
+    r"(?![A-Za-z0-9])"
+)
+
+
+def _strip_repeated_unit(s: str) -> str:
+    """Strippt die erste Einheit in ``<num><unit>-<num><unit>``-Notation.
+
+    Transformation: ``3mm-5mm`` -> ``3-5 mm``, ``1.5g-2.5g`` -> ``1.5-2.5 g``,
+    ``5cm-10cm`` -> ``5-10 cm``. Nur bei identischer Einheit auf beiden
+    Seiten (per Backreference); mixed-unit-Formen (``3mm-5cm``) und Formen
+    mit Einheit nur auf einer Seite (``3-5mm``, ``3mm-5``) bleiben
+    unangetastet. Der Strip macht die Bereichs-Grenze fuer die
+    generische ``_NUM_RE``-Zahl-Extraktion sichtbar, die sonst durch den
+    Sign-Blocker ``(?<![A-Za-z^]-)`` an der zweiten Grenze scheitert.
+    Siehe :data:`_REPEATED_UNIT_RANGE` fuer Details zu Guards und
+    Kollisions-Schutz.
+    """
+    return _REPEATED_UNIT_RANGE.sub(r"\1\3\4 \2", s)
+
+
 def _strip_locale_thousands(s: str) -> str:
     """Entfernt eindeutig erkennbare Tausender-Trenner aus EN/DE/FR-Excel-Exporten.
 
@@ -1322,6 +1407,18 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # (5.5, 5.5)). Siehe :func:`_strip_bracketed_annotations` fuer Details
     # zur Nest-Aufloesung und dem Rueckfall-Schutz bei Wert-in-Klammern.
     s = _strip_bracketed_annotations(s)
+    # Repetierte Einheit ``<Wert><Einheit>-<Wert><Einheit>`` (``3mm-5mm``,
+    # ``1.5g-2.5g``, ``5cm-10cm``) auf die etablierte Trailing-Einheit-Form
+    # (``3-5 mm``, ``1.5-2.5 g``, ``5-10 cm``) reduzieren. Ohne diesen Strip
+    # blockiert der Sign-Lookbehind ``(?<![A-Za-z^]-)`` in :data:`_NUM_RE`
+    # die obere Bereichs-Grenze (``m-`` verhindert den ``2``-Match, ``\d+``
+    # matcht nur den Ziffern-Rest ``0``) und der Range-Zahl-Extract kollabiert
+    # via ``hi < lo``-Fallback auf ``(lo, lo)`` (obere Bereichs-Grenze verloren).
+    # Nach _strip_bracketed_annotations, damit ``(3mm-5mm)`` (Wert-in-Klammern-
+    # Ruecksetzung durch die Klammer-Strip-Logik) trotzdem als Range gelesen
+    # wird. Siehe :func:`_strip_repeated_unit` fuer Details zu Guards und
+    # Kollisions-Schutz.
+    s = _strip_repeated_unit(s)
     # Nicht-endliche Tokens (``1e400`` -> ``inf`` via ``float()``-Overflow)
     # aus der Zahl-Menge vor der lo/hi-Auswahl filtern: sonst wuerde
     # ``'1e400'`` als ``(inf, inf)`` und ``'5.5 - 1e400'`` als ``(5.5, inf)``
