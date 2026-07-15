@@ -481,7 +481,34 @@ _TRAILING_TIME = re.compile(
     r"[Tt ]\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?"
     r"|(?<=\d)[Tt]\d{4}(?:\d{2})?(?:[.,]\d+)?"
     r")"
-    r"(?:\s*[Zz]|\s*[+-]\d{2}:?\d{2}|\s+[A-Z]{2,5})?\s*$"
+    # TZ-Suffix nach dem Zeit-Block: Zulu (``Z``/``z``), numerischer Offset
+    # (``+0200``/``+02:00``), spezifisch-mit-Offset (``UTC+2``/``GMT-05:30``/
+    # ``UT+01``) oder generischer Named-TZ (``CET``/``EST``/``MEZ``).
+    # ``UTC``/``GMT``/``UT`` sind die einzigen TZ-Abkuerzungen, die semantisch
+    # sinnvoll einen Offset tragen (Delta-Notation zur Zulu-Zeit; ``CET+2``
+    # oder ``EST-1`` waeren doppelt-modifiziert und in der Praxis unueblich).
+    # Die spezifische UTC/GMT/UT-Alternante steht vor dem generischen
+    # ``[A-Z]{2,5}``, weil beide auf denselben Positionen matchen und die
+    # generische Form die Offset-Ziffern sonst uebriglassen wuerde (``GMT``
+    # matcht via generischer Alternante, ``+2`` bleibt zurueck, ``\s*$`` schlaegt
+    # fehl - der ganze Strip scheitert und das Datum vor dem GMT-Suffix wird
+    # nicht mehr erkannt). Optionaler Minuten-Anteil ``:?\d{2}`` deckt die
+    # Half-Hour-/Quarter-Hour-Zeitzonen ab (Indien UTC+5:30, Neufundland
+    # UTC-3:30, Nepal UTC+5:45), die in Sammler-Notizen aus internationaler
+    # Foto-/Fund-Reise oder aus geerbten Etiketten mit non-DACH-Provenienz
+    # vorkommen. Bisher fielen alle Formen ``T14:30 GMT+2``/``T14:30:00 UTC-5``/
+    # ``T14:30 UTC+05:30`` still auf None, weil weder der numerische Offset-
+    # Zweig (``+02:00`` verlangt zwei-stelligen Stunden-Anteil ohne
+    # vorangehendes UTC-Wort) noch die generische ``[A-Z]{2,5}``-Alternante
+    # (blockt an ``+2``-Suffix nach dem TZ-Namen) matchte - typischer Silent-
+    # Datenverlust bei EXIF-Datetimestrings aus GPS-fotografischen Kameras
+    # und aus Log-Zeilen internationaler Backup-Rotations-Skripte.
+    r"(?:"
+    r"\s*[Zz]"
+    r"|\s*[+-]\d{2}:?\d{2}"
+    r"|\s+(?:UTC|GMT|UT)(?:[+-]\d{1,2}(?::?\d{2})?)?"
+    r"|\s+[A-Z]{2,5}"
+    r")?\s*$"
 )
 # DE-Uhrzeit-Trailing-Suffix mit dem "Uhr"-Wortmarker: "13.06.2024 14:30 Uhr",
 # "13. Juni 2024, 14 Uhr", "2024-06-13 14:30:00 Uhr.", auch case-insensitive
@@ -630,8 +657,26 @@ _TRAILING_TAGESZEIT = re.compile(
 _TRAILING_TZ_STANDALONE = re.compile(
     r"(?:"
     r"Z"
-    r"|\s+(?:UTC|GMT|UT"
-    r"|CET|CEST|MEZ|MESZ|WET|WEST|EET|EEST|BST"
+    # UTC/GMT/UT tragen semantisch sinnvoll einen optionalen numerischen Offset
+    # (``UTC+2``/``GMT-05:30``/``UT+01:00``) - Delta-Notation zur Zulu-Zeit.
+    # Vor der generischen Named-TZ-Alternante einsortiert, damit die spezifische
+    # Form mit Offset gemeinsam gestrippt wird und nicht ``+2`` nach dem
+    # generischen ``GMT``-Strip zurueckbleibt (was den ``\s*$``-Anker
+    # scheitern liesse und das Datum vor dem TZ-Suffix verlieren wuerde).
+    # Optionaler Minuten-Anteil ``:?\d{2}`` deckt Half-Hour-Zeitzonen ab
+    # (Indien UTC+5:30, Neufundland UTC-3:30, Nepal UTC+5:45), die in
+    # Sammler-Notizen aus internationaler Foto-/Fund-Reise-Provenienz oder
+    # aus geerbten Etiketten mit non-DACH-Herkunft vorkommen. Bisher fielen
+    # alle Date-Only-Formen ``2024-06-13 GMT+2``/``13.06.2024 UTC-05:30``/
+    # ``Juni 2024 GMT+1`` still auf None, weil weder die spezifische Whitelist
+    # den Offset-Suffix akzeptierte noch der ``\s*$``-Anker nach reinem
+    # ``GMT``-Match die verbleibenden ``+2``-Ziffern konsumieren konnte -
+    # typischer Silent-Datenverlust bei EXIF-Foto-Metadaten aus GPS-Kameras
+    # ohne Zeit-Komponente im Sichtfeld und bei Log-Zeilen aus internationalen
+    # System-Rotations-Skripten mit reinem Datum-plus-TZ-Marker.
+    r"|\s+(?:UTC|GMT|UT)(?:[+-]\d{1,2}(?::?\d{2})?)?"
+    r"|\s+(?:"
+    r"CET|CEST|MEZ|MESZ|WET|WEST|EET|EEST|BST"
     r"|EST|EDT|CST|CDT|MST|MDT|PST|PDT|AKST|AKDT|HST|HDT"
     r"|JST|KST|IST|HKT|SGT|PHT|ICT|MYT|WIB|WIT|WITA"
     r"|AEST|AEDT|ACST|ACDT|AWST|AWDT|NZST|NZDT"

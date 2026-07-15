@@ -659,6 +659,114 @@ def test_parse_iso_date_standalone_trailing_tz():
     assert parse_iso_date("CET") is None
 
 
+def test_parse_iso_date_utc_gmt_mit_numerischem_offset():
+    """UTC/GMT/UT-Zeitzone mit angehaengtem numerischen Offset (``UTC+2``,
+    ``GMT-05:30``, ``UT+01:00``) wird sowohl in der Date-Only- als auch in
+    der Date+Time-Form vollstaendig abgestrippt, sodass der reine Datumsteil
+    in der Parser-Kaskade greift.
+
+    Bisher fielen alle Kombinationen ``<datum> [uhrzeit] (UTC|GMT|UT)[+-]N[:MM]``
+    still auf None, weil weder :data:`_TRAILING_TIME` noch
+    :data:`_TRAILING_TZ_STANDALONE` den numerischen Offset-Suffix nach dem
+    Named-TZ akzeptierten: die :data:`_TRAILING_TIME`-Regex kannte nur den
+    reinen numerischen Offset ``+0200``/``+02:00`` (ohne vorangehendes
+    ``UTC``/``GMT``) oder die reine Named-TZ-Form (ohne Offset-Ziffern
+    dahinter); die :data:`_TRAILING_TZ_STANDALONE`-Whitelist listete UTC/
+    GMT/UT als reine Marker ohne Offset-Alternante. Die kombinierte Form
+    (Named-TZ als Anker + Offset als Delta zur Zulu-Zeit) ist aber die
+    natuerliche Notation fuer Cross-Locale-Kontext in EXIF-Foto-Metadaten
+    aus GPS-Kameras (Datum-Feld ohne Zeit-Feld, TZ-Delta als Kontext-Marker
+    fuer die Erstellungs-Lokalisierung), in Log-Zeilen internationaler
+    Backup-Rotations-Skripte (Datum-Rotation ohne feste Uhrzeit-Konvention,
+    UTC-Offset als Doku fuer den Host-TZ-Kontext) und in Sammler-Notizen
+    aus Foto-/Fund-Reise-Berichten mit non-DACH-Provenienz. Silenter
+    Funddatum-Datenverlust bei der Migration; besonders gefaehrlich, weil
+    die reine UTC-/GMT-Form ohne Offset schon lange gestrippt wurde und
+    der User keinen Grund hatte anzunehmen, dass die Variante mit Offset
+    anders behandelt wird.
+
+    Fix erweitert beide Regex-Zweige: die _TRAILING_TIME-TZ-Suffix-Klausel
+    bekommt eine spezifische ``\\s+(?:UTC|GMT|UT)(?:[+-]\\d{1,2}(?::?\\d{2})?)?``-
+    Alternante vor dem generischen ``\\s+[A-Z]{2,5}``-Zweig; die
+    _TRAILING_TZ_STANDALONE-Whitelist teilt UTC/GMT/UT von den uebrigen
+    Named-TZs ab und ergaenzt an dieser Position die identische Offset-
+    Alternante. Reihenfolge spezifisch-vor-generisch ist notwendig, weil
+    beide Klassen auf ``UTC``/``GMT``/``UT`` matchen und die generische
+    Form die Offset-Ziffern sonst uebriglassen wuerde (``GMT`` matcht via
+    generischer Alternante, ``+2`` bleibt zurueck, ``\\s*$`` scheitert -
+    ganzer Strip scheitert). Optionaler Minuten-Anteil ``:?\\d{2}`` deckt
+    die Half-Hour-/Quarter-Hour-Zeitzonen ab (Indien UTC+5:30, Neufundland
+    UTC-3:30, Nepal UTC+5:45), die in Sammler-Notizen aus internationaler
+    Reise-/Sammlungs-Provenienz vorkommen.
+    """
+    # Date-Only + UTC/GMT/UT mit einstelligem Offset
+    assert parse_iso_date("2024-06-13 UTC+2") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UTC-5") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT+2") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT-5") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UT+1") == "2024-06-13"
+    # Zweistelliger Stunden-Offset
+    assert parse_iso_date("2024-06-13 UTC+02") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT-05") == "2024-06-13"
+    # Half-Hour-/Quarter-Hour-Zeitzonen (Indien +5:30, Neufundland -3:30,
+    # Nepal +5:45) - Half-Hour-Offset mit Colon-Trenner
+    assert parse_iso_date("2024-06-13 UTC+05:30") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UTC-05:30") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT+03:30") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UTC+05:45") == "2024-06-13"
+    # Half-Hour-Offset ohne Colon-Trenner (kompakte ISO 8601 basic profile)
+    assert parse_iso_date("2024-06-13 UTC+0530") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT-0330") == "2024-06-13"
+    # Date+Time + UTC/GMT/UT + Offset (EXIF-Datetime aus GPS-Kameras)
+    assert parse_iso_date("2024-06-13 14:30:00 GMT+2") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30:00 UTC-5") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T14:30 GMT+02:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13T14:30:00 UTC-05:30") == "2024-06-13"
+    # DE-Format + Offset (Sammler-Etikett mit non-DACH-Reise-TZ-Kontext)
+    assert parse_iso_date("13.06.2024 GMT+2") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 UTC-5") == "2024-06-13"
+    assert parse_iso_date("13. Juni 2024 GMT+02:00") == "2024-06-13"
+    # Monatsname + Jahr + Offset (grobes Log-Rotations-Datum)
+    assert parse_iso_date("Juni 2024 GMT+1") == "2024-06-01"
+    assert parse_iso_date("June 2024 UTC-5") == "2024-06-01"
+    # Jahr allein + Offset (Jahres-Rotation mit Host-TZ-Doku)
+    assert parse_iso_date("2024 UTC+2") == "2024-01-01"
+    assert parse_iso_date("1985 GMT-5") == "1985-01-01"
+    # Kein Regress: reines UTC/GMT ohne Offset weiterhin gestrippt
+    assert parse_iso_date("2024-06-13 UTC") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 GMT") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 UT") == "2024-06-13"
+    # Kein Regress: reiner numerischer Offset (ohne UTC/GMT-Wort) an Time-Suffix
+    assert parse_iso_date("2024-06-13T14:30+02:00") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30 +0200") == "2024-06-13"
+    # Kein Regress: andere Named-TZs (CET/EST/MEZ) matchen weiterhin - der
+    # generische Named-TZ-Zweig steht nach der spezifischen UTC/GMT/UT-Klasse.
+    assert parse_iso_date("2024-06-13 CET") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 14:30 EST") == "2024-06-13"
+    # Kein Regress: CET+2 (nonsense, aber semantisch harmlos) - CET wird via
+    # generischem ``\\s+[A-Z]{2,5}``-Zweig gestrippt, das ``+2`` blockt danach
+    # den ``\\s*$``-Anker; ganzer Strip scheitert, das Datum vor dem CET-Suffix
+    # wird nicht mehr erkannt. Bewusster Trade-off: die spezifische Offset-
+    # Alternante ist auf UTC/GMT/UT beschraenkt, weil nur diese Marker
+    # semantisch Delta-Notation zur Zulu-Zeit tragen - CET+2 waere ein
+    # doppelt-modifizierter Marker ohne Praezedenz in Sammler-Notation.
+    assert parse_iso_date("2024-06-13 CET+2") is None
+    # Kein Regress: positiver Offset ohne Named-TZ-Anker matcht weiterhin
+    # nicht als reines Suffix (der numerische Offset in _TRAILING_TIME ist
+    # an einen vorangehenden Zeit-Block gebunden). "2024-06-13 +2" bleibt
+    # None - der Whitespace + Ziffer + Vorzeichen ist ohne Zeit-Anker
+    # semantisch mehrdeutig (koennte Fortsetzungs-Wert oder Katalog-Delta
+    # sein).
+    assert parse_iso_date("2024-06-13 +2") is None
+    assert parse_iso_date("2024-06-13 +02:00") is None
+    # Kein Regress: Datum ausserhalb Jahr-Range mit TZ+Offset bleibt None
+    assert parse_iso_date("1700-06-15 GMT+2") is None
+    # Kein Regress: Kleinbuchstaben-TZ-Suffix matcht nicht (Konvention
+    # der Grossbuchstaben-Whitelist), auch mit Offset nicht
+    assert parse_iso_date("2024-06-13 utc+2") is None
+    assert parse_iso_date("2024-06-13 gmt-5") is None
+
+
 def test_parse_iso_date_deutsche_zeitangaben():
     """DE-Datum mit Zeit (Excel/Logbuch) - Zeitanteil wird ignoriert."""
     assert parse_iso_date("13.06.2024 14:30") == "2024-06-13"
