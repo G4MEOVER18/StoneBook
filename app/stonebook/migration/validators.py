@@ -1373,6 +1373,43 @@ _DAY_RANGE_MONTH_YEAR = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Tages-Range mit numerischem Monat: "13.-15.06.2024", "13. - 15.06.2024",
+# "13. bis 15.06.2024", "13-15.06.2024". Spiegelt :data:`_DAY_RANGE_MONTH_YEAR`
+# auf die numerische Monat-Achse - der Sammler notiert einen Fund-Zeitraum
+# innerhalb eines Kalendermonats haeufig in dieser Kompakt-Form ("Fund
+# 13.-15.06.2024 am Gotthard", "Sammlungs-Excursion 3.-5.10.2023 Val Bedretto"),
+# weil sie kuerzer als "13. bis 15. Juni 2024" ist und in Excel-Zellen /
+# Foto-Captions / Etiketten besser passt. Bisher fielen alle Formen still auf
+# None, weil :data:`_DAY_MONTH_YEAR` nur einen Einzel-Tag akzeptiert und der
+# Range-Bindestrich zwischen den Tagen den strukturellen ``$``-Anker-Match
+# blockte - silenter Funddatum-Datenverlust bei der Migration aus Sammlungs-
+# Tagebuechern und Fund-Etiketten mit numerischem Monat.
+#
+# Konvention identisch zu :data:`_DAY_RANGE_MONTH_YEAR`: der erste Tag zaehlt
+# als Range-Start und liefert ``YYYY-MM-DD1`` (Fund-Zeitraum-Start ist der
+# semantisch relevante Anker, weil das Fund-Datum in der Sammlungs-DB als
+# Einzel-Punkt gespeichert wird, nicht als Range). Range-Trenner-Menge
+# identisch zu :data:`_DAY_RANGE_MONTH_YEAR` (ASCII-Hyphen, En-/Em-Dash,
+# DE-Wort "bis", EN-Woerter "to"/"till"/"until"/"through"/"thru") -
+# konsistent zur Range-Trenner-Konvention der uebrigen Range-Patterns.
+#
+# Disjunktheit zu :data:`_DAY_MONTH_YEAR` (Einzel-Tag ohne Range-Trenner)
+# und zu :data:`_ISO_YEAR_MONTH_DAY` (YYYY zuerst statt DD zuerst). Full-
+# Date-Range-Formen (``13.06.-15.06.2024``, ``13.06.2024-15.06.2024``)
+# bleiben bewusst ausserhalb dieses Patterns - die Semantik ist dort
+# nicht "gleicher Monat" sondern "beliebiger Range" und braucht separate
+# Behandlung; hier nur die Ein-Monat-Kompaktform, in der beide Tage
+# strukturell vor der gemeinsamen Monat.Jahr-Angabe stehen.
+_DAY_RANGE_NUMERIC_MONTH_YEAR = re.compile(
+    r"""^\s*
+        (\d{1,2})\.?
+        (?:\s*[-–—]\s*|\s+(?:bis|to|till|until|through|thru)\s+)
+        (\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})
+        \s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 # Year-first Notation mit Monatsnamen: "2024-Juni" / "2024 June" / "2024-Jun" /
 # "2024.Juni" / "2024/Juni" / "2024, June". Spiegelt _MONTH_YEAR ("Juni 2024")
 # auf die Year-First-Reihenfolge - die ISO-/sortierbare Form mit ausgeschriebenem
@@ -3794,6 +3831,27 @@ def parse_iso_date(text) -> str | None:
         month = _normalize_month_name(m.group(3))
         year = int(m.group(4))
         if month and 1 <= day1 <= 31 and 1 <= day2 <= 31 and 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day1).isoformat()
+            except ValueError:
+                return None
+    # Tages-Range mit numerischem Monat ("13.-15.06.2024", "13. bis 15.06.2024",
+    # "13-15.06.2024"). Spiegelt _DAY_RANGE_MONTH_YEAR auf die numerische Monat-
+    # Achse - Start-Tag zaehlt als ISO-Datum. Vor der generischen _DATE_FORMATS-
+    # Kette und vor _DAY_MONTH_YEAR-artigen Einzel-Tag-Formen bereits ausgefuehrt
+    # (der Range-Bindestrich zwischen den beiden Tagen wuerde die _DATE_FORMATS-
+    # strptime-Matches ohnehin blockieren, hier ist der Match aber sofort
+    # aufloesbar). Range-Semantik: der End-Tag wird bewusst nicht in die ISO-
+    # Rueckgabe eingerechnet, weil das Fund-Datum in der Sammlungs-DB als
+    # Einzel-Punkt gespeichert wird.
+    m = _DAY_RANGE_NUMERIC_MONTH_YEAR.match(s)
+    if m:
+        day1 = int(m.group(1))
+        day2 = int(m.group(2))
+        month = int(m.group(3))
+        year = int(m.group(4))
+        if (1 <= day1 <= 31 and 1 <= day2 <= 31
+                and 1 <= month <= 12 and 1800 <= year <= 2999):
             try:
                 return datetime.date(year, month, day1).isoformat()
             except ValueError:
