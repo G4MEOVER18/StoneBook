@@ -1422,6 +1422,120 @@ def test_parse_iso_date_fixed_date_feiertage():
     assert parse_iso_date("Silvester") is None
 
 
+def test_parse_iso_date_dach_konfessionelle_fixed_date_feiertage():
+    """Fixed-Date DACH-katholische/-protestantische Zusatz-Feiertage: Josefstag
+    (19.03.), Peter und Paul (29.06.), Mariae Himmelfahrt (15.08.),
+    Reformationstag (31.10.), Allerseelen (02.11.), Mariae Empfaengnis (08.12.).
+
+    Ergaenzt die konfessionellen Fixed-Date-Marker aus DACH-Sammler-Notizen
+    ueber die bereits vorhandenen weltlichen (Neujahr, Tag der Arbeit,
+    Bundesfeier, Tag der deutschen Einheit) und uebergreifend-christlichen
+    (Heilige Drei Koenige, Allerheiligen, Nikolaus, Heiligabend, Weihnachten,
+    Stephanstag, Silvester) hinaus. Alle sechs Tage sind in mindestens einem
+    DACH-Teilraum gesetzlicher Feiertag (Reformationstag in den evangelischen
+    Nord-/Ost-DE-Bundeslaendern; Mariae Himmelfahrt in AT/BY/SL und
+    Innerschweiz; Mariae Empfaengnis in AT und den katholischen CH-Kantonen;
+    Josefstag / Peter und Paul in TI/GR/UR/NW/SZ/VS/LU/ZG). Variable
+    Feiertage (Volkstrauertag, Totensonntag, Advent, Bettag) fallen weiter
+    auf None.
+    """
+    # Reformationstag (31.10.) - kollidiert kalendarisch mit Halloween, beide
+    # Namen liefern semantisch dasselbe (10, 31)-Datum aus dem Dict.
+    assert parse_iso_date("Reformationstag 2017") == "2017-10-31"
+    assert parse_iso_date("Reformationsfest 2020") == "2020-10-31"
+    assert parse_iso_date("Reformation Day 2023") == "2023-10-31"
+    # Regress: Halloween 2019 wirkt unveraendert weiter
+    assert parse_iso_date("Halloween 2019") == "2019-10-31"
+    # Mariae Himmelfahrt (15.08.) - Umlaut- und ASCII-Transliteration
+    assert parse_iso_date("Mariä Himmelfahrt 2024") == "2024-08-15"
+    assert parse_iso_date("Mariae Himmelfahrt 2024") == "2024-08-15"
+    assert parse_iso_date("Maria Himmelfahrt 2024") == "2024-08-15"
+    assert parse_iso_date("Hohe Unsere Frau 2024") == "2024-08-15"
+    assert parse_iso_date("Assumption 2024") == "2024-08-15"
+    assert parse_iso_date("Assumption of Mary 2024") == "2024-08-15"
+    assert parse_iso_date("Assumption of the Virgin Mary 2024") == "2024-08-15"
+    assert parse_iso_date("Assumption of Our Lady 2024") == "2024-08-15"
+    # Mariae Empfaengnis (08.12.) - Umlaut- und ASCII-Transliteration
+    assert parse_iso_date("Mariä Empfängnis 2023") == "2023-12-08"
+    assert parse_iso_date("Mariae Empfaengnis 2023") == "2023-12-08"
+    assert parse_iso_date("Maria Empfängnis 2023") == "2023-12-08"
+    assert parse_iso_date("Empfängnis Mariä 2023") == "2023-12-08"
+    assert parse_iso_date("Immaculate Conception 2023") == "2023-12-08"
+    assert parse_iso_date("Feast of the Immaculate Conception 2023") == "2023-12-08"
+    # Allerseelen (02.11.) - direkt nach Allerheiligen (bereits vorhanden)
+    assert parse_iso_date("Allerseelen 2020") == "2020-11-02"
+    assert parse_iso_date("All Souls 2020") == "2020-11-02"
+    assert parse_iso_date("All Souls' Day 2020") == "2020-11-02"
+    assert parse_iso_date("All Souls’ Day 2020") == "2020-11-02"  # Curly-Apostroph
+    # Regress: Allerheiligen 2020 bleibt (11, 1)
+    assert parse_iso_date("Allerheiligen 2020") == "2020-11-01"
+    # Josefstag (19.03.) - DE- und CH-Innerschweiz-Formen plus EN
+    assert parse_iso_date("Josefstag 2024") == "2024-03-19"
+    assert parse_iso_date("Josefitag 2024") == "2024-03-19"
+    assert parse_iso_date("Josephstag 2024") == "2024-03-19"
+    assert parse_iso_date("St. Joseph's Day 2024") == "2024-03-19"
+    assert parse_iso_date("St Joseph's Day 2024") == "2024-03-19"
+    assert parse_iso_date("Saint Joseph's Day 2024") == "2024-03-19"
+    # Peter und Paul (29.06.) - DE-/DE-Genitiv-Form plus EN
+    assert parse_iso_date("Peter und Paul 2024") == "2024-06-29"
+    assert parse_iso_date("Petri und Pauli 2024") == "2024-06-29"
+    assert parse_iso_date("Petrus und Paulus 2024") == "2024-06-29"
+    assert parse_iso_date("Peter and Paul 2024") == "2024-06-29"
+    assert parse_iso_date("Sts. Peter and Paul 2024") == "2024-06-29"
+    assert parse_iso_date("Saints Peter and Paul 2024") == "2024-06-29"
+    assert parse_iso_date("Feast of Sts. Peter and Paul 2024") == "2024-06-29"
+    # Case-Insensitivitaet (kleiner Auszug, spiegelt bestehende Feiertag-Test-Konvention)
+    assert parse_iso_date("reformationstag 2023") == "2023-10-31"
+    assert parse_iso_date("REFORMATIONSTAG 2023") == "2023-10-31"
+    assert parse_iso_date("mariä himmelfahrt 2024") == "2024-08-15"
+    # Trenner-Varianten (Komma / Slash / Praeposition), spiegelt Basis-Feiertag-Test
+    assert parse_iso_date("Reformationstag, 2023") == "2023-10-31"
+    assert parse_iso_date("Reformationstag/2023") == "2023-10-31"
+    assert parse_iso_date("Mariä Himmelfahrt von 2024") == "2024-08-15"
+    assert parse_iso_date("Assumption of Mary of 2024") == "2024-08-15"
+    # Year-first Reihenfolge
+    assert parse_iso_date("2023 Reformationstag") == "2023-10-31"
+    assert parse_iso_date("2024-Mariä Himmelfahrt") == "2024-08-15"
+    assert parse_iso_date("2023/Immaculate Conception") == "2023-12-08"
+    # Approximations-Praefix (ca./circa/~) + Feiertag
+    assert parse_iso_date("ca. Reformationstag 2023") == "2023-10-31"
+    assert parse_iso_date("circa Josefstag 2024") == "2024-03-19"
+    assert parse_iso_date("~ Peter und Paul 2024") == "2024-06-29"
+    # Klammern-/Anfuehrungszeichen-Strip und Trailing-Satzzeichen
+    assert parse_iso_date("(Reformationstag 2023)") == "2023-10-31"
+    assert parse_iso_date('"Mariä Himmelfahrt 2024"') == "2024-08-15"
+    assert parse_iso_date("Josefstag 2024.") == "2024-03-19"
+    assert parse_iso_date("Peter und Paul 2024!") == "2024-06-29"
+    # Trailing-Klammer-Annotation-Strip
+    assert parse_iso_date("Reformationstag 2023 (Foto)") == "2023-10-31"
+    assert parse_iso_date("Mariä Himmelfahrt 2024 [Auktion]") == "2024-08-15"
+    # Jahr ausserhalb 1800-2999 -> None
+    assert parse_iso_date("Reformationstag 1799") is None
+    assert parse_iso_date("Mariä Himmelfahrt 3000") is None
+    assert parse_iso_date("Josefstag 1500") is None
+    # Feiertag ohne Jahr -> None
+    assert parse_iso_date("Reformationstag") is None
+    assert parse_iso_date("Mariä Himmelfahrt") is None
+    assert parse_iso_date("Josefstag") is None
+    # Variable konfessionelle Feiertage (Volkstrauertag = zweitletzter Sonntag
+    # vor 1. Advent, Totensonntag = letzter Sonntag vor 1. Advent, Advent 1-4,
+    # Buss- und Bettag = Mittwoch vor Totensonntag) fallen weiter auf None -
+    # sie erfordern jaehrlich unterschiedliche Datums-Berechnung (relativ zum
+    # ersten Advent, der jaehrlich zwischen 27.11. und 03.12. springt) und sind
+    # aus Konservativitaets-Gruenden nicht in diesem konfessionellen Fixed-Date-
+    # Fix behandelt.
+    assert parse_iso_date("Volkstrauertag 2024") is None
+    assert parse_iso_date("Totensonntag 2024") is None
+    assert parse_iso_date("1. Advent 2024") is None
+    assert parse_iso_date("Bettag 2024") is None
+    # Regress-Anker: bestehende Fixed-Date-Feiertage und Standard-Formate
+    assert parse_iso_date("Weihnachten 2023") == "2023-12-25"
+    assert parse_iso_date("Neujahr 2024") == "2024-01-01"
+    assert parse_iso_date("Tag der deutschen Einheit 2023") == "2023-10-03"
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+
+
 def test_parse_iso_date_variable_easter_feiertage():
     """Variable Feiertage im Osterzyklus (DE/EN): Datum wird jahresspezifisch
     aus Ostersonntag (Computus/Butcher-Meeus) plus Offset in Tagen berechnet.

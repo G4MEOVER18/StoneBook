@@ -1539,6 +1539,19 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     # Februar
     "valentinstag": (2, 14),
     "valentinesday": (2, 14),
+    # Maerz
+    # Josefstag/Josefitag/Josephstag (19. Maerz): katholischer Hochfest-Termin,
+    # gesetzlicher Feiertag in den katholischen Schweizer Kantonen Tessin,
+    # Uri, Nidwalden, Wallis, Zug, Schwyz und Luzern; in Sammler-Notizen aus
+    # Innerschweizer Mineralboersen und Tessiner Sammler-Vereinigungen als
+    # Datums-Marker etabliert. Englische Form "St. Joseph's Day" / "Saint
+    # Joseph's Day" spiegelt die St.-Nikolaus-/St.-Stephan-Konvention.
+    "josefstag": (3, 19),
+    "josefitag": (3, 19),
+    "josephstag": (3, 19),
+    "stjosefstag": (3, 19),
+    "stjosephsday": (3, 19),
+    "saintjosephsday": (3, 19),
     # Mai
     "tagderarbeit": (5, 1),
     "arbeiterfeiertag": (5, 1),
@@ -1546,21 +1559,89 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "labourday": (5, 1),
     "laborday": (5, 1),
     "mayday": (5, 1),
+    # Juni
+    # Peter und Paul (29. Juni): katholisches Hochfest der Apostelfuersten,
+    # gesetzlicher Feiertag in den Schweizer Kantonen Tessin und Graubuenden;
+    # in italienisch- und ruhetorontinisch-sprachigen Sammler-Notizen aus
+    # dem Tessiner Alpenraum (mineralienreiche Provenienz Val Bedretto /
+    # Cristallina) als Datums-Marker etabliert. Englische Form "Feast of Saints
+    # Peter and Paul" wird auf die Norm-Schluessel "peterandpaul" /
+    # "stspeterandpaul" gemappt (Norm-Schluessel strippt Whitespace/./',
+    # sodass "Sts. Peter and Paul" == "stspeterandpaul" == "St. Peter and Paul").
+    "peterundpaul": (6, 29),
+    "petriundpauli": (6, 29),
+    "petrusundpaulus": (6, 29),
+    "peterandpaul": (6, 29),
+    "stspeterandpaul": (6, 29),
+    "saintspeterandpaul": (6, 29),
+    "feastofstspeterandpaul": (6, 29),
     # August
     "bundesfeier": (8, 1),
     "schweizernationalfeiertag": (8, 1),
     "swissnationalday": (8, 1),
+    # Mariae Himmelfahrt / Assumption of Mary (15. August): katholisches
+    # Hochfest, gesetzlicher Feiertag in Oesterreich (national), in Bayern
+    # (Gemeinden mit ueberwiegend katholischer Bevoelkerung) und im Saarland
+    # sowie in vielen Schweizer Kantonen (LU, UR, SZ, OW, NW, ZG, FR, SO,
+    # AI, JU, TI, VS). Sehr verbreitet als Datums-Marker in Sammler-Notizen
+    # aus Bayerischen/Oesterreichischen Mineralboersen und Innerschweizer
+    # Fundort-Etiketten (der Feiertag faellt in die Haupt-Sommer-Sammel-Saison
+    # in den Alpen, ist entsprechend haeufig als Fund-Datum vermerkt).
+    "mariaehimmelfahrt": (8, 15),
+    "mariahimmelfahrt": (8, 15),
+    "hoheunserefrau": (8, 15),
+    "assumption": (8, 15),
+    "assumptionofmary": (8, 15),
+    "assumptionofthevirginmary": (8, 15),
+    "assumptionofourlady": (8, 15),
     # Oktober
     "tagderdeutscheneinheit": (10, 3),
     "germanunityday": (10, 3),
     "halloween": (10, 31),
+    # Reformationstag / Reformation Day (31. Oktober): evangelischer Gedenktag
+    # an Luthers Thesenanschlag 1517, gesetzlicher Feiertag in den evangelisch
+    # gepraegten deutschen Bundeslaendern Sachsen, Sachsen-Anhalt, Thueringen,
+    # Brandenburg, Mecklenburg-Vorpommern (durchgaengig seit 1990) sowie
+    # zusaetzlich in Bremen, Hamburg, Niedersachsen und Schleswig-Holstein
+    # seit dem 500. Reformations-Jubilaeum 2018. Datum kollidiert mit
+    # Halloween (bereits vorhanden, ebenfalls (10, 31)) - der Dict akzeptiert
+    # beide Norm-Schluessel gleichberechtigt, weil der Ausgabe-Wert identisch
+    # ist und die semantische Ambiguitaet ("wurde am Reformationstag oder
+    # in der Halloween-Nacht gefunden") fuer die Fund-Datums-Semantik der
+    # Sammlungs-DB irrelevant ist.
+    "reformationstag": (10, 31),
+    "reformationsfest": (10, 31),
+    "reformationday": (10, 31),
     # November
     "allerheiligen": (11, 1),
     "allsaintsday": (11, 1),
+    # Allerseelen / All Souls' Day (2. November): katholischer Gedenktag der
+    # verstorbenen Glaeubigen, direkt nach Allerheiligen (bereits vorhanden,
+    # (11, 1)). Kein gesetzlicher Feiertag in DACH, aber als kirchlicher
+    # Gedenktag in katholisch gepraegten Sammler-Notizen als Datums-Marker
+    # gefuehrt (Friedhofs-Gaenge/Familienfeiern rund um Allerheiligen +
+    # Allerseelen sind der klassische Anlass fuer Fund-Doku-Sichtungen alter
+    # Sammlungsbestaende). Englische Form "All Souls' Day" spiegelt die
+    # "All Saints Day"-Konvention (Norm-Schluessel strippt Apostroph).
+    "allerseelen": (11, 2),
+    "allsouls": (11, 2),
+    "allsoulsday": (11, 2),
     # Dezember
     "nikolaus": (12, 6),
     "nikolaustag": (12, 6),
     "stnicholasday": (12, 6),
+    # Mariae Empfaengnis / Immaculate Conception (8. Dezember): katholisches
+    # Hochfest, gesetzlicher Feiertag in Oesterreich (national) sowie in
+    # den katholischen Schweizer Kantonen Luzern, Uri, Schwyz, Obwalden,
+    # Nidwalden, Zug, Freiburg, Solothurn, Appenzell Innerrhoden, Tessin und
+    # Wallis. In Sammler-Notizen aus katholisch gepraegten Regionen als
+    # Vor-Weihnachts-Datums-Marker verbreitet. Englische Form "Immaculate
+    # Conception" spiegelt die Assumption-of-Mary-Konvention.
+    "mariaeempfaengnis": (12, 8),
+    "mariaempfaengnis": (12, 8),
+    "empfaengnismariae": (12, 8),
+    "immaculateconception": (12, 8),
+    "feastoftheimmaculateconception": (12, 8),
     "heiligabend": (12, 24),
     "christmaseve": (12, 24),
     "weihnachten": (12, 25),
