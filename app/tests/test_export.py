@@ -384,6 +384,81 @@ def test_json_import_ignoriert_unbekannte_spalten(tmp_path):
     c.close()
 
 
+def test_json_import_heterogene_zeilen_spalten_werden_vollstaendig_uebernommen(tmp_path):
+    """Spaetere Zeilen mit mehr Feldern als rows[0] verlieren keine Werte.
+
+    Regress-Anker gegen den ``rows[0].keys()``-Bug: aus hand-editierten
+    oder aus zwei Snapshots zusammengefuehrten Backups koennen Objekte
+    mit unterschiedlichen Feld-Sets in derselben JSON-Datei landen. Vor
+    dem Fix wurde die INSERT-Kolumnenliste einmal aus der ersten Zeile
+    abgeleitet und alle Zusatz-Spalten spaeterer Zeilen gingen stille
+    verloren (Mineral_Primaer/Gewicht_g des zweiten Objekts wurden NULL).
+    """
+    import json as _json
+    src = tmp_path / "hetero.json"
+    src.write_text(
+        _json.dumps({
+            "objects": [
+                {"obj_id": "OBJ_0001", "Name": "Erste"},
+                {"obj_id": "OBJ_0002", "Name": "Zweite",
+                 "Mineral_Primaer": "Quarz", "Gewicht_g": 12.5},
+                {"obj_id": "OBJ_0003", "Name": "Dritte",
+                 "Mineral_Primaer": "Calcit", "status": "aktiv"},
+            ],
+            "images": [], "aliases": [],
+        }),
+        encoding="utf-8",
+    )
+    c = open_db(tmp_path / "db.sqlite3")
+    counts = import_json(c, src)
+    assert counts["objects"] == 3
+    rows = {r["obj_id"]: dict(r) for r in c.execute(
+        "SELECT obj_id, Name, Mineral_Primaer, Gewicht_g, status FROM objects").fetchall()}
+    assert rows["OBJ_0002"]["Mineral_Primaer"] == "Quarz"
+    assert rows["OBJ_0002"]["Gewicht_g"] == 12.5
+    assert rows["OBJ_0003"]["Mineral_Primaer"] == "Calcit"
+    assert rows["OBJ_0003"]["status"] == "aktiv"
+    # Zeile 1 ohne Mineral_Primaer/Gewicht_g -> NULL; ohne status -> DB-Default
+    assert rows["OBJ_0001"]["Mineral_Primaer"] is None
+    assert rows["OBJ_0001"]["Gewicht_g"] is None
+    assert rows["OBJ_0001"]["status"] == "platzhalter"
+    c.close()
+
+
+def test_json_import_zeilen_ohne_bekannte_spalten_werden_uebergangen(tmp_path):
+    """Zeilen mit ausschliesslich unbekannten Keys werden uebersprungen.
+
+    ``counts`` spiegelt die tatsaechlich eingespielten Zeilen, nicht die
+    Bruttoanzahl in der Quelle - eine reine ``future_col``-Zeile ohne
+    ``obj_id`` kann nicht sinnvoll geinsertet werden (waere entweder
+    PRIMARY-KEY-Verletzung mit NULL-obj_id oder Halb-Zeile ohne
+    Identifikation). Die vor Fix vorhandene Halb-Zeilen-Insertion
+    (``INSERT (cols aus rows[0]) VALUES (NULL fuer fehlende)`` fuer
+    fremde Zeilen) wird durch die pro-Zeile-Signatur-Gruppierung nicht
+    mehr ausgeloest.
+    """
+    import json as _json
+    src = tmp_path / "gemischt.json"
+    src.write_text(
+        _json.dumps({
+            "objects": [
+                {"obj_id": "OBJ_0001", "Name": "Bekannt"},
+                {"future_col": "nur unbekannt"},
+                {"obj_id": "OBJ_0002", "Name": "Zweite bekannt"},
+            ],
+            "images": [], "aliases": [],
+        }),
+        encoding="utf-8",
+    )
+    c = open_db(tmp_path / "db.sqlite3")
+    counts = import_json(c, src)
+    assert counts["objects"] == 2
+    ids = [r["obj_id"] for r in c.execute(
+        "SELECT obj_id FROM objects ORDER BY obj_id").fetchall()]
+    assert ids == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_csv_import_roundtrip(conn, tmp_path):
     """export_csv → import_csv in eine frische DB ergibt dieselben Felder."""
     dump = tmp_path / "export.csv"

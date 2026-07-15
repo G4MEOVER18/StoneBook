@@ -1568,6 +1568,28 @@ def import_json(conn: sqlite3.Connection, path: Path, *, replace: bool = True) -
     uebersprungen; ihre Inhalte koennen ueber :func:`read_backup_meta`
     separat ausgelesen werden.
 
+    Heterogene Zeilen-Spalten-Sets (unterschiedliche Keys pro Zeile) werden
+    korrekt behandelt: die INSERT-Kolumnenliste wird nicht mehr fix aus
+    ``rows[0].keys()`` abgeleitet, sondern per Signatur-Gruppierung fuer
+    jede vorkommende Kombination separat gebildet. Aus hand-editierten
+    Backups oder aus zwei zusammengefuehrten Snapshots stammende Zeilen,
+    in denen spaetere Objekte zusaetzliche Felder gegenueber der ersten
+    Zeile fuehren (z.B. Mineral_Primaer/Gewicht_g), verloren vorher
+    stille alle Werte in diesen Zusatz-Spalten - die Zeilen landeten mit
+    NULL statt dem Backup-Inhalt in der DB. Innerhalb jeder Signatur-
+    Gruppe wird weiter ``executemany`` verwendet, sodass Standard-Backups
+    aus :func:`export_json` (alle Zeilen identisch strukturiert - eine
+    einzige Gruppe) identisch schnell laufen. Zeilen ohne bekannte
+    Spalten (alle Keys sind unbekannt oder nur ``_meta``-artige Felder)
+    werden weiterhin uebergangen und zaehlen nicht in ``counts``, damit
+    der Return-Wert die Anzahl tatsaechlich eingespielter Zeilen spiegelt.
+    Die pro-Zeile-Spalten-Beschraenkung erhaelt zudem die DB-DEFAULT-
+    Semantik bei fehlenden Spalten (``status TEXT NOT NULL DEFAULT
+    'platzhalter'``): eine Zeile ohne ``status``-Key wird nicht mit
+    NULL-Bindung geinsertet - was den NOT-NULL-Constraint verletzen
+    wuerde - sondern die Spalte wird gar nicht in die INSERT-Liste
+    aufgenommen und SQLite setzt automatisch den Default-Wert.
+
     Atomisch: Schlaegt eine Tabelle fehl (z.B. dangling FK in aliases/images),
     wird die gesamte Transaktion zurueckgerollt, sodass keine Halb-Imports
     in der DB bleiben.
@@ -1582,14 +1604,24 @@ def import_json(conn: sqlite3.Connection, path: Path, *, replace: bool = True) -
                 counts[table] = 0
                 continue
             known = _table_columns(conn, table)
-            cols = [c for c in rows[0].keys() if c in known]
-            if not cols:
-                counts[table] = 0
-                continue
-            placeholders = ", ".join("?" * len(cols))
-            sql = f"INSERT OR {mode} INTO {table} ({', '.join(cols)}) VALUES ({placeholders})"
-            conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
-            counts[table] = len(rows)
+            groups: dict[tuple[str, ...], list[dict]] = {}
+            groups_order: list[tuple[str, ...]] = []
+            for r in rows:
+                sig = tuple(c for c in r.keys() if c in known)
+                if not sig:
+                    continue
+                if sig not in groups:
+                    groups[sig] = []
+                    groups_order.append(sig)
+                groups[sig].append(r)
+            inserted = 0
+            for sig in groups_order:
+                grp = groups[sig]
+                placeholders = ", ".join("?" * len(sig))
+                sql = f"INSERT OR {mode} INTO {table} ({', '.join(sig)}) VALUES ({placeholders})"
+                conn.executemany(sql, [[r.get(c) for c in sig] for r in grp])
+                inserted += len(grp)
+            counts[table] = inserted
         conn.commit()
     except Exception:
         conn.rollback()
