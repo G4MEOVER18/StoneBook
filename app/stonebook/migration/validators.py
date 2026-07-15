@@ -1410,6 +1410,41 @@ _DAY_RANGE_NUMERIC_MONTH_YEAR = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Voll-Datum-Range im DE-Format: "13.06.-15.06.2024" (Kurzform mit fehlendem
+# ersten Jahr, semantisch beide Daten im selben Jahr), "13.06.2024-15.07.2024"
+# (Voll-Form, beliebige Monate/Jahre), "13.06.2024 bis 15.07.2024",
+# "13.06.2024 / 15.07.2024". Sehr verbreitet in Sammlungs-Tagebuechern und
+# Fund-Etiketten, wenn der Sammler einen Fund-Zeitraum ueber mehrere Tage /
+# einen Monatswechsel dokumentiert ("Herbst-Excursion Gotthard 28.09.-05.10.2024",
+# "Tucson-Boerse 30.01.2024 bis 04.02.2024", "Sommer-Sammelphase
+# 15.06.2024-31.08.2024"). Bisher fielen alle Formen still auf None, weil
+# :data:`_DATE_FORMATS` strptime-anchored ist und der Range-Separator zwischen
+# den beiden Datums-Feldern keinen Match zulaesst - silenter Funddatum-
+# Datenverlust bei der Migration aus Zeitraum-Notationen.
+#
+# Konvention identisch zu :data:`_DAY_RANGE_MONTH_YEAR` / :data:`_DAY_RANGE_
+# NUMERIC_MONTH_YEAR`: der Range-Start liefert das ISO-Datum, das End-Datum
+# wird nicht in die Datums-Rueckgabe eingerechnet, weil das Fund-Datum in
+# der Sammlungs-DB als Einzel-Punkt gespeichert wird. Wenn das erste Datum
+# kein Jahr traegt (Kurzform ``13.06.-15.06.2024``), wird das Jahr aus dem
+# zweiten Datum uebernommen - das entspricht der Sammler-Konvention "gleiches
+# Jahr, End-Datum vollstaendig".
+#
+# Range-Trenner-Menge (ASCII-Hyphen, En-/Em-Dash, Slash, DE-Wort ``bis``,
+# EN-Woerter ``to``/``till``/``until``/``through``/``thru``) spiegelt die
+# uebrigen Range-Patterns. Der Slash ist hier bewusst inkludiert, weil er
+# in Voll-Datum-Range-Notation zwar seltener aber verbreitet ist
+# ("13.06.2024/15.07.2024" aus Datenbank-Exporten mit Datei-Namen-Konvention).
+_FULL_DATE_RANGE_DE = re.compile(
+    r"""^\s*
+        (\d{1,2})\.(\d{1,2})\.(?:(\d{4}))?\s*
+        (?:\s*[-–—/]\s*|\s+(?:bis|to|till|until|through|thru)\s+)
+        (\d{1,2})\.(\d{1,2})\.(\d{4})
+        \s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 # Year-first Notation mit Monatsnamen: "2024-Juni" / "2024 June" / "2024-Jun" /
 # "2024.Juni" / "2024/Juni" / "2024, June". Spiegelt _MONTH_YEAR ("Juni 2024")
 # auf die Year-First-Reihenfolge - die ISO-/sortierbare Form mit ausgeschriebenem
@@ -3854,6 +3889,24 @@ def parse_iso_date(text) -> str | None:
                 and 1 <= month <= 12 and 1800 <= year <= 2999):
             try:
                 return datetime.date(year, month, day1).isoformat()
+            except ValueError:
+                return None
+    # Voll-Datum-Range im DE-Format ("13.06.-15.06.2024" mit fehlendem ersten
+    # Jahr, "13.06.2024-15.07.2024" voll qualifiziert). Beide Datums-Felder
+    # muessen strukturell aus der ``DD.MM.[YYYY]``-Vorlage stammen; wenn das
+    # erste Datum kein Jahr traegt, wird das Jahr aus dem zweiten Datum
+    # uebernommen (Sammler-Konvention "gleiches Jahr, End-Datum vollstaendig").
+    # Range-Semantik: der Range-Start liefert das ISO-Datum, das End-Datum
+    # wird nicht in die Rueckgabe eingerechnet.
+    m = _FULL_DATE_RANGE_DE.match(s)
+    if m:
+        day1 = int(m.group(1))
+        month1 = int(m.group(2))
+        year1 = int(m.group(3)) if m.group(3) else int(m.group(6))
+        if (1 <= day1 <= 31 and 1 <= month1 <= 12
+                and 1800 <= year1 <= 2999):
+            try:
+                return datetime.date(year1, month1, day1).isoformat()
             except ValueError:
                 return None
     # Relative Position innerhalb eines Monats mit Monatsname + Jahr

@@ -275,6 +275,61 @@ def test_parse_iso_date_tages_range_numerischer_monat():
     assert parse_iso_date("2024-06-13") == "2024-06-13"
 
 
+def test_parse_iso_date_voll_datum_range_de():
+    """Voll-Datum-Range im DE-Format wird auf das Start-Datum aufgeloest.
+
+    Der Sammler notiert Fund-Zeitraeume ueber mehrere Tage / einen Monatswechsel
+    oft als "13.06.-15.06.2024" (Kurzform mit fehlendem ersten Jahr, gleiches
+    Jahr fuer beide Datums-Grenzen) oder "13.06.2024-15.07.2024" (Voll-Form
+    ueber Monats-/Jahresgrenze). Vor dem Fix fielen alle Voll-Datum-Range-Formen
+    still auf None, weil :data:`_DATE_FORMATS` strptime-anchored ist und der
+    Range-Separator zwischen den beiden Datums-Feldern keinen Match zulaesst.
+
+    Konvention: der Range-Start liefert das ISO-Datum, das End-Datum wird
+    nicht in die Rueckgabe eingerechnet (Fund-Datum ist Einzel-Punkt, kein
+    Range). Wenn das erste Datum kein Jahr traegt, wird das Jahr aus dem
+    zweiten Datum uebernommen.
+    """
+    # Voll-Form mit Bindestrich
+    assert parse_iso_date("13.06.2024-15.06.2024") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 - 15.06.2024") == "2024-06-13"
+    assert parse_iso_date("13.06.2024-15.07.2024") == "2024-06-13"
+    # Kurzform (fehlendes erstes Jahr, gleiches Jahr wie End-Datum)
+    assert parse_iso_date("13.06.-15.06.2024") == "2024-06-13"
+    assert parse_iso_date("13.06.-15.07.2024") == "2024-06-13"
+    assert parse_iso_date("28.09.-05.10.2024") == "2024-09-28"
+    # DE-Wort-Trenner
+    assert parse_iso_date("13.06.2024 bis 15.07.2024") == "2024-06-13"
+    assert parse_iso_date("30.01.2024 bis 04.02.2024") == "2024-01-30"
+    # EN-Wort-Trenner
+    assert parse_iso_date("13.06.2024 to 15.07.2024") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 through 15.07.2024") == "2024-06-13"
+    # Slash als Trenner (Datenbank-Export-Konvention)
+    assert parse_iso_date("13.06.2024/15.07.2024") == "2024-06-13"
+    assert parse_iso_date("13.06.2024 / 15.07.2024") == "2024-06-13"
+    # En-/Em-Dash
+    assert parse_iso_date("13.06.2024–15.06.2024") == "2024-06-13"
+    assert parse_iso_date("13.06.2024—15.06.2024") == "2024-06-13"
+    # Einstellige Tage/Monate
+    assert parse_iso_date("3.6.2024-5.7.2024") == "2024-06-03"
+    assert parse_iso_date("1.1.2020-31.12.2020") == "2020-01-01"
+    # Case-Insensitivitaet auf Wort-Trennern
+    assert parse_iso_date("13.06.2024 BIS 15.07.2024") == "2024-06-13"
+    # Ungueltige Grenzwerte -> None
+    assert parse_iso_date("32.06.2024-15.06.2024") is None
+    assert parse_iso_date("13.13.2024-15.06.2024") is None
+    assert parse_iso_date("13.06.1500-15.06.1500") is None
+    assert parse_iso_date("13.06.3000-15.06.3000") is None
+    # Regress: Einzel-Datum bleibt unveraendert
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress: Numerischer Tag-Range mit gemeinsamem Monat.Jahr
+    assert parse_iso_date("13.-15.06.2024") == "2024-06-13"
+    # Regress: Named-Month-Range
+    assert parse_iso_date("13.-15. Juni 2024") == "2024-06-13"
+    # Regress: ISO
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+
+
 def test_parse_iso_date_englische_monatsnamen():
     """Englische Monatsnamen (EXIF, Foto-Bibliotheks-Exporte): 'Month DD, YYYY'."""
     # Kurz + lang
