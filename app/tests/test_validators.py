@@ -5379,6 +5379,58 @@ def test_parse_coordinates_typografisches_minus():
     assert parse_coordinates("-46.5, -7.5") == (-46.5, -7.5)
 
 
+def test_parse_coordinates_masculine_ordinal_als_grad_symbol():
+    """U+00BA (maskuline Ordinal ``º``) wird wie U+00B0 (Grad ``°``) behandelt.
+
+    ``º`` liegt auf spanischen/portugiesischen/italienischen Tastaturen als
+    eigene Taste (``°`` erfordert dort AltGr) und ist die von iOS-Long-Press
+    auf ``O`` angebotene Standard-Alternative. OCR-Engines geben bei
+    niedrig-aufgeloesten Print-Katalogen haeufig ``º`` statt ``°`` aus, weil
+    die beiden Glyphen visuell nicht unterscheidbar sind. Vor dem Fix fielen
+    alle DMS-/Decimal-Degree-Formen mit ``º`` still auf None, weil die 40+
+    Regex-Vorkommen des Grad-Literals strikt U+00B0 verlangen.
+    """
+    # Decimal-Degree mit Label und Kardinalrichtung
+    assert parse_coordinates("Lat: 46.5º N, Lon: 7.5º E") == (46.5, 7.5)
+    assert parse_coordinates("46.5º N, 7.5º E") == (46.5, 7.5)
+    assert parse_coordinates("46.5º S, 7.5º W") == (-46.5, -7.5)
+    # Vollstaendige DMS-Notation (Grad, Minuten, Sekunden)
+    lat, lon = parse_coordinates("46º30'15\"N 7º30'0\"E")
+    assert abs(lat - (46 + 30/60 + 15/3600)) < 1e-9
+    assert abs(lon - 7.5) < 1e-9
+    # DMS mit Whitespace zwischen den Komponenten
+    lat, lon = parse_coordinates("46º 30' 15\" N, 7º 30' 0\" E")
+    assert abs(lat - (46 + 30/60 + 15/3600)) < 1e-9
+    assert abs(lon - 7.5) < 1e-9
+    # Prefix-Form (Richtung vor dem Wert)
+    assert parse_coordinates("N46.5º E7.5º") == (46.5, 7.5)
+    assert parse_coordinates("N 46º 30' 15\" E 7º 30' 0\"") == (
+        parse_coordinates("N 46° 30' 15\" E 7° 30' 0\"")
+    )
+    # Degree-Decimal-Minute-Form (DDM: Grad + Dezimal-Minuten)
+    lat, lon = parse_coordinates("46º30.5'N 7º45.5'E")
+    assert abs(lat - (46 + 30.5/60)) < 1e-9
+    assert abs(lon - (7 + 45.5/60)) < 1e-9
+    # ASCII-Hyphen-Vorzeichen + Ordinal-Grad-Marker (ohne Kardinalrichtung)
+    assert parse_coordinates("-46.5º -7.5º") == (-46.5, -7.5)
+    # U+2212-Minus + Ordinal-Grad-Marker (beide Fixes greifen unabhaengig)
+    assert parse_coordinates("−46.5º −7.5º") == (-46.5, -7.5)
+    # Gemischt ``º`` und ``°`` im selben Eingabestring
+    assert parse_coordinates("46.5º N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5º E") == (46.5, 7.5)
+    # Out-of-Range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("95.0º N, 7.5º E") is None
+    assert parse_coordinates("46.5º N, 200.0º E") is None
+    # Bestehender U+00B0-Pfad bleibt unveraendert (Regress)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("46°30'15\"N 7°30'0\"E") == (
+        parse_coordinates("46º30'15\"N 7º30'0\"E")
+    )
+    # ``º`` alleine ohne Zahl-Kontext liefert None (keine Koordinate)
+    assert parse_coordinates("ºº") is None
+    assert parse_coordinates("º") is None
+
+
 def test_parse_coordinates_mit_labels():
     """Geo-Notation mit Lat/Lon/Breite/Längen-Labels (Excel, GIS-Exports)."""
     # Englische Labels mit/ohne Doppelpunkt/Gleichheit

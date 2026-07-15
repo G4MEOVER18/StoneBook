@@ -4213,6 +4213,24 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     # einfacher und sicherer als alle Zahl-Patterns parallel zu erweitern;
     # U+2212 hat im Koordinaten-Kontext keine andere Bedeutung als "negativ".
     s = s.replace("−", "-")
+    # Maskuline Ordinal-Zeichen (U+00BA, ``º``) auf echtes Grad-Zeichen
+    # (U+00B0, ``°``) normalisieren, damit DMS-/Decimal-Degree-Notationen aus
+    # Spanisch-/Portugiesisch-/Italienisch-Tastaturen (dort liegt ``º`` als
+    # eigene Taste, ``°`` erfordert AltGr-Kombination) und aus iOS-
+    # Autokorrektur (Long-Press auf ``O`` bietet ``º`` an, nicht ``°``) sowie
+    # aus OCR-Ergebnissen alter Print-Kataloge (die beiden Glyphen sind bei
+    # niedriger Aufloesung visuell nicht unterscheidbar, viele OCR-Engines
+    # geben stille ``º`` aus) nicht stille Koordinaten-Verluste erzeugen.
+    # Bisher fielen alle Formen ``46.5º N``, ``46º30'15"N``, ``N46.5º E7.5º``
+    # etc. still auf None, weil _DMS/_COORD_LABEL/_PREFIX_DMS und die weiteren
+    # 40+ Vorkommen des ``°``-Literals im Regex-Vokabular strikt U+00B0
+    # verlangen. Single-Pass-Strip vor allen Pattern-Versuchen ist einfacher
+    # und sicherer als jedes einzelne Pattern mit einer ``[°º]``-Klasse zu
+    # erweitern; ``º`` hat im Koordinaten-Kontext keine andere Bedeutung als
+    # Grad-Marker (die Ordinal-Nutzung ``1º de junio`` = 1. Juni ist Datums-
+    # Kontext, wird von :func:`parse_iso_date` behandelt, nicht hier).
+    # Symmetrisch zum U+2212-Strip auf der Vorzeichen-Achse.
+    s = s.replace("º", "°")
     # URL-encoded Komma (``%2C``/``%2c``) auf ASCII-Komma normalisieren, damit
     # aus dem Browser-Adress-Feld kopierte Geo-URLs (Google Maps ``?q=46.5%2C7.5``,
     # generische Query-Strings mit RFC-3986-Percent-Encoding des reservierten
