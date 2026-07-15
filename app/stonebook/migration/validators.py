@@ -1637,6 +1637,58 @@ _SEASON_CROSS_YEAR = re.compile(
     r"^\s*(winter)\.?\s*[, ]?\s*(\d{4})\s*[/\-–—]\s*(\d{4}|\d{2})\s*$",
     re.IGNORECASE,
 )
+# Saison-Spanne ("Sommer bis Herbst 2024", "Sommer-Herbst 2024", "summer to
+# fall 2024", "spring-autumn 2024") - spiegelt _YEAR_RANGE / _YEAR_RANGE_WORD
+# / _DECADE_RANGE / _CENTURY_RANGE_* auf die Saison-Achse. In Sammler-Notizen,
+# Feld-Tagebuechern und Foto-Captions sehr verbreitet, wenn der Fund oder die
+# Sammel-Aktivitaet ueber mehrere Saisons desselben Jahres lief ("Feldsaison
+# Sommer bis Herbst 2024", "Alpen-Exkursion Fruehjahr-Sommer 1985", "collecting
+# season spring to autumn 2020"). Bisher fielen alle Formen still auf None,
+# weil _SEASON_YEAR / _SEASON_YEAR_FIRST eine einzelne Saison verlangen und
+# _YEAR_RANGE / _YEAR_RANGE_WORD zwei 4-Ziffer-Jahres-Anker erwarten - stiller
+# Datenverlust auf einer typischen Sammel-Zeitraum-Notation.
+#
+# Konvention identisch zu _YEAR_RANGE / _DECADE_RANGE / _CENTURY_RANGE_*: die
+# LINKE Saison als Anker, ihr meteorologischer Saison-Startmonat plus Jahres-
+# Zahl auf den 1. des Monats gesetzt ("Sommer bis Herbst 2024" -> Sommer-Start
+# = Juni -> "2024-06-01"). Inverted Spanne ("Herbst bis Sommer 2024",
+# Tippfehler) liefert die linke Saison ("2024-09-01"), spiegelt die
+# _YEAR_RANGE-Konvention auf die Saison-Achse.
+#
+# Winter als linke Saison bleibt semantisch am Dezember des genannten Jahres
+# haengen (spiegelt _SEASON_MONTHS["winter"] = 12); Notationen wie "Winter-
+# Fruehling 2024" liefern damit "2024-12-01" (dokumentiert; die Cross-Year-
+# Semantik zwischen Winter 2023/24 und Fruehling 2024 ist im Freitext nicht
+# eindeutig aufloesbar - der Sammler soll die Cross-Year-Form "Winter 2023/24"
+# explizit nutzen, wenn er die Zwei-Jahr-Semantik meint).
+#
+# Separator-Alternante vereinigt die Symbol-Klasse [-–—−/] (ASCII-Bindestrich,
+# En-Dash U+2013, Em-Dash U+2014, Minus U+2212, Slash) und die Wort-Klasse
+# (bis/to/till/until mit obligatorischem Whitespace) - spiegelt _YEAR_RANGE /
+# _DECADE_RANGE / _CENTURY_RANGE_*. Der Wort-Zweig verlangt Whitespace, weil
+# "Sommerbis Herbst" nie in natuerlicher Notation vorkommt.
+#
+# Saison-Namen aus _SEASON_MONTHS (Fruehling/Fruehjahr/spring, Sommer/summer,
+# Herbst/autumn/fall, Winter, plus Frueh-/Spaet-Kompositum-Formen) werden ueber
+# _normalize_season_name aufgeloest - dieselbe Umlaut-Transliteration und
+# Case-Fold wie in _SEASON_YEAR. Unbekannte Wort-Kombinationen (Monatsnamen,
+# Freitext, Tippfehler wie "Sonner statt Sommer") fallen still auf None,
+# spiegelt die _SEASON_YEAR-Fall-Through-Semantik.
+#
+# Vor _SEASON_YEAR / _SEASON_YEAR_FIRST geprueft, damit die Spanne-Form (die
+# strukturell zwei Saison-Woerter enthaelt) nicht vom base _SEASON_YEAR-
+# Pattern (nur eines) geblockt wird. Kollisionsfrei zu _SEASON_CROSS_YEAR
+# (dort obligatorisch "winter" plus Doppel-Jahr, hier zwei beliebige Saisons
+# plus ein Jahr), zu _YEAR_RANGE (dort vier Ziffern, hier zwei Woerter plus
+# Jahr) und zu _MONTH_RANGE_YEAR (dort Monatsnamen; die Fall-Through-Semantik
+# ueber _normalize_season_name filtert Monatsnamen aus).
+_SEASON_RANGE = re.compile(
+    r"^\s*([A-Za-zÄÖÜäöü]+)\.?"
+    r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
+    r"([A-Za-zÄÖÜäöü]+)\.?"
+    r"\s+(\d{4})\s*$",
+    re.IGNORECASE,
+)
 # Year-first Jahreszeit-Notation ("2024 Sommer", "1985-Winter", "2024/Herbst",
 # "2024 spring", "1999.Fruehjahr"). Spiegelt :data:`_SEASON_YEAR` auf die
 # Year-First-Reihenfolge, analog zu :data:`_QUARTER_YEAR_FIRST` /
@@ -4381,6 +4433,20 @@ def parse_iso_date(text) -> str | None:
         if 1800 <= year_start <= 2999 and year_end == year_start + 1:
             return f"{year_start:04d}-12-01"
         return None
+    # Saison-Spanne ("Sommer bis Herbst 2024", "summer-fall 2024"). Vor
+    # _SEASON_YEAR / _SEASON_YEAR_FIRST geprueft, damit die Spanne-Form (die
+    # strukturell zwei Saison-Woerter enthaelt) nicht vom base _SEASON_YEAR-
+    # Pattern geblockt wird. Konvention identisch zu _YEAR_RANGE /
+    # _DECADE_RANGE / _CENTURY_RANGE_*: linke Saison als Anker (ihr Start-
+    # monat plus Jahres-Zahl auf den 1. gesetzt). Unbekannte Wort-Paare (kein
+    # Saison-Woerterbuch-Treffer) fallen still durch auf die naechsten Zweige.
+    m = _SEASON_RANGE.match(s)
+    if m:
+        month_start = _normalize_season_name(m.group(1))
+        month_end = _normalize_season_name(m.group(2))
+        year = int(m.group(3))
+        if month_start and month_end and 1800 <= year <= 2999:
+            return f"{year:04d}-{month_start:02d}-01"
     # Jahreszeit + Jahr ("Sommer 1985", "Spring 2024"): meteorologischer
     # Saison-Start im genannten Jahr. Ueber denselben _MONTH_YEAR-Regex
     # gepatched, damit "Juni 2024" (Monat) Vorrang vor Seasons hat.

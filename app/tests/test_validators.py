@@ -3267,6 +3267,93 @@ def test_parse_iso_date_jahreszeiten_ungueltig():
     assert parse_iso_date("Spring") is None          # Jahreszeit ohne Jahr
 
 
+def test_parse_iso_date_saison_spanne():
+    """Saison-Spanne ('Sommer bis Herbst 2024', 'summer to fall 2024',
+    'Fruehjahr-Sommer 2024') spiegelt _YEAR_RANGE / _DECADE_RANGE /
+    _CENTURY_RANGE_* auf die Saison-Achse: linke Saison als Anker, ihr
+    meteorologischer Startmonat plus Jahres-Zahl auf den 1. gesetzt.
+
+    In Sammler-Notizen, Feld-Tagebuechern und Foto-Captions verbreitet, wenn
+    der Fund oder die Sammel-Aktivitaet ueber mehrere Saisons desselben
+    Jahres lief. Vor der Erweiterung fielen alle Formen still auf None.
+    """
+    # DE symbolischer Separator
+    assert parse_iso_date("Sommer-Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer - Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer/Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("Sommer–Herbst 2024") == "2024-06-01"  # En-Dash
+    assert parse_iso_date("Sommer—Herbst 2024") == "2024-06-01"  # Em-Dash
+    assert parse_iso_date("Sommer−Herbst 2024") == "2024-06-01"  # U+2212 Minus
+    # DE Wort-Separator
+    assert parse_iso_date("Sommer bis Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("Fruehjahr bis Sommer 2024") == "2024-03-01"
+    assert parse_iso_date("Frühjahr bis Herbst 2024") == "2024-03-01"
+    assert parse_iso_date("Frühling bis Herbst 2024") == "2024-03-01"
+    # EN symbolisch und Wort
+    assert parse_iso_date("summer-fall 2024") == "2024-06-01"
+    assert parse_iso_date("summer-autumn 2024") == "2024-06-01"
+    assert parse_iso_date("spring/summer 2024") == "2024-03-01"
+    assert parse_iso_date("summer to fall 2024") == "2024-06-01"
+    assert parse_iso_date("spring to summer 2024") == "2024-03-01"
+    assert parse_iso_date("summer till autumn 2024") == "2024-06-01"
+    assert parse_iso_date("spring until autumn 2024") == "2024-03-01"
+    # Case-insensitiv (Caps-Lock-Notizen, Excel-Auto-Fill)
+    assert parse_iso_date("SOMMER BIS HERBST 2024") == "2024-06-01"
+    assert parse_iso_date("Summer To Fall 2024") == "2024-06-01"
+    # ASCII-transliterierte Umlaute (ae/oe/ue)
+    assert parse_iso_date("Fruehjahr bis Sommer 2024") == "2024-03-01"
+    assert parse_iso_date("Fruehling-Herbst 2024") == "2024-03-01"
+    # Kompositum-Formen (Frueh<X>/Spaet<X> / early<X>/late<X>)
+    assert parse_iso_date("Fruehsommer-Spaetherbst 2024") == "2024-06-01"
+    assert parse_iso_date("Spaetfruehjahr bis Fruehherbst 2024") == "2024-05-01"
+    assert parse_iso_date("earlysummer to lateautumn 2024") == "2024-06-01"
+    # Winter als linke Saison bleibt am Dezember haengen (dokumentiert)
+    assert parse_iso_date("Winter-Fruehling 2024") == "2024-12-01"
+    assert parse_iso_date("winter to spring 2024") == "2024-12-01"
+    # Inverted Spanne (Tippfehler) liefert die linke Saison
+    assert parse_iso_date("Herbst bis Sommer 2024") == "2024-09-01"
+    assert parse_iso_date("autumn to summer 2024") == "2024-09-01"
+    # Kombinationen mit bestehenden Modifikatoren
+    assert parse_iso_date("ca. Sommer-Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("(Sommer-Herbst 2024)") == "2024-06-01"
+    assert parse_iso_date("[Sommer-Herbst 2024]") == "2024-06-01"
+    assert parse_iso_date("Sommer-Herbst 2024.") == "2024-06-01"
+    # Kombination mit _TEMPORAL_PREFIX ('im Sommer-Herbst 2024')
+    assert parse_iso_date("im Sommer-Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("aus dem Sommer-Herbst 2024") == "2024-06-01"
+    # Whitespace-Toleranz
+    assert parse_iso_date("  Sommer - Herbst  2024  ") == "2024-06-01"
+
+
+def test_parse_iso_date_saison_spanne_ungueltig():
+    """Unbekannte Saison-Namen, fehlender Jahres-Anker, Out-of-Range Jahr,
+    fehlender Wort-Separator-Whitespace -> None."""
+    # Kein Saison-Name (Freitext auf einer Seite)
+    assert parse_iso_date("Foo bis Bar 2024") is None
+    assert parse_iso_date("Sommer bis Foo 2024") is None
+    assert parse_iso_date("Foo bis Sommer 2024") is None
+    # Nur ein Wort (fehlende rechte Saison)
+    assert parse_iso_date("Sommer bis 2024") is None
+    # Jahr ausserhalb [1800, 2999]
+    assert parse_iso_date("Sommer bis Herbst 1500") is None
+    assert parse_iso_date("Sommer bis Herbst 3000") is None
+    # Ohne Whitespace um das Wort-Schluesselwort kein Match
+    assert parse_iso_date("Sommerbis Herbst 2024") is None
+    assert parse_iso_date("summerto fall 2024") is None
+    # Fehlendes Jahr
+    assert parse_iso_date("Sommer bis Herbst") is None
+    # Bestehende Saison-Formen bleiben unveraendert (kein Regress)
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("Winter 2023/24") == "2023-12-01"
+    assert parse_iso_date("Winter 2023") == "2023-12-01"
+    assert parse_iso_date("2024 Sommer") == "2024-06-01"
+    # Monat-Range bleibt unveraendert (Fall-Through nutzt Monatsnamen-Zweig)
+    assert parse_iso_date("Juni-Juli 2024") == "2024-06-01"
+    # Einzelmonat / Feiertag unveraendert
+    assert parse_iso_date("Juni 2024") == "2024-06-01"
+    assert parse_iso_date("Weihnachten 2023") == "2023-12-25"
+
+
 def test_parse_iso_date_winter_cross_year():
     """Winter-Cross-Year-Notation ("Winter YYYY/YYYY+1", "Winter YYYY/YY",
     "Winter YYYY-YYYY+1"): sehr verbreitet in Sammlungs-Notizen und Foto-
