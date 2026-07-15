@@ -675,6 +675,49 @@ _BRACKETED_SQUARE = re.compile(r"\[[^\[\]]*\]")
 _BRACKETED_CURLY = re.compile(r"\{[^{}]*\}")
 _HAS_DIGIT = re.compile(r"\d")
 
+# ASCII-Doppel-/Dreifach-Dot-Range-Separator zwischen zwei Zahl-Tokens
+# (Fortran-/Pascal-/Ruby-Range-Notation ``3.5..5.5``, ``1..10``, Publikations-
+# Range-Notation ``3.5...5.5``, ``1e5..2e5``, ``0.5..1.5 mm``). Ohne diese
+# Vorverarbeitung fallen alle Formen still auf einen Range-Kollaps zurueck: das
+# generische :data:`_NUM_RE` liest den zweiten Dot als "leading-dot decimal"
+# (``.5`` in ``3.5..5.5``) und extrahiert ``[3.5, 0.5, 0.5]``; via
+# ``hi < lo``-Kollaps auf ``(3.5, 3.5)`` geht die obere Range-Grenze verloren.
+# Bei Ganzzahl-Bereichen (``3..5``) blockt die zwei Dots die naechste Match-
+# Position und liefert nur ``[3]``, ebenfalls Kollaps auf (3.0, 3.0). Bei
+# Scientific-Notation-Bereichen (``1e5..2e5`` -> ``[1e5, 0.2e5]``) ebenfalls
+# stille Kollaps auf die Mantisse.
+#
+# Silenter Datenverlust auf der oberen Range-Grenze bei der Migration aus:
+# (1) Publikationen mit Publikations-Range-Notation, in denen ``..``/``...``
+#     als Range-Trenner statt ``-``/``–`` verwendet wird (verbreitet in
+#     wissenschaftlichen Tabellen, in denen der Bindestrich als Sub-/Vorzeichen
+#     reserviert ist und ``..`` als visuell klareres Trenner-Zeichen dient);
+# (2) Sammler-Notizen aus Textdatei-Sammlungen (RTF/TXT ohne Autoformat-
+#     Konvertierung zu ``–``/``…``), in denen der Sammler die ASCII-Form
+#     verwendet;
+# (3) Datenbank-Exporten aus Fortran-/Ruby-basierten GIS-/Kristall-Tools,
+#     die Range-Werte als ``a..b``-Literale serialisieren.
+#
+# Fix: Preprocessing-Regex ersetzt ``\d{...}..\d``/``\d{...}...\d``-Sequenzen
+# durch ``\d-\d``-Sequenzen (ohne Whitespace, damit der Bindestrich unmittelbar
+# zwischen Ziffern steht und die Sign-Lookbehind-Klausel ``(?<![\d.%‰])-`` in
+# :data:`_NUM_RE` das ``-`` als Separator statt Sign erkennt). Bewusst
+# konservativ: nur zwei oder drei Dots werden akzeptiert (Ruby-Style ``..``
+# und Publikations-Style ``...``); vier oder mehr Dots (typografischer Muell
+# oder OCR-Fehler) bleiben unangetastet. Guards ``(?<=\d)`` links und
+# ``(?=\d)`` rechts stellen sicher, dass der Dot-Cluster tatsaechlich zwischen
+# Ziffern steht - reine trailing/leading Dot-Cluster (``3..``, ``..5``) sowie
+# Dot-Cluster in Fliesstext (``Cluster ... aber``) bleiben unangetastet.
+# Kollisionsfrei zu:
+#   - IUCr-Uncertainty ``5.5(3)`` (nutzt Klammer, keine Dots)
+#   - ±-Uncertainty ``5.5 ± 0.3`` (nutzt ``±``/``+-``/``+/-``, keine Dots)
+#   - Standard-Range ``3.5-5.5``/``3.5 - 5.5``/``3.5–5.5`` (nutzt Bindestrich/En-Dash)
+#   - Unicode-Ellipsis ``3.5 … 5.5`` (funktioniert bereits ueber Whitespace-
+#     Trennung, wird von diesem Fix nicht beruehrt)
+#   - Einzelwerte mit Trailing-Ellipsis ``5.5...`` (kein digit rechts, kein Match)
+#   - Nummerierungen ``1.2.3.4`` (nur einzelne Dots, kein 2+-Cluster)
+_DOTTED_RANGE_SEPARATOR = re.compile(r"(?<=\d)\.{2,3}(?=\d)")
+
 # Explizit-Multiplikations-Form der wissenschaftlichen Zehnerpotenz auf die
 # Standard-Scientific-Notation ``NeM`` normalisieren, damit :data:`_NUM_RE`
 # den Wert als *eine* Zahl liest statt Mantisse und Exponent-Basis (10) als
@@ -1072,6 +1115,15 @@ def _normalize_explicit_multiplication_exponent(s: str) -> str:
     return _EXPLICIT_EXPONENT_RE.sub(_replace, s)
 
 
+def _normalize_dotted_range_separator(s: str) -> str:
+    """Ersetzt ``\\d..\\d``/``\\d...\\d``-Range-Separatoren durch einen einfachen Bindestrich.
+
+    Siehe :data:`_DOTTED_RANGE_SEPARATOR` fuer Details zur Motivation
+    (Fortran-/Pascal-/Ruby-Range-Notation und Publikations-Style-``...``).
+    """
+    return _DOTTED_RANGE_SEPARATOR.sub("-", s)
+
+
 def _strip_bracketed_annotations(s: str) -> str:
     """Entfernt runde/eckige/geschweifte Klammer-Annotationen inklusive Nest.
 
@@ -1358,6 +1410,14 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # schuetzen vor Datums-/Katalog-/Ratio-Fragmenten - siehe
     # :func:`_normalize_ascii_mixed_fractions` fuer Details.
     s = _normalize_ascii_mixed_fractions(s)
+    # ASCII-Doppel-/Dreifach-Dot-Range-Separator (``3.5..5.5`` -> ``3.5-5.5``,
+    # ``3.5...5.5`` -> ``3.5-5.5``) vor der Uncertainty- und der generischen
+    # Zahl-Extraktions-Stufe normalisieren, damit die Fortran-/Ruby-/Publikations-
+    # Range-Notation nicht stille auf den ersten Wert kollabiert. Reine Preprocessing-
+    # Substitution, kollisionsfrei zu den Uncertainty-Zweigen (die nutzen ± bzw. (M)
+    # als Toleranz-Signal, nicht ..). Siehe :data:`_DOTTED_RANGE_SEPARATOR`
+    # fuer Details zu Motivation, Kollisionsanalyse und Guard-Semantik.
+    s = _normalize_dotted_range_separator(s)
     # Annaeherungs-Praefix am String-Anfang strippen ("ca. 5.5 ± 0.3" ->
     # "5.5 ± 0.3", "~2.65(5)" -> "2.65(5)"). Siehe :data:`_APPROX_VALUE_PREFIX`
     # fuer Details: die Uncertainty-Patterns sind per ``^...$`` anker-gebunden

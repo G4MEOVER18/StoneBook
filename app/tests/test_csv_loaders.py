@@ -2164,6 +2164,112 @@ def test_parse_range_repetierte_einheit_wird_gestrippt():
     assert csv_loaders.parse_range("5mm-5mm") == (5.0, 5.0)
 
 
+def test_parse_range_dotted_separator_wird_zu_bindestrich():
+    """ASCII-Doppel-/Dreifach-Dot als Range-Separator (``3.5..5.5``, ``1..10``,
+    ``3.5...5.5``, ``1e5..2e5``) wird in der Vorverarbeitung auf einen
+    einfachen Bindestrich normalisiert, damit die generische Zahl-Extraktion
+    beide Range-Grenzen aufloest.
+
+    Vor dem Fix fielen alle Formen still auf einen Range-Kollaps auf den ersten
+    Wert zurueck, weil :data:`_NUM_RE` den zweiten Dot als "leading-dot decimal"
+    liest und die Zahl-Menge in ``[lo, teil-von-hi]`` zerfaellt:
+
+    * ``"3.5..5.5"``  -> ``[3.5, 0.5, 0.5]``    -> (3.5, 3.5)
+    * ``"3.5...5.5"`` -> ``[3.5, 0.5, 0.5]``    -> (3.5, 3.5)
+    * ``"1..10"``     -> ``[1]`` (die Dots blocken die naechste Match-Position)
+                                                 -> (1.0, 1.0)
+    * ``"1e5..2e5"``  -> ``[1e5, 0.2e5]``       -> (1e5, 1e5)  Scientific-Kollaps
+    * ``"(3..5)"``    -> nach Bracket-Strip-Fallback auf Original identisch
+                                                 -> (3.0, 3.0)
+
+    ``..``/``...`` als Range-Trenner ist in mehreren Kontexten verbreitet:
+    Fortran-/Pascal-/Ruby-Sprach-Ranges (``3..5``), publizierte wissenschaft-
+    liche Tabellen, in denen der Bindestrich als Sub-/Vorzeichen reserviert
+    ist und ``..`` als visuell klareres Trenner-Zeichen dient, sowie Textdatei-
+    Sammlungen aus RTF/TXT-Quellen ohne Autoformat-Konvertierung zu
+    ``–``/``…``, in denen der Sammler die ASCII-Form verwendet. Bei der
+    Migration aus solchen Quellen entstand silenter Datenverlust auf der
+    oberen Range-Grenze jeder Numeric-Achse.
+
+    Der Fix normalisiert per :data:`_DOTTED_RANGE_SEPARATOR`-Regex jede
+    ``\\d..\\d``/``\\d...\\d``-Sequenz auf ``\\d-\\d`` (ohne Whitespace,
+    damit die Sign-Lookbehind-Klausel ``(?<![\\d.%‰])-`` in :data:`_NUM_RE`
+    den Bindestrich als Separator statt als Vorzeichen erkennt). Nach
+    :func:`_normalize_ascii_mixed_fractions` und vor den Uncertainty-Zweigen
+    einsortiert (kollisionsfrei: die Uncertainty-Patterns nutzen ``±``/``(M)``,
+    nicht Dots). Guards ``(?<=\\d)`` links und ``(?=\\d)`` rechts verhindern
+    False-Positives an trailing/leading Dot-Clustern (``3..``, ``..5``,
+    ``Cluster ... aber``) und an einzelnen Dots in Nummerierungen (``1.2.3.4``).
+    """
+    # Ruby-/Fortran-Style Doppel-Dot-Range: die klassische Form.
+    assert csv_loaders.parse_range("3.5..5.5") == (3.5, 5.5)
+    assert csv_loaders.parse_range("1..10") == (1.0, 10.0)
+    assert csv_loaders.parse_range("3..5") == (3.0, 5.0)
+    # Publikations-Style Dreifach-Dot als Range-Trenner.
+    assert csv_loaders.parse_range("3.5...5.5") == (3.5, 5.5)
+    assert csv_loaders.parse_range("0.5...1.5") == (0.5, 1.5)
+    # Leading-Dot-Dezimal auf einer Seite - der Fraktions-Wert wird bewahrt.
+    assert csv_loaders.parse_range(".5..7.5") == (0.5, 7.5)
+    assert csv_loaders.parse_range("3.5...5") == (3.5, 5.0)
+    # Scientific-Notation auf beiden Seiten - Exponent bleibt intakt.
+    assert csv_loaders.parse_range("1e5..2e5") == (100000.0, 200000.0)
+    assert csv_loaders.parse_range("1.5e-3..2.5e-3") == pytest.approx((0.0015, 0.0025))
+    # DE-Komma-Dezimal auf beiden Seiten (Publikation aus dem DACH-Raum).
+    assert csv_loaders.parse_range("3,5..5,5") == (3.5, 5.5)
+    # Negatives Vorzeichen auf der linken Range-Grenze - der Bindestrich in
+    # der Substitution kollidiert nicht mit einem echten Sign davor.
+    assert csv_loaders.parse_range("-3.5..5.5") == (-3.5, 5.5)
+    # Trailing-Einheit nach der Range - die Einheit greift auf beide Grenzen.
+    assert csv_loaders.parse_range("3.5..5.5 mm") == (3.5, 5.5)
+    assert csv_loaders.parse_range("0.5..1.5 mm") == (0.5, 1.5)
+    # Freitext-Praefix (``ca.``/``~``) vor der Range - der Praefix wird von
+    # :data:`_APPROX_VALUE_PREFIX` gestrippt und die Range-Extraktion greift.
+    assert csv_loaders.parse_range("ca. 3.5..5.5") == (3.5, 5.5)
+    assert csv_loaders.parse_range("~3.5..5.5") == (3.5, 5.5)
+    # Range in umschliessenden Klammern - nach der Dot-Normalisierung wird
+    # ``(3.5-5.5)`` durch den Bracket-Strip-Fallback auf sich selbst
+    # zurueckgefuehrt und die Standard-Range-Zahl-Extraktion greift.
+    assert csv_loaders.parse_range("(3..5)") == (3.0, 5.0)
+    assert csv_loaders.parse_range("(3.5..5.5)") == (3.5, 5.5)
+    assert csv_loaders.parse_range("[3.5..5.5]") == (3.5, 5.5)
+    assert csv_loaders.parse_range("{3.5..5.5}") == (3.5, 5.5)
+    # Invertierte Range mit Dot-Trenner: bleibt bei der bestehenden
+    # inverted-Range-Kollaps-Semantik (``7.5..3.5`` -> (7.5, 7.5)).
+    assert csv_loaders.parse_range("7.5..3.5") == (7.5, 7.5)
+    # Chained Range ``3..5..7`` (mehrere Dot-Cluster) wird auf ``3-5-7``
+    # normalisiert; die generische Zahl-Extraktion liefert lo=3, hi=7.
+    assert csv_loaders.parse_range("3..5..7") == (3.0, 7.0)
+    # Regress-Anker: einzelner Dot zwischen Zahlen ist keine Range-Notation,
+    # sondern ein Dezimaltrenner - Version-Nummern-artige Sequenzen bleiben
+    # unangetastet und fallen wie vor dem Fix auf den existierenden
+    # Kollaps-Pfad (``1.2.3.4`` -> nums ``[1.2, .3, .4]`` -> (1.2, 1.2)).
+    assert csv_loaders.parse_range("1.2.3.4") == (1.2, 1.2)
+    # Regress-Anker: reine trailing/leading Dot-Cluster ohne rechten/linken
+    # Digit-Partner bleiben unangetastet (Guards blocken das Match).
+    assert csv_loaders.parse_range("3..") == (3.0, 3.0)
+    assert csv_loaders.parse_range("..5") == (0.5, 0.5)
+    # Regress-Anker: Standard-Range mit Bindestrich/En-Dash/Em-Dash bleibt
+    # unveraendert (kein Dot involviert).
+    assert csv_loaders.parse_range("3.5-5.5") == (3.5, 5.5)
+    assert csv_loaders.parse_range("3.5–5.5") == (3.5, 5.5)
+    assert csv_loaders.parse_range("3.5—5.5") == (3.5, 5.5)
+    # Regress-Anker: Unicode-Ellipsis ``…`` mit umgebendem Whitespace wird
+    # bereits vom generischen Zahl-Extraktor korrekt behandelt - der Fix
+    # laesst sie unangetastet.
+    assert csv_loaders.parse_range("3.5 … 5.5") == (3.5, 5.5)
+    # Regress-Anker: repetierte-Einheit-Range (``3mm-5mm``) bleibt vom
+    # bestehenden :func:`_strip_repeated_unit`-Zweig behandelt, unabhaengig
+    # vom Dot-Range-Fix.
+    assert csv_loaders.parse_range("3mm-5mm") == (3.0, 5.0)
+    # Regress-Anker: IUCr-Kompakt-Uncertainty (nutzt Klammer, keine Dots).
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: ±-Uncertainty (nutzt ±, keine Dots).
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: leere/None-Eingabe.
+    assert csv_loaders.parse_range("") == (None, None)
+    assert csv_loaders.parse_range(None) == (None, None)
+
+
 def test_load_v1():
     data = csv_loaders.load_v1(CSV_DIR / "Stonebock__stoneboock_daten_objekte_1-42.csv")
     assert "OBJ_0001" in data
