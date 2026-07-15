@@ -2032,6 +2032,50 @@ def test_parse_iso_date_jahrhundert():
     assert parse_iso_date("(19. Jahrhundert)") == "1800-01-01"
 
 
+def test_parse_iso_date_jahrhundert_duden_abkuerzungen():
+    """Duden-konforme Kurzformen ``Jhd.`` (ohne ``t``) und ``Jahrh.`` werden erkannt.
+
+    Bisher fielen ``20. Jhd.`` und ``20. Jahrh.`` still auf None, weil die
+    Alternierungs-Liste in :data:`_CENTURY_DE` nur die ``t``-Endungen
+    (``jhdt``/``jhrdt``) und die reine Kurzform ``jh`` enthielt. ``Jhd.``
+    und ``Jahrh.`` sind laut Duden gaengige Abkuerzungen von ``Jahrhundert``
+    und finden sich in aelteren Museums-Etiketten, Auktionskatalogen und
+    Provenienz-Vermerken; ohne Erkennung entstand silenter Funddatum-
+    Datenverlust bei der Migration.
+    """
+    # Neue Kurzformen (Duden-konform)
+    assert parse_iso_date("20. Jhd.") == "1900-01-01"
+    assert parse_iso_date("20. Jhd") == "1900-01-01"
+    assert parse_iso_date("19. Jhd.") == "1800-01-01"
+    assert parse_iso_date("21. Jhd.") == "2000-01-01"
+    assert parse_iso_date("20. Jahrh.") == "1900-01-01"
+    assert parse_iso_date("19. Jahrh.") == "1800-01-01"
+    assert parse_iso_date("21. Jahrh") == "2000-01-01"
+    # Case-Insensitivitaet
+    assert parse_iso_date("20. JHD.") == "1900-01-01"
+    assert parse_iso_date("20. jhd.") == "1900-01-01"
+    assert parse_iso_date("20. JAHRH.") == "1900-01-01"
+    # Ohne Punkt vor der Zahl
+    assert parse_iso_date("19Jhd.") == "1800-01-01"
+    assert parse_iso_date("19Jahrh") == "1800-01-01"
+    # Roemische Zahlen mit den neuen Kurzformen
+    assert parse_iso_date("XIX. Jhd.") == "1800-01-01"
+    assert parse_iso_date("XX. Jhd.") == "1900-01-01"
+    assert parse_iso_date("XX. Jahrh.") == "1900-01-01"
+    # Relative Position kombiniert mit neuen Kurzformen
+    assert parse_iso_date("Anfang 20. Jhd.") == "1900-01-01"
+    assert parse_iso_date("Mitte 19. Jhd.") == "1850-01-01"
+    assert parse_iso_date("Ende 20. Jhd.") == "1999-01-01"
+    assert parse_iso_date("Anfang 20. Jahrh.") == "1900-01-01"
+    # Regress-Anker: bestehende Kurzformen bleiben unveraendert
+    assert parse_iso_date("20. Jahrhundert") == "1900-01-01"
+    assert parse_iso_date("20. Jhdt.") == "1900-01-01"
+    assert parse_iso_date("20. Jh.") == "1900-01-01"
+    assert parse_iso_date("20. Jhrd.") == "1900-01-01"
+    assert parse_iso_date("20. Jhrdt.") == "1900-01-01"
+    assert parse_iso_date("20. Jh") == "1900-01-01"
+
+
 def test_parse_iso_date_jahrhundert_ungueltig():
     """Ausserhalb des 1800-2999-Bandes, kein Wort-Suffix oder Kollisionen -> None."""
     # 18. Jahrhundert = 1700-1799, unter der 1800-Untergrenze

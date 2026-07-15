@@ -2416,12 +2416,15 @@ def _relative_decade_offset(raw: str) -> int | None:
 # fuer century N das Startjahr (N-1) * 100. Die pedantische Konvention
 # (19. Jhdt. = 1801-1900) wird hier bewusst nicht gewaehlt, weil sie im
 # Sammler-Sprachgebrauch mit dem Label ("18xx") nicht zusammenpasst.
-# DE-Sammler-Vokabular: "Jahrhundert" (Vollform), "Jahrhdt", "Jhrdt", "Jhdt",
-# "Jhrd", "Jh"; alle mit optionalem Trailing-Punkt. Ordinaler Punkt nach der
-# Jahrhundert-Zahl ("19.") ist im Deutschen ueblich, aber auch die punktlose
-# Form ("19 Jahrhundert") kommt in Notizen vor.
+# DE-Sammler-Vokabular: "Jahrhundert" (Vollform), "Jahrh", "Jahrhdt", "Jhrdt",
+# "Jhdt", "Jhrd", "Jhd", "Jh"; alle mit optionalem Trailing-Punkt. Ordinaler
+# Punkt nach der Jahrhundert-Zahl ("19.") ist im Deutschen ueblich, aber auch
+# die punktlose Form ("19 Jahrhundert") kommt in Notizen vor. Die Kurzform
+# "Jhd." (ohne trailing t) und "Jahrh." (nur Wortstamm bis zum ersten h) sind
+# als Duden-konforme Abkuerzungen von "Jahrhundert" verbreitet in aelteren
+# Museums-Etiketten und Provenienz-Vermerken.
 _CENTURY_DE = re.compile(
-    r"^\s*(\d{1,2})\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    r"^\s*(\d{1,2})\s*\.?\s*(?:jahrhundert|jahrhdt|jahrh|jhrdt|jhdt|jhrd|jhd|jh)\.?\s*$",
     re.IGNORECASE,
 )
 # EN: "19th century", "20 century", "19th c." - die Kurzform "c." ist im
@@ -2472,7 +2475,7 @@ _ROMAN_CENTURY_VALUES: dict[str, int] = {
 # Ziffer-Nachbarn, waehrend das Century-Pattern ``$``-anker mit "Jahrhundert"-
 # Suffix verlangt).
 _CENTURY_ROMAN_DE = re.compile(
-    r"^\s*([IVXLCM]+)\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    r"^\s*([IVXLCM]+)\s*\.?\s*(?:jahrhundert|jahrhdt|jahrh|jhrdt|jhdt|jhrd|jhd|jh)\.?\s*$",
     re.IGNORECASE,
 )
 # EN: "XIX century", "XIX. century", "XX c." - kein Ordinalsuffix (st/nd/rd/th)
@@ -2518,7 +2521,7 @@ _RELATIVE_CENTURY_OFFSETS: dict[str, int] = {
 }
 _RELATIVE_CENTURY_DE = re.compile(
     r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
-    r"(\d{1,2})\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    r"(\d{1,2})\s*\.?\s*(?:jahrhundert|jahrhdt|jahrh|jhrdt|jhdt|jhrd|jhd|jh)\.?\s*$",
     re.IGNORECASE,
 )
 _RELATIVE_CENTURY_EN = re.compile(
@@ -2538,7 +2541,7 @@ _RELATIVE_CENTURY_EN = re.compile(
 # Ende -> 99 innerhalb des Roemisch-adressierten Jahrhunderts).
 _RELATIVE_CENTURY_ROMAN_DE = re.compile(
     r"^\s*(Anfang|Mitte|Ende|early|mid|late)[-\s]+"
-    r"([IVXLCM]+)\s*\.?\s*(?:jahrhundert|jahrhdt|jhrdt|jhdt|jhrd|jh)\.?\s*$",
+    r"([IVXLCM]+)\s*\.?\s*(?:jahrhundert|jahrhdt|jahrh|jhrdt|jhdt|jhrd|jhd|jh)\.?\s*$",
     re.IGNORECASE,
 )
 _RELATIVE_CENTURY_ROMAN_EN = re.compile(
