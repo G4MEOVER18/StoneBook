@@ -2566,6 +2566,43 @@ def test_find_rows_with_invalid_funddatum_ignoriert_leer_und_no_data_marker(tmp_
     assert find_rows_with_invalid_funddatum(csv_path) == []
 
 
+def test_find_rows_with_invalid_funddatum_ignoriert_erweiterte_no_data_marker(tmp_path):
+    """Erweiterte "keine Angabe"-Marker (n.a., En-Dash, unknown, keine angabe, ...)
+    zaehlen NICHT als invalid.
+
+    Deckt die erweiterte DATE_NO_DATA_MARKERS-Menge (n.a./n. a./En-Dash/??/???/
+    unknown/no data/no date/none/keine angabe/keine daten/kein datum) auf der
+    Consumer-Seite ab: der silent-data-loss-Report darf keine dieser Formen als
+    "invalid" melden, sonst waere fuer den User die explizite Marker-Absicht als
+    Fehler ausgewiesen. Bereits abgedeckte Marker (k.a./n/a/?/-/—/unbekannt)
+    sind im Vorgaenger-Test ``_ignoriert_leer_und_no_data_marker`` verankert.
+    """
+    from stonebook.migration.csv_loaders import find_rows_with_invalid_funddatum
+    csv_path = tmp_path / "erweiterte_marker.csv"
+    csv_path.write_text(
+        "ID,Funddatum,Mineral_Primaer\n"
+        "OBJ_0001,n.a.,Punkt-Form\n"
+        "OBJ_0002,n. a.,Punkt-Form mit Space\n"
+        "OBJ_0003,N.A.,Grossschreibung\n"
+        "OBJ_0004,–,En-Dash U+2013\n"
+        "OBJ_0005,??,Doppel-Fragezeichen\n"
+        "OBJ_0006,???,Dreifach-Fragezeichen\n"
+        "OBJ_0007,unknown,EN-Aequivalent zu unbekannt\n"
+        "OBJ_0008,Unknown,EN mit Grossschreibung\n"
+        "OBJ_0009,no data,EN Langform\n"
+        "OBJ_0010,No Data,EN Titel-Case\n"
+        "OBJ_0011,no date,EN Datums-spezifische Form\n"
+        "OBJ_0012,none,EN Null-Marker\n"
+        "OBJ_0013,None,EN Titel-Case\n"
+        "OBJ_0014,keine angabe,DE Langform zu k.a.\n"
+        "OBJ_0015,Keine Angabe,DE Titel-Case\n"
+        "OBJ_0016,keine daten,DE Alt-Form\n"
+        "OBJ_0017,kein datum,DE Datums-spezifische Form\n",
+        encoding="utf-8",
+    )
+    assert find_rows_with_invalid_funddatum(csv_path) == []
+
+
 def test_find_rows_with_invalid_funddatum_ohne_spalte_ist_leer(tmp_path):
     """Fehlt die Funddatum-Spalte komplett, wird [] zurueckgegeben.
 

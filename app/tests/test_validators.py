@@ -5143,6 +5143,85 @@ def test_parse_iso_date_invalid():
     assert parse_iso_date("13. Foomonat 2024") is None  # unbekannter Monat
 
 
+def test_parse_iso_date_erweiterte_no_data_marker():
+    """Erweiterte "keine Angabe"-Marker liefern None (nicht als silent-data-loss
+    Fund gemeldet werden).
+
+    Ergaenzt die Basis-Menge (``k.a.``/``k. a.``/``n/a``/``na``/``?``/``-``/
+    ``—``/``unbekannt``) um symmetrische Varianten (``n.a.``/``n. a.`` zu
+    ``k.a.``/``k. a.``, En-Dash ``–`` zu ASCII-``-`` und Em-Dash ``—``),
+    Mehrfach-Fragezeichen (``??``/``???``), englische Aequivalente
+    (``unknown``/``no data``/``no date``/``none``) und ausgeschriebene
+    DE-Formen (``keine angabe``/``keine daten``/``kein datum``). Alle Varianten
+    liefern None statt einer Fehl-Interpretation, und der Marker-Check ist
+    case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # n.a. / n. a. symmetrisch zu k.a. / k. a.
+    assert parse_iso_date("n.a.") is None
+    assert parse_iso_date("N.A.") is None
+    assert parse_iso_date("n. a.") is None
+    assert parse_iso_date("N. A.") is None
+    # En-Dash (U+2013) symmetrisch zu ASCII-Hyphen und Em-Dash
+    assert parse_iso_date("–") is None
+    # Mehrfach-Fragezeichen
+    assert parse_iso_date("??") is None
+    assert parse_iso_date("???") is None
+    # Englische Aequivalente
+    assert parse_iso_date("unknown") is None
+    assert parse_iso_date("UNKNOWN") is None
+    assert parse_iso_date("Unknown") is None
+    assert parse_iso_date("no data") is None
+    assert parse_iso_date("No Data") is None
+    assert parse_iso_date("no date") is None
+    assert parse_iso_date("none") is None
+    assert parse_iso_date("None") is None
+    # Ausgeschriebene DE-Formen
+    assert parse_iso_date("keine angabe") is None
+    assert parse_iso_date("Keine Angabe") is None
+    assert parse_iso_date("KEINE ANGABE") is None
+    assert parse_iso_date("keine daten") is None
+    assert parse_iso_date("kein datum") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  n.a.  ") is None
+    assert parse_iso_date("  keine angabe  ") is None
+    # Regress-Anker: bereits vorhandene Marker bleiben None
+    assert parse_iso_date("k.a.") is None
+    assert parse_iso_date("n/a") is None
+    assert parse_iso_date("unbekannt") is None
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None (nicht in der Marker-Menge)
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+
+
+def test_date_no_data_markers_import_und_konsistenz():
+    """DATE_NO_DATA_MARKERS ist importierbar und enthaelt die erwarteten Kern-Marker.
+
+    csv_loaders.find_rows_with_invalid_funddatum importiert die Menge direkt
+    (als single source of truth) - der Anker garantiert, dass die neuen
+    Marker fuer alle Consumer sichtbar sind, nicht nur fuer parse_iso_date.
+    """
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    # Bereits vorhandene Marker
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    # Neu hinzugefuegte Marker
+    assert "n.a." in DATE_NO_DATA_MARKERS
+    assert "n. a." in DATE_NO_DATA_MARKERS
+    assert "–" in DATE_NO_DATA_MARKERS  # U+2013 en-dash
+    assert "??" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "no data" in DATE_NO_DATA_MARKERS
+    assert "keine angabe" in DATE_NO_DATA_MARKERS
+    # Alle Marker sind lowercase (parse_iso_date .lower()t den Input vor dem Check)
+    for marker in DATE_NO_DATA_MARKERS:
+        assert marker == marker.lower(), (
+            f"Marker {marker!r} ist nicht lowercase - parse_iso_date wuerde "
+            "ihn beim .lower()-Vergleich niemals matchen.")
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

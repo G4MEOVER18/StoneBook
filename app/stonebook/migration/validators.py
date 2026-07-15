@@ -45,7 +45,33 @@ _DATE_FORMATS = (
 # Marker-Semantik ist "User sagt explizit: kein Datum", da ist nichts
 # verloren gegangen.
 DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
-    {"k.a.", "k. a.", "n/a", "na", "?", "-", "—", "unbekannt"}
+    {
+        "k.a.", "k. a.", "n/a", "na", "?", "-", "—", "unbekannt",
+        # ``n.a.`` / ``n. a.`` symmetrisch zu ``k.a.`` / ``k. a.``: dieselbe
+        # DE-Abkuerzungs-Konvention (Punkt statt Slash), die in Sammler-Notizen
+        # und Auktions-Etiketten neben der Slash-Variante ``n/a`` auftaucht,
+        # ohne dass parse_iso_date bisher den Marker-Status erkannt haette.
+        "n.a.", "n. a.",
+        # En-Dash (U+2013) sitzt zwischen ASCII-Hyphen ``-`` und Em-Dash (U+2014,
+        # ``—``, bereits in der Menge). Word/Outlook/LibreOffice-AutoFormat
+        # ersetzen ``-`` in isolierten Zell-Positionen typischerweise durch
+        # U+2013, nicht U+2014 - ohne den En-Dash-Marker fiel diese Auto-Format-
+        # Variante als "invalid" statt "no data" in den silent-data-loss-Report.
+        "–",
+        # Mehrfach-Fragezeichen: verstaerkte Unsicherheits-Marker ("wirklich
+        # keine Ahnung"), semantisch identisch zum bereits enthaltenen ``?``.
+        "??", "???",
+        # Englische Aequivalente zu ``unbekannt`` und ``keine Angabe``:
+        # US-/UK-Auktions-Kataloge und englischsprachige Sammler-Notizen
+        # verwenden ``unknown`` / ``no data`` / ``no date`` / ``none`` als
+        # Standard-Marker fuer "kein Datum verfuegbar".
+        "unknown", "no data", "no date", "none",
+        # Ausgeschriebene DE-Formen: der User tippt statt der Abkuerzung den
+        # vollen Satz. ``keine angabe`` ist die kanonische Langform von ``k.a.``,
+        # ``keine daten`` / ``kein datum`` sind natuerlich-sprachliche
+        # Varianten, die dieselbe Semantik tragen.
+        "keine angabe", "keine daten", "kein datum",
+    }
 )
 
 _YEAR_ONLY = re.compile(r"^\s*(\d{4})\s*$")
