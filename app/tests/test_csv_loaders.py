@@ -1273,14 +1273,13 @@ def test_parse_range_explizit_multiplikative_zehnerpotenz():
     # Regression-Anker: die Range-Notation ``5-10`` bleibt Range - kein
     # Multiplikations-Zeichen zwischen den Zahlen, das Pattern matcht nicht.
     assert csv_loaders.parse_range("5-10") == (5.0, 10.0)
-    # Regression-Anker: die Dimensions-/Groessen-Notation ``5x10 cm``
-    # (Groessen-Angabe, nicht Zehnerpotenz) faellt weiter auf die
-    # bestehende Semantik - kein Exponent nach ``10``, das Pattern
-    # matcht nicht.
-    assert csv_loaders.parse_range("5x10 cm") == (5.0, 5.0)
-    # Regression-Anker: eine ``5x10`` ohne Exponent bleibt unveraendert
-    # (Groessen-Notation, keine wissenschaftliche Zehnerpotenz).
-    assert csv_loaders.parse_range("5x10") == (5.0, 5.0)
+    # Dimensions-/Groessen-Notation ``5x10 cm`` (Groessen-Angabe, nicht
+    # Zehnerpotenz) matcht das Mantisse-Exponent-Pattern nicht (kein Exponent
+    # nach ``10``) und faellt in den Dimensions-Zweig
+    # :data:`_DIMENSION_X`: ``5x10`` -> ``5 10`` als Range-Ausdehnungen.
+    # Siehe :func:`test_parse_range_ascii_x_dimensions_separator`.
+    assert csv_loaders.parse_range("5x10 cm") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5x10") == (5.0, 10.0)
     # Regression-Anker: Uncertainty-Notation ``5.5 ± 0.3`` bleibt
     # Uncertainty - kein Multiplikations-Zeichen im Struktur-Anker.
     assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
@@ -1290,10 +1289,16 @@ def test_parse_range_explizit_multiplikative_zehnerpotenz():
     assert csv_loaders.parse_range("2.65 g cm^-3") == pytest.approx((2.65, 2.65))
     # Namens-/Katalog-Fragment mit ``x10``-Sequenz: das Lookbehind
     # ``(?<![A-Za-z0-9])`` blockiert das Mantissa-Match nach Buchstaben,
-    # der Sample-/Katalog-Name wird nicht als Wert-Traeger fehlinterpretiert.
-    # Regression-Anker fuer den Fall, dass jemand das Lookbehind entfernt.
-    assert csv_loaders.parse_range("Sample5x10^-3 g") == (None, None) or \
-           csv_loaders.parse_range("Sample5x10^-3 g") == (0.0, 0.0)
+    # der Sample-/Katalog-Name wird nicht als Wert-Traeger fehlinterpretiert -
+    # ``5x10^-3`` matcht das Mantisse-Exponent-Pattern nicht. Nach dem
+    # :data:`_DIMENSION_X`-Sub ``Sample5x10^-3 g`` -> ``Sample5 10^-3 g``:
+    # das ``5`` bleibt via ``_NUM_RE``-Letter-Lookbehind blockiert, ``10``
+    # matcht nach Leerzeichen als (10, 10), ``3`` wird durch das ``^-``-
+    # SI-Kompakt-Exponent-Lookbehind blockiert. Regression-Anker fuer den
+    # Fall, dass das Mantissa-Lookbehind entfernt wird - die Mantisse-
+    # Exponent-Interpretation von ``5x10^-3`` (die 0.005 liefern wuerde)
+    # bleibt weiterhin blockiert, unabhaengig vom Dimensions-Zweig.
+    assert csv_loaders.parse_range("Sample5x10^-3 g") == (10.0, 10.0)
 
 
 def test_parse_range_leading_dot_dezimal():
@@ -1768,6 +1773,93 @@ def test_parse_range_ascii_mixed_fraktionen_ungueltig():
     assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
     assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
+def test_parse_range_ascii_x_dimensions_separator():
+    """ASCII ``x``/``X`` zwischen zwei Ziffern wird als Dimensions-Separator
+    behandelt und liefert einen Range der Ausdehnungen statt silentem
+    Datenverlust der zweiten Dimension.
+
+    Spiegelt die bereits vorhandene Unicode-``×`` (U+00D7)-Range-Semantik auf
+    die ASCII-Achse. In der Mineralogie ist die Compact-Notation ``5x10mm``
+    der klassische Weg, "5 mm mal 10 mm" ohne separates Breite-Feld zu
+    notieren - haeufig aus geerbten Excel-Kopien mit nur einer Groessen-
+    Spalte, aus Foto-Katalog-Software mit Freitext-Groessen-Feld und aus
+    handschriftlichen Sammler-Karten. Vor dem Fix blockte der ``_NUM_RE``-
+    Lookbehind ``(?<![A-Za-z^])`` die zweite Zahl (``x`` als Letter),
+    ``5x10`` lieferte (5.0, 5.0) statt (5.0, 10.0), ``5x10x15`` analog
+    (5.0, 5.0) - silenter Range-Datenverlust auf der Groessen-Achse.
+    """
+    # Grundform Compact-Dimensions-Notation: zwei Dimensionen ohne Whitespace.
+    assert csv_loaders.parse_range("5x10") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5X10") == (5.0, 10.0)
+    # Mit Trailing-Einheit (SI-mm/cm/m); die Einheit bleibt Wort-Token und
+    # blockiert die letzte Ziffer via ``_NUM_RE``-Lookbehind - der Wert-Anker
+    # ist die vorletzte Zahl vor der Einheit.
+    assert csv_loaders.parse_range("5x10mm") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5x10cm") == (5.0, 10.0)
+    # Drei Dimensionen (Laenge x Breite x Hoehe): der Range spannt die
+    # kleinste bis groesste Ausdehnung ab, sinnvoll fuer eine Sortier-/
+    # Vergleichs-Groesse in einer Groessen-Spalte.
+    assert csv_loaders.parse_range("5x10x15") == (5.0, 15.0)
+    assert csv_loaders.parse_range("5x10x15mm") == (5.0, 15.0)
+    # Dezimal-Vorstand (Millimeter-genaue Messung); ``5x3`` -> ``5 3``
+    # via Digit-Anker.
+    assert csv_loaders.parse_range("2.5x3.0mm") == (2.5, 3.0)
+    assert csv_loaders.parse_range("2.5x3.0x4.0mm") == (2.5, 4.0)
+    # DE-Komma-Dezimal-Vorstand (Excel-DE-Export); die Digit-Anker matchen
+    # unabhaengig vom Locale-Dezimal-Trenner.
+    assert csv_loaders.parse_range("2,5x3,0mm") == (2.5, 3.0)
+    # Whitespace-Form ``5 x 10`` funktionierte schon bisher via Whitespace-
+    # Separator; die neue Normalisierung greift nicht (kein digit-x-digit)
+    # aber die Semantik bleibt identisch - Regression-Anker.
+    assert csv_loaders.parse_range("5 x 10 mm") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5 x 10") == (5.0, 10.0)
+    # Unicode ``×`` (U+00D7) matchte schon bisher als Range-Separator
+    # (kein Letter im Lookbehind) - die neue Normalisierung greift nicht,
+    # die Semantik bleibt identisch. Regression-Anker fuer die Konsistenz
+    # zwischen ASCII- und Unicode-Achse.
+    assert csv_loaders.parse_range("5×10") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5×10×15") == (5.0, 15.0)
+    assert csv_loaders.parse_range("2.5×3.0mm") == (2.5, 3.0)
+    # Kombination mit ± /(N)-Uncertainty: die Uncertainty-Zweige laufen
+    # *vor* der Dimensions-Normalisierung und binden das Center an die erste
+    # Zahl - die semantisch unklare Kombination ``5x10 ± 0.3`` wird als
+    # ``5 ± 0.3`` gelesen (bestehende Semantik, Regression-Anker). Der
+    # Dimensions-Sub greift nicht mehr, weil der Uncertainty-Zweig schon
+    # zurueckgekehrt ist.
+    assert csv_loaders.parse_range("5x10 ± 0.3") == pytest.approx((4.7, 5.3))
+    # Kollisions-Schutz gegen Bezeichner-Position: Wort-Buchstaben mit ``x``
+    # ohne Digit-Anker (``Excel``, ``Textur``, ``xylitol``) bleiben unangetastet
+    # und liefern keine Zahl-Tokens - die Digit-Anker verhindern die
+    # Substitution bei Nicht-Dimensions-Kontext.
+    assert csv_loaders.parse_range("Excel") == (None, None)
+    assert csv_loaders.parse_range("Textur ist grob") == (None, None)
+    # Kollisions-Schutz gegen ASCII-Hochzahl-Einheiten: ``cm3``/``m^3`` ohne
+    # Digit-x-Digit-Kontext bleiben unangetastet.
+    assert csv_loaders.parse_range("cm3") == (None, None)
+    assert csv_loaders.parse_range("m^3") == (None, None)
+    # Kollisions-Schutz gegen ``Sample5x10``-Katalog-Bezeichner mit
+    # angehaengter Dimensions-Notation: die Substitution greift zwar
+    # (``5x1`` matcht), aber das ``5`` bleibt via ``_NUM_RE``-Letter-
+    # Lookbehind (``e`` davor) blockiert - nur das ``10`` nach dem
+    # Leerzeichen matcht und liefert (10, 10). Info-Gewinn gegenueber
+    # (None, None) im alten Verhalten (der einzige gefundene Zahl-Wert
+    # wird nicht mehr komplett verworfen).
+    assert csv_loaders.parse_range("Sample5x10") == (10.0, 10.0)
+    # Regression-Anker: bestehende Uncertainty-/Range-/Klammer-Semantik
+    # ohne Dimensions-Notation bleibt unangetastet.
+    assert csv_loaders.parse_range("5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 (Foto)") == (5.5, 5.5)
+    # Inverted-Range-Kollaps (``hi < lo``) greift bei semantisch invertierter
+    # Dimensions-Notation ``4x2`` (Autor hat die groessere Dimension zuerst
+    # geschrieben): ``4x2`` -> ``4 2`` -> nums=[4, 2] -> hi=2 < lo=4 -> (4, 4).
+    # Konsistent mit dem bestehenden Tippfehler-Schutz aus
+    # :func:`test_parse_range_keine_invertierten_paare`.
+    assert csv_loaders.parse_range("4x2 cm") == (4.0, 4.0)
 
 
 def test_parse_range_negatives_vorzeichen():

@@ -952,6 +952,60 @@ _ASCII_MIXED_FRACTION_RE = re.compile(
     r"(?<![A-Za-z^.,\d])(\d+)\s+(\d+)/(\d+)(?!/?\d)"
 )
 
+# ASCII ``x``/``X`` zwischen zwei Ziffern als Dimensions-Separator: ``5x10mm`` /
+# ``2.5x3.0x4.0mm`` / ``LxWxH``-Kompaktnotation aus Sammler-/Katalog-Notizen
+# (Matrix-Groesse eines Kristalls, Ausdehnung eines Handstuecks, Foto-Massband-
+# Ablesung im Freitext-Feld). In der Mineralogie ist die Notation ``5x10mm``
+# der klassische Weg, "5 mm mal 10 mm" ohne separates Breite-Feld zu notieren -
+# haeufig aus geerbten Excel-Kopien mit nur einer Groessen-Spalte, aus
+# Foto-Katalog-Software mit Freitext-Groessen-Feld und aus handschriftlichen
+# Sammler-Karten, in denen der Autor Platz spart.
+#
+# Bisher fiel die ASCII-x-Form still auf silenten Datenverlust der zweiten
+# (und dritten) Dimension: ``_NUM_RE`` hat den negativen Lookbehind
+# ``(?<![A-Za-z^])``, der eine Ziffer direkt nach einem Buchstaben blockiert
+# (Schutz gegen Bezeichner-Nummerierung wie ``Sample3`` und gegen ASCII-
+# Hochzahl-Einheiten wie ``cm3``/``m^2``). Damit blockte ``5x10`` das zweite
+# Zahl-Token: ``5`` matcht (kein Letter davor), ``10`` blockiert (``x`` davor
+# ist Letter). Ergebnis (5.0, 5.0) - die zweite Dimension ging still verloren;
+# ``5x10x15`` analog (5.0, 5.0), obwohl die maximale Ausdehnung 15 die
+# eigentliche Sortier-/Vergleichs-Groesse in einer Groessen-Spalte ist;
+# ``2.5x3.0mm`` lieferte (2.5, 2.5). Bei der Migration aus Katalog-Software
+# mit Freitext-Groesse und aus geerbten Excel-Kopien entstand damit silenter
+# Range-Datenverlust in der Groessen-Achse.
+#
+# Unicode-Multiplikations-Zeichen ``×`` (U+00D7) matchte hingegen schon
+# bisher als Range-Separator (kein Letter in ``_NUM_RE``-Lookbehind, kein
+# Zahl-Bestandteil): ``5×10`` lieferte (5.0, 10.0) korrekt. Die neue
+# Normalisierung schliesst die ASCII-Fallback-Luecke und macht ``5x10``
+# / ``5X10`` semantisch aequivalent zur Unicode-Variante - konsistent mit
+# der ``_normalize_vulgar_fractions``-/``_normalize_ascii_mixed_fractions``-
+# Konvention, ASCII-Ersatzformen typografisch sauberer Notation auf die
+# gleiche Behandlung zu heben.
+#
+# Regex ``(\d)[xX](\d)`` verlangt Ziffern direkt vor und nach ``x``/``X``,
+# ohne Whitespace-Toleranz - die Whitespace-Form ``5 x 10`` funktioniert
+# bereits ohne Sub, weil der Whitespace selbst der Separator ist und ``_NUM_RE``
+# beide Zahlen findet. Nur die Whitespace-lose Compact-Form braucht die
+# Substitution zur Trennung. Substitution durch Leerzeichen (nicht durch
+# ``×``) hat den Vorteil, dass ``_NUM_RE`` das Ergebnis ohne weitere
+# Normalisierung findet - der Lookbehind sieht das Leerzeichen und laesst
+# die zweite Ziffer als eigenstaendiges Token durch.
+#
+# Kollisions-Schutz durch die Digit-Anker: Bezeichner mit ``x`` (``Excel``,
+# ``Textur``) haben keinen digit-x-digit-Match und bleiben unangetastet.
+# Der Fall ``Sample5x10`` (Katalog-Bezeichner mit angehaengter Dimensions-
+# Notation) wird zu ``Sample5 10`` - ``5`` bleibt via ``_NUM_RE``-Lookbehind
+# (Letter davor) blockiert, ``10`` matcht nach Leerzeichen als (10, 10);
+# das ist gegenueber dem alten Verhalten (None, None) ein Info-Gewinn (der
+# einzige gefundene Zahl-Wert wird nicht mehr komplett verworfen). Der Fall
+# ``3x10^-3`` (scientific-notation-artige Konstrukte) wird zu ``3 10^-3``:
+# ``3`` matcht als (3, 3), ``10`` wird durch ``^`` blockiert (``_NUM_RE``-
+# Lookbehind schliesst ``^`` ein) - konsistent mit dem bisherigen
+# ASCII-Hochzahl-Schutz. Fuer echte scientific notation ``3e-3`` /
+# ``3E-3`` gibt es keinen ``x`` und der Zweig greift nicht.
+_DIMENSION_X = re.compile(r"(\d)[xX](\d)")
+
 
 def _ascii_mixed_fraction_replace(m: re.Match) -> str:
     """Callback fuer :data:`_ASCII_MIXED_FRACTION_RE`: Mixed-Form -> Dezimal.
@@ -1479,6 +1533,17 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # wird. Siehe :func:`_strip_repeated_unit` fuer Details zu Guards und
     # Kollisions-Schutz.
     s = _strip_repeated_unit(s)
+    # ASCII ``x``/``X`` zwischen zwei Ziffern als Dimensions-Separator auf
+    # Leerzeichen normalisieren: ``5x10mm`` -> ``5 10mm``, ``2.5x3.0x4.0mm`` ->
+    # ``2.5 3.0 4.0mm``. Spiegelt die Unicode-``×``-(U+00D7-)Range-Semantik
+    # auf die ASCII-Achse und macht die haeufige Compact-Dimensions-Notation
+    # aus Katalog-Software / Foto-Massband-Notizen als Range der Ausdehnungen
+    # verfuegbar (min-Dimension als lo, max-Dimension als hi). Nach
+    # _strip_repeated_unit einsortiert, weil der Unit-Strip strukturell
+    # unabhaengig ist (matcht nur ``[-–—]``-Separator, nie ``x``/``X``) und
+    # die Reihenfolge semantisch keine Rolle spielt. Siehe
+    # :data:`_DIMENSION_X` fuer die Kollisions-Schutz-Details.
+    s = _DIMENSION_X.sub(r"\1 \2", s)
     # Nicht-endliche Tokens (``1e400`` -> ``inf`` via ``float()``-Overflow)
     # aus der Zahl-Menge vor der lo/hi-Auswahl filtern: sonst wuerde
     # ``'1e400'`` als ``(inf, inf)`` und ``'5.5 - 1e400'`` als ``(5.5, inf)``
