@@ -1862,6 +1862,85 @@ def test_parse_range_ascii_x_dimensions_separator():
     assert csv_loaders.parse_range("4x2 cm") == (4.0, 4.0)
 
 
+def test_parse_range_ascii_x_dimensions_kette_ungerade_segmente():
+    """Verkettete ASCII-``x``-Dimensions-Notation mit ungeraden Segment-Laengen
+    (``1x2x3``, ``5x1x2``) liefert die volle Range aller Dimensionen.
+
+    Vor dem Lookahead-Fix konsumierte die Substitution ``(\\d)[xX](\\d)`` in
+    einem Match-Schritt BEIDE Digit-Kanten, sodass der naechste Scan-Schritt
+    hinter der rechten Ziffer weiterlief. Bei all-single-digit-Ketten fiel
+    der zweite ``x`` damit auf ein Nicht-Digit-Zeichen (dem naechsten ``x``
+    selbst, denn die vorhergehende ``x``-Position wurde konsumiert), und der
+    naechste Match-Versuch scheiterte an fehlender rechter Digit-Kante fuer
+    die letzte Zahl. Konkret:
+
+    * ``1x2x3`` (5 Zeichen): erster Pass matcht ``1x2`` (pos 0-2, beide
+      Ziffern konsumiert), Scan resumiert an pos 3 (dem zweiten ``x``), pos 3
+      ist keine Ziffer -> kein Match. Pos 4 ``3`` steht isoliert ohne rechten
+      Digit-Partner -> kein Match. Zwischenstand ``1 2x3``. Die ``3`` bleibt
+      via ``_NUM_RE``-Letter-Lookbehind hinter dem ``x`` blockiert, nums=[1,
+      2] -> ``(1, 2)`` statt der publizierten ``(1, 3)``. Die dritte
+      Dimension ging silent verloren.
+    * ``5x1x2`` (5 Zeichen): analog matcht der erste Pass ``5x1``, das zweite
+      ``x`` bleibt ohne konsumiertes Zeichen zurueck, ``2`` blockiert weiter
+      via Letter-Lookbehind, nums=[5, 1] -> ``(5, 5)`` via inverted-Range-
+      Kollaps - die dritte Dimension komplett verloren.
+
+    Der Lookahead-Fix ``(\\d)[xX](?=\\d)`` mit Substitution ``\\1 `` (nur die
+    linke Ziffer plus Leerzeichen anstelle des ``x``, die rechte Ziffer
+    bleibt fuer den naechsten Scan-Schritt stehen) macht die rechte Kante
+    selbst wieder zur linken Kante der naechsten Digit-x-Digit-Sequenz.
+    ``1x2x3`` -> ``1 2 3`` -> nums=[1, 2, 3] -> ``(1, 3)``; ``5x1x2`` ->
+    ``5 1 2`` -> nums=[5, 1, 2] via inverted-Range-Kollaps auf ``(5, 5)``.
+
+    Semantisch identisch zur Unicode-``×``-Behandlung: die ``×`` blockiert
+    ``_NUM_RE`` ohnehin nicht (kein Letter), alle konsekutiven ``×``-
+    Sequenzen wurden schon bisher transparent gelesen. Der Fix schliesst
+    die letzte Asymmetrie zwischen ASCII- und Unicode-Achse.
+    """
+    # All-single-digit-Kette (drei Dimensionen): jede Position eine einzelne
+    # Ziffer, ungerade Segment-Laenge nach dem ersten Match.
+    assert csv_loaders.parse_range("1x2x3") == (1.0, 3.0)
+    assert csv_loaders.parse_range("1X2X3") == (1.0, 3.0)
+    # All-single-digit-Kette mit invertierter mittlerer Dimension: der Kollaps
+    # greift auf die groesste linke Kante, weil hi < lo.
+    assert csv_loaders.parse_range("5x1x2") == (5.0, 5.0)
+    # Vier-Dimensionen-Kette (all-single-digit): jede Substitution greift
+    # unabhaengig via Lookahead.
+    assert csv_loaders.parse_range("1x2x3x4") == (1.0, 4.0)
+    # Fuenf-Dimensionen-Kette: laengere Ketten funktionieren transparent.
+    assert csv_loaders.parse_range("1x2x3x4x5") == (1.0, 5.0)
+    # Trailing-Einheit an einer all-single-digit-Kette: die letzte Ziffer
+    # bleibt hinter der Einheit hinter dem Buchstaben-Lookbehind blockiert,
+    # aber die vorletzte Ziffer ist die max-Dimension.
+    assert csv_loaders.parse_range("1x2x3mm") == (1.0, 3.0)
+    assert csv_loaders.parse_range("1x2x3x4cm") == (1.0, 4.0)
+    # Mixed-length-Kette (single-multi-single): der Lookahead greift an jeder
+    # Position unabhaengig von der Segment-Laenge. Die parse_range-Semantik
+    # ist erste-Zahl-als-lo / letzte-Zahl-als-hi (nicht min/max), spiegelt
+    # die bestehende Range-Konvention "erste bis letzte Grenze".
+    assert csv_loaders.parse_range("1x10x3") == (1.0, 3.0)   # letzte < mittlere -> lo/hi bleiben erste/letzte
+    assert csv_loaders.parse_range("1x2x30") == (1.0, 30.0)
+    assert csv_loaders.parse_range("10x2x3") == (10.0, 10.0)  # letzte < erste -> inverted-Kollaps
+    # DE-Komma-Dezimal-Vorstand in einer Kette (Excel-DE-Export).
+    assert csv_loaders.parse_range("1,5x2,5x3,5") == (1.5, 3.5)
+    # Regress-Anker: Unicode-``×``-Kette liefert dieselben Ergebnisse
+    # (Konsistenz zwischen ASCII- und Unicode-Achse).
+    assert csv_loaders.parse_range("1×2×3") == (1.0, 3.0)
+    assert csv_loaders.parse_range("5×1×2") == (5.0, 5.0)
+    assert csv_loaders.parse_range("1×2×3×4") == (1.0, 4.0)
+    # Regress-Anker: Zwei-Dimensions-Grundform (aus dem urspruenglichen Test)
+    # bleibt identisch, kein Lookahead-Regress.
+    assert csv_loaders.parse_range("5x10") == (5.0, 10.0)
+    assert csv_loaders.parse_range("5x10mm") == (5.0, 10.0)
+    assert csv_loaders.parse_range("2.5x3.0mm") == (2.5, 3.0)
+    # Regress-Anker: gerade-length-Ketten (aus dem urspruenglichen Test)
+    # bleiben identisch - die alten Assertionen greifen auf denselben
+    # Ausdruck via Zufaellige-Position-Ausrichtung.
+    assert csv_loaders.parse_range("5x10x15") == (5.0, 15.0)
+    assert csv_loaders.parse_range("2.5x3.0x4.0mm") == (2.5, 4.0)
+
+
 def test_parse_range_negatives_vorzeichen():
     """Fuehrendes Minus-Vorzeichen wird als negatives Signum an die folgende Zahl
     gebunden, ohne die bestehende Range-Separator-Semantik zu beruehren.

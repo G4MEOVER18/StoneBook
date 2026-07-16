@@ -1004,7 +1004,38 @@ _ASCII_MIXED_FRACTION_RE = re.compile(
 # Lookbehind schliesst ``^`` ein) - konsistent mit dem bisherigen
 # ASCII-Hochzahl-Schutz. Fuer echte scientific notation ``3e-3`` /
 # ``3E-3`` gibt es keinen ``x`` und der Zweig greift nicht.
-_DIMENSION_X = re.compile(r"(\d)[xX](\d)")
+#
+# Digit-Lookahead ``(?=\d)`` statt konsumierender zweiter Digit-Gruppe: die
+# rechte Digit-Kante bleibt im Reststring stehen und ist beim naechsten
+# re.sub-Scan-Schritt selbst wieder LINKE Kante eines potenziellen Digit-x-
+# Digit-Matches. Ohne diesen Lookahead-Modus (also bei der konsumierenden
+# Form ``(\d)[xX](\d)``) fielen alle chainings mit ungerader Segment-Laenge
+# still auf silenten Datenverlust der mittleren/hinteren Dimensionen: bei
+# ``1x2x3`` (all-single-digit-chain) matcht der erste Pass ``1x2`` und
+# konsumiert die Ziffern auf beiden Seiten des ersten ``x``; der naechste
+# Scan-Schritt beginnt an Position 3 (dem zweiten ``x``) und findet dort
+# keine Digit-Kante mehr (die ``3`` steht isoliert am Ende ohne rechten
+# Digit-Partner), das Ergebnis nach der Substitution ist ``1 2x3`` - die
+# ``3`` bleibt via ``_NUM_RE``-Letter-Lookbehind hinter dem ``x`` weiter
+# blockiert und fliesst als silenter Datenverlust nicht in die Zahl-Menge
+# ein: ``nums=[1, 2]`` -> ``(1, 2)`` statt der publizierten ``(1, 3)``.
+# Bei ``5x1x2`` (start-multidigit, mittlere-single) noch schlimmer: der
+# erste Pass matcht ``5x1``, das zweite ``x`` bleibt ohne konsumiertes
+# Zeichen zurueck, ``2`` blockiert weiter via Letter-Lookbehind, nums=[5, 1]
+# via inverted-Range-Kollaps auf ``(5, 5)`` - die dritte Dimension
+# komplett verloren. Der Lookahead ``(?=\d)`` fixt beide Faelle: die
+# rechte Ziffer bleibt stehen und wird beim naechsten Scan-Schritt selbst
+# zur linken Kante der naechsten Digit-x-Digit-Sequenz - ``1x2x3`` ->
+# ``1 2 3`` -> ``(1, 3)``, ``5x1x2`` -> ``5 1 2`` -> ``(5, 5)`` via
+# inverted-Range-Kollaps (Autor hat groesste Dimension zuerst - konsistent
+# mit der bestehenden Semantik). Ersetzung wird ``\1 `` (nur die vorherige
+# Ziffer plus Leerzeichen anstelle des ``x``; die rechte Ziffer bleibt
+# unangetastet fuer den naechsten Scan). Semantisch identisch zur
+# Unicode-``×``-Behandlung (die ``×`` ist kein Letter und blockiert den
+# Lookbehind ohnehin nicht, alle konsekutiven ``×``-Sequenzen werden
+# transparent gelesen: ``1×2×3`` -> nums=[1, 2, 3] -> ``(1, 3)``,
+# ``5×1×2`` -> ``(5, 5)`` via Kollaps).
+_DIMENSION_X = re.compile(r"(\d)[xX](?=\d)")
 
 
 def _ascii_mixed_fraction_replace(m: re.Match) -> str:
@@ -1543,7 +1574,7 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # unabhaengig ist (matcht nur ``[-–—]``-Separator, nie ``x``/``X``) und
     # die Reihenfolge semantisch keine Rolle spielt. Siehe
     # :data:`_DIMENSION_X` fuer die Kollisions-Schutz-Details.
-    s = _DIMENSION_X.sub(r"\1 \2", s)
+    s = _DIMENSION_X.sub(r"\1 ", s)
     # Nicht-endliche Tokens (``1e400`` -> ``inf`` via ``float()``-Overflow)
     # aus der Zahl-Menge vor der lo/hi-Auswahl filtern: sonst wuerde
     # ``'1e400'`` als ``(inf, inf)`` und ``'5.5 - 1e400'`` als ``(5.5, inf)``
