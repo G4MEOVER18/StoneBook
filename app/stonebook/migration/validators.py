@@ -1225,6 +1225,29 @@ _MONTH_NAMES: dict[str, int] = {
     "oktober": 10, "october": 10, "okt": 10, "oct": 10,
     "november": 11, "nov": 11,
     "dezember": 12, "december": 12, "dez": 12, "dec": 12,
+    # Italienische Monatsnamen (Ticino / italienische Schweiz sowie geerbte
+    # Sammler-Notizen aus italienischen Alpen-/Dolomiten-Fundorten) - alle
+    # ASCII, keine Akzente in italienischen Monatsnamen (im Gegensatz zu
+    # franzoesisch fev/aout/dec), daher keine Regex-/Character-Class-Aenderung
+    # noetig. Kollisionsfrei zum DE/EN-Bestand, weil identische Kuerzel
+    # (mar/apr/nov) und Zwischenpaare (mag=mai, giu=juni, lug=juli, ago=aug,
+    # sett=sept, ott=okt, dic=dez) alle auf denselben Monat abbilden -
+    # semantisch identisch mit den DE/EN-Alternativen. Die dritte Amtssprache
+    # Rumantsch (Bundesamts-Statistik: ~0.5% Bevoelkerungsanteil, deutlich
+    # kleiner als IT) wird nicht abgedeckt, weil Sammler-Notizen aus dem
+    # Buendner Oberland fast durchgaengig DE-Sprachig gepflegt sind.
+    "gennaio": 1, "gen": 1,
+    "febbraio": 2,
+    "marzo": 3,
+    "aprile": 4,
+    "maggio": 5, "mag": 5,
+    "giugno": 6, "giu": 6,
+    "luglio": 7, "lug": 7,
+    "agosto": 8, "ago": 8,
+    "settembre": 9, "sett": 9,
+    "ottobre": 10, "ott": 10,
+    "novembre": 11,
+    "dicembre": 12, "dic": 12,
     # Roemische Monatsziffern (I..XII) - traditionelle Schreibweise auf aelteren
     # mineralogischen Etiketten, Museums-Eingangsbuechern und in osteuropaeischen
     # Sammlungs-Notizen ("13.VI.1985" = 13. Juni 1985). Wird durch
