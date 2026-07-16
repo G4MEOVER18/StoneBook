@@ -3485,6 +3485,51 @@ _OSM_HASH_MAP = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# Wikipedia-GeoHack-URL-Query-Parameter ``params=`` mit Underscore-getrennter
+# Koordinaten-Kette (Decimal-mit-Direction, DM oder DMS) - die Standard-Form
+# aller Wikipedia-Artikel-Koordinaten-Boxen: der Klick auf ``46° 30′ 15″ N,
+# 7° 30′ 15″ E`` in einem Wikipedia-Artikel oeffnet
+# ``https://geohack.toolforge.org/geohack.php?pagename=<Titel>&params=46_30_15_N_7_30_15_E&type=...``,
+# und viele Sammler kopieren diese URL direkt aus dem Browser als Quellen-
+# Beleg fuer den Fundort. Bisher fiel jede GeoHack-URL still auf None, weil
+# Underscore (``_``) weder in :data:`_DECIMAL_PAIR`s Separator-Klasse
+# ``[ \t,;/&~]`` steht noch die DMS-Patterns (:data:`_DMS`, :data:`_DMS_COLON`,
+# :data:`_DMS_LETTERS`, :data:`_DMS_PREFIX`) den Underscore als Zahl-Trenner
+# kennen - aus einem typischen Sammler-Workflow "Fundort in Wikipedia
+# nachschlagen -> Coord-Link kopieren -> ins Fundort-Feld einfuegen"
+# entstand damit silenter Koordinaten-Datenverlust bei der Migration. Die
+# GeoHack-Grammatik ist strikt: ``params=<lat>_<direction>_<lon>_<direction>
+# [_type:...|_scale:...|_region:...]`` mit ``<lat>``/``<lon>`` als 1, 2 oder
+# 3 Underscore-getrennten Zahlen (Decimal-, DM- oder DMS-Form). Direction-
+# Buchstaben N/S fuer Lat und E/W (auch DE-Alternante O fuer Ost) fuer Lon
+# sind obligatorisch und dienen als impliziter Separator zwischen den zwei
+# Achsen. Die drei Zahl-Optionalitaets-Klauseln erlauben alle drei Formen:
+# ``46.5_N`` (Decimal), ``46_30_N`` (DM), ``46_30_15_N`` (DMS). Nach der
+# zweiten Direction folgt entweder Query-Parameter-Separator (``&``, ``_type:``
+# etc.) oder das String-Ende - die Alternante ``(?=_[A-Za-z]|&|$)`` verhindert
+# das versehentliche Fressen des nachfolgenden ``type:``-Parameters. Kollisions-
+# frei zu :data:`_OSM_HASH_MAP` (das verlangt ``#map=``-Praefix, nicht
+# ``params=``), zu :data:`_GEO_URI` / :data:`_GEO_URI_ANDROID_QUERY` (die
+# verlangen ``geo:``-Scheme), zu :data:`_GOOGLE_PLACE_3D_4D` (das verlangt
+# ``!3d``/``!4d``-Fragment), und zu allen Decimal-/DMS-/Prefix-/Suffix-
+# Patterns (die kennen Underscore nicht als Separator und fielen bisher
+# still auf None). Case-Insensitiv, weil ``PARAMS=`` in geerbten URLs mit
+# Caps-Lock-Encoding vorkommt.
+_GEOHACK_PARAMS = re.compile(
+    r"""(?:^|[?&])params=                              # Query-Parameter-Anker
+        (\d+(?:\.\d+)?)                                # Lat-Grad
+        (?:_(\d+(?:\.\d+)?))?                          # Lat-Minuten (optional)
+        (?:_(\d+(?:\.\d+)?))?                          # Lat-Sekunden (optional)
+        _([NS])                                        # Lat-Direction
+        _
+        (\d+(?:\.\d+)?)                                # Lon-Grad
+        (?:_(\d+(?:\.\d+)?))?                          # Lon-Minuten (optional)
+        (?:_(\d+(?:\.\d+)?))?                          # Lon-Sekunden (optional)
+        _([EWO])                                       # Lon-Direction
+        (?=_[A-Za-z]|&|$)                              # Ende: Type-Suffix, Ampersand oder String-Ende
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 # WKT-POINT-Notation (OGC Simple Features / ISO 19125) - Standard-Serialisierungs-
 # Form fuer Punkt-Geometrien aus GIS-Werkzeugketten: PostGIS ST_AsText,
 # GeoPandas .to_wkt, QGIS "Copy as WKT", ogr2ogr, ArcGIS Feature-to-Text und
@@ -4944,6 +4989,27 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     m = _OSM_HASH_MAP.search(s)
     if m:
         return _validate(_to_float(m.group(1)), _to_float(m.group(2)))
+    # Wikipedia-GeoHack-URL-Query-Parameter ``params=<lat>_<dir>_<lon>_<dir>``
+    # mit Underscore-getrennter Decimal-/DM-/DMS-Zahlen-Kette. Vor allen
+    # Zahl-Paar-Patterns extrahieren, weil Underscore als Separator in keinem
+    # der weiteren Patterns anerkannt ist und die Formen sonst still auf None
+    # fallen wuerden. Die drei Optionalitaets-Klauseln in :data:`_GEOHACK_PARAMS`
+    # decken Decimal (nur Grad), DM (Grad+Minuten) und DMS (Grad+Minuten+
+    # Sekunden) transparent ab; die Direction-Buchstaben liefern das Vorzeichen
+    # (N/E/O positiv, S/W negativ) und disambiguieren die Achsen-Reihenfolge.
+    m = _GEOHACK_PARAMS.search(s)
+    if m:
+        deg_lat = _to_float(m.group(1))
+        min_lat = _to_float(m.group(2)) if m.group(2) else 0.0
+        sec_lat = _to_float(m.group(3)) if m.group(3) else 0.0
+        dir_lat = m.group(4)
+        deg_lon = _to_float(m.group(5))
+        min_lon = _to_float(m.group(6)) if m.group(6) else 0.0
+        sec_lon = _to_float(m.group(7)) if m.group(7) else 0.0
+        dir_lon = m.group(8)
+        lat = (deg_lat + min_lat / 60 + sec_lat / 3600) * _sign(dir_lat)
+        lon = (deg_lon + min_lon / 60 + sec_lon / 3600) * _sign(dir_lon)
+        return _validate(lat, lon)
     # WKT-POINT-Notation (OGC Simple Features): "POINT(lon lat)". Vor allen
     # Zahl-Paar-Patterns extrahieren, weil das erste Zahl-Feld die
     # Longitude ist, nicht die Latitude - _DECIMAL_PAIR (Whitespace-Separator

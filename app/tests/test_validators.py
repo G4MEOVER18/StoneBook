@@ -8192,3 +8192,91 @@ def test_parse_iso_date_hearsay_marker():
     assert parse_iso_date("maybe 1985") == "1985-01-01"
     assert parse_iso_date("1985 wahrscheinlich") == "1985-01-01"
     assert parse_iso_date("1985 vermutlich") == "1985-01-01"
+
+
+def test_parse_coordinates_wikipedia_geohack_url():
+    """Wikipedia-GeoHack-URL-Query-Parameter ``params=<lat>_<dir>_<lon>_<dir>``
+    (Decimal-mit-Direction, DM, DMS) wird als Koordinaten-Quelle erkannt.
+
+    Wikipedia rendert jede Koordinaten-Box (Template ``{{Coord}}`` oder
+    ``{{Location}}``) als Hyperlink auf
+    ``https://geohack.toolforge.org/geohack.php?pagename=<Artikel>&params=<coord>[&type=...&region=...&scale=...]``.
+    Der ``params=``-Wert kodiert die Koordinaten Underscore-getrennt in
+    einer der drei Formen:
+
+    - Decimal + Direction: ``46.5_N_7.5_E``
+    - DM (Grad + Minuten): ``46_30_N_7_30_E``
+    - DMS (Grad + Minuten + Sekunden): ``46_30_15_N_7_30_15_E``
+
+    Bisher fiel jede GeoHack-URL still auf None, weil Underscore (``_``)
+    weder in :data:`_DECIMAL_PAIR`s Separator-Klasse ``[ \t,;/&~]`` steht
+    noch die DMS-Patterns (:data:`_DMS`, :data:`_DMS_COLON`,
+    :data:`_DMS_LETTERS`, :data:`_DMS_PREFIX`) den Underscore als Zahl-
+    Trenner kennen - aus einem typischen Sammler-Workflow "Fundort in
+    Wikipedia nachschlagen -> Coord-Link kopieren -> ins Fundort-Feld
+    einfuegen" entstand damit silenter Koordinaten-Datenverlust bei der
+    Migration. Neuer :data:`_GEOHACK_PARAMS`-Zweig extrahiert vor allen
+    Zahl-Paar-Patterns die Underscore-Kette, konvertiert DM/DMS via
+    ``deg + min/60 + sec/3600`` und wendet das Direction-Vorzeichen an
+    (N/E/O positiv, S/W negativ).
+    """
+    # Volle URL, Decimal-Form
+    assert parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php?params=46.5_N_7.5_E"
+    ) == (46.5, 7.5)
+    # Volle URL mit Pagename-Prefix (der bei GeoHack ueblich ist)
+    assert parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php"
+        "?pagename=Mont_Blanc&params=45.833333_N_6.866667_E"
+    ) == (45.833333, 6.866667)
+    # DM-Form (Grad + Minuten)
+    assert parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php?params=46_30_N_7_30_E"
+    ) == (46.5, 7.5)
+    # DMS-Form (Grad + Minuten + Sekunden)
+    lat, lon = parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php?params=46_30_15_N_7_30_15_E")
+    assert abs(lat - (46 + 30/60 + 15/3600)) < 1e-9
+    assert abs(lon - (7 + 30/60 + 15/3600)) < 1e-9
+    # Suedhalbkugel-/Westhalbkugel-Direction (Vorzeichen negativ)
+    assert parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php?params=46.5_S_7.5_W"
+    ) == (-46.5, -7.5)
+    # DE-Alternante O fuer Ost (Sammler-typisch in DE-lokalisierten URLs)
+    assert parse_coordinates("params=46.5_N_7.5_O") == (46.5, 7.5)
+    # URL mit trailing type/region/scale-Parametern (Standard-Rendering)
+    assert parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php"
+        "?params=46.5_N_7.5_E&type=mountain&region=CH&scale=50000"
+    ) == (46.5, 7.5)
+    # DMS-Form + trailing type-Parameter (kombiniert)
+    lat, lon = parse_coordinates(
+        "https://geohack.toolforge.org/geohack.php"
+        "?params=46_30_15_N_7_30_15_E&type=mountain")
+    assert abs(lat - (46 + 30/60 + 15/3600)) < 1e-9
+    assert abs(lon - (7 + 30/60 + 15/3600)) < 1e-9
+    # Reines params=-Fragment (der Sammler kopiert nur den Query-Teil)
+    assert parse_coordinates("params=46.5_N_7.5_E") == (46.5, 7.5)
+    # Case-Insensitivitaet auf params= und Direction (Caps-Lock aus
+    # geerbten URLs)
+    assert parse_coordinates("PARAMS=46.5_N_7.5_E") == (46.5, 7.5)
+    assert parse_coordinates("params=46.5_n_7.5_e") == (46.5, 7.5)
+    # Nord/Sued-Aequator- und Ost/West-Nullmeridian-Grenzfaelle
+    assert parse_coordinates("params=0_N_0_E") == (0.0, 0.0)
+    assert parse_coordinates("params=90_N_180_E") == (90.0, 180.0)
+    assert parse_coordinates("params=90_S_180_W") == (-90.0, -180.0)
+    # Out-of-Range: Validierung greift wie sonst
+    assert parse_coordinates("params=91.0_N_7.5_E") is None
+    assert parse_coordinates("params=46.5_N_200.0_E") is None
+    # Ungueltige Form ohne Direction (kein GeoHack-Match, Underscore
+    # ist in keinem anderen Pattern als Separator anerkannt -> None)
+    assert parse_coordinates("params=46.5_7.5") is None
+    # Ungueltige Form mit nur einer Direction (kein Match)
+    assert parse_coordinates("params=46.5_N_7.5") is None
+    # Regress-Anker: alle bestehenden Formen bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates("#map=15/46.5/7.5") == (46.5, 7.5)
+    assert parse_coordinates("POINT(7.5 46.5)") == (46.5, 7.5)
+
