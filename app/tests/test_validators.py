@@ -7654,9 +7654,32 @@ def test_parse_coordinates_geo_uri_android_intent():
     # (spec-konform, siehe Android-Doc "Show given location with matching
     # address as the label") - die Pfad-Koordinaten gewinnen
     assert parse_coordinates("geo:46.5,7.5?q=Zermatt") == (46.5, 7.5)
+    # RFC-5870-Parameter-Segment (``;u=<meters>`` fuer Uncertainty in
+    # Metern, ``;crs=<name>`` fuer Coordinate-Reference-System) zwischen
+    # Basis-Koordinaten und Query-String - RFC-konform und von einigen
+    # nicht-Android-Karten-Apps sowie von RFC-5870-strikten Geocoder-
+    # Bibliotheken (pygeouri, geopy) erzeugt. Vor diesem Zweig fielen
+    # solche Formen still auf die Placeholder-Koordinaten (0,0) durch,
+    # weil das Android-Query-Pattern nur ``\s*\?`` zwischen Basis-Koord
+    # und Query-Marker akzeptierte und der ``;``-Parameter-Block dazwischen
+    # das Anker-Matching blockte.
+    assert parse_coordinates(
+        "geo:0,0;u=25?q=46.5,7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "geo:0,0;crs=wgs84?q=46.5,7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "geo:0,0;crs=wgs84;u=25?q=46.5,7.5(Fundstelle)") == (46.5, 7.5)
+    # RFC-5870-Parameter kombiniert mit optionaler Altitude im
+    # Placeholder-Koord (drittes Komma-Feld)
+    assert parse_coordinates(
+        "geo:0,0,100;u=25?q=46.5,7.5(Fund)") == (46.5, 7.5)
     # Regression: alle bestehenden Formen bleiben unveraendert
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("geo:46.5,7.5") == (46.5, 7.5)
+    # Regression: RFC-5870-Parameter OHNE q= liefert weiterhin die reinen
+    # Basis-Koord ueber :data:`_GEO_URI` (dokumentiertes Fallback)
+    assert parse_coordinates("geo:0,0;u=25") == (0.0, 0.0)
+    assert parse_coordinates("geo:46.5,7.5;u=25") == (46.5, 7.5)
 
 
 def test_parse_coordinates_google_place_3d_4d_fragment():

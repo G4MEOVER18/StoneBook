@@ -3652,6 +3652,9 @@ _GEO_URI_ANDROID_QUERY = re.compile(
         \s*,\s*
         [-+]?\d+(?:\.\d+)?                        # placeholder <lon> (typisch 0)
         (?:\s*,\s*[-+]?\d+(?:\.\d+)?)?            # optional placeholder <alt>
+        (?:\s*;[^?]*)?                            # optional RFC-5870-Params
+                                                  # (;u=25 Uncertainty in m,
+                                                  # ;crs=wgs84 Coord-Ref-System)
         \s*\?[^#]*?\bq=\s*
         ([-+]?\d+(?:\.\d+)?)                      # echte <lat> im q-Parameter
         \s*,\s*
