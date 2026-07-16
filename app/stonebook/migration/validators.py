@@ -1751,6 +1751,31 @@ _SEASON_MONTHS: dict[str, int] = {
     # separat gefuehrt - Sammler-Notizen aus der Romandie verwenden ueberwiegend
     # die nackte Saison-Notation.
     "printemps": 3, "ete": 6, "automne": 9, "hiver": 12,
+    # Italienische Saison-Namen (Ticino / italienische Schweiz sowie geerbte
+    # Sammler-Notizen aus italienischen Alpen-/Dolomiten-Fundorten) -
+    # primavera=Fruehling, estate=Sommer, autunno=Herbst, inverno=Winter.
+    # Alle ASCII, keine Akzente auf den italienischen Saison-Namen (im
+    # Gegensatz zu franzoesisch ete/été), daher keine Regex-/Character-
+    # Class-Aenderung noetig; die identische NFKD-Diakritika-Behandlung
+    # in :func:`_normalize_season_name` bleibt Ruhe-Semantik. Konvention
+    # identisch zu DE/EN/FR: meteorologischer Saison-Startmonat des
+    # genannten Jahres (Maerz/Juni/September/Dezember). Symmetrie-
+    # Vervollstaendigung zum bereits gepflegten IT-Monat-Block in
+    # :data:`_MONTH_NAMES` (gennaio..dicembre): dort ist Ticino als IT-
+    # Sprachraum begruendet, hier fehlten die passenden Saison-Namen -
+    # Sammler-Notizen aus Val Bavona/Val Verzasca/Val Malvaglia oder
+    # Dolomiten-Fund-Etiketten der Bergamasker Alpen konnten "estate
+    # 1985" bisher nicht als "1985-06-01" auflosen, obwohl der IT-
+    # Wortstamm im Sammlungs-Feld eindeutig als Saison-Angabe lesbar
+    # ist. Kollisions-Schutz: keiner der vier Namen kollidiert mit dem
+    # bestehenden IT-Monat-Bestand (gennaio/febbraio/marzo/aprile/maggio/
+    # giugno/luglio/agosto/settembre/ottobre/novembre/dicembre) oder mit
+    # DE/EN/FR-Season-/Monat-Namen; "estate" ist zwar auch ein englischer
+    # Substantiv (Nachlass), spiegelt aber die identische Kontext-
+    # Ambiguitaet der bereits akzeptierten "spring"/"fall"-Notationen (die
+    # ebenfalls Nicht-Season-Bedeutungen tragen koennen) und wird in
+    # Sammler-Notizen fast durchgaengig als Saison verstanden.
+    "primavera": 3, "estate": 6, "autunno": 9, "inverno": 12,
 }
 # Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Saison-Wort und Jahr
 # deckt die natuerlichsprachige DE-/EN-Prosa-Form ab: ``Sommer von 2024`` /
