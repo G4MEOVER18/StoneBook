@@ -5146,6 +5146,27 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     # hat im Koordinaten-Kontext keine andere Bedeutung als Komma. Symmetrisch
     # zum U+2212-Strip auf der Vorzeichen-Achse.
     s = s.replace("%2C", ",").replace("%2c", ",")
+    # Fullwidth-CJK-Interpunktion auf ASCII normalisieren: Fullwidth-Komma
+    # (U+FF0C ``，``), Fullwidth-Full-Stop (U+FF0E ``．``), Fullwidth-Solidus
+    # (U+FF0F ``／``). Alle drei sind die Standard-Interpunktion aus CJK-Text-
+    # Eingabe (Japanese/Chinese-IME liefert ``，`` statt ``,`` und ``．`` statt
+    # ``.`` als Default; typisch auch fuer Copy-Paste aus CJK-Publikationen,
+    # aus wechselnden IME-Kontexten und aus MS-Office-Autoformat mit CJK-
+    # Locale). Ohne Normalisierung fallen alle CJK-Interpunktions-Formen durch
+    # die _DECIMAL_PAIR-Separator-Klasse ``[ \t,;/&]`` (kennt keine Fullwidth-
+    # Zeichen) und den Decimal-Punkt der _NUM_RE-Zahl-Extraktion und liefern
+    # stille None - der Sammler-Workflow "GPS-Koordinate aus CJK-Referenz
+    # kopieren, ins Fundort-Feld einfuegen" scheitert unsichtbar. Fullwidth-
+    # Ziffern (U+FF10..U+FF19) sind bereits transparent behandelt, weil
+    # Python ``\d`` Unicode-Decimal per Default matcht (die CJK-Ziffern-Formen
+    # sind decimal-property-Zeichen); nur die Interpunktion braucht den
+    # expliziten Strip. Single-Pass-Replace vor allen Pattern-Versuchen ist
+    # symmetrisch zum U+2212-/``º``-/``%2C``-Strip auf ihren jeweiligen
+    # semantischen Achsen; die drei Zeichen haben im Koordinaten-Kontext
+    # keine andere Bedeutung als ihre ASCII-Aequivalente.
+    s = (s.replace("，", ",")
+          .replace("．", ".")
+          .replace("／", "/"))
     # OSM-URL-Hash-Fragment "#map=<zoom>/<lat>/<lon>" vor allen Zahl-Paar-Patterns
     # extrahieren: das erste Slash-getrennte Feld ist der Zoom-Level, nicht die
     # Latitude - _DECIMAL_PAIR wuerde sonst (zoom, lat) statt (lat, lon) greifen

@@ -6889,6 +6889,46 @@ def test_parse_coordinates_url_encoded_komma():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_fullwidth_cjk_interpunktion():
+    """Fullwidth-CJK-Interpunktion (U+FF0C ``，``, U+FF0E ``．``, U+FF0F ``／``)
+    wird transparent auf ASCII normalisiert.
+
+    Japanese/Chinese-IME liefern ``，``/``．``/``／`` als Default-Interpunktion
+    (statt der ASCII-Aequivalente ``,``/``.``/``/``). Sammler mit CJK-Locale
+    oder aus einem CJK-IME-Kontext kopiertem Text tippen die Koordinaten mit
+    der Fullwidth-Form, ohne den Unterschied zu bemerken - die Zeichen sind
+    monospace-visuell nur an der Breite unterscheidbar. Vor dem Fix fielen
+    alle Fullwidth-Interpunktions-Formen still auf None, weil die _DECIMAL_PAIR-
+    Separator-Klasse ``[ \\t,;/&]`` und der Decimal-Punkt der _NUM_RE-Zahl-
+    Extraktion strikt ASCII-Zeichen verlangen. Fullwidth-Ziffern (U+FF10..
+    U+FF19) sind bereits transparent behandelt, weil Python ``\\d`` per Default
+    Unicode-Decimal matcht - nur die Interpunktion braucht den expliziten Strip.
+    """
+    # Fullwidth-Komma als Separator
+    assert parse_coordinates("46.5，7.5") == (46.5, 7.5)
+    # Fullwidth-Komma mit trailing Whitespace (typisch fuer copy-paste aus CJK)
+    assert parse_coordinates("46.5， 7.5") == (46.5, 7.5)
+    # Fullwidth-Full-Stop als Decimal-Punkt (Standard-IME-Output)
+    assert parse_coordinates("46．5，7．5") == (46.5, 7.5)
+    # Fullwidth-Solidus als Separator (spiegelt den ASCII-Slash-Zweig)
+    assert parse_coordinates("46.5／7.5") == (46.5, 7.5)
+    # Fullwidth-Komma mit ASCII-Vorzeichen
+    assert parse_coordinates("-46.5，-7.5") == (-46.5, -7.5)
+    # Fullwidth-Komma mit U+2212-Minus (beide Fixes greifen unabhaengig)
+    assert parse_coordinates("−46.5，−7.5") == (-46.5, -7.5)
+    # Fullwidth-Komma in DMS-/Prefix-Notation
+    assert parse_coordinates("N46.5°，E7.5°") == (46.5, 7.5)
+    # Fullwidth-Ziffern (U+FF10..U+FF19) sind schon vorher transparent
+    # (Regression-Anker fuer Python-\\d-Unicode-Decimal-Semantik).
+    assert parse_coordinates("４６.５，７.５") == (46.5, 7.5)
+    # Out-of-range bleibt None (Validierung greift wie sonst)
+    assert parse_coordinates("46.5，200.0") is None
+    assert parse_coordinates("100.0，7.5") is None
+    # Regression: ASCII-Interpunktion weiter gueltig
+    assert parse_coordinates("46.5,7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5/7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_url_query_params():
     """URL-Query-Parameter-Formen (lat=/lon=/mlat=/mlon=/latitude=/longitude=).
 
