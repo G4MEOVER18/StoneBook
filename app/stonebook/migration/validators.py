@@ -3983,6 +3983,63 @@ _COORD_LABEL = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# Label-gesteuerte Extraktion, wenn *beide* Achsen (lat- und lon-Familie) explizit
+# markiert sind. Deckt die verbreitete Query-Param-Form ``?mlon=7.5&mlat=46.5``
+# (OSM-Share-URL mit reversed Order), ``?lng=7.5&lat=46.5`` (Web-Mapping-API mit
+# Longitude-zuerst-Reihenfolge) sowie freitext-Notation ``"Lon: 7.5, Lat: 46.5"``
+# / ``"longitude=7.5 latitude=46.5"`` ab, in denen der Longitude-Wert *vor* dem
+# Latitude-Wert steht. Bisher fielen alle solchen Formen in :data:`_COORD_LABEL`,
+# wurden dort still zu Whitespace gestrippt und danach von :data:`_DECIMAL_PAIR`
+# in Auftritts-Reihenfolge (Lon, Lat) als (lat, lon) fehlinterpretiert - silente
+# Achsen-Vertauschung bei jedem OSM-mlon-zuerst-URL, jedem lng-zuerst-JSON aus
+# Web-Karten-Widget-DevTools-Exporten, jedem Freitext mit Lon-vor-Lat-Reihenfolge
+# und jedem GIS-Report, der die geographisch uebliche (X, Y) = (Lon, Lat)-Achsen-
+# Reihenfolge ausgibt. Besonders schwer erkennbar bei Fundorten in der Schweiz /
+# Alpen-Region, wo lat=7.5 und lon=46.5 formal ein gueltiges Paar (Golf von
+# Guinea nahe Sao Tome) ergeben und die _validate-Range-Pruefung erfolgreich
+# durchlaeuft.
+#
+# Die neuen Patterns spiegeln die Label-Menge aus :data:`_COORD_LABEL` auf zwei
+# disjunkte Achsen-Regexen (Lat-Familie vs. Lon-Familie), erfassen aber
+# zusaetzlich den Wert selbst (mit optionaler Vorzeichen und optionaler
+# N/S/E/W/O-Direction-Praefix/Suffix). Case-Insensitiv, weil OSM-Share-Links
+# und JavaScript-API-JSON Kleinschreibung nutzen (mlat/mlon, lat/lng) und
+# freitext-Notation oft Grossschreibung (Lat/Lon) hat. Alternation-Reihenfolge
+# (Voll vor Kurz) plus :samp:`(?![A-Za-z...])`-Lookahead spiegelt
+# :data:`_COORD_LABEL` fuer Anschnitt-Schutz ("latex" faengt nicht "lat").
+#
+# Zusaetzlicher End-Anker ``(?=$|[\s,;&?#/])`` nach der Wert-Extraktion stellt
+# sicher, dass DMS-Fortsetzungen (``"Lat: 46d 30m 15s N"``, ``"Lat: 46°30'15\"N"``,
+# ``"Lat: 46:30:15 N"``, ``"Lat: 46 30 15 N"``) NICHT als Plain-Decimal fehl-
+# gelesen werden - die DMS-Formen bleiben Zustaendigkeit von _DMS/_DMS_LETTERS/
+# _DMS_COLON/_DMS_PREFIX und dieser Fall faellt via Sentinel auf die generische
+# Route zurueck. Vorzeichen (``-``) und DE-Komma-Dezimal (``46,5``) werden im
+# Zahl-Capture toleriert.
+_LAT_LABELED_VALUE = re.compile(
+    r"""\b(?:latitude|lat|breitengrad|breite|mlat)
+        (?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])
+        \.?\s*[:=]?\s*
+        (?:([NSEWOnsewo])\s*°?\s*)?    # optionale Prefix-Direction
+        ([+-]?\d+(?:[.,]\d+)?)
+        \s*°?\s*
+        ([NSEWOnsewo])?                # optionale Suffix-Direction
+        (?=$|[\s,;&?#/])               # gefolgt von Ende/Separator, nicht DMS-Fortsetzung
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_LON_LABELED_VALUE = re.compile(
+    r"""\b(?:longitude|longitudinal|long|lon|lng|laengengrad|laenge|längengrad|länge|mlon)
+        (?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])
+        \.?\s*[:=]?\s*
+        (?:([NSEWOnsewo])\s*°?\s*)?
+        ([+-]?\d+(?:[.,]\d+)?)
+        \s*°?\s*
+        ([NSEWOnsewo])?
+        (?=$|[\s,;&?#/])
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_LABELED_SENTINEL: tuple[float, float] = (float("nan"), float("nan"))
 # Vollnamen der Himmelsrichtungen (DE/EN) werden vor dem Pattern-Matching auf
 # die Ein-Buchstaben-Form reduziert, mit der _DMS/_DECIMAL_PAIR/_PREFIX_PAIR
 # arbeitet. Verbreitet in GPS-Logs/Foto-Captions: ``"North 46.5, East 7.5"``,
@@ -4017,6 +4074,44 @@ def _normalize_direction_words(text: str) -> str:
         key = m.group(0).rstrip(".").lower()
         return _DIRECTION_LETTER.get(key, m.group(0))
     return _DIRECTION_WORD.sub(_replace, text)
+
+
+def _extract_labeled_lat_lon(s: str) -> tuple[float, float] | None | tuple:
+    """Extrahiert (lat, lon), wenn *beide* Achsen (lat- und lon-Familie) explizit
+    im Freitext markiert sind. Deckt reversed-Order (Lon vor Lat) korrekt ab.
+
+    Drei-Wege-Rueckgabe zur Abgrenzung "kein Label-Match" (Fall-Through) von
+    "Label-Match aber Out-of-Range" (definitives None):
+
+      - ``(lat, lon)`` bei erfolgreicher Extraktion beider Achsen (nach
+        :func:`_validate`-Range-Pruefung),
+      - ``None`` wenn *beide* Labels erkannt wurden, das Ergebnis aber die
+        Range-Pruefung nicht besteht - definitiver Reject, kein Fall-Through
+        auf die label-lose _DECIMAL_PAIR-Route (sonst wuerde ``lon=50&lat=100``
+        die publizierte Achsen-Zuordnung verwerfen und ``(50, 100)`` via
+        label-stripped _DECIMAL_PAIR liefern),
+      - :data:`_LABELED_SENTINEL` (NaN-Marker) wenn *nicht* beide Achsen
+        erkannt wurden - der Caller behandelt das als "kein Match" und faellt
+        auf die generische _COORD_LABEL-Strip-Route durch.
+
+    Direction-Buchstaben (falls vorhanden) werden ueber :func:`_orient`
+    ausgewertet, damit ein Sammler-Tippfehler ``Lat: E7.5, Lon: N46.5`` (Labels
+    vertauscht, Direction korrekt) korrekt aufgeloest wird - die Direction-
+    Semantik gewinnt gegenueber der Label-Semantik, weil sie explizit die
+    Achse benennt.
+    """
+    lat_m = _LAT_LABELED_VALUE.search(s)
+    if lat_m is None:
+        return _LABELED_SENTINEL
+    lon_m = _LON_LABELED_VALUE.search(s)
+    if lon_m is None:
+        return _LABELED_SENTINEL
+    lat_dir = lat_m.group(1) or lat_m.group(3)
+    lon_dir = lon_m.group(1) or lon_m.group(3)
+    lat_val = _to_float(lat_m.group(2)) * _sign(lat_dir)
+    lon_val = _to_float(lon_m.group(2)) * _sign(lon_dir)
+    lat, lon = _orient(lat_val, lat_dir, lon_val, lon_dir)
+    return _validate(lat, lon)
 
 
 _TYPOGRAPHIC_DASH_BETWEEN_DIGITS = re.compile(
@@ -5177,6 +5272,25 @@ def parse_coordinates(text) -> tuple[float, float] | None:
             lon = _to_float(m.group(1))
             lat = _to_float(m.group(2))
             return _validate(lat, lon)
+    # Wenn *beide* Achsen explizit per Label markiert sind (``Lat:``/``Lon:``,
+    # ``latitude=``/``longitude=``, ``mlat=``/``mlon=``, ``lat=``/``lng=``,
+    # ``Breite``/``Länge`` etc.), per Label-Position extrahieren - sonst wuerde
+    # die stumme _COORD_LABEL-Strip-Semantik ein Lon-vor-Lat-Input silente in
+    # (lon, lat)-Reihenfolge an _DECIMAL_PAIR uebergeben und die publizierten
+    # Achsen vertauschen. Match ist definitiv: wenn beide Labels erkannt werden,
+    # ist die Achsen-Zuordnung eindeutig; ein Fallback auf die generische Strip-
+    # Route wuerde exakt den Bug reintroduzieren, den dieser Zweig fixt
+    # (OSM-``?mlon=X&mlat=Y``-URL, JavaScript-API-``?lng=X&lat=Y``, freitext-
+    # ``"Lon: 7.5, Lat: 46.5"``, GIS-Reports mit (Lon, Lat)-Reihenfolge).
+    # Rueckgabe ``_LABELED_SENTINEL`` markiert "keine beide Labels" und faellt
+    # auf die generische _COORD_LABEL-Strip-Route durch; Rueckgabe ``None``
+    # markiert "beide Labels erkannt, aber Out-of-Range" und ist ein definitiver
+    # Reject (sonst wuerde ``lon=50&lat=100`` die publizierte Achsen-Zuordnung
+    # verwerfen und via label-stripped _DECIMAL_PAIR ``(50, 100)`` liefern -
+    # semantisch falsch, weil der Sammler explizit ``lat=100`` angegeben hat).
+    labeled = _extract_labeled_lat_lon(s)
+    if labeled is not _LABELED_SENTINEL:
+        return labeled  # type: ignore[return-value]
     # Labels wie "Lat:"/"Lon:"/"Breite"/"Länge" stoeren _PREFIX_PAIR (das L in "Lon"
     # wird sonst als Richtung interpretiert). Vor dem Matching stillschweigend strippen.
     if _COORD_LABEL.search(s):

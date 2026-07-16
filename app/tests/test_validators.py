@@ -6926,6 +6926,105 @@ def test_parse_coordinates_url_query_params():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_labeled_reversed_order():
+    """Reversed-Order (Lon vor Lat) mit Labels: die Label-Semantik gewinnt gegenueber
+    der Positions-Reihenfolge.
+
+    OSM-Share-URLs, JavaScript-Mapping-API-JSON, GIS-Reports und Freitext-Notizen
+    liefern Longitude und Latitude haeufig in umgekehrter Reihenfolge
+    (``?mlon=X&mlat=Y``, ``?lng=X&lat=Y``, ``"Lon: 7.5, Lat: 46.5"``); das ist die
+    geographisch uebliche (X, Y) = (Lon, Lat)-Konvention aus der Karten-Toolchain
+    (WKT-POINT, GeoJSON, KML, Mapbox-Array-Encoding). Bisher wurde die publizierte
+    Achsen-Zuordnung silente verworfen: :data:`_COORD_LABEL` strippte die Label-
+    Woerter zu Whitespace, und :data:`_DECIMAL_PAIR` interpretierte die Auftritts-
+    Reihenfolge als (lat, lon). Ergebnis: ``"Lon: 7.5, Lat: 46.5"`` -> (7.5, 46.5)
+    statt (46.5, 7.5) - jede OSM-mlon-zuerst-URL, jedes Mapbox-lng-zuerst-JSON,
+    jedes Excel-Kopiat mit Lon-vor-Lat-Spaltenreihenfolge und jede GIS-Datenbank
+    mit (X, Y)-Achsen-Konvention produzierte silente Achsen-Vertauschung bei der
+    Migration; besonders schwer erkennbar bei Schweizer/Alpen-Fundorten, weil
+    (lat=7.5, lon=46.5) formal ein gueltiges Paar (Golf von Guinea nahe Sao Tome)
+    ergibt und die _validate-Range-Pruefung erfolgreich durchlaeuft.
+    """
+    # OSM-Share-URLs mit reversed mlon/mlat (die Frontend-Spec ist tolerant gegen
+    # Reihenfolge; verschiedene Client-Bibliotheken generieren die eine oder
+    # die andere Reihenfolge)
+    assert parse_coordinates(
+        "https://www.openstreetmap.org/?mlon=7.5&mlat=46.5") == (46.5, 7.5)
+    assert parse_coordinates("?mlon=7.5&mlat=46.5") == (46.5, 7.5)
+    # Generische lat/lon-Params reversed
+    assert parse_coordinates("?lon=7.5&lat=46.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://example.com/geo?lon=7.5&lat=46.5") == (46.5, 7.5)
+    # Web-Mapping-API-lng-zuerst (Google Maps JS API, Leaflet, Mapbox GL) reversed
+    assert parse_coordinates("?lng=7.5&lat=46.5") == (46.5, 7.5)
+    assert parse_coordinates("lng=7.5&lat=46.5") == (46.5, 7.5)
+    # Verbose latitude/longitude reversed
+    assert parse_coordinates("?longitude=7.5&latitude=46.5") == (46.5, 7.5)
+    # Case-insensitive reversed
+    assert parse_coordinates("?MLON=7.5&MLAT=46.5") == (46.5, 7.5)
+    assert parse_coordinates("?LNG=7.5&LAT=46.5") == (46.5, 7.5)
+    # Reversed mit Vorzeichen (Suedhalbkugel/Westhalbkugel)
+    assert parse_coordinates("?lon=-7.5&lat=-46.5") == (-46.5, -7.5)
+    assert parse_coordinates("mlon=-7.5&mlat=-46.5") == (-46.5, -7.5)
+    assert parse_coordinates("lng=-7.5&lat=-46.5") == (-46.5, -7.5)
+    # Reversed mit DE-Komma-Dezimal (Excel-CSV DE-Locale)
+    assert parse_coordinates("mlon=7,5&mlat=46,5") == (46.5, 7.5)
+    # Freitext reversed mit Doppelpunkt
+    assert parse_coordinates("Lon: 7.5, Lat: 46.5") == (46.5, 7.5)
+    assert parse_coordinates("Longitude: 7.5, Latitude: 46.5") == (46.5, 7.5)
+    assert parse_coordinates("longitudinal=7.5, lat=46.5") == (46.5, 7.5)
+    # Freitext reversed mit Gleichheit
+    assert parse_coordinates("lon=7.5 lat=46.5") == (46.5, 7.5)
+    # Freitext reversed mit Long-Kurzform
+    assert parse_coordinates("Lat 46.5 Long 7.5") == (46.5, 7.5)  # standard
+    assert parse_coordinates("Long 7.5 Lat 46.5") == (46.5, 7.5)  # reversed
+    # Deutsche Labels reversed
+    assert parse_coordinates("Länge 7.5 Breite 46.5") == (46.5, 7.5)
+    assert parse_coordinates("Länge: 7.5, Breite: 46.5") == (46.5, 7.5)
+    assert parse_coordinates("laenge=7.5&breite=46.5") == (46.5, 7.5)
+    assert parse_coordinates("längengrad: 7.5, breitengrad: 46.5") == (46.5, 7.5)
+    # Direction-Buchstaben gewinnen gegen die Label-Semantik: wenn ein Sammler
+    # die Labels vertauscht (``Lat: E7.5, Lon: N46.5``), aber die Direction
+    # korrekt vergibt, soll das Ergebnis dennoch korrekt sein - _orient reagiert
+    # auf N/S vs. E/W und sortiert um.
+    assert parse_coordinates("Lat: E7.5, Lon: N46.5") == (46.5, 7.5)
+    assert parse_coordinates("Lat: N46.5, Lon: E7.5") == (46.5, 7.5)
+    # Direction-Suffix nach dem Wert (Standard-Sammler-Notation)
+    assert parse_coordinates("Lat: 46.5° N, Lon: 7.5° E") == (46.5, 7.5)
+    assert parse_coordinates("Lat: 46.5° S, Lon: 7.5° W") == (-46.5, -7.5)
+    assert parse_coordinates("Lon: 7.5° E, Lat: 46.5° N") == (46.5, 7.5)
+    assert parse_coordinates("Lon: 7.5° W, Lat: 46.5° S") == (-46.5, -7.5)
+    # Reversed mit trailing OSM-Fragment (haeufige Kombination in Share-URLs)
+    assert parse_coordinates(
+        "?mlon=7.5&mlat=46.5#map=15/46.5/7.5") == (46.5, 7.5)
+    # Out-of-range greift auch in der Label-Route (definitiver Reject, kein
+    # Fall-Through auf _DECIMAL_PAIR - die publizierte Label-Zuordnung ist
+    # eindeutig, und ein Fallback auf die label-lose Route wuerde die
+    # Achsen-Semantik verwerfen)
+    assert parse_coordinates("lon=50&lat=100") is None
+    assert parse_coordinates("mlon=200&mlat=46.5") is None
+    # Nur eine Achse markiert -> Fall-Through auf bestehende Logik (Label-
+    # Position ist mehrdeutig; das existierende Verhalten bleibt)
+    assert parse_coordinates("Lat 46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Lon 7.5, 46.5") == (7.5, 46.5)  # dokumentiertes Fallback
+    # Regression: Standard-Reihenfolge (Lat vor Lon) bleibt unveraendert
+    assert parse_coordinates("Lat: 46.5, Lon: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("mlat=46.5&mlon=7.5") == (46.5, 7.5)
+    assert parse_coordinates("?lat=46.5&lon=7.5") == (46.5, 7.5)
+    assert parse_coordinates("?lat=46.5&lng=7.5") == (46.5, 7.5)
+    # Regression: DMS-Werte mit Labels fallen NICHT in die Plain-Decimal-Route
+    # (End-Anker ``(?=$|[\s,;&?#/])`` verhindert DMS-Fortsetzung)
+    assert parse_coordinates(
+        "Lat: 46d 30m 15s N, Lon: 7d 30m 0s E") == (46.5 + 15/3600, 7.5)
+    assert parse_coordinates(
+        "Lat: 46°30'15\"N, Lon: 7°30'0\"E") == (46.5 + 15/3600, 7.5)
+    # Regression: Formen ohne Label bleiben unveraendert
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+    assert parse_coordinates(
+        "https://www.google.com/maps/@46.5,7.5,15z") == (46.5, 7.5)
+
+
 def test_parse_coordinates_ampersand_separator():
     """Ampersand als natuerlicher AND-Separator zwischen zwei Zahlen.
 
