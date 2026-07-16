@@ -3095,6 +3095,74 @@ def test_parse_iso_date_mehrjahres_spanne_zwischen_ungueltig():
     assert parse_iso_date("between 1800 and 3000") is None
 
 
+def test_parse_iso_date_zwischen_wrapper_generisch():
+    """'zwischen X und Y' / 'between X and Y' als generischer Range-Wrapper.
+
+    Vor dem Fix erkannte :data:`_YEAR_RANGE_BETWEEN` nur die reine Jahres-
+    Spanne (``zwischen 1985 und 1990``). Alle uebrigen Range-Inhalte fielen
+    still auf None:
+
+    - ``zwischen Juni und Juli 2024`` (Monat-Spanne, aufgeloest via
+      :data:`_MONTH_RANGE_YEAR`)
+    - ``zwischen 13. und 15. Juni 2024`` (Tages-Spanne in einem Monat,
+      aufgeloest via :data:`_DAY_RANGE_MONTH_YEAR`)
+    - ``between June and July 2024`` (EN-Variante, Monat-Spanne)
+    - ``zwischen 1980er und 1990er`` (Dekaden-Spanne, aufgeloest via
+      :data:`_DECADE_RANGE`)
+    - ``zwischen Sommer und Herbst 2024`` (Saison-Spanne, aufgeloest via
+      :data:`_SEASON_RANGE`)
+    - ``zwischen 19. und 20. Jahrhundert`` (Jahrhundert-Spanne, aufgeloest
+      via :data:`_CENTURY_RANGE_DE`)
+
+    Der :data:`_BETWEEN_AND_WRAPPER`-Preprocessor normalisiert die Wrapper-
+    Form auf ``X - Y`` und ruft :func:`parse_iso_date` rekursiv auf, sodass
+    alle bestehenden Range-Patterns transparent greifen. Startjahr/Start-
+    Monat/Start-Tag der linken Range-Seite als ISO-Datum (Konvention aus
+    :data:`_YEAR_RANGE` / :data:`_MONTH_RANGE_YEAR` / etc.).
+    """
+    # Monat-Spanne im gleichen Jahr (via _MONTH_RANGE_YEAR)
+    assert parse_iso_date("zwischen Juni und Juli 2024") == "2024-06-01"
+    assert parse_iso_date("zwischen Mai und August 1985") == "1985-05-01"
+    assert parse_iso_date("between June and July 2024") == "2024-06-01"
+    assert parse_iso_date("between May and August 1985") == "1985-05-01"
+    # Tages-Spanne innerhalb eines Monats (via _DAY_RANGE_MONTH_YEAR)
+    assert parse_iso_date("zwischen 13. und 15. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("zwischen 5. und 7. Oktober 2023") == "2023-10-05"
+    assert parse_iso_date("between 5 and 7 June 2024") == "2024-06-05"
+    # Dekaden-Spanne (via _DECADE_RANGE)
+    assert parse_iso_date("zwischen 1980er und 1990er") == "1980-01-01"
+    assert parse_iso_date("between 1950s and 1970s") == "1950-01-01"
+    # Saison-Spanne (via _SEASON_RANGE)
+    assert parse_iso_date("zwischen Sommer und Herbst 2024") == "2024-06-01"
+    assert parse_iso_date("between spring and summer 2020") == "2020-03-01"
+    # Jahrhundert-Spanne (via _CENTURY_RANGE_DE / _CENTURY_RANGE_EN)
+    assert parse_iso_date("zwischen 19. und 20. Jahrhundert") == "1800-01-01"
+    assert parse_iso_date("between 19th and 20th century") == "1800-01-01"
+    # Kombination mit Praefixen ueber Rekursion
+    assert parse_iso_date("ca. zwischen Juni und Juli 2024") == "2024-06-01"
+    assert parse_iso_date("circa between June and July 2024") == "2024-06-01"
+    assert parse_iso_date("(zwischen Juni und Juli 2024)") == "2024-06-01"
+    # Case-Insensitivitaet
+    assert parse_iso_date("ZWISCHEN JUNI UND JULI 2024") == "2024-06-01"
+    assert parse_iso_date("BETWEEN JUNE AND JULY 2024") == "2024-06-01"
+    # Whitespace-Toleranz
+    assert parse_iso_date("  zwischen  Juni  und  Juli  2024  ") == "2024-06-01"
+    # Regress: reine Jahres-Spanne bleibt unveraendert (redundant zu
+    # _YEAR_RANGE_BETWEEN, das nachgelagert dieselbe Semantik liefert)
+    assert parse_iso_date("zwischen 1985 und 1990") == "1985-01-01"
+    assert parse_iso_date("between 1950 and 1960") == "1950-01-01"
+    # Regress: Nicht-Range-Formen mit 'und' irgendwo im Text (nicht als
+    # Wrapper) fallen weiterhin auf None
+    assert parse_iso_date("zwischen den 1980er Jahren und heute") is None
+    assert parse_iso_date("Foobar und Baz 2024") is None
+    # Kein Match: fehlender Range-Inhalt links oder rechts der Konjunktion
+    assert parse_iso_date("zwischen  und Juli 2024") is None
+    # Kein Match: unbekannter Monat/Saison/Jahrhundert auf einer/beiden Seiten
+    assert parse_iso_date("zwischen Junk und Juli 2024") is None
+    assert parse_iso_date("zwischen Juni und Junk 2024") is None
+    assert parse_iso_date("zwischen Sonner und Herbst 2024") is None
+
+
 def test_parse_iso_date_dekaden_spanne():
     """Dekaden-Spanne ('1980er-1990er', '1980s to 1990s') spiegelt _YEAR_RANGE /
     _YEAR_RANGE_WORD auf die Dekaden-Achse: Startjahr der linken Dekade als

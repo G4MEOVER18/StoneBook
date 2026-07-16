@@ -224,6 +224,51 @@ _YEAR_RANGE_BETWEEN = re.compile(
     r"^\s*(?:zwischen|between)\s+(\d{4})\s+(?:und|and)\s+(\d{4})\s*$",
     re.IGNORECASE,
 )
+# Generischer "zwischen X und Y" / "between X and Y"-Wrapper fuer beliebige
+# Range-Inhalte (nicht nur reine Jahre wie :data:`_YEAR_RANGE_BETWEEN`). In
+# geerbten Sammlungs-Notizen und Museums-Etiketten fuegt der Vorbesitzer die
+# ``zwischen ... und ...``-Konstruktion vor beliebige Datums-Spannen ein:
+# ``zwischen Juni und Juli 2024`` (Monat-Spanne), ``zwischen 13. und 15. Juni
+# 2024`` (Tages-Spanne innerhalb eines Monats), ``zwischen 13. Juni und
+# 15. Juli 2024`` (Cross-Month-Tages-Spanne), ``zwischen Sommer und Herbst
+# 2024`` (Saison-Spanne), ``zwischen 1980er und 1990er`` (Dekaden-Spanne).
+# Bisher fielen alle diese Formen still auf None, weil :data:`_YEAR_RANGE_
+# BETWEEN` nur reine 4-Ziffer-Jahres-Spannen matcht und keiner der uebrigen
+# Range-Patterns (:data:`_MONTH_RANGE_YEAR`, :data:`_DAY_RANGE_MONTH_YEAR`,
+# :data:`_SEASON_RANGE`, :data:`_DECADE_RANGE`, :data:`_CENTURY_RANGE_*`) die
+# ``zwischen ... und ...``-Umschliessung kennt - aus einem typischen Etikett
+# wie "zwischen Juni und Juli 2024 gefunden" oder "zwischen 13. und 15. Juni
+# 2024 am Aaregebiet" entstand damit silenter Funddatum-Datenverlust bei der
+# Migration.
+#
+# Fix normalisiert die Wrapper-Form auf die generische ``X - Y``-Range-
+# Notation, sodass alle bestehenden Range-Patterns transparent greifen:
+# ``zwischen Juni und Juli 2024`` -> ``Juni - Juli 2024`` -> :data:`_MONTH_
+# RANGE_YEAR` -> ``2024-06-01``. Der Preprocessor wird nach allen anderen
+# Praefix-Strippern (:data:`_APPROX_PREFIX`, :data:`_WEEKDAY_PREFIX`,
+# :data:`_TEMPORAL_PREFIX`, :data:`_BOUNDARY_PREFIX`, :data:`_RANGE_PREFIX`)
+# und *vor* allen Pattern-Match-Zweigen eingesetzt, sodass die Kombination
+# mit Praefixen ("ca. zwischen Juni und Juli 2024" -> "zwischen Juni und
+# Juli 2024" -> "Juni - Juli 2024" -> "2024-06-01") transparent via Rekursion
+# aufloest.
+#
+# Lazy-Match ``.+?`` auf beiden Seiten mit End-Anker ``\s*$`` erzwingt die
+# minimale Left-Aufteilung: bei mehreren ``und``/``and``-Vorkommen fasst die
+# Regex die rechte Seite maximal (Whitespace + und/and + Whitespace ist der
+# Split-Punkt, alles danach ist die rechte Seite). Fuer "zwischen 3. und
+# 5. April und 15. Mai 2024" (semantisch unklarer Kompositum-Wrapper) wird
+# left="3." und right="5. April und 15. Mai 2024" - der resultierende "3.
+# - 5. April und 15. Mai 2024" matcht kein Range-Pattern und liefert None
+# (kein Regress, weil das Original auch None geliefert haette). Kein Match-
+# Konflikt mit :data:`_YEAR_RANGE_BETWEEN` (das laeuft ohnehin nach dem
+# Preprocessor und wuerde denselben Wert liefern, weil ``1985 - 1990`` via
+# :data:`_YEAR_RANGE` denselben Anker-Wert liefert wie ``zwischen 1985 und
+# 1990`` via _YEAR_RANGE_BETWEEN direkt) und keine anderen Datumsformen
+# beginnen mit "zwischen"/"between".
+_BETWEEN_AND_WRAPPER = re.compile(
+    r"^\s*(?:zwischen|between)\s+(.+?)\s+(?:und|and)\s+(.+?)\s*$",
+    re.IGNORECASE,
+)
 _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
@@ -3974,6 +4019,22 @@ def parse_iso_date(text) -> str | None:
         rest = _RANGE_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_iso_date(rest)
+        return None
+    # "zwischen X und Y" / "between X and Y"-Wrapper auf beliebige Range-
+    # Inhalte generalisieren - normalisiere auf ``X - Y`` und rekursiv
+    # parsen, sodass die bestehenden Range-Patterns (Monat/Tag/Saison/
+    # Dekade/Jahrhundert) transparent greifen (siehe :data:`_BETWEEN_AND_
+    # WRAPPER` fuer Details zur Konvention und zum Preprocessor-Reihenfolge-
+    # Argument). Der spezialisierte :data:`_YEAR_RANGE_BETWEEN`-Zweig unten
+    # bleibt als kurzer Direkt-Pfad fuer die reine Jahres-Spanne bestehen
+    # und wird durch diesen Preprocessor nicht ueberholt (semantisch
+    # identisches Ergebnis, bei "zwischen 1985 und 1990" landet man in
+    # beiden Faellen auf 1985-01-01).
+    m = _BETWEEN_AND_WRAPPER.match(s)
+    if m:
+        left, right = m.group(1).strip(), m.group(2).strip()
+        if left and right:
+            return parse_iso_date(f"{left} - {right}")
         return None
     m = _YEAR_ONLY.match(s)
     if m:
