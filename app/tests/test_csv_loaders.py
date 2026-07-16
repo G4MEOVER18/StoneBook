@@ -1117,6 +1117,111 @@ def test_parse_range_explizit_multiplikation_zehnerpotenz():
     assert result == (5.0, 3.14) or result == (5.0, 5.0)
 
 
+def test_parse_range_explizit_multiplikation_dot_operator_u22c5():
+    """DOT OPERATOR ``⋅`` (U+22C5) als Multiplikations-Zeichen aequivalent zu MIDDLE DOT.
+
+    ``⋅`` (U+22C5) und ``·`` (U+00B7) sehen visuell nahezu identisch aus, sind
+    aber unicode-kategorisch getrennt: U+00B7 ist General-Punctuation (``Po``),
+    U+22C5 ist Math-Operator (``Sm``). LaTeX ``\\cdot`` und MathJax rendern
+    beim Kompilieren/Anzeigen zu U+22C5; wer aus MathJax-gerenderten
+    Wikipedia-Info-Boxen, aus LaTeX-Quellen exportierten Referenz-Tabellen
+    oder aus Publikations-Snippets (JSTOR-PDF, Wolfram Alpha) einen Wert wie
+    ``5.5⋅10⁻³`` in eine Sammlungs-Notiz kopiert, bringt den Dot-Operator-
+    Codepunkt mit; bisher fielen exakt diese Copy-Paste-Faelle auf den
+    ``(mantisse, 10.0)``-Fehlpfad, weil die Multiplikations-Klasse in
+    :data:`_EXPLICIT_MULT_POWER10_CARET` / :data:`_EXPLICIT_MULT_POWER10_SUPER`
+    / :data:`_EXPLICIT_EXPONENT_RE` nur den Middle-Dot enthielt.
+
+    Bug-Signatur vor dem Fix (unterschieden nach Publikations-Quelle):
+    ``2.5⋅10^3`` (Mantisse * 10^3, gaengige Absorptions-Querschnitts-Notation
+    aus MathJax-Wikipedia) lieferte ``(2.5, 10.0)`` statt ``(2500.0, 2500.0)``
+    - Groessenordnung 10^3 komplett verloren; die "10" wurde als vermeintliche
+    obere Range-Grenze in den CHF-/Gewicht-/Dichte-Slot gesetzt und
+    korrumpierte alle nachgelagerten SUM/AVG-Aggregationen.
+    ``6.022⋅10²³`` (Avogadro-Konstante aus dem CRC Handbook per LaTeX
+    ``6.022 \\cdot 10^{23}``) fiel auf ``(6.022, 10.0)`` statt ``6.022e23`` -
+    ein Groessenordnungs-Verlust von 22 Dekaden, mineralogisch komplett
+    unsinnig.
+
+    Der Fix erweitert alle drei Multiplikations-Char-Klassen ``[·×*xX]`` bzw.
+    ``[·×*]|[xX]`` um U+22C5 zu ``[·⋅×*xX]`` bzw. ``[·⋅×*]|[xX]``. Beide
+    Formen kollabieren dann auf denselben Substitutions-Pfad zu ``NeM``,
+    :data:`_NUM_RE` liest die publizierte Groessenordnung als eine Zahl statt
+    als Range-Grenze.
+
+    Test spiegelt die Struktur von :func:`test_parse_range_explizit_multiplikation_zehnerpotenz`
+    auf die U+22C5-Achse: ASCII-Caret-Form (positiv/negativ/Plus-Sign-Explizit),
+    Unicode-Superscript-Form, Whitespace-Toleranz, DE-Komma-Dezimal, Leading-
+    Dot-Dezimal, Range mit U+22C5 auf beiden Seiten, Kombination mit
+    Trailing-Einheit und Approx-Praefix. Regressions-Anker stellen sicher,
+    dass Middle-Dot und Multiplication-Sign weiterhin funktionieren, und dass
+    U+22C5 ohne ``10^``-Kern (in SI-Einheiten-Notation wie ``EUR⋅kg⁻¹``)
+    unbehelligt bleibt.
+    """
+    # ASCII-Caret-Form mit U+22C5 (Direct-Copy aus MathJax-Rendering).
+    assert csv_loaders.parse_range("2.5⋅10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5⋅10^-3") == pytest.approx((0.0025, 0.0025))
+    assert csv_loaders.parse_range("2.5⋅10^+3") == (2500.0, 2500.0)
+    # Whitespace zwischen Mantisse, Dot-Operator und ``10^``: LaTeX-Setz
+    # ``\, \cdot \, `` mit Thin-Space um den Operator.
+    assert csv_loaders.parse_range("2.5 ⋅ 10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5 ⋅ 10 ^ 3") == (2500.0, 2500.0)
+    # Unicode-Superscript-Form (typischer LaTeX-PDF-Export mit Math-Rendering).
+    assert csv_loaders.parse_range("2.5⋅10³") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5⋅10⁻³") == pytest.approx((0.0025, 0.0025))
+    assert csv_loaders.parse_range("2.5⋅10⁺³") == (2500.0, 2500.0)
+    # Mehrstelliger Unicode-Superscript-Exponent (Avogadro-Konstante aus CRC
+    # Handbook per LaTeX ``6.022 \cdot 10^{23}`` -> MathJax -> U+22C5).
+    assert csv_loaders.parse_range("6.022⋅10²³") == pytest.approx((6.022e23, 6.022e23))
+    # DE-Komma-Dezimal in der Mantisse (DE-Publikationen mit LaTeX-``\cdot``).
+    assert csv_loaders.parse_range("2,5⋅10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2,5⋅10³") == (2500.0, 2500.0)
+    # Negatives Vorzeichen an der Mantisse.
+    assert csv_loaders.parse_range("-2.5⋅10^3") == (-2500.0, -2500.0)
+    assert csv_loaders.parse_range("-2.5⋅10³") == (-2500.0, -2500.0)
+    # Leading-Dot-Dezimal in der Mantisse (US-Konvention).
+    assert csv_loaders.parse_range(".5⋅10^3") == (500.0, 500.0)
+    # Range mit U+22C5-Explizit-Form auf beiden Seiten (Kalibrier-/Absorptions-
+    # Spektrum-Grenzen aus einer LaTeX-Tabelle kopiert).
+    assert csv_loaders.parse_range("1⋅10^3 to 2⋅10^3") == (1000.0, 2000.0)
+    assert csv_loaders.parse_range("1⋅10³ – 2⋅10³") == (1000.0, 2000.0)
+    # Trailing-Einheit direkt nach dem Superscript-Exponent (die Einheiten-
+    # Suffix-Zahl-Blockade aus dem ``cm3``/``m2``-Zweig bleibt unabhaengig).
+    assert csv_loaders.parse_range("2.5⋅10^3 g/cm³") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("0.5⋅10^-3 cm²") == pytest.approx((0.0005, 0.0005))
+    # Annaeherungs-Praefix (Sammler-Notiz "ca." mit U+22C5).
+    assert csv_loaders.parse_range("ca. 2.5⋅10^3") == (2500.0, 2500.0)
+    # Gemischte Explizit-Multiplikations-Zeichen im Range - links U+22C5,
+    # rechts U+00B7 (Publikations-Snippets, die aus verschiedenen Quellen
+    # zusammenkopiert wurden). Beide Zweige normalisieren auf ``NeM``.
+    assert csv_loaders.parse_range("1⋅10^3 – 2·10^3") == (1000.0, 2000.0)
+    assert csv_loaders.parse_range("1·10^3 – 2⋅10^3") == (1000.0, 2000.0)
+    # Regression: Middle-Dot U+00B7 bleibt unveraendert funktional -
+    # die Erweiterung fuegt U+22C5 hinzu, ersetzt U+00B7 nicht.
+    assert csv_loaders.parse_range("2.5·10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5·10³") == (2500.0, 2500.0)
+    # Regression: Multiplication-Sign U+00D7 und ASCII-Formen unveraendert.
+    assert csv_loaders.parse_range("2.5×10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5*10^3") == (2500.0, 2500.0)
+    assert csv_loaders.parse_range("2.5x10^3") == (2500.0, 2500.0)
+    # Regression: U+22C5 OHNE ``10``-Kern in SI-Einheiten-Notation (Preis pro
+    # Kilogramm als ``EUR⋅kg^-1``, aus LaTeX-Publikations-Setz kopiert)
+    # matcht das Explizit-Pattern nicht (kein ``10`` als Zweitoperand), die
+    # Zahl-Extraktion bleibt bei der Mantisse-1.
+    assert csv_loaders.parse_range("1 EUR⋅kg^-1") == (1.0, 1.0)
+    # Regression: U+22C5 ohne Mantisse davor (etwa ``⋅10^3`` in einem Fragment)
+    # matcht nicht - das Pattern verlangt strukturell die vollstaendige
+    # ``N × 10^M``-Signatur. Ohne Mantisse faellt der Ausdruck auf die
+    # normale Zahl-Extraktion (findet ``10`` und ``3``).
+    assert csv_loaders.parse_range("⋅10^3") == (10.0, 3.0) or \
+        csv_loaders.parse_range("⋅10^3") == (10.0, 10.0)
+    # Regression: U+22C5 zwischen Nicht-Zehner-Werten bleibt Trenner-artig
+    # (``5 ⋅ 3.14`` ist eine mathematische Multiplikation, keine Groessen-
+    # ordnungs-Notation - das Pattern greift wegen fehlendem ``10`` nicht).
+    result = csv_loaders.parse_range("5 ⋅ 3.14")
+    assert result == (5.0, 3.14) or result == (5.0, 5.0)
+
+
 def test_parse_range_scientific_notation_overflow():
     """Overflow der Exponent-Notation (``1e400`` -> ``inf``) faellt auf ``(None, None)``.
 

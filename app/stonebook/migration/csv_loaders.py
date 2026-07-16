@@ -725,15 +725,28 @@ _DOTTED_RANGE_SEPARATOR = re.compile(r"(?<=\d)\.{2,3}(?=\d)")
 # aus wissenschaftlichen Quellen kommt die explizite Form (``2.5 · 10^3``,
 # ``2.5 × 10^-3``, ``2.5*10^3``, ``2.5x10^3``) haeufig statt der kompakten
 # E-Notation vor - Word/LaTeX/PDF-Autoformat setzt das Multiplikations-
-# Zeichen typografisch (``·`` U+00B7 MIDDLE DOT, ``×`` U+00D7 MULTIPLICATION
-# SIGN) und den Exponenten oft als Unicode-Superscript (``2.5·10³``,
-# ``2.5×10⁻³``). Ohne Normalisierung liest :data:`_NUM_RE` z.B. ``2.5·10^3``
-# als ``[2.5, 10, 3]`` (Middle-Dot ist kein Zahl-Teil, ``^3`` faellt aus dem
-# Zahl-Match); der ``if hi < lo``-Kollaps oder die letzte Zahl gewinnen als
-# vermeintliche Range-Grenze - der publizierte Faktor 10^3 geht stille
-# verloren. Beide Zweige (Caret + ASCII-Exp / Unicode-Superscript-Exp) werden
-# vor allen weiteren Zahl-Patterns via :func:`_normalize_explicit_mult_power10`
-# auf ``NeM`` umgeschrieben.
+# Zeichen typografisch (``·`` U+00B7 MIDDLE DOT, ``⋅`` U+22C5 DOT OPERATOR,
+# ``×`` U+00D7 MULTIPLICATION SIGN) und den Exponenten oft als Unicode-
+# Superscript (``2.5·10³``, ``2.5×10⁻³``). Ohne Normalisierung liest
+# :data:`_NUM_RE` z.B. ``2.5·10^3`` als ``[2.5, 10, 3]`` (Middle-Dot ist kein
+# Zahl-Teil, ``^3`` faellt aus dem Zahl-Match); der ``if hi < lo``-Kollaps oder
+# die letzte Zahl gewinnen als vermeintliche Range-Grenze - der publizierte
+# Faktor 10^3 geht stille verloren. Beide Zweige (Caret + ASCII-Exp / Unicode-
+# Superscript-Exp) werden vor allen weiteren Zahl-Patterns via
+# :func:`_normalize_explicit_mult_power10` auf ``NeM`` umgeschrieben.
+#
+# Sowohl ``·`` (U+00B7 MIDDLE DOT) als auch ``⋅`` (U+22C5 DOT OPERATOR) werden
+# akzeptiert: die beiden Codepunkte sehen visuell nahezu identisch aus, sind
+# aber unicode-kategorisch getrennt. MIDDLE DOT ist der typografische General-
+# Punkt, der in DE-Print-Publikationen (Hollemann-Wiberg, Ternes) fuer die
+# Multiplikation gesetzt wird; DOT OPERATOR ist das mathematische Operator-
+# Symbol, das LaTeX ``\cdot`` und MathJax beim Rendern erzeugen - Wikipedia-
+# Artikel zu Mineralen (``Fluoreszenz-Ausbeute 2.5·10⁻³`` in einer Physik-
+# Info-Box), aus MathJax-gerenderten PDFs kopierte Publikations-Snippets und
+# aus LaTeX-Quellen exportierte Referenz-Tabellen enthalten haeufig U+22C5.
+# Ohne die zusaetzliche Alternante fielen genau diese Copy-Paste-Faelle auf
+# den ``(mantisse, 10.0)``-Fehlpfad und die Groessenordnung ging in der
+# Migration silent verloren.
 _SUPERSCRIPT_TO_ASCII: dict[str, str] = {
     "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
     "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
@@ -742,7 +755,7 @@ _SUPERSCRIPT_TO_ASCII: dict[str, str] = {
 _EXPLICIT_MULT_POWER10_CARET = re.compile(
     r"(?<![A-Za-z0-9])"
     r"((?:(?<![\d.%‰])-)?(?:\.\d+|\d+(?:[.,]\d+)?))"
-    r"\s*[·×*xX]\s*"
+    r"\s*[·⋅×*xX]\s*"
     r"10\s*\^\s*"
     r"([-+]?\d+)"
     r"(?![.,]?\d)"
@@ -750,7 +763,7 @@ _EXPLICIT_MULT_POWER10_CARET = re.compile(
 _EXPLICIT_MULT_POWER10_SUPER = re.compile(
     r"(?<![A-Za-z0-9])"
     r"((?:(?<![\d.%‰])-)?(?:\.\d+|\d+(?:[.,]\d+)?))"
-    r"\s*[·×*xX]\s*"
+    r"\s*[·⋅×*xX]\s*"
     r"10"
     r"([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)"
 )
@@ -1120,6 +1133,13 @@ def _normalize_ascii_mixed_fractions(s: str) -> str:
 # Multiplikations-Signaturen:
 # - ``·`` (U+00B7, Middle Dot): typografischer Standard fuer Multiplikation in
 #   DE-Print-Publikationen (Hollemann-Wiberg, Ternes Bio-Chemie, Straus/Sailer).
+# - ``⋅`` (U+22C5, Dot Operator): mathematisches Operator-Symbol, das LaTeX
+#   ``\cdot`` und MathJax beim Rendern erzeugen. Visuell nahezu identisch zu
+#   U+00B7, aber unicode-kategorisch getrennt (Sm statt Po). Aus MathJax-
+#   gerenderten Wikipedia-Info-Boxen, aus LaTeX-Quellen exportierten Referenz-
+#   Tabellen und aus Publikations-Snippets kopierte Werte enthalten den
+#   Codepunkt bevorzugt statt des Middle-Dot; beide Formen kommen in Sammler-
+#   Notizen austauschbar vor, weil die Copy-Paste-Quelle den Codepunkt bestimmt.
 # - ``×`` (U+00D7, Multiplication Sign): typografischer Standard fuer
 #   Multiplikation in EN-Print-Publikationen (CRC Handbook, IUPAC Green Book,
 #   Kluwer Handbook of Minerals).
@@ -1164,7 +1184,7 @@ _UNICODE_SUPERSCRIPT_MAP = str.maketrans({
 _EXPLICIT_EXPONENT_RE = re.compile(
     r"(?<![A-Za-z0-9])"
     r"(?P<mantissa>\d+(?:[.,]\d+)?|\.\d+)"
-    r"\s*(?:[·×*]|[xX])\s*"
+    r"\s*(?:[·⋅×*]|[xX])\s*"
     r"10"
     r"(?:"
     r"\s*\^\s*(?P<caret>[+-]?\d+)"
