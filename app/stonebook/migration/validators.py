@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import unicodedata
 
 _DATE_FORMATS = (
     "%Y-%m-%d",
@@ -1248,6 +1249,30 @@ _MONTH_NAMES: dict[str, int] = {
     "ottobre": 10, "ott": 10,
     "novembre": 11,
     "dicembre": 12, "dic": 12,
+    # Franzoesische Monatsnamen (Suisse romande - Wallis/Waadt/Genf/Neuenburg/
+    # Freiburg, ~23% Bevoelkerungsanteil laut BFS und damit deutlich groesser
+    # als die italienischsprachige Sparte) sowie geerbte Sammler-Notizen aus
+    # franzoesisch-sprachigen Alpen-Fundorten (Wallis/Val d'Anniviers, Grimsel,
+    # Binntal-Region, Mont-Blanc-Massiv/Chamonix-Argentiere, Aiguilles Rouges).
+    # ASCII-Form eingetragen; :func:`_normalize_month_name` strippt FR-Diakritika
+    # (é/è/ê/à/â/î/ô/û/ç) via NFKD-Dekomposition, sodass sowohl "13. fevrier 2024"
+    # (ASCII-Sammler-Notation aus DBs mit nur-ASCII-Feldern) als auch "13. février
+    # 2024" (Standard-FR-Schreibweise) auf denselben Dict-Key mappen. Kollisions-
+    # frei zum DE/EN/IT-Bestand: identische Schreibweisen (mai/novembre) mappen
+    # auf denselben Monat wie DE/IT; abweichende Formen sind FR-eigenstaendig
+    # (janvier/fevrier/mars/avril/juin/juillet/aout/septembre/octobre/decembre).
+    "janvier": 1, "janv": 1,
+    "fevrier": 2, "fevr": 2, "fev": 2,
+    "mars": 3,
+    "avril": 4, "avr": 4,
+    # "mai" bereits im DE-Block eingetragen (identische FR/DE-Schreibweise).
+    "juin": 6,
+    "juillet": 7, "juil": 7, "juill": 7,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    # "novembre" bereits im IT-Block eingetragen (identische FR/IT-Schreibweise).
+    "decembre": 12,
     # Roemische Monatsziffern (I..XII) - traditionelle Schreibweise auf aelteren
     # mineralogischen Etiketten, Museums-Eingangsbuechern und in osteuropaeischen
     # Sammlungs-Notizen ("13.VI.1985" = 13. Juni 1985). Wird durch
@@ -1270,7 +1295,7 @@ _MONTH_NAMES: dict[str, int] = {
 # dem Separator stehen, und vor dem Jahr darf zusaetzlich ein Komma stehen
 # ("13. März, 2024", "13/Jun./2024" aus Datenbank-Exporten/Foto-Bibliotheks-Exports).
 _DAY_MONTH_YEAR = re.compile(
-    r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s*[./\-]?\s*([A-Za-zÄÖÜäöü]+)\.?"
+    r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s*[./\-]?\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
     r"\s*[,./\-]?\s*(\d{4})\s*$",
     re.IGNORECASE,
 )
@@ -1377,7 +1402,7 @@ _DAY_OF_MONTH_YEAR = re.compile(
 # (Zahl-Achse, Python/Java/JS-Digit-Grouping), die den Underscore als
 # domaenen-neutralen Sekundaer-Separator behandelt.
 _MONTH_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[,./ _\-]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?(?:\s*[,./ _\-]\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 
@@ -1417,9 +1442,9 @@ _MONTH_YEAR = re.compile(
 # hier korrekt aufgeloest. "Juni/2024" faellt hier (nach dem "/" kommt eine
 # Zahl, kein Monatsname) und wird von _MONTH_YEAR aufgeloest.
 _MONTH_RANGE_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?"
+    r"^\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
     r"\s*(?:[-–—/]\s*|\s+(?:bis|to|till|until|through|thru)\s+)"
-    r"([A-Za-zÄÖÜäöü]+)\.?"
+    r"([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
     r"\s+(\d{4})\s*$",
     re.IGNORECASE,
 )
@@ -1472,7 +1497,7 @@ _DAY_RANGE_MONTH_YEAR = re.compile(
         (?:\s*[-–—]\s*|\s+(?:bis|to|till|until|through|thru)\s+)
         (\d{1,2})(?:st|nd|rd|th)?\.?
         \s+
-        ([A-Za-zÄÖÜäöü]+)\.?
+        ([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?
         \s+
         (\d{4})
         \s*$
@@ -1656,7 +1681,7 @@ _ISO_DATE_RANGE = re.compile(
 # 4 Ziffern - kollisionsfrei) und die Reihenfolge die ueblichere Month-First-
 # Variante zuerst behandelt.
 _YEAR_MONTH_NAME = re.compile(
-    r"^\s*(\d{4})\s*[,./ _\-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
+    r"^\s*(\d{4})\s*[,./ _\-]\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?\s*$",
 )
 # Year-first DD-Monatsname-YYYY-Notation: "2024-Juni-13" / "2024 June 13" /
 # "2024.Juni.13" / "2024-Jun-13" / "2024/Juni/13". Spiegelt _DAY_MONTH_YEAR
@@ -1670,7 +1695,7 @@ _YEAR_MONTH_NAME = re.compile(
 # _YEAR_MONTH_NAME geprueft, weil die 3-Teil-Form spezifischer ist; beide
 # Patterns sind durch das ``$``-Anker disjunkt (3 Teile vs. 2 Teile).
 _YEAR_MONTH_NAME_DAY = re.compile(
-    r"^\s*(\d{4})\s*[,./ _\-]\s*([A-Za-zÄÖÜäöü]+)\.?\s*"
+    r"^\s*(\d{4})\s*[,./ _\-]\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?\s*"
     r"[,./ _\-]\s*(\d{1,2})(?:st|nd|rd|th)?\s*$",
 )
 
@@ -1729,7 +1754,7 @@ _SEASON_MONTHS: dict[str, int] = {
 # case-insensitive (via ``.lower()``-Normierung), diese Erweiterung setzt
 # nur die Regex-Level-Konvention nach.
 _SEASON_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?(?:\s*[,_ ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
+    r"^\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?(?:\s*[,_ ]?\s*|\s+(?:von|of)\s+)(\d{4})\s*$",
     re.IGNORECASE,
 )
 # Winter-Cross-Year-Notation ("Winter 2023/2024", "Winter 2023/24", "Winter
@@ -1809,9 +1834,9 @@ _SEASON_CROSS_YEAR = re.compile(
 # Jahr) und zu _MONTH_RANGE_YEAR (dort Monatsnamen; die Fall-Through-Semantik
 # ueber _normalize_season_name filtert Monatsnamen aus).
 _SEASON_RANGE = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöü]+)\.?"
+    r"^\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
     r"(?:\s*[-–—−/]\s*|\s+(?:bis|to|till|until)\s+)"
-    r"([A-Za-zÄÖÜäöü]+)\.?"
+    r"([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
     r"\s+(\d{4})\s*$",
     re.IGNORECASE,
 )
@@ -1849,7 +1874,7 @@ _SEASON_RANGE = re.compile(
 # Basis) zuerst gepruft werden - die Reihenfolge folgt der etablierten
 # Spezifisch-vor-Allgemeinen-Konvention der uebrigen Patterns.
 _SEASON_YEAR_FIRST = re.compile(
-    r"^\s*(\d{4})\s*[/.\-, _]\s*([A-Za-zÄÖÜäöü]+)\.?\s*$",
+    r"^\s*(\d{4})\s*[/.\-, _]\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?\s*$",
 )
 
 # Fixed-Date-Feiertag + Jahr ("Weihnachten 2023", "Silvester 2020", "Neujahr
@@ -2125,7 +2150,7 @@ def _easter_sunday(year: int) -> tuple[int, int]:
 # Trenner-Bindestrich unterscheidet. Praeposition ``von``/``of`` als Wort-
 # Trenner symmetrisch zu :data:`_MONTH_YEAR` / :data:`_SEASON_YEAR`.
 _HOLIDAY_YEAR = re.compile(
-    r"^\s*([A-Za-zÄÖÜäöüß.’‘' \-]+?)"
+    r"^\s*([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœß.’‘' \-]+?)"
     r"(?:[\s,_/]+|\s+(?:von|of)\s+)"
     r"(\d{4})\s*$",
     re.IGNORECASE,
@@ -2141,7 +2166,7 @@ _HOLIDAY_YEAR = re.compile(
 _HOLIDAY_YEAR_FIRST = re.compile(
     r"^\s*(\d{4})"
     r"(?:[\s,_/\-]+|\s+(?:von|of)\s+)"
-    r"([A-Za-zÄÖÜäöüß.’‘' \-]+?)\s*$",
+    r"([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœß.’‘' \-]+?)\s*$",
     re.IGNORECASE,
 )
 
@@ -2609,7 +2634,7 @@ _YEAR_COMPOUND_POSITION = re.compile(
 # (spiegelt _RELATIVE_YEAR / _RELATIVE_DECADE - englisches "mid-June" ist eine
 # sehr verbreitete Compound-Notation, deutsches "Anfang-Juni" (mit Bindestrich)
 # selten aber spec-konform durch die identische Trenner-Klasse ``[-\s]+``).
-# Monatsname als ``([A-Za-zÄÖÜäöü]+)\.?`` deckt beide Sprachen und die Kurz-
+# Monatsname als ``([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?`` deckt beide Sprachen und die Kurz-
 # form-Punkt-Notation ab (Juni/June/Jun./Jan., spiegelt _DAY_MONTH_YEAR und
 # _MONTH_YEAR).
 #
@@ -2620,12 +2645,12 @@ _YEAR_COMPOUND_POSITION = re.compile(
 # und _ENGLISH_MONTH_DAY_YEAR (verlangt Monatsname, dann Ziffer + Jahr):
 # "Anfang Juni 2024" scheitert bei beiden strukturell. Disjunktheit zu
 # _MONTH_YEAR (2-Teil-Form Monatsname + Jahr): der Positions-Praefix
-# "Anfang"/"Mitte"/"Ende" wird zwar als [A-Za-zÄÖÜäöü]+-Token erkannt, aber
+# "Anfang"/"Mitte"/"Ende" wird zwar als [A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+-Token erkannt, aber
 # _normalize_month_name liefert dann None, sodass der Match transparent
 # durchfaellt.
 _RELATIVE_MONTH_YEAR = re.compile(
     r"^\s*(Anfang|Mitte|Ende|early|mid|late)"
-    r"[-\s]+([A-Za-zÄÖÜäöü]+)\.?"
+    r"[-\s]+([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
     r"\s+(\d{4})\s*$",
     re.IGNORECASE,
 )
@@ -2978,11 +3003,25 @@ _RELATIVE_CENTURY_ROMAN_EN = re.compile(
 
 def _normalize_month_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+    # NFKD-Dekomposition + Combining-Mark-Filter strippt uebrige lateinische
+    # Diakritika (FR: é/è/ê/à/â/î/ô/û/ç/ï, IT: à/è/ì/ò/ù, ES: á/í/ó/ñ/ü), sodass
+    # "février"/"août"/"décembre" auf ASCII-Aequivalente fevrier/aout/decembre
+    # mappen. DE-Umlaute wurden vorher explizit auf ae/oe/ue transliteriert
+    # (historische DE-Schreibweise), damit der Filter sie nicht auf a/o/u
+    # zusammenfaltet - Reihenfolge ist wesentlich.
+    key = "".join(
+        c for c in unicodedata.normalize("NFKD", key)
+        if not unicodedata.combining(c)
+    )
     return _MONTH_NAMES.get(key)
 
 
 def _normalize_season_name(name: str) -> int | None:
     key = name.strip().lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+    key = "".join(
+        c for c in unicodedata.normalize("NFKD", key)
+        if not unicodedata.combining(c)
+    )
     return _SEASON_MONTHS.get(key)
 
 
@@ -3927,7 +3966,7 @@ _COORD_LABEL = re.compile(
           | längengrad | länge
           | mlat | mlon                # OpenStreetMap-Share-URL-Query-Parameter
         )
-        (?![A-Za-zÄÖÜäöü])     # kein Anschnitt eines laengeren Wortes ("latex")
+        (?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])     # kein Anschnitt eines laengeren Wortes ("latex")
         \.?\s*[:=]?\s*         # optionaler Punkt + : / = + Whitespace
     """,
     re.IGNORECASE | re.VERBOSE,
@@ -3970,8 +4009,8 @@ def _normalize_direction_words(text: str) -> str:
 
 _TYPOGRAPHIC_DASH_BETWEEN_DIGITS = re.compile(
     r"(?<=\d)[–—](?=\d)"                                  # 13–06 / 06–2024
-    r"|(?<=\d)[–—](?=[A-Za-zÄÖÜäöü])"                     # 13–June, 13–Juni (Oracle-Log)
-    r"|(?<=[A-Za-zÄÖÜäöü])[–—](?=\d)"                     # June–2024, JAN–2024 (Oracle-Log)
+    r"|(?<=\d)[–—](?=[A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])"                     # 13–June, 13–Juni (Oracle-Log)
+    r"|(?<=[A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])[–—](?=\d)"                     # June–2024, JAN–2024 (Oracle-Log)
 )
 
 
@@ -4752,7 +4791,7 @@ def parse_iso_date(text) -> str | None:
     # vor-allgemeinerem"-Reihenfolge folgt der Konvention der uebrigen
     # Patterns. Multi-Wort-Namen ("Heilige Drei Koenige 2024", "Tag der
     # deutschen Einheit 2023") werden durch die Namen-Zeichenklasse
-    # ``[A-Za-zÄÖÜäöüß.’‘' \-]+?`` erfasst (non-greedy, keine Ziffern), die
+    # ``[A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœß.’‘' \-]+?`` erfasst (non-greedy, keine Ziffern), die
     # Normalisierung in :func:`_normalize_holiday_name` mappt alle
     # Whitespace-/Umlaut-/Apostroph-Varianten auf denselben kanonischen
     # Einzel-Token-Key. Variable Feiertage (Ostern, Pfingsten, Muttertag,

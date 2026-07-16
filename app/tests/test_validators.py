@@ -768,6 +768,83 @@ def test_parse_iso_date_italienische_monatsnamen():
     assert parse_iso_date("Jun 13, 2024") == "2024-06-13"
 
 
+def test_parse_iso_date_franzoesische_monatsnamen():
+    """Franzoesische Monatsnamen (Suisse romande - Wallis/Waadt/Genf/Neuenburg/
+    Freiburg sowie geerbte Sammler-Notizen aus franzoesisch-sprachigen Alpen-
+    Fundorten). FR-Monatsnamen enthalten Diakritika (février/août/décembre),
+    die :func:`_normalize_month_name` via NFKD-Dekomposition auf die ASCII-
+    Aequivalente strippt; die Regex-Character-Klassen wurden auf Latin-1-Buchstaben
+    erweitert, sodass sowohl akzent- als auch ASCII-Schreibweise transparent
+    matchen."""
+    # Voll ausgeschriebene Formen (alle 12 Monate, spiegelt DE/EN/IT-Testblock).
+    # Akzent-freie ASCII-Notation aus DB-Feldern mit nur-ASCII-Konvention.
+    assert parse_iso_date("janvier 2024") == "2024-01-01"
+    assert parse_iso_date("fevrier 2024") == "2024-02-01"
+    assert parse_iso_date("mars 2024") == "2024-03-01"
+    assert parse_iso_date("avril 2024") == "2024-04-01"
+    assert parse_iso_date("mai 2024") == "2024-05-01"
+    assert parse_iso_date("juin 2024") == "2024-06-01"
+    assert parse_iso_date("juillet 2024") == "2024-07-01"
+    assert parse_iso_date("aout 2024") == "2024-08-01"
+    assert parse_iso_date("septembre 2024") == "2024-09-01"
+    assert parse_iso_date("octobre 2024") == "2024-10-01"
+    assert parse_iso_date("novembre 2024") == "2024-11-01"
+    assert parse_iso_date("decembre 2024") == "2024-12-01"
+    # Standard-FR-Schreibweise mit Diakritika (février/août/décembre) - via
+    # NFKD-Dekomposition in _normalize_month_name auf fevrier/aout/decembre
+    # normalisiert.
+    assert parse_iso_date("février 2024") == "2024-02-01"
+    assert parse_iso_date("août 2024") == "2024-08-01"
+    assert parse_iso_date("décembre 2024") == "2024-12-01"
+    # Tag + Monat + Jahr (typische FR-Etiketten-Notation aus Wallis/Chamonix)
+    assert parse_iso_date("13 janvier 2024") == "2024-01-13"
+    assert parse_iso_date("13. fevrier 2024") == "2024-02-13"
+    assert parse_iso_date("13 février 2024") == "2024-02-13"
+    assert parse_iso_date("13 mars 2024") == "2024-03-13"
+    assert parse_iso_date("13 août 2024") == "2024-08-13"
+    assert parse_iso_date("31 décembre 1999") == "1999-12-31"
+    # Separator-Varianten (Punkt/Slash/Bindestrich, spiegelt DE/EN/IT-Konventionen)
+    assert parse_iso_date("13.juin.2024") == "2024-06-13"
+    assert parse_iso_date("13/juin/2024") == "2024-06-13"
+    assert parse_iso_date("13-juin-2024") == "2024-06-13"
+    # FR-Kurzformen (janv/fev/fevr/avr/juil/juill), spiegelt DE/EN/IT-Kurzformen.
+    assert parse_iso_date("janv 2024") == "2024-01-01"
+    assert parse_iso_date("fev 2024") == "2024-02-01"
+    assert parse_iso_date("fevr 2024") == "2024-02-01"
+    assert parse_iso_date("févr 2024") == "2024-02-01"
+    assert parse_iso_date("avr 2024") == "2024-04-01"
+    assert parse_iso_date("juil 2024") == "2024-07-01"
+    assert parse_iso_date("juill 2024") == "2024-07-01"
+    # Kurzform + Tag + Jahr
+    assert parse_iso_date("13 janv 2024") == "2024-01-13"
+    assert parse_iso_date("13 avr 2024") == "2024-04-13"
+    # Year-first Notation
+    assert parse_iso_date("2024 janvier") == "2024-01-01"
+    assert parse_iso_date("2024/juin") == "2024-06-01"
+    assert parse_iso_date("2024-décembre") == "2024-12-01"
+    # Case-Insensitivitaet (Caps-Lock-Notizen aus geerbten Sammler-Etiketten)
+    assert parse_iso_date("JANVIER 2024") == "2024-01-01"
+    assert parse_iso_date("Juin 2024") == "2024-06-01"
+    assert parse_iso_date("13 JUIN 2024") == "2024-06-13"
+    assert parse_iso_date("FÉVRIER 2024") == "2024-02-01"
+    # Kombination mit Approx-Praefix (rekursiv via bestehende Modifikatoren)
+    assert parse_iso_date("ca. juin 2024") == "2024-06-01"
+    assert parse_iso_date("circa 13 juin 2024") == "2024-06-13"
+    # Ungueltige Tag-Werte in FR-Notation (spiegelt DE/EN/IT-Konvention)
+    assert parse_iso_date("30 fevrier 2024") is None
+    assert parse_iso_date("31 avril 2024") is None
+    # Jahr ausserhalb [1800, 2999]
+    assert parse_iso_date("janvier 1700") is None
+    assert parse_iso_date("13 juin 3000") is None
+    # Regression: bestehende DE/EN/IT-Formen bleiben unveraendert
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("June 13, 2024") == "2024-06-13"
+    assert parse_iso_date("Jun 13, 2024") == "2024-06-13"
+    assert parse_iso_date("13 giugno 2024") == "2024-06-13"
+    assert parse_iso_date("13.VI.2024") == "2024-06-13"
+    assert parse_iso_date("März 2024") == "2024-03-01"
+
+
 def test_parse_iso_date_compact_iso():
     """ISO 8601 compact YYYYMMDD (kommt in Dateinamen/Log-Stempeln vor)."""
     assert parse_iso_date("20240613") == "2024-06-13"
