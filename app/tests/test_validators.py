@@ -1661,6 +1661,43 @@ def test_parse_iso_date_jahreszeiten():
     assert parse_iso_date("June 2024") == "2024-06-01"
 
 
+def test_parse_iso_date_franzoesische_saison_namen():
+    """Franzoesische Saison-Namen (Suisse romande - Wallis/Waadt/Genf,
+    Sammler-Notizen aus Chamonix-Argentiere/Val d'Anniviers). printemps=
+    Fruehling (Monat 3), ete=Sommer (Monat 6, Standard-FR-Schreibweise
+    "été" mit e-acute, via NFKD-Strip auf ete normalisiert), automne=
+    Herbst (Monat 9), hiver=Winter (Monat 12)."""
+    # Voll-Formen Season + Jahr (spiegelt DE/EN-Testblock)
+    assert parse_iso_date("printemps 2024") == "2024-03-01"
+    assert parse_iso_date("ete 2024") == "2024-06-01"
+    assert parse_iso_date("été 2024") == "2024-06-01"
+    assert parse_iso_date("automne 2024") == "2024-09-01"
+    assert parse_iso_date("hiver 2024") == "2024-12-01"
+    # Case-Insensitivitaet (Caps-Lock-Etiketten, Titel-Case)
+    assert parse_iso_date("Printemps 2024") == "2024-03-01"
+    assert parse_iso_date("ETE 2024") == "2024-06-01"
+    assert parse_iso_date("ÉTÉ 2024") == "2024-06-01"
+    assert parse_iso_date("Automne 2024") == "2024-09-01"
+    assert parse_iso_date("HIVER 2024") == "2024-12-01"
+    # Year-first Notation (Ordner-Struktur, Excel-Auto-Fill)
+    assert parse_iso_date("2024 printemps") == "2024-03-01"
+    assert parse_iso_date("2024/ete") == "2024-06-01"
+    assert parse_iso_date("2024-automne") == "2024-09-01"
+    # Praepositions-Alternante von/of (DE/EN-Prosa spiegelt auf FR-Season)
+    assert parse_iso_date("printemps von 2024") == "2024-03-01"
+    assert parse_iso_date("automne of 2019") == "2019-09-01"
+    # Kombination mit Approx-Praefix
+    assert parse_iso_date("ca. printemps 2024") == "2024-03-01"
+    # Ungueltiges Jahr (ausserhalb [1800, 2999])
+    assert parse_iso_date("printemps 1700") is None
+    assert parse_iso_date("hiver 3000") is None
+    # Regress: bestehende DE/EN-Saisonen bleiben unveraendert
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("summer 2024") == "2024-06-01"
+    assert parse_iso_date("Winter 2024") == "2024-12-01"
+    assert parse_iso_date("Frühsommer 2024") == "2024-06-01"
+
+
 def test_parse_iso_date_kompositum_saison():
     """DE-Kompositum-Formen ``Frueh<Saison>``/``Spaet<Saison>`` fuer die drei
     innerhalb eines Kalenderjahres liegenden Saisons.

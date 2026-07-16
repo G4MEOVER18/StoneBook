@@ -1739,6 +1739,18 @@ _SEASON_MONTHS: dict[str, int] = {
     "spaetsommer": 8, "latesummer": 8,
     "fruehherbst": 9, "earlyautumn": 9, "earlyfall": 9,
     "spaetherbst": 11, "lateautumn": 11, "latefall": 11,
+    # Franzoesische Saison-Namen (Suisse romande, Chamonix/Wallis/Val
+    # d'Anniviers-Sammlungen) - printemps=Fruehling, ete=Sommer (mit e-acute
+    # in Standard-FR-Schreibweise "été"), automne=Herbst, hiver=Winter. Die
+    # ASCII-Form "ete" ist der Post-NFKD-Strip-Key von "été" (via
+    # :func:`_normalize_season_name`), der die e-acute-Diakritika strippt und
+    # damit sowohl "été 2024" als auch "ete 2024" auf denselben Key mappt.
+    # Konvention identisch zu DE/EN: meteorologischer Saison-Startmonat des
+    # genannten Jahres (Maerz/Juni/Sep/Dez). Kompositum-Formen "debut<X>"/
+    # "fin<X>" (FR-Aequivalent zu Frueh/Spaet) sind seltener und werden nicht
+    # separat gefuehrt - Sammler-Notizen aus der Romandie verwenden ueberwiegend
+    # die nackte Saison-Notation.
+    "printemps": 3, "ete": 6, "automne": 9, "hiver": 12,
 }
 # Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Saison-Wort und Jahr
 # deckt die natuerlichsprachige DE-/EN-Prosa-Form ab: ``Sommer von 2024`` /
