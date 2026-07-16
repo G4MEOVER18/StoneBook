@@ -336,6 +336,96 @@ def test_parse_iso_date_tages_range_numerischer_monat():
     assert parse_iso_date("2024-06-13") == "2024-06-13"
 
 
+def test_parse_iso_date_englische_month_first_tages_range():
+    """EN Month-First-Tages-Range wird auf den Start-Tag im ersten Monat aufgeloest.
+
+    ``Feb 3 - Feb 8, 2024`` (wiederholter Monat), ``Feb 3-8, 2024`` (Monat
+    einmal), ``March 3 - April 5, 2024`` (Cross-Month) und ``Feb 3 to Feb 8,
+    2024`` (Wort-Trenner) sind in EN-Auktions-Katalog-Beschreibungen,
+    Foto-Captions und Boersen-Zitaten die uebliche Kompaktform fuer einen
+    mehrtaegigen Fund-/Boersen-/Exkursions-Zeitraum. Vor dem Fix fielen alle
+    Formen still auf None, weil :data:`_ENGLISH_MONTH_DAY_YEAR` nur einen
+    Einzel-Tag akzeptierte und der Range-Trenner den ``$``-Anker-Match
+    blockte, und :data:`_DAY_RANGE_MONTH_YEAR` (Day-First-Konvention) mit
+    einer Zahl beginnt statt mit einem Monatsnamen. Spiegelt die semantische
+    Konvention aus :data:`_DAY_RANGE_MONTH_YEAR`: der erste Tag im ersten
+    (oder einzigen) Monat liefert das ISO-Datum, End-Tag/End-Monat werden
+    als Range-Ende dokumentiert aber nicht in die Datums-Rueckgabe
+    eingerechnet.
+    """
+    # Repeated month (same month both sides)
+    assert parse_iso_date("Feb 3 - Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3-Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3 -Feb 8, 2024") == "2024-02-03"
+    # Same month, single month appearance
+    assert parse_iso_date("Feb 3-8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3 - 8, 2024") == "2024-02-03"
+    # Cross-month range
+    assert parse_iso_date("March 3 - April 5, 2024") == "2024-03-03"
+    assert parse_iso_date("June 15 - July 20, 2023") == "2023-06-15"
+    assert parse_iso_date("December 28 - January 5, 2024") == "2024-12-28"
+    # Wort-Trenner EN (to/till/until/through/thru)
+    assert parse_iso_date("Feb 3 to Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3 to 8, 2024") == "2024-02-03"
+    assert parse_iso_date("June 15 to July 20, 2023") == "2023-06-15"
+    assert parse_iso_date("Feb 3 through Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3 until 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3 till 8, 2024") == "2024-02-03"
+    # Wort-Trenner DE (bis) - EN-Monatsname aber DE-Trenner (Mischform aus
+    # zweisprachigen Sammlungs-Notizen)
+    assert parse_iso_date("Feb 3 bis Feb 8, 2024") == "2024-02-03"
+    # Ordinal-Suffixe (st|nd|rd|th)
+    assert parse_iso_date("February 3rd - March 5th, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 1st - Feb 3rd, 2024") == "2024-02-01"
+    assert parse_iso_date("Jan 1st - 31st, 2024") == "2024-01-01"
+    # Monatsname-Abkuerzung mit trailing Punkt
+    assert parse_iso_date("Feb. 3 - Feb. 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Jan. 1 - Feb. 5, 2024") == "2024-01-01"
+    # En-/Em-Dash als Trenner
+    assert parse_iso_date("Feb 3 – Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3—Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3–8, 2024") == "2024-02-03"
+    # Ohne Komma vor dem Jahr
+    assert parse_iso_date("Feb 3-8 2024") == "2024-02-03"
+    assert parse_iso_date("March 3 - April 5 2024") == "2024-03-03"
+    # Case-Insensitivitaet (Caps-Lock aus geerbten Etiketten, gemischte
+    # Schreibung)
+    assert parse_iso_date("FEB 3 - FEB 8, 2024") == "2024-02-03"
+    assert parse_iso_date("feb 3 - feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("Feb 3 - MAR 5, 2024") == "2024-02-03"  # cross with mixed case
+    # Kombination mit Annaeherungspraefix (via Rekursion)
+    assert parse_iso_date("ca. Feb 3 - Feb 8, 2024") == "2024-02-03"
+    assert parse_iso_date("circa March 3 - April 5, 2024") == "2024-03-03"
+    # Klammer-Wrap via Bracket-Strip-Rekursion
+    assert parse_iso_date("(Feb 3-8, 2024)") == "2024-02-03"
+    assert parse_iso_date("[March 3 - April 5, 2024]") == "2024-03-03"
+    # Inverted Range (Tippfehler) - Start-Tag bleibt Anker (spiegelt _MONTH_RANGE_YEAR)
+    assert parse_iso_date("Feb 8-3, 2024") == "2024-02-08"
+    assert parse_iso_date("Feb 8 - Feb 3, 2024") == "2024-02-08"
+    assert parse_iso_date("April 5 - March 3, 2024") == "2024-04-05"
+    # Ungueltiger Tag / Monat / Jahr -> None
+    assert parse_iso_date("Feb 31-8, 2024") is None  # 31. Feb existiert nicht
+    assert parse_iso_date("Feb 3-32, 2024") is None  # Tag 32 out of range
+    assert parse_iso_date("Feb 0-8, 2024") is None  # Tag 0 out of range
+    assert parse_iso_date("Feb 3 - Junk 5, 2024") is None  # invalid month2
+    assert parse_iso_date("Junk 3 - Feb 5, 2024") is None  # invalid month1
+    assert parse_iso_date("Junk 3-8, 2024") is None  # invalid month, single
+    assert parse_iso_date("Feb 3 - Feb 8, 3999") is None  # year out of range
+    assert parse_iso_date("Feb 3 - Feb 8, 1700") is None  # year out of range
+    # Regress: Single-Date-Formen bleiben unveraendert
+    assert parse_iso_date("Jun 13, 2024") == "2024-06-13"
+    assert parse_iso_date("June 13, 2024") == "2024-06-13"
+    assert parse_iso_date("March 3rd, 2020") == "2020-03-03"
+    assert parse_iso_date("Feb. 3, 2024") == "2024-02-03"
+    # Regress: Day-First-Range bleibt unveraendert (5-7 June 2024)
+    assert parse_iso_date("5-7 June 2024") == "2024-06-05"
+    assert parse_iso_date("13.-15. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("5. bis 7. Juni 2024") == "2024-06-05"
+    # Regress: ISO / DE bleibt unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+
+
 def test_parse_iso_date_voll_datum_range_de():
     """Voll-Datum-Range im DE-Format wird auf das Start-Datum aufgeloest.
 

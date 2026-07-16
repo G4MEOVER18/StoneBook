@@ -1412,6 +1412,64 @@ _DAY_RANGE_MONTH_YEAR = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Englische Month-First-Tages-Range: "Feb 3 - Feb 8, 2024" (Monat auf beiden
+# Seiten wiederholt, gleicher Monat), "Feb 3-8, 2024" (Monat nur einmal, Tages-
+# Range im selben Monat), "March 3 - April 5, 2024" (Monat auf beiden Seiten,
+# Cross-Month-Range), "Feb 3 to Feb 8, 2024" (Wort-Trenner), "February 3rd -
+# March 5th, 2024" (Ordinal-Suffixe), "Feb. 3 - Feb. 8, 2024" (Abbrev.-Punkt).
+# Sehr verbreitet in EN-Sammlungs-Notizen, Auktions-Katalog-Beschreibungen,
+# Museums-Etiketten und Boersen-Zitaten, wenn der Sammler den Fund-Zeitraum,
+# die Exkursion oder die Boersen-Periode auf einen Tages-Bereich innerhalb
+# desselben oder ueber zwei aufeinanderfolgende Monate eingrenzt ("collected
+# March 3 - April 5, 2024 at Val Bedretto", "Tucson Show Feb 3-8, 2024",
+# "field season June 15 - July 20, 2023 in the Alps"). Bisher fielen alle
+# Formen still auf None, weil :data:`_ENGLISH_MONTH_DAY_YEAR` nur einen
+# Einzel-Tag akzeptiert und der Range-Trenner den strukturellen ``$``-Anker-
+# Match blockte, und :data:`_DAY_RANGE_MONTH_YEAR` mit einer Zahl beginnt
+# (Tag-First-Konvention) statt mit einem Monatsnamen - EN-Foto-Captions und
+# EN-Katalog-Zeilen fielen auf den silenten Funddatum-Datenverlust der zwei
+# Ausdehnungs-Tage bei der Migration.
+#
+# Konvention identisch zu :data:`_DAY_RANGE_MONTH_YEAR`: der Start-Tag im
+# ersten (oder einzigen) Monat als ISO-Datum (Range-Start-Anker), End-Tag
+# und End-Monat bleiben semantische Wert-Anmerkung im Freitext (notizen).
+# Inverted Range (Tippfehler "Feb 8-3, 2024") liefert den ersten Tag wie
+# _DAY_RANGE_MONTH_YEAR / _MONTH_RANGE_YEAR. Cross-Month-Range "March 3 -
+# April 5, 2024" liefert "2024-03-03" (Start-Monat, Start-Tag). Trenner-
+# Alternativen identisch zu :data:`_DAY_RANGE_MONTH_YEAR` (ASCII-Hyphen,
+# En-/Em-Dash, DE-Wort "bis", EN-Woerter "to"/"till"/"until"/"through"/
+# "thru").
+#
+# Zweiter Monatsname optional via ``(?:([A-Za-z]+)\.?\s+)?``: fehlt er
+# ("Feb 3-8, 2024"), wird der erste Monat semantisch fuer beide Tage
+# uebernommen. Ist er vorhanden ("Feb 3 - Feb 8, 2024" oder "March 3 -
+# April 5, 2024"), muss er via :func:`_normalize_month_name` valide sein -
+# sonst fall-through (kein Return) analog :data:`_MONTH_RANGE_YEAR`.
+# Optionales Komma vor dem Jahr symmetrisch zu :data:`_ENGLISH_MONTH_DAY_YEAR`
+# ("June 13, 2024"), optionales Ordinal-Suffix ``st|nd|rd|th`` symmetrisch
+# zu :data:`_DAY_RANGE_MONTH_YEAR` ("5th-7th June 2024").
+#
+# Disjunktheit zu :data:`_ENGLISH_MONTH_DAY_YEAR` (Einzel-Tag ohne Range-
+# Trenner): "Jun 13, 2024" faellt hier, weil zwischen "13" und "2024" nur
+# Komma+Whitespace stehen, kein Dash und kein Range-Wort - matcht die
+# Range-Trenner-Alternante nicht. Disjunktheit zu :data:`_DAY_RANGE_MONTH_YEAR`
+# (Day-First-Konvention): "5-7 June 2024" beginnt mit einer Zahl, unser
+# Pattern verlangt einen Monatsnamen als erstes Token.
+_ENGLISH_MONTH_DAY_RANGE = re.compile(
+    r"""^\s*
+        ([A-Za-z]+)\.?
+        \s+
+        (\d{1,2})(?:st|nd|rd|th)?
+        (?:\s*[-–—]\s*|\s+(?:bis|to|till|until|through|thru)\s+)
+        (?:([A-Za-z]+)\.?\s+)?
+        (\d{1,2})(?:st|nd|rd|th)?
+        \s*,?\s*
+        (\d{4})
+        \s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 # Tages-Range mit numerischem Monat: "13.-15.06.2024", "13. - 15.06.2024",
 # "13. bis 15.06.2024", "13-15.06.2024". Spiegelt :data:`_DAY_RANGE_MONTH_YEAR`
 # auf die numerische Monat-Achse - der Sammler notiert einen Fund-Zeitraum
@@ -4166,6 +4224,26 @@ def parse_iso_date(text) -> str | None:
         if month and 1 <= day1 <= 31 and 1 <= day2 <= 31 and 1800 <= year <= 2999:
             try:
                 return datetime.date(year, month, day1).isoformat()
+            except ValueError:
+                return None
+    # Englische Month-First-Tages-Range ("Feb 3 - Feb 8, 2024", "Feb 3-8, 2024",
+    # "March 3 - April 5, 2024") - Start-Tag im ersten (oder einzigen) Monat als
+    # ISO-Datum, End-Tag/End-Monat als semantische Wert-Anmerkung im Freitext.
+    # Spiegelt :data:`_DAY_RANGE_MONTH_YEAR` auf die EN-Month-First-Reihenfolge
+    # (siehe :data:`_ENGLISH_MONTH_DAY_RANGE` fuer Details zur Konvention und
+    # Kollisions-Analyse).
+    m = _ENGLISH_MONTH_DAY_RANGE.match(s)
+    if m:
+        month1 = _normalize_month_name(m.group(1))
+        day1 = int(m.group(2))
+        month2_raw = m.group(3)
+        month2 = _normalize_month_name(month2_raw) if month2_raw else month1
+        day2 = int(m.group(4))
+        year = int(m.group(5))
+        if (month1 and month2 and 1 <= day1 <= 31 and 1 <= day2 <= 31
+                and 1800 <= year <= 2999):
+            try:
+                return datetime.date(year, month1, day1).isoformat()
             except ValueError:
                 return None
     # Tages-Range mit numerischem Monat ("13.-15.06.2024", "13. bis 15.06.2024",
