@@ -244,12 +244,37 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # Foto-Session (polierte Stuecke brauchen anderes Licht-Setup als Roh-Stuecke).
     # NULL-Eintraege (nicht poliert oder kein Poliert-Wert dokumentiert) fallen
     # via _order_by_clause ans Listenende - konsistent zu Wert_CHF_roh / Schmuck
-    # / Wissenschaft / Industrie. Komplettiert damit die fuenf Einzelwert-Achsen
-    # aus dem Feldwoerterbuch (roh, poliert, Schmuck, Marktwert_Industrie,
-    # Wissenschaftlich) als eigenstaendige Sortier-Achsen neben der Summen-Achse
-    # gesamtwert_chf: der Sammler kann jetzt jede Wert-Dimension isoliert oder
-    # als Summe sortieren, ohne dass eine dominante Achse die anderen verdeckt.
+    # / Wissenschaft / Industrie.
     "Wert_CHF_poliert",
+    # Wert_USD_Talisman als individuelle Wert-Achse fuer die Talisman-/Esoterik-
+    # Marktbewertung: schliesst den Ring der sechs Einzelwert-Achsen aus dem
+    # Feldwoerterbuch ab (roh, poliert, Schmuck, Marktwert_Industrie,
+    # Wissenschaftlich, Talisman). Als einziges USD-denominiertes Wertfeld ist
+    # Wert_USD_Talisman bewusst nicht Bestandteil der WERT_FELDER-Summe in
+    # stats.py (die gesamtwert_chf ausschliesslich als CHF-Aggregat bildet) und
+    # damit ueber die Summen-Sortierung nie sichtbar - der Talisman-Markt folgt
+    # US-basierten Healing-Stone-/Metaphysical-Konventionen mit eigener
+    # Preis-Skala (Etsy-/eBay-Notierungen, US-Steinmesse-Preise), die nicht
+    # ohne Wechselkurs-Umrechnung in die CHF-Summe einfliessen kann. Der
+    # Sammler-/Verkaeufer will sie trotzdem isoliert sortieren koennen - vor
+    # US-Talisman-Boerse, vor Etsy-/eBay-Angebot mit USD-Preis, vor Bewertung
+    # eines Chakra-/Kristall-Sets fuer den US-Wellness-Markt. Sammler-Frage
+    # "welche Stuecke haben die hoechste Talisman-Bewertung isoliert?"
+    # beantwortet die neue Achse direkt statt via post-hoc Filterung der (fuer
+    # Talisman irrelevanten) CHF-Summen-Sortierung. Ergaenzt beste_verwendung_in=
+    # ["Talisman"] (Enum-Verwendungs-Empfehlung als Filter) um die kontinuierliche
+    # Wert-Sortierung: der Filter selektiert die Talisman-Kandidaten, die neue
+    # Sortier-Achse ordnet sie nach USD-Wert absteigend. NULL-Eintraege (nicht
+    # Talisman-bewertete Stuecke, z.B. mineralogisch-wissenschaftliche Belege
+    # ohne Metaphysical-Markt-Relevanz) fallen via _order_by_clause ans Listen-
+    # ende - konsistent zu den anderen fuenf Einzelwert-Achsen und den weiteren
+    # Einzelfeld-Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc., die alle die
+    # NULL-an-Ende-Konvention teilen). Komplettiert damit die sechs Einzelwert-
+    # Achsen aus dem Feldwoerterbuch als eigenstaendige Sortier-Achsen neben
+    # der Summen-Achse gesamtwert_chf: der Sammler kann jetzt jede Wert-Dimension
+    # isoliert oder als CHF-Summe sortieren, ohne dass eine dominante Achse die
+    # anderen verdeckt.
+    "Wert_USD_Talisman",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke

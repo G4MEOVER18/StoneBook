@@ -2594,6 +2594,66 @@ def test_sort_by_marktwert_industrie(tmp_path):
     c.close()
 
 
+def test_sort_by_wert_usd_talisman(tmp_path):
+    """Sortierung nach Wert_USD_Talisman isoliert die Talisman-USD-Bewertung.
+
+    Schliesst den Ring der sechs Einzelwert-Achsen ab (Wert_CHF_roh,
+    Wert_CHF_poliert, Wert_CHF_Schmuck, Marktwert_Industrie,
+    Wissenschaftlicher_Wert_CHF, Wert_USD_Talisman). Als einziges USD-
+    denominiertes Wertfeld ist Wert_USD_Talisman bewusst nicht Bestandteil
+    der CHF-Summe gesamtwert_chf (US-Talisman-/Metaphysical-Markt mit
+    eigener USD-Skala, Etsy-/eBay-Notierungen) und damit ueber die Summen-
+    Sortierung nie sichtbar - die isolierte Sortier-Achse ist der einzige
+    Zugriff auf die Talisman-Top-Liste. NULL-Eintraege wandern via
+    _order_by_clause ans Listenende (spiegelt die anderen Einzelfeld-
+    Sortier-Achsen wie Gewicht_g/Mohs_Haerte_min).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ut.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_USD_Talisman, "
+        "Wert_CHF_Schmuck, Wissenschaftlicher_Wert_CHF) VALUES (?, ?, ?, ?)",
+        [
+            # OBJ_0001: mittlerer Talisman-Wert, sonst nichts
+            ("OBJ_0001", 300.0, None, None),
+            # OBJ_0002: hoechster Talisman-Wert - Top bei DESC (grosses
+            # Amethyst-Cluster als Meditationsraum-Zentrum)
+            ("OBJ_0002", 900.0, None, None),
+            # OBJ_0003: niedriger Talisman-Wert, aber hoher Schmuck-Wert
+            # -> waere via gesamtwert_chf oben (5000 CHF Schmuck), aber via
+            # Talisman-Achse unten (der Facetten-Schmuck-Stein bedient nicht
+            # den Metaphysical-Markt).
+            ("OBJ_0003", 50.0, 5000.0, None),
+            # OBJ_0004: kein Talisman-Wert (NULL) trotz hoher Wissenschafts-
+            # Bewertung (Holotyp-Referenzstueck ohne Metaphysical-Markt-
+            # Relevanz) -> faellt via Talisman-Achse ans Listenende
+            ("OBJ_0004", None, None, 2000.0),
+            # OBJ_0005: hoher Talisman-Wert - Rang 2 (kalibrierter
+            # Bergkristall-Trommelstein als Meditations-Set)
+            ("OBJ_0005", 500.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # DESC: hoechster Talisman-Wert zuerst, NULL ans Ende
+    rows = repo.list_objects(sort_by="Wert_USD_Talisman", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0002", "OBJ_0005", "OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # ASC: niedrigster Talisman-Wert zuerst, NULL immer noch ans Ende
+    rows = repo.list_objects(sort_by="Wert_USD_Talisman", sort_desc=False)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0001", "OBJ_0005", "OBJ_0002", "OBJ_0004"]
+    # Kontrast zu gesamtwert_chf DESC: hier steht OBJ_0003 oben (Schmuck 5000)
+    # und OBJ_0004 (Wissenschaft 2000) auf Rang 2 - Wert_USD_Talisman fliesst
+    # bewusst NICHT in die CHF-Summe ein (USD-Denomination), sodass die
+    # Talisman-Werte in der Summen-Sortierung fehlen und die Reihenfolge sich
+    # fundamental unterscheidet.
+    rows = repo.list_objects(sort_by="gesamtwert_chf", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0004", "OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    c.close()
+
+
 def test_kristallsystem_und_beste_verwendung_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "k.sqlite3")
