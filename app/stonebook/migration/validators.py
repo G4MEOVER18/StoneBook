@@ -440,12 +440,55 @@ _APPROX_PREFIX = re.compile(
 _TEMPORAL_PREFIX = re.compile(
     r"^(?:"
     # Praeposition + optional Artikel + optional "Jahr"-Wort + Whitespace
-    r"(?:im|in|am|vom|von|on|aus|w[äa]hrend|waehrend|during)\s+"
+    # FR-/IT-Zusatz (Suisse romande / Ticino / Val d'Aosta): ``en`` (FR)
+    # deckt die haeufigste FR-Temporal-Praeposition vor Jahr/Monat/Saison ab
+    # ("en 1985", "en juin 2024", "en été 2024" - identisch zu DE ``im``).
+    # ``nel``/``nella``/``nello``/``nei``/``negli``/``nelle`` (IT) deckt die
+    # kontraktierten Artikel-Praeposition-Formen ab: ``nel`` = "in dem" (mask.
+    # sing.), ``nella`` = "in der" (fem. sing.), ``nello`` = "in dem" (mask.
+    # sing. vor s+Konsonant/z), ``nei`` = "in den" (mask. pl.), ``negli`` = "in
+    # den" (mask. pl. vor s+Konsonant/z), ``nelle`` = "in den" (fem. pl.).
+    # Sehr verbreitet in Ticino-Sammler-Notizen und in Museo-cantonale-di-
+    # storia-naturale-Etiketten ("nel 1985 raccolto in Val Bavona", "nella
+    # primavera 2020 acquistato al mercato di Locarno", "negli anni 1980
+    # esplorato il Val Verzasca"). Bisher fielen alle FR/IT-Praeposition-
+    # Formen still auf None, weil die Liste nur DE-/EN-Wortstaemme abdeckte -
+    # obwohl semantisch identisch zur DE ``im``/EN ``in``-Praeposition und
+    # das ISO-Datum-Output unveraendert bleibt. Spiegelt die FR/IT-
+    # Erweiterungen in :data:`_MONTH_NAMES` / :data:`_SEASON_MONTHS` /
+    # :data:`_DIRECTION_WORD` / :data:`_COORD_LABEL` / :data:`_APPROX_PREFIX`
+    # auf die Temporal-Praeposition-Achse. Kollisions-Schutz: alle FR/IT-
+    # Wortstaemme haben eine eindeutige, kurze Form ohne Kollisions-Konflikt
+    # mit DE-/EN-Wortstaemmen (``en`` ist als Standalone-Wort weder in DE
+    # noch in EN gebraeuchlich; ``nel``/``nello``/``nei``/``negli``/``nelle``/
+    # ``nella`` haben keine Praefix-Kollision mit DE/EN-Woertern).
+    r"(?:im|in|am|vom|von|on|aus|w[äa]hrend|waehrend|during"
+    r"|en|nel|nello|nella|nei|negli|nelle"
+    r")\s+"
     r"(?:(?:dem|den|der|des|the)\s+)?"
-    r"(?:(?:jahr|jahre|jahres|jahren|year)\s+)?"
+    # FR-/IT-Filler-Woerter (Jahr-Aequivalent): FR ``an``/``annee``/``annees``
+    # (mit oder ohne Akzent auf ``année``/``années`` - :func:`_normalize_month_
+    # name`-Diakritika-Strip greift hier nicht, weil das Filler-Wort direkt in
+    # der Regex-Alternante steht - beide Formen explizit auflisten), IT ``anno``/
+    # ``anni`` (mask. sing./pl., ``anno`` = "Jahr", ``anni`` = "Jahre"). Symmetrie
+    # zur DE ``jahr``/``jahre``/``jahres``/``jahren``-Alternante und EN ``year``-
+    # Alternante, damit "en l'annee 1985" (FR) / "nell anno 1985" (IT) / "negli
+    # anni 1980" (IT) transparent gestrippt werden. Elidierte FR-Artikel-Formen
+    # (``l'``/``d'``) bleiben ausserhalb dieses Patterns (die Apostroph-Behandlung
+    # verlangt eine Sonder-Regex und ist selten in Sammler-Notizen ohne strenge
+    # Grammatik). ``anno(?!\s+domini)`` negativer Lookahead schuetzt die Latin-
+    # Aera-Vollform ``Anno Domini`` (Church-Latin "im Jahr des Herrn", historische
+    # Etiketten mit ecclesialer Provenienz) vor dem vorzeitigen Filler-Strip -
+    # ohne Lookahead wuerde ``anno\s+`` in ``Anno Domini 1985`` matchen und den
+    # Rest ``Domini 1985`` unparseable an :func:`parse_iso_date`-Rekursion
+    # uebergeben. :data:`_LEADING_ERA_MARKER` (spaeter im Kaskade-Aufruf) hat den
+    # dedizierten ``anno\s+domini``-Alternate, der die Vollform als 2-Token-Aera-
+    # Marker strippt; der negative Lookahead sorgt dafuer, dass die Filler-Regel
+    # hier den 1-Token-``anno``-Fall an die spezifischere Aera-Regel abgibt.
+    r"(?:(?:jahr|jahre|jahres|jahren|year|an|ann[eé]e|ann[eé]es|anno(?!\s+domini)|anni)\s+)?"
     r"|"
     # Nur "Jahr"-Wort ohne Praeposition (Listen-/Tabellen-Stil)
-    r"(?:jahr|jahre|jahres|jahren|year)\s+"
+    r"(?:jahr|jahre|jahres|jahren|year|anno(?!\s+domini)|anni|ann[eé]e|ann[eé]es)\s+"
     r")",
     re.IGNORECASE,
 )

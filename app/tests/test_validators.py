@@ -4146,6 +4146,65 @@ def test_parse_iso_date_temporale_praeposition_herkunft_und_zeitspanne():
     assert parse_iso_date("Jahr 1985") == "1985-01-01"
 
 
+def test_parse_iso_date_temporale_praeposition_fr_it():
+    """FR-/IT-Temporal-Praepositionen (Suisse romande / Ticino / Val d'Aosta).
+
+    FR ``en`` deckt die haeufigste FR-Temporal-Praeposition ab; IT ``nel``/
+    ``nella``/``nello``/``nei``/``negli``/``nelle`` decken die kontraktierten
+    Artikel-Praeposition-Formen ab. Zusaetzlich werden die FR-/IT-Filler-
+    Woerter fuer "Jahr" (FR ``an``/``annee``/``annees``/``année``/``années``,
+    IT ``anno``/``anni``) auf der Filler-Achse gestrippt.
+    """
+    # FR: en + Jahr (Standard-Form)
+    assert parse_iso_date("en 1985") == "1985-01-01"
+    assert parse_iso_date("en 2024") == "2024-01-01"
+    # FR: en + Monat + Jahr
+    assert parse_iso_date("en juin 2024") == "2024-06-01"
+    assert parse_iso_date("en janvier 2024") == "2024-01-01"
+    # FR: en + Saison (nach _SEASON_MONTHS-Aufloesung)
+    assert parse_iso_date("en été 2024") == "2024-06-01"
+    assert parse_iso_date("en printemps 2024") == "2024-03-01"
+    # FR: en année/années + Jahr (mit Akzent-Diakritika)
+    assert parse_iso_date("en année 1985") == "1985-01-01"
+    assert parse_iso_date("en années 1980") == "1980-01-01"
+    # FR: en annee/annees (ASCII-transliteriert)
+    assert parse_iso_date("en annee 1985") == "1985-01-01"
+    # IT: nel + Jahr (mask. sing.)
+    assert parse_iso_date("nel 1985") == "1985-01-01"
+    assert parse_iso_date("nel giugno 2024") == "2024-06-01"
+    # IT: nella + Saison (fem. sing.)
+    assert parse_iso_date("nella primavera 2020") == "2020-03-01"
+    assert parse_iso_date("nella estate 2024") == "2024-06-01"
+    # IT: nei anni + Jahr (mask. pl.)
+    assert parse_iso_date("nei anni 1980") == "1980-01-01"
+    # IT: negli anni + Jahr (mask. pl. vor Vokal/S+Konsonant)
+    assert parse_iso_date("negli anni 1980") == "1980-01-01"
+    # IT: nelle estati + Jahr (fem. pl.)
+    assert parse_iso_date("nelle estate 2024") == "2024-06-01"
+    # IT: anno / anni ohne Praeposition (Listen-Stil)
+    assert parse_iso_date("anno 1985") == "1985-01-01"
+    assert parse_iso_date("anni 1980") == "1980-01-01"
+    # Case-insensitive
+    assert parse_iso_date("EN 1985") == "1985-01-01"
+    assert parse_iso_date("NEL 1985") == "1985-01-01"
+    assert parse_iso_date("Nel giugno 2024") == "2024-06-01"
+    # Verkettet mit Approx-Praefix (Rekursion loest sequentiell auf)
+    assert parse_iso_date("vers en 1985") == "1985-01-01"
+    assert parse_iso_date("verso nel 1985") == "1985-01-01"
+    # False-Positive-Schutz: kurze Wortstaemme nicht in laengeren Woertern
+    # matchen (\\s+-Grenze schuetzt vor Anschnitt)
+    assert parse_iso_date("endless 1985") is None
+    assert parse_iso_date("nelson 1985") is None
+    assert parse_iso_date("enable 1985") is None
+    # Bestehende Praepositionen unveraendert (Regression-Anker)
+    assert parse_iso_date("im Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("in 2024") == "2024-01-01"
+    assert parse_iso_date("in June 2024") == "2024-06-01"
+    assert parse_iso_date("am 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("aus den 1980ern") == "1980-01-01"
+    assert parse_iso_date("during 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_boundary_praefix():
     """Boundary-/Richtungs-Praefix (vor/nach/before/after/pre-/post-) wird gestrippt.
 
@@ -5127,11 +5186,19 @@ def test_parse_iso_date_anno_domini():
     # Reine Aera-Markierung ohne Datum bleibt None (kein Freitext-Ratespiel)
     assert parse_iso_date("Anno Domini") is None
     assert parse_iso_date("anno domini") is None
-    # Bare Anno ohne Domini ist KEIN Aera-Marker (semantisch reines "im Jahr");
-    # bleibt derzeit None, weil weder :data:`_TEMPORAL_PREFIX` noch
-    # :data:`_LEADING_ERA_MARKER` das Wort einzeln kennt. Kein Regress zu
-    # den vorhandenen Aera-Markern.
-    assert parse_iso_date("Anno 1985") is None
+    # Bare Anno ohne Domini ist KEIN Aera-Marker, aber via :data:`_TEMPORAL_
+    # PREFIX` (IT-Filler-Wort "anno" = "Jahr", Symmetrie zum DE "Jahr 1985"-
+    # Listen-Stil) inzwischen als IT-Year-First-Notation gestrippt und rekursiv
+    # aufgeloest. Vor der IT-Erweiterung fiel die Form still auf None; die neue
+    # Semantik ist der Ticino-/Val-d'Aosta-Sammler-Konvention naeher ("Anno
+    # 1985: Erste Bergung im Val Bavona"). Der bare-``anno``-Match hat einen
+    # negativen Lookahead ``(?!\s+domini)``, sodass die Latin-Aera-Vollform
+    # ``Anno Domini`` weiterhin von :data:`_LEADING_ERA_MARKER` als 2-Token-
+    # Aera-Marker geordnet wird und nicht vorzeitig via 1-Token-Filler-Strip
+    # zu "Domini 1985" degeneriert.
+    assert parse_iso_date("Anno 1985") == "1985-01-01"
+    # Trailing bare-Anno bleibt None: :data:`_TRAILING_APPROX_SUFFIX` /
+    # :data:`_TRAILING_ERA_MARKER` fuehren "anno" nicht als Suffix-Wortstamm.
     assert parse_iso_date("1985 Anno") is None
     # Domini allein ohne Anno ist KEIN Aera-Marker
     assert parse_iso_date("Domini 1985") is None
