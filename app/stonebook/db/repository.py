@@ -143,6 +143,25 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # Sammler-Bergkristall (~0.01-0.1 CHF/mm3) > faustgrosses Handstueck
     # (~0.001 CHF/mm3).
     "Wert_pro_Volumen_chf_mm3",
+    # Wert_CHF_Schmuck als individuelle Wert-Achse fuer schmuck-spezifische
+    # Vorbereitung: waehrend gesamtwert_chf die Summe aller CHF-Wertfelder
+    # zeigt (roh + poliert + Schmuck + Marktwert_Industrie + Wissenschaftlich)
+    # und damit die Gesamt-Positionierung eines Stuecks liefert, isoliert
+    # Wert_CHF_Schmuck den Schmuck-Verkaufs-Schaetzwert (Cabochon/Facette/
+    # Perle/Anhaenger). Sammler-Frage vor Schmuck-Vitrinen-/Boersen-Sitzung:
+    # "welche Stuecke haben die hoechste Schmuck-Bewertung isoliert?" - die
+    # Gesamtwert-Sortierung mischt hier Wissenschaftlich-Werte (Vitrinen-
+    # Meilenstein-Stuecke ohne Schmuck-Eignung, aber hoch bewertet als
+    # Forschungs-/Referenz-Belege) und Marktwert_Industrie-Werte (Baryt-/
+    # Bentonit-Massenwaren mit hohen Industrie-Preisen, aber ohne Schmuck-
+    # Relevanz), sodass die reine Schmuck-Top-Liste nur durch die isolierte
+    # Achse erreichbar ist. Ergaenzt beste_verwendung_in=["Schmuck"] (Enum-
+    # Verwendungs-Empfehlung als Filter) um die kontinuierliche Wert-Sortierung:
+    # der Filter selektiert die Schmuck-Kandidaten, die Sortierung ordnet sie
+    # nach Schmuck-Wert absteigend. NULL-Eintraege (nicht Schmuck-bewertet)
+    # fallen via _order_by_clause ans Listenende - konsistent zu den anderen
+    # Einzelfeld-Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
+    "Wert_CHF_Schmuck",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
