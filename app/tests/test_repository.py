@@ -2435,6 +2435,55 @@ def test_sort_by_wert_chf_schmuck(tmp_path):
     c.close()
 
 
+def test_sort_by_wissenschaftlicher_wert_chf(tmp_path):
+    """Sortierung nach Wissenschaftlicher_Wert_CHF isoliert den Forschungs-Wert.
+
+    Spiegelt test_sort_by_wert_chf_schmuck auf die Wissenschafts-Achse:
+    waehrend gesamtwert_chf die Summe aller CHF-Wertfelder ordnet
+    (roh + poliert + Schmuck + Marktwert_Industrie + Wissenschaftlich) und
+    damit Schmuck-Werte sowie Industrie-Werte in die Top-Liste mischt,
+    isoliert sort_by='Wissenschaftlicher_Wert_CHF' den reinen Forschungs-
+    /Museums-Wert. NULL-Eintraege wandern via _order_by_clause ans Listenende.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "ww.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wissenschaftlicher_Wert_CHF, "
+        "Wert_CHF_Schmuck, Marktwert_Industrie) VALUES (?, ?, ?, ?)",
+        [
+            # OBJ_0001: mittlerer Wissenschafts-Wert, sonst nichts
+            ("OBJ_0001", 300.0, None, None),
+            # OBJ_0002: hoechster Wissenschafts-Wert - Top bei DESC (Holotyp-Beleg)
+            ("OBJ_0002", 900.0, None, None),
+            # OBJ_0003: niedriger Wissenschafts-Wert, aber hoher Schmuck-Wert
+            # -> waere via gesamtwert_chf oben, aber via Wissenschafts-Achse unten
+            ("OBJ_0003", 50.0, 5000.0, None),
+            # OBJ_0004: kein Wissenschafts-Wert (NULL) trotz hoher Industrie-Bewertung
+            # -> faellt via Wissenschaftlicher_Wert_CHF ans Listenende (NULL-an-Ende)
+            ("OBJ_0004", None, None, 2000.0),
+            # OBJ_0005: hoher Wissenschafts-Wert - Rang 2
+            ("OBJ_0005", 500.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # DESC: hoechster Wissenschafts-Wert zuerst, NULL ans Ende
+    rows = repo.list_objects(sort_by="Wissenschaftlicher_Wert_CHF", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0002", "OBJ_0005", "OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # ASC: niedrigster Wissenschafts-Wert zuerst, NULL immer noch ans Ende
+    rows = repo.list_objects(sort_by="Wissenschaftlicher_Wert_CHF", sort_desc=False)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0001", "OBJ_0005", "OBJ_0002", "OBJ_0004"]
+    # Kontrast zu gesamtwert_chf DESC: hier steht OBJ_0003 oben (Schmuck 5000)
+    # und OBJ_0004 (Industrie 2000) auf Rang 2 - die Wissenschafts-Reihenfolge
+    # unterscheidet sich fundamental.
+    rows = repo.list_objects(sort_by="gesamtwert_chf", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0004", "OBJ_0002", "OBJ_0005", "OBJ_0001"]
+    c.close()
+
+
 def test_kristallsystem_und_beste_verwendung_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "k.sqlite3")

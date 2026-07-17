@@ -162,6 +162,30 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # fallen via _order_by_clause ans Listenende - konsistent zu den anderen
     # Einzelfeld-Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
     "Wert_CHF_Schmuck",
+    # Wissenschaftlicher_Wert_CHF als individuelle Wert-Achse fuer Forschungs-
+    # /Museums-Vorbereitung: spiegelt Wert_CHF_Schmuck auf die Wissenschafts-
+    # Achse. Waehrend gesamtwert_chf die Summe aller CHF-Wertfelder zeigt
+    # (roh + poliert + Schmuck + Marktwert_Industrie + Wissenschaftlich) und
+    # damit Schmuck-Verkaufs-Kandidaten (Cabochon-/Facetten-taugliche Stuecke
+    # mit hohen Wert_CHF_Schmuck-Werten) sowie Industrie-Massenware (Baryt-/
+    # Bentonit-Stuecke mit hohen Marktwert_Industrie-Preisen) in die Gesamt-
+    # Top-Liste mischt, isoliert Wissenschaftlicher_Wert_CHF den reinen
+    # Forschungs-/Museums-Wert (Holotypen, Typmaterial-Belege, Meilenstein-
+    # Funde einer Region, Referenzstuecke fuer Publikationen). Sammler-/
+    # Kurator-Frage vor Museumsleihgabe-Anfrage, Forschungs-/Konservierungs-
+    # Prioritaets-Entscheidung oder Erbschafts-Aufteilung nach wissenschaft-
+    # lichem Erbe: "welche Stuecke haben die hoechste Forschungs-Bewertung
+    # isoliert?" - die Gesamtwert-Sortierung mischt hier Schmuck-Werte
+    # (hochwertige geschliffene Stuecke ohne Forschungs-Relevanz) und
+    # Industrie-Werte (Massenware ohne Referenz-Charakter), sodass die reine
+    # Wissenschafts-Top-Liste nur durch die isolierte Achse erreichbar ist.
+    # Ergaenzt beste_verwendung_in=["Forschung"] (Enum-Verwendungs-Empfehlung
+    # als Filter) um die kontinuierliche Wert-Sortierung: der Filter selektiert
+    # die Forschungs-Kandidaten, die Sortierung ordnet sie nach Forschungs-
+    # Wert absteigend. NULL-Eintraege (nicht wissenschaftlich bewertet) fallen
+    # via _order_by_clause ans Listenende - konsistent zu Wert_CHF_Schmuck
+    # und den anderen Einzelfeld-Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
+    "Wissenschaftlicher_Wert_CHF",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
