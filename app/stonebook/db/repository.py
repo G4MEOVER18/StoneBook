@@ -447,6 +447,8 @@ class ObjectRepo:
                      farbe_contains: str = "",
                      strichfarbe_contains: str = "",
                      hcl_reaktion_contains: str = "",
+                     uv_365nm_contains: str = "",
+                     uv_254nm_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
@@ -1437,6 +1439,54 @@ class ObjectRepo:
             # Test irrelevant ist) fallen implizit heraus.
             where.append("o.HCl_Reaktion LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(hcl_reaktion_contains) + "%")
+        if uv_365nm_contains:
+            # Substring-Filter ueber UV_365nm (Langwellen-UV-Fluoreszenz-Freitext:
+            # "orange, mittel", "grün nachleuchtend", "keine", "hellblau schwach",
+            # "gelb-orange stark, kurz nachleuchtend"). UV_365nm ist Freitext-Feld
+            # ohne kontrolliertes Vokabular; Sammler kodieren Fluoreszenzfarbe,
+            # -intensitaet und Nachleuchten in mehreren Wortstaemmen
+            # ("orange" in "orange"/"gelb-orange"/"rot-orange"/"orange-braun")
+            # und in Kombinationen mit Intensitaets-/Nachleuchten-Modifikatoren
+            # ("schwach"/"mittel"/"stark", "kurz"/"lang nachleuchtend"), sodass
+            # der exakte Feld-Match nur eine der Varianten treffen wuerde. Der
+            # Substring-Filter mit LIKE gibt die natuerliche Suche ueber die
+            # Fluoreszenz-Familie: Sammler-Frage "welche Stuecke leuchten
+            # ueberhaupt orange unter Langwelle?" -> "orange"; "welche zeigen
+            # Nachleuchten?" -> "nachleucht". Spiegelt hcl_reaktion_contains/
+            # farbe_contains/strichfarbe_contains auf die UV-Achse (die vier
+            # bilden zusammen die klassischen Sammler-Handstueck-Diagnose-
+            # Freitext-Felder). Spiegelt das Muster der anderen *_contains-
+            # Filter (LIKE mit ``ESCAPE '\\'``, Metazeichen ``%``/``_``
+            # wortwoertlich, ASCII-case-insensitive); Umlaute wie "grün"/
+            # "gruen" folgen der bewussten Design-Konsistenz und werden nicht
+            # NFKD-normalisiert. Komplementaer zum tri-state
+            # ``has_uv_reaktion``-Filter (An-/Abwesenheit einer der beiden
+            # UV-Wellenlaengen); kombinierbar mit ``uv_254nm_contains`` fuer
+            # die zwei getrennten UV-Wellenlaengen-Achsen (Langwelle 365 nm
+            # dominant bei den meisten UV-Lampen; Kurzwelle 254 nm zeigt
+            # oft andere Farben als Langwelle). NULL-Eintraege (nie unter UV
+            # geprueft) fallen implizit heraus.
+            where.append("o.UV_365nm LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(uv_365nm_contains) + "%")
+        if uv_254nm_contains:
+            # Substring-Filter ueber UV_254nm (Kurzwellen-UV-Fluoreszenz-
+            # Freitext). Kurzwelle zeigt bei vielen Mineralien andere Farben
+            # als Langwelle (z.B. Willemit gruen unter beiden, Calcit rot nur
+            # unter Langwelle, Scheelit hellblau nur unter Kurzwelle); der
+            # eigenstaendige Filter erlaubt die Suche nach kurzwellen-
+            # spezifischen Reaktionen unabhaengig von der Langwellen-Notation.
+            # Spiegelt uv_365nm_contains auf die 254-nm-Achse (LIKE mit
+            # ``ESCAPE '\\'``, ASCII-case-insensitive, Metazeichen
+            # wortwoertlich, NULL faellt implizit heraus). Kombinierbar mit
+            # ``uv_365nm_contains`` (zwei Wellenlaengen als getrennte Achsen;
+            # die klassische UV-Kabinen-Analyse dokumentiert beide separat)
+            # und mit ``has_uv_reaktion`` (Feld-Anwesenheit auf einer der
+            # beiden Wellenlaengen); Sammler-Frage "welche zeigen unter
+            # Kurzwelle andere Farben als unter Langwelle?" ->
+            # uv_254nm_contains + uv_365nm_contains mit unterschiedlichen
+            # Farbnotationen.
+            where.append("o.UV_254nm LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(uv_254nm_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))

@@ -3235,6 +3235,112 @@ def test_hcl_reaktion_contains_filter(tmp_path):
     c.close()
 
 
+def test_uv_365nm_contains_filter(tmp_path):
+    """Substring-Filter ueber UV_365nm (Langwellen-UV-Fluoreszenz-Freitext).
+
+    Sammler-Frage: "welche Stuecke leuchten orange unter Langwelle?" oder
+    "welche zeigen Nachleuchten?" -> Bulk-Selektion nach Fluoreszenzfarbe
+    bzw. Persistenz. Spiegelt hcl_reaktion_contains: LIKE mit ESCAPE,
+    ASCII-case-insensitive, LIKE-Metazeichen wortwoertlich, NULL faellt
+    implizit heraus.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "uv365.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_365nm) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "orange, mittel"),                     # Calcit
+            ("OBJ_0002", "gelb-orange stark nachleuchtend"),    # Franklinit
+            ("OBJ_0003", "grün nachleuchtend"),                 # Willemit
+            ("OBJ_0004", "keine"),                              # Quarz
+            ("OBJ_0005", "hellblau bei 365_nm"),                # LIKE-Metazeichen
+            ("OBJ_0006", None),                                 # NULL-Eintrag
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring 'orange' trifft beide Orange-Notationen
+    rows = repo.list_objects(uv_365nm_contains="orange")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(uv_365nm_contains="ORANGE")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Persistenz-Modifikator 'nachleucht' trifft beide Nachleuchten-Notationen
+    rows = repo.list_objects(uv_365nm_contains="nachleucht")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # 'keine' schliesst nicht-fluoreszierende Stuecke ein
+    rows = repo.list_objects(uv_365nm_contains="keine")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich (ESCAPE-Verhalten)
+    rows = repo.list_objects(uv_365nm_contains="365_nm")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(uv_365nm_contains="365Xnm")
+    assert rows == []
+    # NULL faellt implizit heraus
+    rows = repo.list_objects(uv_365nm_contains="a")
+    assert all(r["obj_id"] != "OBJ_0006" for r in rows)
+    # Leerer Substring ist no-op -> alle 6 Objekte
+    rows = repo.list_objects(uv_365nm_contains="")
+    assert len(rows) == 6
+    # Kombinierbar mit has_uv_reaktion (Schnittmenge, LIKE bereits impliziert)
+    rows = repo.list_objects(uv_365nm_contains="orange", has_uv_reaktion=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
+def test_uv_254nm_contains_filter(tmp_path):
+    """Substring-Filter ueber UV_254nm (Kurzwellen-UV-Fluoreszenz-Freitext).
+
+    Diagnostisch komplementaer zu uv_365nm_contains: Kurzwelle zeigt bei
+    vielen Mineralien andere Farben als Langwelle (Scheelit hellblau nur
+    unter Kurzwelle, Calcit rot nur unter Langwelle). Sammler-Frage:
+    "welche Stuecke leuchten unter Kurzwelle anders als unter Langwelle?"
+    -> Kombination von uv_254nm_contains + uv_365nm_contains mit
+    unterschiedlichen Farbnotationen. Spiegelt uv_365nm_contains: LIKE
+    mit ESCAPE, ASCII-case-insensitive, Metazeichen wortwoertlich, NULL
+    implizit raus.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "uv254.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, UV_365nm, UV_254nm) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", None, "hellblau stark"),           # Scheelit
+            ("OBJ_0002", "grün mittel", "grün stark"),      # Willemit
+            ("OBJ_0003", "orange", None),                   # Calcit
+            ("OBJ_0004", "keine", "keine"),                 # Quarz
+            ("OBJ_0005", None, "blau bei 254_nm"),          # LIKE-Metazeichen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring 'hellblau' trifft Scheelit
+    rows = repo.list_objects(uv_254nm_contains="hellblau")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(uv_254nm_contains="STARK")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich (ESCAPE-Verhalten)
+    rows = repo.list_objects(uv_254nm_contains="254_nm")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(uv_254nm_contains="254Xnm")
+    assert rows == []
+    # NULL faellt implizit heraus (OBJ_0003 hat UV_254nm=NULL)
+    rows = repo.list_objects(uv_254nm_contains="a")
+    assert all(r["obj_id"] != "OBJ_0003" for r in rows)
+    # Leerer Substring ist no-op -> alle 5 Objekte
+    rows = repo.list_objects(uv_254nm_contains="")
+    assert len(rows) == 5
+    # Kombinierbar mit uv_365nm_contains (unterschiedliche Wellenlaengen-Achsen)
+    # Willemit leuchtet auf beiden Wellenlaengen gruen
+    rows = repo.list_objects(uv_365nm_contains="grün", uv_254nm_contains="grün")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Kombinierbar mit has_uv_reaktion (Schnittmenge)
+    rows = repo.list_objects(uv_254nm_contains="stark", has_uv_reaktion=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    c.close()
+
+
 def test_status_in_filter(tmp_path):
     """status_in akzeptiert Mengen ('aktiv ODER archiviert'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db
