@@ -2484,6 +2484,64 @@ def test_sort_by_wissenschaftlicher_wert_chf(tmp_path):
     c.close()
 
 
+def test_sort_by_wert_chf_roh_und_poliert(tmp_path):
+    """Sortierung nach Wert_CHF_roh und Wert_CHF_poliert isoliert die Prozess-
+    Wert-Achsen (Grundmaterial vor Bearbeitung / Bearbeitetes Endprodukt).
+
+    Ergaenzt die drei bereits isolierten Verwendungs-Wert-Achsen (Schmuck /
+    Wissenschaft / Industrie) um die zwei Prozess-Wert-Achsen. Damit sind alle
+    fuenf Einzelwert-Achsen aus dem Feldwoerterbuch (roh, poliert, Schmuck,
+    Marktwert_Industrie, Wissenschaftlich) als eigenstaendige Sortier-Achsen
+    neben der Summen-Achse gesamtwert_chf verfuegbar. NULL-Eintraege wandern
+    via _order_by_clause ans Listenende (spiegelt die anderen Einzelfeld-
+    Sortier-Achsen wie Gewicht_g/Mohs_Haerte_min).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "rp.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?, ?, ?)",
+        [
+            # OBJ_0001: mittlerer Roh-Wert, kein Poliert-Wert
+            ("OBJ_0001", 300.0, None),
+            # OBJ_0002: hoechster Roh-Wert - Top bei Roh-DESC, kein Poliert-Wert
+            # (grober Rohkristall, noch nicht bearbeitet)
+            ("OBJ_0002", 900.0, None),
+            # OBJ_0003: niedriger Roh-Wert, aber hoher Poliert-Wert (der
+            # Sammler hat das Stueck geschliffen und der Wert-Delta ist gross)
+            ("OBJ_0003", 50.0, 5000.0),
+            # OBJ_0004: kein Roh-Wert (NULL) trotz hohem Poliert-Wert - der
+            # Sammler hat das Stueck bereits poliert erworben, kein Roh-
+            # Zustand dokumentiert -> faellt via Roh-Achse ans Listenende
+            ("OBJ_0004", None, 2000.0),
+            # OBJ_0005: hoher Roh-Wert - Rang 2 bei Roh-DESC
+            ("OBJ_0005", 500.0, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # DESC: hoechster Roh-Wert zuerst, NULL ans Ende
+    rows = repo.list_objects(sort_by="Wert_CHF_roh", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0002", "OBJ_0005", "OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # ASC: niedrigster Roh-Wert zuerst, NULL immer noch ans Ende
+    rows = repo.list_objects(sort_by="Wert_CHF_roh", sort_desc=False)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0001", "OBJ_0005", "OBJ_0002", "OBJ_0004"]
+    # Poliert-Achse: OBJ_0003 (5000) oben, OBJ_0004 (2000) auf Rang 2,
+    # dann drei NULL-Eintraege in obj_id-Reihenfolge ans Ende
+    rows = repo.list_objects(sort_by="Wert_CHF_poliert", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0004", "OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Kontrast zu gesamtwert_chf DESC: OBJ_0003 (50+5000=5050) oben,
+    # OBJ_0004 (0+2000=2000) auf Rang 2 - die Wert-Summen-Reihenfolge
+    # unterscheidet sich fundamental von der reinen Roh-Achse.
+    rows = repo.list_objects(sort_by="gesamtwert_chf", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0004", "OBJ_0002", "OBJ_0005", "OBJ_0001"]
+    c.close()
+
+
 def test_sort_by_marktwert_industrie(tmp_path):
     """Sortierung nach Marktwert_Industrie isoliert den Industrie-Marktwert.
 

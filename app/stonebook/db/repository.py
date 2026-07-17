@@ -212,6 +212,44 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # Wert_CHF_Schmuck / Wissenschaftlicher_Wert_CHF und den anderen Einzelfeld-
     # Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
     "Marktwert_Industrie",
+    # Wert_CHF_roh als individuelle Wert-Achse fuer die Roh-Bewertung: ergaenzt
+    # die drei bereits isolierten Verwendungs-Wert-Achsen (Schmuck / Wissenschaft
+    # / Industrie) um die Prozess-Achse "Roh-Zustand vor Bearbeitung". Waehrend
+    # gesamtwert_chf die Summe aller CHF-Wertfelder ordnet (roh + poliert +
+    # Schmuck + Marktwert_Industrie + Wissenschaftlich) und damit hoch-veredelte
+    # Stuecke (mit hohen poliert/Schmuck-Werten) sowie Wissenschafts-Belege in die
+    # Top-Liste mischt, isoliert sort_by='Wert_CHF_roh' den reinen Roh-Wert vor
+    # jeglicher Praeparation (grober Rohstein, unbearbeiteter Kristall, Feld-
+    # gefundener Klumpen). Sammler-Frage vor Verkauf an einen Steinschleifer/
+    # Handwerker, vor Auswahl fuer die Schleif-Session ("welche Roh-Stuecke sind
+    # als Grundmaterial am wertvollsten?") oder vor Vergleich Roh-vs.-Poliert
+    # zur Rentabilitaets-Einschaetzung ("lohnt sich das Polieren dieses Stuecks
+    # ueberhaupt?" - der Roh-Wert ist die Basis, der Delta zu Wert_CHF_poliert
+    # die Wertschoepfung durch Bearbeitung). NULL-Eintraege (kein Roh-Wert
+    # dokumentiert, z.B. bei Stuecken die nur poliert erworben wurden) fallen via
+    # _order_by_clause ans Listenende - konsistent zu Wert_CHF_Schmuck /
+    # Wissenschaftlicher_Wert_CHF / Marktwert_Industrie und den anderen
+    # Einzelfeld-Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
+    "Wert_CHF_roh",
+    # Wert_CHF_poliert als individuelle Wert-Achse fuer die Poliert-Bewertung:
+    # spiegelt Wert_CHF_roh auf die "nach Bearbeitung"-Seite. Waehrend
+    # Wert_CHF_roh den Grundmaterial-Wert (grober Rohstein, unbearbeiteter
+    # Kristall) beziffert, zeigt Wert_CHF_poliert die Wert-Steigerung nach
+    # Schleif-/Polier-Session (glaenzende Cabochon-Vorstufe, kalibrierter
+    # Trommel-Stein, tumbler-fertige Formen). Sammler-Frage vor Verkauf an einen
+    # Schmuck-Endkunden oder Deko-Boerse ("welche polierten Stuecke haben die
+    # hoechste Bewertung?"), vor Vergleich Roh-vs.-Poliert zur Rentabilitaets-
+    # Einschaetzung (der Wert-Delta zwischen den beiden Achsen zeigt die
+    # Wertschoepfung durch die Bearbeitung), oder vor Auswahl fuer die
+    # Foto-Session (polierte Stuecke brauchen anderes Licht-Setup als Roh-Stuecke).
+    # NULL-Eintraege (nicht poliert oder kein Poliert-Wert dokumentiert) fallen
+    # via _order_by_clause ans Listenende - konsistent zu Wert_CHF_roh / Schmuck
+    # / Wissenschaft / Industrie. Komplettiert damit die fuenf Einzelwert-Achsen
+    # aus dem Feldwoerterbuch (roh, poliert, Schmuck, Marktwert_Industrie,
+    # Wissenschaftlich) als eigenstaendige Sortier-Achsen neben der Summen-Achse
+    # gesamtwert_chf: der Sammler kann jetzt jede Wert-Dimension isoliert oder
+    # als Summe sortieren, ohne dass eine dominante Achse die anderen verdeckt.
+    "Wert_CHF_poliert",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke
