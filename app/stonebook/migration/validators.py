@@ -72,6 +72,49 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # ``keine daten`` / ``kein datum`` sind natuerlich-sprachliche
         # Varianten, die dieselbe Semantik tragen.
         "keine angabe", "keine daten", "kein datum",
+        # Franzoesische Aequivalente (Suisse romande - Wallis/Waadt/Genf/
+        # Neuenburg/Freiburg, ~23% Bevoelkerungsanteil laut BFS) sowie geerbte
+        # Sammler-Notizen und Auktions-Etiketten aus franzoesisch-sprachigen
+        # Alpen-Fundorten (Val d'Anniviers, Chamonix, Mont-Blanc-Massiv) und
+        # aus Museum-Etiketten mit FR-Provenienz. ``inconnu``/``inconnue``
+        # (mask./fem. Form von "unbekannt"), ``sans date`` (Standard-Katalog-
+        # Konvention fuer "ohne Datum", identisch zur ISBD/AACR2-Bibliothekars-
+        # Notation), ``date inconnue`` (invertierte Standard-Prosa-Form),
+        # ``pas de date`` (natuerlichsprachige "kein Datum"-Form). Spiegelt
+        # die FR-Erweiterungen in :data:`_MONTH_NAMES` (janvier..decembre),
+        # :data:`_SEASON_MONTHS` (printemps/ete/automne/hiver),
+        # :data:`_DIRECTION_WORD` (est/ouest), :data:`_APPROX_PREFIX`
+        # (vers/environ) und :data:`_TEMPORAL_PREFIX` (en/an/annee) auf die
+        # No-Data-Marker-Achse.
+        "inconnu", "inconnue", "sans date", "date inconnue", "pas de date",
+        # Italienische Aequivalente (Ticino / italienische Schweiz sowie
+        # geerbte Sammler-Notizen aus italienisch-sprachigen Alpen-/Dolomiten-
+        # Fundorten, Val d'Aosta und Museo cantonale di storia naturale in
+        # Lugano). ``sconosciuto``/``sconosciuta`` (mask./fem. Form von
+        # "unbekannt"), ``ignoto``/``ignota`` (mask./fem. Form von "unbekannt/
+        # nicht identifiziert", in wissenschaftlichen IT-Publikationen die
+        # praeferierte Form), ``senza data`` (Standard-Katalog-Konvention fuer
+        # "ohne Datum"). Spiegelt die IT-Erweiterungen in :data:`_MONTH_NAMES`
+        # (gennaio..dicembre), :data:`_SEASON_MONTHS` (primavera/estate/
+        # autunno/inverno), :data:`_DIRECTION_WORD` (est/ovest) und
+        # :data:`_APPROX_PREFIX` (verso/attorno) auf die No-Data-Marker-Achse.
+        "sconosciuto", "sconosciuta", "ignoto", "ignota", "senza data",
+        # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
+        # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
+        # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum
+        # ermittelbar" und in Auktions-Katalogen, Museumskatalogen, wissen-
+        # schaftlichen Publikationen und Reference-Listen die kanonische
+        # No-Date-Notation. ``s.d.`` (lateinisch "sine die" / italienisch
+        # "senza data" / franzoesisch "sans date") ist das kontinental-
+        # europaeische Gegenstueck, das in FR-/IT-/DE-katalogisiertem Bestand
+        # (Museum-Etiketten, Mineralien-Auktions-Kataloge Christie's/Bonhams
+        # /Sotheby's) neben ``n.d.`` gebraeuchlich ist. Beide sind in Sammler-
+        # Notizen aus geerbten Bestaenden mit publiziertem Provenienz-Weg
+        # (ehemals Museum, ehemals Auktion) haeufig - der Sammler uebernimmt
+        # die katalogisierte Notation unveraendert. Punkt-Form (``n.d.``) und
+        # Punkt-Whitespace-Form (``n. d.``) parallel zu ``k.a.``/``k. a.`` /
+        # ``n.a.``/``n. a.``.
+        "n.d.", "n. d.", "s.d.", "s. d.",
     }
 )
 

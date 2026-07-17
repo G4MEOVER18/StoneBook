@@ -6261,6 +6261,75 @@ def test_date_no_data_markers_import_und_konsistenz():
             "ihn beim .lower()-Vergleich niemals matchen.")
 
 
+def test_parse_iso_date_fr_it_no_data_marker():
+    """FR/IT/Bibliografie-No-Data-Marker liefern None (nicht als silent-data-loss
+    Fund gemeldet).
+
+    Spiegelt die FR-/IT-Erweiterungen der Monats-/Saison-/Direction-/Approx-/
+    Temporal-Prefix-Achsen (die Suisse romande und Ticino/Val d'Aosta
+    unterstuetzen) auf die No-Data-Marker-Achse. Erweitert die Basis-Menge
+    (DE/EN) um:
+
+    - FR (``inconnu``/``inconnue``/``sans date``/``date inconnue``/``pas de
+      date``): Wallis/Chamonix-/Val-d'Anniviers-Sammlungs-Notizen, Museum-
+      Etiketten mit FR-Provenienz, Auktions-Katalog-Eintraege.
+    - IT (``sconosciuto``/``sconosciuta``/``ignoto``/``ignota``/``senza data``):
+      Ticino-Sammler-Notizen, Museo cantonale di storia naturale-Etiketten,
+      italienisch-sprachige Alpen-/Dolomiten-Fund-Etiketten.
+    - Wissenschaftliche Bibliografie/Katalogisierung (``n.d.``/``n. d.``/
+      ``s.d.``/``s. d.``): ISBD/AACR2/RDA-Standard, Auktions- und Museums-
+      Kataloge (Christie's/Bonhams/Sotheby's), wissenschaftliche
+      Publikationen.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # FR-Formen
+    assert parse_iso_date("inconnu") is None
+    assert parse_iso_date("Inconnu") is None
+    assert parse_iso_date("INCONNU") is None
+    assert parse_iso_date("inconnue") is None      # feminin
+    assert parse_iso_date("sans date") is None
+    assert parse_iso_date("Sans Date") is None
+    assert parse_iso_date("date inconnue") is None
+    assert parse_iso_date("pas de date") is None
+    # IT-Formen
+    assert parse_iso_date("sconosciuto") is None
+    assert parse_iso_date("Sconosciuto") is None
+    assert parse_iso_date("sconosciuta") is None   # feminin
+    assert parse_iso_date("ignoto") is None
+    assert parse_iso_date("ignota") is None        # feminin
+    assert parse_iso_date("senza data") is None
+    assert parse_iso_date("Senza Data") is None
+    # Bibliografie-/Katalog-Formen
+    assert parse_iso_date("n.d.") is None
+    assert parse_iso_date("N.D.") is None
+    assert parse_iso_date("n. d.") is None
+    assert parse_iso_date("N. D.") is None
+    assert parse_iso_date("s.d.") is None
+    assert parse_iso_date("S.D.") is None
+    assert parse_iso_date("s. d.") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  inconnu  ") is None
+    assert parse_iso_date("  senza data  ") is None
+    assert parse_iso_date("  n.d.  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("inconnu", "inconnue", "sans date", "date inconnue",
+                   "pas de date", "sconosciuto", "sconosciuta", "ignoto",
+                   "ignota", "senza data", "n.d.", "n. d.", "s.d.", "s. d."):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben None
+    # als "invalid" (nicht als "no data" Marker interpretiert - kein Trigger
+    # fuer die Marker-Menge, sondern Fall-Through zur normalen Parse-Kette).
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
