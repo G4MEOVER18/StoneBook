@@ -444,6 +444,7 @@ class ObjectRepo:
                      name_contains: str = "",
                      notizen_contains: str = "",
                      farbe_contains: str = "",
+                     strichfarbe_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
@@ -1376,6 +1377,23 @@ class ObjectRepo:
             # pflegen (bewusste Design-Konsistenz).
             where.append("o.Farbe_beobachtet LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(farbe_contains) + "%")
+        if strichfarbe_contains:
+            # Substring-Filter ueber Strichfarbe: findet Stuecke ueber die Pulver-
+            # /Strich-Farbe auf Porzellantaefelchen. Diagnostisch komplementaer
+            # zum farbe_contains-Filter (Stueck-Oberflaechen-Farbe): manche
+            # Mineralien zeigen dramatisch andere Strichfarben als Stueck-
+            # Farben (Haematit metallisch-silbrig als Stueck, blutrot als Strich;
+            # Pyrit messing-golden, schwarz als Strich; Chalkopyrit gruen-golden,
+            # schwarz-gruenlich als Strich; Magnetit silbrig, schwarz als Strich).
+            # Die Strichfarbe ist damit ein eigenstaendiges Diagnose-Feld und
+            # verdient eine eigene Substring-Sicht neben Farbe_beobachtet;
+            # spiegelt das farbe_contains-Muster (LIKE mit ``ESCAPE '\\'``,
+            # Metazeichen ``%``/``_`` wortwoertlich, ASCII-case-insensitive).
+            # Komplementaer zu ``has_strichfarbe`` (An-/Abwesenheit) und
+            # kombinierbar mit ihm (has_strichfarbe=True + strichfarbe_contains
+            # ist trivial redundant, weil LIKE bereits die Anwesenheit impliziert).
+            where.append("o.Strichfarbe LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(strichfarbe_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))

@@ -3066,6 +3066,65 @@ def test_farbe_contains_filter(tmp_path):
     c.close()
 
 
+def test_strichfarbe_contains_filter(tmp_path):
+    """Substring-Filter ueber Strichfarbe: findet Pulver-/Strichfarben-Familien.
+
+    Strichfarbe ist diagnostisch komplementaer zur Stueck-Farbe: Haematit
+    zeigt metallisch-silbrige Stueck-Oberflaeche, aber blutroten Strich;
+    Pyrit messing-golden, aber schwarzen Strich; Chalkopyrit gruen-golden,
+    aber schwarz-gruenlichen Strich. Der Substring-Filter erlaubt die
+    Suche nach Strichfarben-Familien ohne exakte Notation und spiegelt
+    ``farbe_contains`` auf die Pulver-Farb-Achse (LIKE mit ESCAPE, ASCII-
+    case-insensitive, Metazeichen wortwoertlich, NULL faellt implizit raus).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "sfc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Strichfarbe) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "rot"),                    # Haematit
+            ("OBJ_0002", "kirschrot bis braunrot"), # Haematit-Variante
+            ("OBJ_0003", "schwarz"),                # Magnetit/Pyrit
+            ("OBJ_0004", "gruenschwarz metallisch"),# Chalkopyrit
+            ("OBJ_0005", "rot_1 Notation"),         # LIKE-Metazeichen-Test
+            ("OBJ_0006", None),                     # NULL-Eintrag
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring 'rot' trifft alle drei Rot-Varianten
+    rows = repo.list_objects(strichfarbe_contains="rot")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(strichfarbe_contains="ROT")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Substring 'schwarz' trifft schwarze und gruenschwarze Notationen
+    rows = repo.list_objects(strichfarbe_contains="schwarz")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich (ESCAPE-Verhalten)
+    rows = repo.list_objects(strichfarbe_contains="rot_1")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(strichfarbe_contains="rotX1")
+    assert rows == []
+    # NULL faellt implizit heraus
+    rows = repo.list_objects(strichfarbe_contains="a")
+    assert all(r["obj_id"] != "OBJ_0006" for r in rows)
+    # Leerer Substring ist no-op -> alle 6 Objekte
+    rows = repo.list_objects(strichfarbe_contains="")
+    assert len(rows) == 6
+    # Kombinierbar mit has_strichfarbe (Schnittmenge, LIKE bereits impliziert)
+    rows = repo.list_objects(strichfarbe_contains="rot", has_strichfarbe=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Kombinierbar mit farbe_contains (unterschiedliche Achsen: Stueck vs. Pulver)
+    c.execute("UPDATE objects SET Farbe_beobachtet = 'metallisch silbrig' "
+              "WHERE obj_id = 'OBJ_0001'")
+    c.commit()
+    rows = repo.list_objects(
+        strichfarbe_contains="rot", farbe_contains="metallisch")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
 def test_status_in_filter(tmp_path):
     """status_in akzeptiert Mengen ('aktiv ODER archiviert'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db
