@@ -4065,26 +4065,55 @@ _LON_LABELED_VALUE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 _LABELED_SENTINEL: tuple[float, float] = (float("nan"), float("nan"))
-# Vollnamen der Himmelsrichtungen (DE/EN) werden vor dem Pattern-Matching auf
-# die Ein-Buchstaben-Form reduziert, mit der _DMS/_DECIMAL_PAIR/_PREFIX_PAIR
+# Vollnamen der Himmelsrichtungen (DE/EN/FR/IT) werden vor dem Pattern-Matching
+# auf die Ein-Buchstaben-Form reduziert, mit der _DMS/_DECIMAL_PAIR/_PREFIX_PAIR
 # arbeitet. Verbreitet in GPS-Logs/Foto-Captions: ``"North 46.5, East 7.5"``,
 # ``"Nord 46.5°, Ost 7.5°"``, ``"Norden 46.5 Osten 7.5"``.
 # DE-Vollformen mit -en-Suffix (``Norden``/``Sueden``/``Osten``/``Westen``)
 # sind im Sammler-Sprachgebrauch ueblich; ``Sued`` bleibt mit Umlaut-Normalisierung.
+#
+# FR-/IT-Zusatz (Suisse romande / Ticino / Val d'Aosta) - ``nord`` und ``sud``
+# sind bereits identisch zur DE-Schreibweise durch die bestehenden Alternativen
+# ``nord(?:en)?`` / ``s[uü]d(?:en)?`` mit-abgedeckt (die DE ``-en``-Suffixe sind
+# optional, sodass die nackten FR/IT-Formen ``nord``/``sud`` matchen); neu sind
+# nur die Ost-/West-Achsen, die in FR/IT eigene Wortstaemme haben: FR ``est``/
+# ``ouest``, IT ``est``/``ovest``. Bisher fielen alle Formen still auf die
+# Fallback-Route (kein Direction-Marker erkannt, generische Zahl-Paar-Extraktion
+# nimmt die Reihenfolge ohne Vorzeichen-Information), was aus einem typischen
+# Val-d'Aosta-Etikett ``"Nord 46.5, Est 7.5"`` oder einer Chamonix-Foto-Caption
+# ``"Sud 46.5, Ouest 7.5"`` silente Vorzeichen-/Achsen-Verluste erzeugte -
+# spiegelt die IT-/FR-Monats-/Saison-Namen-Erweiterungen in :data:`_MONTH_NAMES`
+# und :data:`_SEASON_MONTHS`. Kollisions-Schutz durch die ``\b``-Wortgrenzen:
+# ``est`` matcht nicht in ``test``/``best``/``estimated``/``established`` (der
+# vorangehende Buchstabe ist Wort-Zeichen, keine Wort-Grenze); ``ouest``/``ovest``
+# haben keine gemeinsamen Praefixe mit DE/EN-Direction-Namen (``ost`` beginnt mit
+# ``o``, aber die Alternation ``ost(?:en)?`` scheitert auf Position 1 an ``u``
+# bzw. ``v`` bei ``ouest``/``ovest`` und die spezifischere Alternative gewinnt).
 _DIRECTION_WORD = re.compile(
     r"\b(?:"
     r"north|south|east|west"
     r"|nord(?:en)?|sued(?:en)?|s[uü]d(?:en)?|ost(?:en)?|west(?:en)?"
+    r"|ouest|ovest|est"
     r")\b\.?",
     re.IGNORECASE,
 )
 _DIRECTION_LETTER: dict[str, str] = {
     "n": "N", "north": "N", "nord": "N", "norden": "N",
     "s": "S", "south": "S",
-    "sued": "S", "sueden": "S", "süd": "S", "süden": "S",
-    "e": "E", "east": "E",
+    # ``sud`` (ohne ``e``/Umlaut) ist die nackte FR-/IT-Schreibweise (Suisse
+    # romande, Ticino, Val d'Aosta) und die englisch-nahe Kompaktform, die auch
+    # in gemischt-sprachigen Sammler-Notizen und in Excel-CSV-Exporten aus
+    # rein-ASCII-Datenbanken (kein Umlaut, kein ``e``-Ersatz) auftaucht. Das
+    # bestehende ``_DIRECTION_WORD``-Pattern ``s[uü]d(?:en)?`` matcht die bare
+    # Form (``u``-Alternante der ``[uü]``-Klasse) - der Lookup-Schluessel fehlte
+    # aber, sodass ``m.group(0).rstrip(".").lower()`` = ``"sud"`` auf die Default-
+    # Rueckgabe (Original-Wort) fiel und der bare FR-/IT-``Sud``-Wortstamm nicht
+    # zur ``S``-Direction-Letter reduziert wurde. Silenter Vorzeichen-Verlust
+    # aller FR-/IT-Foto-Captions/GPS-Logs mit bare ``Sud``-Praefix.
+    "sued": "S", "sueden": "S", "süd": "S", "süden": "S", "sud": "S",
+    "e": "E", "east": "E", "est": "E",
     "o": "O", "ost": "O", "osten": "O",
-    "w": "W", "west": "W", "westen": "W",
+    "w": "W", "west": "W", "westen": "W", "ouest": "W", "ovest": "W",
 }
 
 

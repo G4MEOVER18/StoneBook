@@ -6629,6 +6629,40 @@ def test_parse_coordinates_himmelsrichtung_vollnamen():
     assert parse_coordinates("46.5° N, 7.5° E") == (46.5, 7.5)
 
 
+def test_parse_coordinates_himmelsrichtung_fr_it_vollnamen():
+    """FR/IT-Vollnamen der Himmelsrichtungen (Suisse romande, Ticino, Val d'Aosta).
+
+    ``nord`` und ``sud`` sind bereits durch die DE-Alternativen abgedeckt (die
+    ``-en``-Suffixe sind optional). Neu sind nur die Ost-/West-Wortstaemme mit
+    FR-/IT-eigenstaendiger Schreibweise: FR ``est``/``ouest``, IT ``est``/
+    ``ovest``.
+    """
+    # FR (Prefix-Form): Chamonix/Wallis/Val d'Anniviers-Sammlungs-Notizen
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sud 46.5, Ouest 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("Nord 46.5, Ouest 7.5") == (46.5, -7.5)
+    # IT (Prefix-Form): Ticino/Val Bavona/Val d'Aosta-Etiketten
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Sud 46.5, Est 7.5") == (-46.5, 7.5)
+    # Decimal-Suffix-Form ("46.5° Est, 7.5° Ouest")
+    assert parse_coordinates("46.5° Nord, 7.5° Est") == (46.5, 7.5)
+    assert parse_coordinates("46.5° Nord, 7.5° Ovest") == (46.5, -7.5)
+    # Case-insensitive
+    assert parse_coordinates("NORD 46.5, EST 7.5") == (46.5, 7.5)
+    assert parse_coordinates("sud 46.5, ovest 7.5") == (-46.5, -7.5)
+    # Mit trailing Punkt nach Kurzform ("Est." aus Katalog-Abkuerzung)
+    assert parse_coordinates("Nord. 46.5, Est. 7.5") == (46.5, 7.5)
+    # Mit Labels kombiniert (Reihenfolge: erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Nord 46.5, Lon: Est 7.5") == (46.5, 7.5)
+    # Wort-Grenzen: "est" darf nicht in "test"/"best"/"estimated"/"established"
+    # matchen, "ovest" darf nicht in "ovestern" matchen, "ouest" nicht in "ouesten"
+    # matchen. Fundort-Feld mit Freitext, der ein solches Wort enthaelt und
+    # zufaellig Koordinaten-aehnlich aussieht, darf nicht als Direction fehl-
+    # normalisiert werden - hier keine Koordinaten-Erkennung erwartet.
+    assert parse_coordinates("test 46.5, best 7.5") is None
+    assert parse_coordinates("estimated 46.5, established 7.5") is None
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace
