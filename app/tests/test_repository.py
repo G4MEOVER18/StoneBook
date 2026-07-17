@@ -3011,6 +3011,55 @@ def test_notizen_contains_filter(tmp_path):
     c.close()
 
 
+def test_pruefempfehlungen_contains_filter(tmp_path):
+    """Substring-Filter ueber Pruefempfehlungen (Freitext-Empfehlungen fuer Bestaetigungstests).
+
+    Sammler-/Labor-Frage: "welche Stuecke warten auf eine XRD-Analyse?" oder
+    "welche brauchen noch ein Refraktometer-Nachmessen?" -> Bulk-Selektion fuer
+    geplante Lab-Besuche. Spiegelt notizen_contains: LIKE mit ESCAPE,
+    ASCII-case-insensitive, NULL faellt implizit heraus.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "pec.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Pruefempfehlungen) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "XRD-Analyse zur Phasenbestimmung."),
+            ("OBJ_0002", "Refraktometer-Nachmessung und Oelimmersion 1,540."),
+            ("OBJ_0003", None),
+            ("OBJ_0004", "SEM-EDS Bulk-Chemie."),
+            ("OBJ_0005", "Sonderpruefung mit 50_100 nm-Aufloesung."),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring-Match auf Test-Namen
+    rows = repo.list_objects(pruefempfehlungen_contains="XRD")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(pruefempfehlungen_contains="xrd")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Substring-Match innerhalb laengerer Beschreibung
+    rows = repo.list_objects(pruefempfehlungen_contains="Refraktometer")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich
+    rows = repo.list_objects(pruefempfehlungen_contains="50_100")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(pruefempfehlungen_contains="50X100")
+    assert rows == []
+    # NULL faellt implizit heraus
+    rows = repo.list_objects(pruefempfehlungen_contains="a")
+    assert all(r["obj_id"] != "OBJ_0003" for r in rows)
+    # Leerer Substring ist no-op -> alle 5 Objekte
+    rows = repo.list_objects(pruefempfehlungen_contains="")
+    assert len(rows) == 5
+    # Kombinierbar mit has_pruefempfehlungen (Schnittmenge)
+    rows = repo.list_objects(pruefempfehlungen_contains="Oelimmersion",
+                             has_pruefempfehlungen=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_farbe_contains_filter(tmp_path):
     """Substring-Filter ueber Farbe_beobachtet: findet Farbfamilien in Freitext-Notation.
 

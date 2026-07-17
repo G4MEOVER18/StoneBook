@@ -443,6 +443,7 @@ class ObjectRepo:
                      mineral_contains: str = "",
                      name_contains: str = "",
                      notizen_contains: str = "",
+                     pruefempfehlungen_contains: str = "",
                      farbe_contains: str = "",
                      strichfarbe_contains: str = "",
                      wert_min: float | None = None,
@@ -1355,6 +1356,18 @@ class ObjectRepo:
         if notizen_contains:
             where.append("o.notizen LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(notizen_contains) + "%")
+        if pruefempfehlungen_contains:
+            # Substring-Filter ueber Pruefempfehlungen (Freitext-Empfehlungen fuer
+            # Bestaetigungstests: "XRD", "Oelimmersion", "SEM-EDS", "Refraktometer",
+            # "Spektroskop"). Sammler-/Labor-Frage: "welche Stuecke warten auf eine
+            # XRD-Analyse?" oder "welche brauchen noch ein Refraktometer-Nachmessen?"
+            # -> Bulk-Selektion fuer geplante Lab-Besuche/Termine ohne exakten
+            # Empfehlungs-Wortlaut. Spiegelt das Muster von ``notizen_contains``
+            # (LIKE mit ESCAPE, ASCII-case-insensitive, NULL faellt implizit raus)
+            # und ist komplementaer zum tri-state ``has_pruefempfehlungen``-Filter
+            # (An-/Abwesenheit).
+            where.append("o.Pruefempfehlungen LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(pruefempfehlungen_contains) + "%")
         if farbe_contains:
             # Substring-Filter ueber Farbe_beobachtet: findet Stuecke ueber die
             # dominante Farbnotation ("rot" trifft "rot-braun", "rotstichig", "Blutrot";
