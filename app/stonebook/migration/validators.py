@@ -364,6 +364,29 @@ _APPROX_PREFIX = re.compile(
     # akademisch-formellere Variante, verbreitet in Museums-Katalogen und
     # wissenschaftlichen Publikationen.
     r"|allegedly|supposedly|reportedly|purportedly"
+    # FR-/IT-Annaeherungs-Marker (Suisse romande / Ticino / Val d'Aosta).
+    # ``vers`` (FR) = "gegen"/"um", ``environ`` (FR) = "ungefaehr", ``verso``
+    # (IT) = "gegen"/"um", ``attorno`` (IT, meist in "attorno al 1985" mit
+    # Artikel-Kontraktion, hier ohne Artikel als bare Praefix-Form). ``circa``
+    # ist zwar IT-Vokabular, aber via Latin-Wurzel bereits im DE-/EN-Block
+    # oben abgedeckt. Sammler-Notizen aus franzoesisch-sprachigen Alpen-
+    # Fundorten (Wallis/Val d'Anniviers, Chamonix, Mont-Blanc) und aus
+    # italienisch-sprachigen Ticino-/Val-d'Aosta-Sammlungen und Museo-
+    # cantonale-di-storia-naturale-Etiketten nutzen die FR/IT-Vokabeln,
+    # wenn der Vorbesitzer den Fund-/Erwerbs-Zeitraum nur ungefaehr kannte
+    # ("vers 1985 acquis au marche", "environ juin 2024 trouve au Chamonix",
+    # "verso 1985 acquistato in Ticino", "attorno 1985 raccolto in Val
+    # Bavona"). Bisher fielen alle FR/IT-Praefix-Formen still auf None,
+    # obwohl semantisch identisch zu ``ca.``/``circa``. Spiegelt die
+    # FR/IT-Erweiterungen in :data:`_MONTH_NAMES` / :data:`_SEASON_MONTHS`
+    # / :data:`_DIRECTION_WORD` / :data:`_COORD_LABEL` auf die Approx-
+    # Praefix-Achse. Kollisions-Schutz durch das ``\s+``-Suffix in der
+    # Praefix-Regex: ``vers`` matcht nicht in ``versichert``/``verse``/
+    # ``versa`` (nach ``vers`` folgt hier ein Buchstabe, kein Whitespace);
+    # ``environ`` matcht nicht in ``environment``/``environments`` (analog);
+    # ``verso`` matcht nicht in ``versoehnung``/``version`` (analog);
+    # ``attorno`` hat keinen DE/EN-Wortstamm-Konflikt.
+    r"|vers|environ|verso|attorno"
     r")\s+"
     r"|[~≈]\s*"
     r")",

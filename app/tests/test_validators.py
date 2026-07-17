@@ -1472,6 +1472,63 @@ def test_parse_iso_date_annaeherungs_suffix_geschaetzt():
     assert parse_iso_date("1985 estimated") == "1985-01-01"
 
 
+def test_parse_iso_date_annaeherungs_praefix_fr_it():
+    """FR-/IT-Annaeherungs-Marker (Suisse romande / Ticino / Val d'Aosta).
+
+    ``vers`` (FR) und ``verso`` (IT) sind die Standard-Vokabeln fuer "gegen"/
+    "um" ein Datum herum; ``environ`` (FR) fuer "ungefaehr"; ``attorno`` (IT)
+    fuer "rund um". Semantisch identisch zu ``ca.``/``circa``/``etwa`` -
+    Praefix wird gestrippt, das ISO-Datum-Output ist identisch zur reinen
+    Form.
+    """
+    # FR: vers (= gegen/um)
+    assert parse_iso_date("vers 1985") == "1985-01-01"
+    assert parse_iso_date("vers juin 2024") == "2024-06-01"
+    assert parse_iso_date("vers 13 juin 2024") == "2024-06-13"
+    # FR: environ (= ungefaehr)
+    assert parse_iso_date("environ 1985") == "1985-01-01"
+    assert parse_iso_date("environ juin 2024") == "2024-06-01"
+    # IT: verso (= gegen/um)
+    assert parse_iso_date("verso 1985") == "1985-01-01"
+    assert parse_iso_date("verso giugno 2024") == "2024-06-01"
+    assert parse_iso_date("verso 13 giugno 2024") == "2024-06-13"
+    # IT: attorno (= rund um) - bare Praefix ohne Artikel-Kontraktion (die
+    # "attorno al 1985"-Form mit Artikel bleibt bewusst ausserhalb dieses
+    # Patterns, um die simple Wort-\\s+-Grenze der _APPROX_PREFIX-Regex nicht
+    # zu brechen)
+    assert parse_iso_date("attorno 1985") == "1985-01-01"
+    assert parse_iso_date("attorno giugno 2024") == "2024-06-01"
+    # Case-insensitive (spiegelt DE/EN-Praefixe)
+    assert parse_iso_date("VERS 1985") == "1985-01-01"
+    assert parse_iso_date("Vers 1985") == "1985-01-01"
+    assert parse_iso_date("VERSO 1985") == "1985-01-01"
+    assert parse_iso_date("ENVIRON 1985") == "1985-01-01"
+    # Praefix + Saison (rekursive Aufloesung via _SEASON_YEAR)
+    assert parse_iso_date("vers été 2024") == "2024-06-01"
+    assert parse_iso_date("verso estate 2024") == "2024-06-01"
+    # Verkettet mit anderen Praefixen (Rekursion loest sie sequentiell auf)
+    assert parse_iso_date("vers ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. vers 1985") == "1985-01-01"
+    # Kein False-Positive fuer aehnlich beginnende Woerter - der Praefix muss
+    # durch \\s+ vom Rest getrennt sein
+    assert parse_iso_date("versichert 1985") is None
+    assert parse_iso_date("versa 1985") is None
+    assert parse_iso_date("environment 1985") is None
+    assert parse_iso_date("environments 1985") is None
+    assert parse_iso_date("versoehnung 1985") is None
+    assert parse_iso_date("version 1985") is None
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("vers") is None
+    assert parse_iso_date("verso") is None
+    assert parse_iso_date("environ abc") is None
+    assert parse_iso_date("vers 1700") is None  # ausserhalb 1800-2999
+    # Bestehende DE/EN-Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("about 1985") == "1985-01-01"
+    assert parse_iso_date("etwa 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_folgende_jahre_suffix():
     """Trailing "und folgende Jahre"-Suffix (DE-Bibliografie-/Zitat-Standard).
 
