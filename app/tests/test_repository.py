@@ -3011,6 +3011,61 @@ def test_notizen_contains_filter(tmp_path):
     c.close()
 
 
+def test_farbe_contains_filter(tmp_path):
+    """Substring-Filter ueber Farbe_beobachtet: findet Farbfamilien in Freitext-Notation.
+
+    Farbe_beobachtet ist Freitext-Feld ohne kontrolliertes Vokabular; Sammler
+    kodieren semantisch identische Farbtoene in mehreren Wortstaemmen
+    (``rot`` in ``rot-braun`` / ``rotstichig`` / ``blutrot`` / ``dunkelrot``),
+    sodass der exakte Feld-Match nur eine der Varianten treffen wuerde. Der
+    Substring-Filter mit LIKE gibt die natuerliche Suche ueber die
+    Farbfamilie. Spiegelt die Pattern der bestehenden *_contains-Filter
+    (Fundort/Mineral/Name/Notizen/Varietaet/Gesteinsart): ASCII-case-insensitive,
+    LIKE-Metazeichen (``%``/``_``) werden via ESCAPE wortwoertlich behandelt,
+    NULL-Eintraege fallen implizit aus dem Match.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "fc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Farbe_beobachtet) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "rot-braun"),
+            ("OBJ_0002", "Blutrot mit weissen Adern"),
+            ("OBJ_0003", "milchig weiss"),
+            ("OBJ_0004", "hellgrau, matt"),
+            ("OBJ_0005", "10Y_5/2"),  # Munsell-Notation mit LIKE-Metazeichen
+            ("OBJ_0006", None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring-Match auf Farbfamilie 'rot' trifft beide rot-Notationen
+    rows = repo.list_objects(farbe_contains="rot")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive: 'ROT' matcht wie 'rot'
+    rows = repo.list_objects(farbe_contains="ROT")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Substring innerhalb eines Kompositums
+    rows = repo.list_objects(farbe_contains="milchig")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich, matcht nur den Munsell-Eintrag
+    rows = repo.list_objects(farbe_contains="10Y_5")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Ohne ESCAPE wuerde '_' als beliebiges Zeichen interpretieren und
+    # damit auch Werte wie '10YX5' matchen - der Test verankert das ESCAPE-
+    # Verhalten explizit.
+    rows = repo.list_objects(farbe_contains="10YX5")
+    assert rows == []
+    # NULL-Eintraege fallen implizit heraus
+    rows = repo.list_objects(farbe_contains="")
+    # Leerer Substring ist no-op (kein LIKE angehangen) -> alle 6 Objekte
+    assert len(rows) == 6
+    # Kombinierbar mit has_farbe (Schnittmenge = nur mit Farbnotation + Substring)
+    rows = repo.list_objects(farbe_contains="grau", has_farbe=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    c.close()
+
+
 def test_status_in_filter(tmp_path):
     """status_in akzeptiert Mengen ('aktiv ODER archiviert'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db

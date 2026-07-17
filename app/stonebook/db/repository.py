@@ -443,6 +443,7 @@ class ObjectRepo:
                      mineral_contains: str = "",
                      name_contains: str = "",
                      notizen_contains: str = "",
+                     farbe_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
@@ -1353,6 +1354,28 @@ class ObjectRepo:
         if notizen_contains:
             where.append("o.notizen LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(notizen_contains) + "%")
+        if farbe_contains:
+            # Substring-Filter ueber Farbe_beobachtet: findet Stuecke ueber die
+            # dominante Farbnotation ("rot" trifft "rot-braun", "rotstichig", "Blutrot";
+            # "milchig" trifft "milchig weiss", "milchig-truebe"). Farbe_beobachtet
+            # ist Freitext-Beschreibung (das primaere Diagnose-Feld nach dem ersten
+            # Eindruck), sodass die Sammler-Notationen semantisch identische Farbtoene
+            # in verschiedenen Wortstaemmen kodieren ("gelblich" / "hellgelb" /
+            # "zitronengelb" / "honigfarben") - der exakte Feld-Match traefe nur eine
+            # der Varianten. Komplementaer zum tri-state ``has_farbe``-Filter (nur
+            # An-/Abwesenheit) und spiegelt das Muster der anderen *_contains-Filter
+            # (Fundort/Mineral/Name/Notizen/Varietaet/Gesteinsart): LIKE mit
+            # ``ESCAPE '\\'``, damit die Metazeichen ``%``/``_`` in der Suche
+            # wortwoertlich treffen (ein Sammler-Farbcode "10Y_5/2" mit Munsell-
+            # Notation matcht nur den eigenen Eintrag, nicht "10YX5X2"). Case-
+            # Insensitivitaet ergibt sich aus der ASCII-Semantik von LIKE, was
+            # in der CH-DE-Praxis (grundlegende Farbwoerter ohne Umlaute:
+            # rot/gelb/blau/gruen/braun/schwarz/weiss/grau) ausreicht - der
+            # Umlaut-Fall "grün" trifft "gruen" nicht ohne separaten NFKD-
+            # Normalisierungs-Weg, den auch die anderen *_contains-Filter nicht
+            # pflegen (bewusste Design-Konsistenz).
+            where.append("o.Farbe_beobachtet LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(farbe_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))
