@@ -6599,6 +6599,41 @@ def test_parse_coordinates_lng_web_api_kurzform():
     assert parse_coordinates("latitude=46.5, longitude=7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_it_labels_latitudine_longitudine():
+    """IT-Vollformen der Koordinaten-Labels (Ticino / Val d'Aosta).
+
+    In italienischen Sammler-Notizen und Museo-cantonale-di-storia-naturale-
+    Etiketten ist ``Latitudine``/``Longitudine`` die native Beschriftung. Die
+    Anschnitt-Guard ``(?![A-Za-z...])`` in :data:`_COORD_LABEL` blockte bisher
+    ``lat`` in ``latitudine`` (das ``i`` nach ``lat`` ist Wort-Zeichen), sodass
+    das Label nicht als Whitespace gestrippt wurde und die generische Zahl-
+    Extraktion durch das Wort-Fragment scheiterte.
+    """
+    # Grundfall: Latitudine + Longitudine mit Doppelpunkt/Gleichheit/Komma
+    assert parse_coordinates("Latitudine: 46.5, Longitudine: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("latitudine=46.5, longitudine=7.5") == (46.5, 7.5)
+    assert parse_coordinates("Latitudine 46.5 Longitudine 7.5") == (46.5, 7.5)
+    # Case-insensitive
+    assert parse_coordinates("LATITUDINE 46.5, LONGITUDINE 7.5") == (46.5, 7.5)
+    # Negative Werte (Suedhalbkugel/Westhalbkugel) - IT-Sammler-Notizen mit
+    # Fundort ausserhalb des Alpen-/Ticino-Kontexts (Auktions-Erwerb aus Suedamerika/USA)
+    assert parse_coordinates("Latitudine: -46.5, Longitudine: -7.5") == (-46.5, -7.5)
+    # Reversed-Order (Lon vor Lat) - IT-GIS-Reports oder Publikations-Tabellen
+    # mit (X, Y) = (Lon, Lat)-Konvention. Die _extract_labeled_lat_lon-Route
+    # gewinnt gegen die generische Strip-Route und ordnet nach Label statt
+    # nach Auftritts-Reihenfolge.
+    assert parse_coordinates("Longitudine: 7.5, Latitudine: 46.5") == (46.5, 7.5)
+    # Mit expliziter Richtung (Label wird gestrippt, Richtung bleibt aktiv)
+    assert parse_coordinates("Latitudine: 46.5 N, Longitudine: 7.5 E") == (46.5, 7.5)
+    # Wort-Grenzen: laengere Woerter, die ``latitudine``/``longitudine`` als
+    # Praefix enthalten koennten, matchen nicht (kein Anschnitt-Fehler)
+    assert parse_coordinates("Latitudines=1") is None
+    # Regress-Anker: bereits vorhandene EN-/DE-Labels bleiben aktiv
+    assert parse_coordinates("Latitude: 46.5, Longitude: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Breite: 46.5, Länge: 7.5") == (46.5, 7.5)
+    assert parse_coordinates("lat: 46.5, lng: 7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_himmelsrichtung_vollnamen():
     """Vollnamen der Himmelsrichtungen (DE/EN) werden auf N/S/E/W/O reduziert."""
     # Deutsch (Praefix-Form)

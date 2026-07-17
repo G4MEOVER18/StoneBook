@@ -4002,6 +4002,23 @@ _COORD_LABEL = re.compile(
           # (``LAT``, ``Lat``, ``lat`` gleich behandelt).
           | längengrad | länge
           | mlat | mlon                # OpenStreetMap-Share-URL-Query-Parameter
+          # IT-Vollformen: Ticino/Val d'Aosta pflegen Sammler-Notizen in der
+          # italienischen Amtssprache; explizite Achsen-Beschriftungen aus
+          # GIS-/wissenschaftlichen Publikationen und aus Museo-cantonale-di-
+          # storia-naturale-Etiketten ("Latitudine: 46.5, Longitudine: 7.5")
+          # nutzen die IT-eigenstaendigen Vollformen. Bisher fielen alle
+          # ``Latitudine``/``Longitudine``-Formen still durch: die Anschnitt-
+          # Guard ``(?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])`` blockte ``lat`` in
+          # ``latitudine`` (die Zeichen ``i`` nach ``lat`` ist Wort-Zeichen),
+          # sodass das Label nicht als Whitespace gestrippt wurde und
+          # :data:`_DECIMAL_PAIR` an dem Wort-Rest scheiterte. Spiegelt die
+          # FR-/IT-Erweiterungen in :data:`_MONTH_NAMES` / :data:`_SEASON_MONTHS`
+          # / :data:`_DIRECTION_WORD` auf die Koordinaten-Label-Achse.
+          # Kollisionsfrei zu allen bestehenden Alternativen (``latitudine``
+          # startet mit ``lat`` und ``longitudine`` mit ``long``, aber die
+          # bereits vorhandene Alternation-Reihenfolge Voll-vor-Kurz sorgt
+          # dafuer, dass hier die Voll-Formen zuerst matchen).
+          | latitudine | longitudine
         )
         (?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])     # kein Anschnitt eines laengeren Wortes ("latex")
         \.?\s*[:=]?\s*         # optionaler Punkt + : / = + Whitespace
@@ -4041,7 +4058,7 @@ _COORD_LABEL = re.compile(
 # Route zurueck. Vorzeichen (``-``) und DE-Komma-Dezimal (``46,5``) werden im
 # Zahl-Capture toleriert.
 _LAT_LABELED_VALUE = re.compile(
-    r"""\b(?:latitude|lat|breitengrad|breite|mlat)
+    r"""\b(?:latitudine|latitude|lat|breitengrad|breite|mlat)
         (?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])
         \.?\s*[:=]?\s*
         (?:([NSEWOnsewo])\s*°?\s*)?    # optionale Prefix-Direction
@@ -4053,7 +4070,7 @@ _LAT_LABELED_VALUE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 _LON_LABELED_VALUE = re.compile(
-    r"""\b(?:longitude|longitudinal|long|lon|lng|laengengrad|laenge|längengrad|länge|mlon)
+    r"""\b(?:longitudine|longitude|longitudinal|long|lon|lng|laengengrad|laenge|längengrad|länge|mlon)
         (?![A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ])
         \.?\s*[:=]?\s*
         (?:([NSEWOnsewo])\s*°?\s*)?
