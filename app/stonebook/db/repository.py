@@ -186,6 +186,32 @@ SORTABLE_COLUMNS: frozenset[str] = frozenset({
     # via _order_by_clause ans Listenende - konsistent zu Wert_CHF_Schmuck
     # und den anderen Einzelfeld-Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
     "Wissenschaftlicher_Wert_CHF",
+    # Marktwert_Industrie als individuelle Wert-Achse fuer industrielle Massenware-
+    # Vorbereitung: schliesst den Ring der drei isolierten Wert-Achsen ab
+    # (Wert_CHF_Schmuck fuer Schmuck-Verkaufs-, Wissenschaftlicher_Wert_CHF fuer
+    # Forschungs-/Museums-Vorbereitung, Marktwert_Industrie fuer Industrie-
+    # Verkaufs-Vorbereitung). Waehrend gesamtwert_chf die Summe aller CHF-
+    # Wertfelder zeigt (roh + poliert + Schmuck + Marktwert_Industrie +
+    # Wissenschaftlich) und damit Schmuck-Kandidaten (Cabochon-taugliche Stuecke
+    # mit hohen Wert_CHF_Schmuck-Werten) sowie wissenschaftliche Meilenstein-
+    # Belege (Holotypen mit hohen Wissenschaftlicher_Wert_CHF-Werten) in die
+    # Gesamt-Top-Liste mischt, isoliert Marktwert_Industrie den reinen
+    # Industrie-Marktwert (Baryt-/Bentonit-/Talk-/Feldspat-/Kies-Massenware,
+    # Rohstoffe fuer Baumaterial, Keramik, Fuellstoff, Chemikalien). Sammler-/
+    # Verkaeufer-Frage vor Industrie-Boersen-Sitzung, Grossmengen-Angebot an
+    # Rohstoff-Haendler oder Erbschafts-Aufteilung nach industrieller Verwertung:
+    # "welche Stuecke haben die hoechste Industrie-Bewertung isoliert?" - die
+    # Gesamtwert-Sortierung mischt hier Schmuck-Werte (hochwertige geschliffene
+    # Stuecke ohne Industrie-Relevanz) und Wissenschafts-Werte (Referenz-
+    # /Publikations-Belege), sodass die reine Industrie-Top-Liste nur durch die
+    # isolierte Achse erreichbar ist. Ergaenzt beste_verwendung_in=["Industrie"]
+    # (Enum-Verwendungs-Empfehlung als Filter) um die kontinuierliche Wert-
+    # Sortierung: der Filter selektiert die Industrie-Kandidaten, die Sortierung
+    # ordnet sie nach Industrie-Wert absteigend. NULL-Eintraege (nicht industriell
+    # bewertet) fallen via _order_by_clause ans Listenende - konsistent zu
+    # Wert_CHF_Schmuck / Wissenschaftlicher_Wert_CHF und den anderen Einzelfeld-
+    # Sortier-Achsen (Gewicht_g, Mohs_Haerte_min etc.).
+    "Marktwert_Industrie",
     # 1..10-Skalen aus dem Feldwoerterbuch: nach Seltenheit/Nachfrage sortieren
     # ist die natuerliche Begleitung zu den seltenheit_/nachfrage_-Filtern -
     # erst nach Rarity filtern, dann absteigend sortieren, um die Top-Stuecke

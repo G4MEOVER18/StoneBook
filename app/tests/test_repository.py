@@ -2484,6 +2484,58 @@ def test_sort_by_wissenschaftlicher_wert_chf(tmp_path):
     c.close()
 
 
+def test_sort_by_marktwert_industrie(tmp_path):
+    """Sortierung nach Marktwert_Industrie isoliert den Industrie-Marktwert.
+
+    Schliesst den Ring der drei isolierten Wert-Achsen (Wert_CHF_Schmuck,
+    Wissenschaftlicher_Wert_CHF, Marktwert_Industrie). Waehrend gesamtwert_chf
+    die Summe aller CHF-Wertfelder ordnet (roh + poliert + Schmuck +
+    Marktwert_Industrie + Wissenschaftlich) und damit Schmuck-Werte sowie
+    Wissenschafts-Werte in die Top-Liste mischt, isoliert sort_by=
+    'Marktwert_Industrie' den reinen Industrie-Wert (Baryt-/Bentonit-/Talk-/
+    Feldspat-Massenware fuer Baumaterial, Keramik, Fuellstoff, Chemikalien).
+    NULL-Eintraege wandern via _order_by_clause ans Listenende (spiegelt die
+    anderen Einzelfeld-Sortier-Achsen wie Gewicht_g/Mohs_Haerte_min).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Marktwert_Industrie, "
+        "Wert_CHF_Schmuck, Wissenschaftlicher_Wert_CHF) VALUES (?, ?, ?, ?)",
+        [
+            # OBJ_0001: mittlerer Industrie-Wert, sonst nichts
+            ("OBJ_0001", 300.0, None, None),
+            # OBJ_0002: hoechster Industrie-Wert - Top bei DESC (Grossmengen-Baryt)
+            ("OBJ_0002", 900.0, None, None),
+            # OBJ_0003: niedriger Industrie-Wert, aber hoher Schmuck-Wert
+            # -> waere via gesamtwert_chf oben, aber via Industrie-Achse unten
+            ("OBJ_0003", 50.0, 5000.0, None),
+            # OBJ_0004: kein Industrie-Wert (NULL) trotz hoher Wissenschafts-Bewertung
+            # -> faellt via Marktwert_Industrie ans Listenende (NULL-an-Ende)
+            ("OBJ_0004", None, None, 2000.0),
+            # OBJ_0005: hoher Industrie-Wert - Rang 2
+            ("OBJ_0005", 500.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # DESC: hoechster Industrie-Wert zuerst, NULL ans Ende
+    rows = repo.list_objects(sort_by="Marktwert_Industrie", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0002", "OBJ_0005", "OBJ_0001", "OBJ_0003", "OBJ_0004"]
+    # ASC: niedrigster Industrie-Wert zuerst, NULL immer noch ans Ende
+    rows = repo.list_objects(sort_by="Marktwert_Industrie", sort_desc=False)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0001", "OBJ_0005", "OBJ_0002", "OBJ_0004"]
+    # Kontrast zu gesamtwert_chf DESC: hier steht OBJ_0003 oben (Schmuck 5000)
+    # und OBJ_0004 (Wissenschaft 2000) auf Rang 2 - die Industrie-Reihenfolge
+    # unterscheidet sich fundamental.
+    rows = repo.list_objects(sort_by="gesamtwert_chf", sort_desc=True)
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0003", "OBJ_0004", "OBJ_0002", "OBJ_0005", "OBJ_0001"]
+    c.close()
+
+
 def test_kristallsystem_und_beste_verwendung_filter(tmp_path):
     from stonebook.db.database import open_db
     c = open_db(tmp_path / "k.sqlite3")
