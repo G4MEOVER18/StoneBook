@@ -584,6 +584,8 @@ class ObjectRepo:
                      reaktionshinweis_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
+                     wert_chf_schmuck_min: float | None = None,
+                     wert_chf_schmuck_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
                      wert_pro_gewicht_max: float | None = None,
                      wert_pro_volumen_min: float | None = None,
@@ -1654,6 +1656,35 @@ class ObjectRepo:
         if wert_max is not None:
             where.append(f"{wert_sql} <= ?")
             params.append(float(wert_max))
+        # Wert_CHF_Schmuck-Filter als Filter-Ebenen-Pendant zur Wert_CHF_Schmuck-
+        # Sortier-Achse aus SORTABLE_COLUMNS. Waehrend wert_min/wert_max die Summe
+        # aller CHF-Wertfelder ({wert_sql}: roh + poliert + Schmuck +
+        # Marktwert_Industrie + Wissenschaftlich) als Bereich filtert und damit
+        # Wissenschafts-Meilenstein-Belege (Holotypen mit hohem
+        # Wissenschaftlicher_Wert_CHF, aber ohne Schmuck-Relevanz) und Industrie-
+        # Massenware (Baryt-/Bentonit-Stuecke mit hohem Marktwert_Industrie) in
+        # das Filter-Ergebnis mischt, isoliert wert_chf_schmuck_min/_max den
+        # reinen Schmuck-Verkaufs-Schaetzwert (Cabochon-/Facetten-/Perlen-/
+        # Anhaenger-Bewertung). Sammler-/Verkaeufer-Frage vor Schmuck-Vitrinen-
+        # /Boersen-Sitzung: "welche Stuecke sind fuer den Schmuck-Markt >= 500 CHF
+        # bewertet?" -> wert_chf_schmuck_min=500.0. Ergaenzt beste_verwendung_in=
+        # ["Schmuck"] (Enum-Verwendungs-Empfehlung als Filter) um die
+        # kontinuierliche Wert-Grenze: der Enum-Filter selektiert die Schmuck-
+        # Kandidaten, die neue Range-Grenze fokussiert auf ein preisliches Segment.
+        # Spiegelt die Wert_CHF_Schmuck-Sortier-Achse: derselbe SQL-Ausdruck
+        # (o.Wert_CHF_Schmuck ohne Aggregation) - damit Filter und Sortierung
+        # dieselbe Zahlen-Domain teilen und kein Drift zwischen Filter- und
+        # Sortier-Definition auftritt. NULL-Semantik: nicht Schmuck-bewertete
+        # Stuecke (Wert_CHF_Schmuck IS NULL) fallen automatisch aus dem Filter
+        # (NULL >= X / NULL <= X sind beide NULL == FALSE) - spiegelt die
+        # gewicht_-/laenge_-/mohs_-/dichte_-Konvention und die NULL-an-Ende-
+        # Konvention der Sortier-Achse.
+        if wert_chf_schmuck_min is not None:
+            where.append("o.Wert_CHF_Schmuck >= ?")
+            params.append(float(wert_chf_schmuck_min))
+        if wert_chf_schmuck_max is not None:
+            where.append("o.Wert_CHF_Schmuck <= ?")
+            params.append(float(wert_chf_schmuck_max))
         # Wert_pro_Gewicht-Filter als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
         # Sortier-Achse: spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze.
         # Sammler-/Verkaeufer-Frage: "welche Stuecke rentieren sich pro Gramm

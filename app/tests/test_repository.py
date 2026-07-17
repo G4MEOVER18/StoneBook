@@ -2315,6 +2315,60 @@ def test_wert_min_max_filter(tmp_path):
     c.close()
 
 
+def test_wert_chf_schmuck_min_max_filter(tmp_path):
+    """wert_chf_schmuck_min/max als Filter-Ebenen-Pendant zur Wert_CHF_Schmuck-
+    Sortier-Achse. Isoliert den reinen Schmuck-Verkaufs-Schaetzwert (Cabochon-/
+    Facetten-/Perlen-/Anhaenger-Bewertung) von der Summen-Achse wert_min/wert_max
+    (die Wissenschafts-Meilenstein-Belege und Industrie-Massenware mit-filtert).
+    NULL-Semantik: nicht Schmuck-bewertete Stuecke fallen automatisch aus dem
+    Filter (spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-Konvention).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wcs.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_Schmuck, Wert_CHF_roh, "
+        "Wissenschaftlicher_Wert_CHF) VALUES (?, ?, ?, ?)",
+        [
+            # Schmuck-Kandidat mittleres Segment: 300 CHF Cabochon
+            ("OBJ_0001", 300.0, 50.0, None),
+            # Premium-Schmuck: 900 CHF Facette
+            ("OBJ_0002", 900.0, 100.0, None),
+            # Wissenschaftlicher Meilenstein-Beleg ohne Schmuck-Relevanz -
+            # unter wert_min>=500 (Summen-Achse) wuerde OBJ_0003 erscheinen,
+            # unter wert_chf_schmuck_min>=500 NICHT (das ist der Punkt).
+            ("OBJ_0003", None, None, 5000.0),
+            # Roh-Stueck ohne Schmuck-Bewertung
+            ("OBJ_0004", None, 200.0, None),
+            # Kleines Schmuck-Segment: 50 CHF Kettenanhaenger
+            ("OBJ_0005", 50.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Boersen-Verkaufs-Untergrenze: >= 500 CHF Schmuck-Bewertung
+    rows = repo.list_objects(wert_chf_schmuck_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Mittleres Segment (Cabochon-Vorstufe): 100-500 CHF
+    rows = repo.list_objects(wert_chf_schmuck_min=100.0,
+                             wert_chf_schmuck_max=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Kleine Anhaenger-Kategorie: <= 100 CHF
+    rows = repo.list_objects(wert_chf_schmuck_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Alle mit dokumentierter Schmuck-Bewertung: >= 0
+    rows = repo.list_objects(wert_chf_schmuck_min=0.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Kontrast zur Summen-Achse: wert_min=500 (Summen-Achse) selektiert
+    # OBJ_0002 (900 Schmuck) UND OBJ_0003 (5000 Wissenschaft) - die
+    # isolierte Schmuck-Achse blendet OBJ_0003 aus (das ist der Vorteil
+    # der neuen Achse gegenueber der Summen-Achse).
+    rows = repo.list_objects(wert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    rows = repo.list_objects(wert_chf_schmuck_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_wert_pro_gewicht_min_max_filter(tmp_path):
     """wert_pro_gewicht_min/max als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
     Sortier-Achse. Spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze -
