@@ -3174,6 +3174,67 @@ def test_strichfarbe_contains_filter(tmp_path):
     c.close()
 
 
+def test_hcl_reaktion_contains_filter(tmp_path):
+    """Substring-Filter ueber HCl_Reaktion (Salzsaeure-Reaktions-Freitext).
+
+    Sammler-Frage: "welche Stuecke sprudeln stark mit HCl?" oder
+    "welche warten auf einen Warm-HCl-Retest?" -> Bulk-Selektion nach
+    Reaktions-Staerke bzw. Temperatur-Modifikator. Spiegelt
+    farbe_contains/strichfarbe_contains: LIKE mit ESCAPE, ASCII-case-
+    insensitive, LIKE-Metazeichen wortwoertlich, NULL faellt implizit
+    heraus.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "hcl.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, HCl_Reaktion) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "stark, kalt"),                # Calcit
+            ("OBJ_0002", "stark warm sprudelnd"),       # Aragonit
+            ("OBJ_0003", "schwach, nur mit warmer 30% HCl"),  # Dolomit
+            ("OBJ_0004", "keine"),                      # Quarz/Silikat
+            ("OBJ_0005", "sprudelt mit 10_HCl"),        # LIKE-Metazeichen-Test
+            ("OBJ_0006", None),                         # NULL-Eintrag
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring 'stark' trifft beide starken Reaktions-Varianten
+    rows = repo.list_objects(hcl_reaktion_contains="stark")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(hcl_reaktion_contains="STARK")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Temperatur-Modifikator 'warm' trifft beide Warm-Notationen
+    rows = repo.list_objects(hcl_reaktion_contains="warm")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # 'keine' schliesst nicht-reagierende Silikate ein
+    rows = repo.list_objects(hcl_reaktion_contains="keine")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich (ESCAPE-Verhalten)
+    rows = repo.list_objects(hcl_reaktion_contains="10_HCl")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(hcl_reaktion_contains="10XHCl")
+    assert rows == []
+    # NULL faellt implizit heraus
+    rows = repo.list_objects(hcl_reaktion_contains="a")
+    assert all(r["obj_id"] != "OBJ_0006" for r in rows)
+    # Leerer Substring ist no-op -> alle 6 Objekte
+    rows = repo.list_objects(hcl_reaktion_contains="")
+    assert len(rows) == 6
+    # Kombinierbar mit has_hcl_reaktion (Schnittmenge, LIKE bereits impliziert)
+    rows = repo.list_objects(hcl_reaktion_contains="stark", has_hcl_reaktion=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Kombinierbar mit farbe_contains (diagnostisch andere Achse)
+    c.execute("UPDATE objects SET Farbe_beobachtet = 'weiss' "
+              "WHERE obj_id = 'OBJ_0001'")
+    c.commit()
+    rows = repo.list_objects(
+        hcl_reaktion_contains="stark", farbe_contains="weiss")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    c.close()
+
+
 def test_status_in_filter(tmp_path):
     """status_in akzeptiert Mengen ('aktiv ODER archiviert'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db

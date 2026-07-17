@@ -446,6 +446,7 @@ class ObjectRepo:
                      pruefempfehlungen_contains: str = "",
                      farbe_contains: str = "",
                      strichfarbe_contains: str = "",
+                     hcl_reaktion_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
@@ -1407,6 +1408,35 @@ class ObjectRepo:
             # ist trivial redundant, weil LIKE bereits die Anwesenheit impliziert).
             where.append("o.Strichfarbe LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(strichfarbe_contains) + "%")
+        if hcl_reaktion_contains:
+            # Substring-Filter ueber HCl_Reaktion (Salzsaeure-Reaktions-Freitext:
+            # "stark warm", "schwach kalt", "keine", "sprudelnd mit 10% HCl",
+            # "nur mit warmer 30% HCl schwach"). HCl_Reaktion ist Freitext-Feld
+            # ohne kontrolliertes Vokabular; Sammler kodieren Reaktionsstaerke
+            # und -temperatur in mehreren Wortstaemmen ("stark" in "stark",
+            # "sehr stark", "stark sprudelnd", "starke Blasenbildung") und in
+            # Kombinationen mit Temperatur-/Konzentrations-Modifikatoren
+            # ("kalt"/"warm", "10%"/"30%"), sodass der exakte Feld-Match nur
+            # eine der Varianten treffen wuerde. Der Substring-Filter mit LIKE
+            # gibt die natuerliche Suche ueber die Reaktions-Familie: Sammler-
+            # Frage "welche Stuecke sprudeln ueberhaupt mit HCl?" -> "stark"
+            # oder "schwach"; "welche warten auf einen Warm-HCl-Retest?" ->
+            # "warm". Diagnostisch komplementaer zu farbe_contains/
+            # strichfarbe_contains auf der chemischen Achse (die drei bilden
+            # zusammen die klassischen Handstueck-Diagnose-Felder: Farbe/
+            # Strichfarbe/HCl-Reaktion vor der instrumentellen Analyse).
+            # Spiegelt das Muster der anderen *_contains-Filter (LIKE mit
+            # ``ESCAPE '\\'``, Metazeichen ``%``/``_`` wortwoertlich, ASCII-
+            # case-insensitive); Umlaute wie "grün"/"gruen" folgen der
+            # bewussten Design-Konsistenz und werden nicht NFKD-normalisiert.
+            # Komplementaer zum tri-state ``has_hcl_reaktion``-Filter (nur
+            # An-/Abwesenheit) und kombinierbar mit ihm (has_hcl_reaktion=True
+            # + hcl_reaktion_contains ist trivial redundant, weil LIKE bereits
+            # die Anwesenheit impliziert). NULL-Eintraege (Reaktion nie
+            # dokumentiert, z.B. bei nicht-carbonatischen Silikaten wo der
+            # Test irrelevant ist) fallen implizit heraus.
+            where.append("o.HCl_Reaktion LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(hcl_reaktion_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))
