@@ -449,6 +449,7 @@ class ObjectRepo:
                      hcl_reaktion_contains: str = "",
                      uv_365nm_contains: str = "",
                      uv_254nm_contains: str = "",
+                     reaktionshinweis_contains: str = "",
                      wert_min: float | None = None,
                      wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
@@ -1487,6 +1488,34 @@ class ObjectRepo:
             # Farbnotationen.
             where.append("o.UV_254nm LIKE ? ESCAPE '\\'")
             params.append("%" + _like_escape(uv_254nm_contains) + "%")
+        if reaktionshinweis_contains:
+            # Substring-Filter ueber Reaktionshinweis (erklaerende Begleit-Notiz
+            # zu UV-/HCl-/Magnet-Reaktionen: "nur mit warmer 30% HCl schwach",
+            # "Nachleuchten haelt 3 Sekunden", "Magnetit-Kern in Serpentin-
+            # Matrix", "Fluoreszenz kommt vom Kern, Rand nicht"). Reaktionshinweis
+            # ist Freitext-Feld ohne kontrolliertes Vokabular; Sammler kodieren
+            # methodische Detail-Bedingungen (Temperatur, Konzentration, Dauer,
+            # raeumliche Verteilung) in mehreren Wortstaemmen und in
+            # Kombinationen, sodass der exakte Feld-Match nur eine der
+            # Varianten treffen wuerde. Der Substring-Filter mit LIKE gibt die
+            # natuerliche Suche ueber die Reaktions-Notiz-Familie: Sammler-
+            # Frage "welche Stuecke haben dokumentierte Nachleuchten-Dauer?"
+            # -> "sekund"/"nachleucht"; "welche haben Temperatur-abhaengige
+            # HCl-Reaktion?" -> "warm"/"kalt"; "welche haben raeumlich
+            # differenzierte Reaktionen (Kern/Rand/Ader)?" -> "kern"/"rand".
+            # Komplementaer zu hcl_reaktion_contains/uv_365nm_contains/
+            # uv_254nm_contains auf der Meta-Kommentar-Achse (die vier bilden
+            # zusammen den Reaktions-Freitext-Block: drei primaere Beobachtungen
+            # plus die erklaerende Begleit-Notiz). Spiegelt das Muster der
+            # anderen *_contains-Filter (LIKE mit ``ESCAPE '\\'``, Metazeichen
+            # ``%``/``_`` wortwoertlich, ASCII-case-insensitive); Umlaute wie
+            # "grün"/"gruen" folgen der bewussten Design-Konsistenz und werden
+            # nicht NFKD-normalisiert. Komplementaer zum tri-state
+            # ``has_reaktionshinweis``-Filter (nur An-/Abwesenheit) und
+            # kombinierbar mit ihm. NULL-Eintraege (keine Zusatz-Notiz) fallen
+            # implizit heraus.
+            where.append("o.Reaktionshinweis LIKE ? ESCAPE '\\'")
+            params.append("%" + _like_escape(reaktionshinweis_contains) + "%")
         if wert_min is not None:
             where.append(f"{wert_sql} >= ?")
             params.append(float(wert_min))

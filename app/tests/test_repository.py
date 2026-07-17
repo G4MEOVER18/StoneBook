@@ -3341,6 +3341,62 @@ def test_uv_254nm_contains_filter(tmp_path):
     c.close()
 
 
+def test_reaktionshinweis_contains_filter(tmp_path):
+    """Substring-Filter ueber Reaktionshinweis (Freitext-Begleit-Notiz).
+
+    Sammler-Frage: "welche Stuecke haben eine Temperatur-Bedingung im
+    Reaktions-Kommentar dokumentiert (warm/kalt)?" oder "welche haben
+    raeumlich differenzierte Reaktionen (Kern vs Rand vs Ader)?" ->
+    Bulk-Selektion nach Reaktions-Notiz-Familie. Spiegelt
+    hcl_reaktion_contains/uv_365nm_contains/uv_254nm_contains: LIKE mit
+    ESCAPE, ASCII-case-insensitive, LIKE-Metazeichen wortwoertlich, NULL
+    faellt implizit heraus.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "rh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Reaktionshinweis) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "nur mit warmer 30% HCl schwach"),
+            ("OBJ_0002", "Nachleuchten haelt 3 Sekunden"),
+            ("OBJ_0003", "Fluoreszenz kommt vom Kern, Rand nicht"),
+            ("OBJ_0004", "kalt keine Reaktion, warm sprudelnd"),
+            ("OBJ_0005", "Magnet-Test bei 254_nm negativ"),  # LIKE-Metazeichen
+            ("OBJ_0006", None),                              # NULL-Eintrag
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Substring 'warm' trifft alle Warm-HCl-Notationen
+    rows = repo.list_objects(reaktionshinweis_contains="warm")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # ASCII-case-insensitive
+    rows = repo.list_objects(reaktionshinweis_contains="WARM")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # Raeumliche Differenzierung 'kern' trifft nur OBJ_0003
+    rows = repo.list_objects(reaktionshinweis_contains="kern")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Nachleuchten-Persistenz
+    rows = repo.list_objects(reaktionshinweis_contains="nachleucht")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # LIKE-Metazeichen '_' bleibt wortwoertlich (ESCAPE-Verhalten)
+    rows = repo.list_objects(reaktionshinweis_contains="254_nm")
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    rows = repo.list_objects(reaktionshinweis_contains="254Xnm")
+    assert rows == []
+    # NULL faellt implizit heraus (OBJ_0006 hat Reaktionshinweis=NULL)
+    rows = repo.list_objects(reaktionshinweis_contains="a")
+    assert all(r["obj_id"] != "OBJ_0006" for r in rows)
+    # Leerer Substring ist no-op -> alle 6 Objekte
+    rows = repo.list_objects(reaktionshinweis_contains="")
+    assert len(rows) == 6
+    # Kombinierbar mit has_reaktionshinweis (Schnittmenge, LIKE bereits impliziert)
+    rows = repo.list_objects(reaktionshinweis_contains="warm",
+                             has_reaktionshinweis=True)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    c.close()
+
+
 def test_status_in_filter(tmp_path):
     """status_in akzeptiert Mengen ('aktiv ODER archiviert'); Tippfehler werfen ValueError."""
     from stonebook.db.database import open_db
