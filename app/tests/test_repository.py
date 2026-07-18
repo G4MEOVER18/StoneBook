@@ -2369,6 +2369,63 @@ def test_wert_chf_schmuck_min_max_filter(tmp_path):
     c.close()
 
 
+def test_wissenschaftlicher_wert_min_max_filter(tmp_path):
+    """wissenschaftlicher_wert_min/max als Filter-Ebenen-Pendant zur
+    Wissenschaftlicher_Wert_CHF-Sortier-Achse. Spiegelt strukturell den
+    wert_chf_schmuck_min/_max-Block auf die Wissenschafts-Achse: isoliert
+    den reinen Forschungs-/Museums-Wert (Holotypen, Typmaterial-Belege,
+    Meilenstein-Funde) von der Summen-Achse wert_min/wert_max (die
+    Schmuck-Kandidaten und Industrie-Massenware mit-filtert). NULL-Semantik:
+    nicht wissenschaftlich bewertete Stuecke fallen automatisch aus dem
+    Filter (spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-/wert_chf_schmuck_-
+    Konvention).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wwc.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wissenschaftlicher_Wert_CHF, "
+        "Wert_CHF_Schmuck, Wert_CHF_roh) VALUES (?, ?, ?, ?)",
+        [
+            # Mittleres Forschungs-Segment: 300 CHF Referenzbeleg
+            ("OBJ_0001", 300.0, None, 50.0),
+            # Premium-Meilenstein: 5000 CHF Holotyp
+            ("OBJ_0002", 5000.0, None, None),
+            # Schmuck-Kandidat ohne wissenschaftliche Relevanz -
+            # unter wert_min>=500 (Summen-Achse) wuerde OBJ_0003 erscheinen,
+            # unter wissenschaftlicher_wert_min>=500 NICHT (der Punkt).
+            ("OBJ_0003", None, 900.0, None),
+            # Roh-Stueck ohne wissenschaftliche Bewertung
+            ("OBJ_0004", None, None, 200.0),
+            # Kleines Forschungs-Segment: 50 CHF Publikations-Beleg
+            ("OBJ_0005", 50.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Museumsleihgabe-Untergrenze: >= 1000 CHF wissenschaftliche Bewertung
+    rows = repo.list_objects(wissenschaftlicher_wert_min=1000.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Mittleres Segment (Referenzstuecke): 100-500 CHF
+    rows = repo.list_objects(wissenschaftlicher_wert_min=100.0,
+                             wissenschaftlicher_wert_max=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Kleine Publikations-Belege: <= 100 CHF
+    rows = repo.list_objects(wissenschaftlicher_wert_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Alle mit dokumentierter Forschungs-Bewertung: >= 0
+    rows = repo.list_objects(wissenschaftlicher_wert_min=0.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Kontrast zur Summen-Achse: wert_min=500 (Summen-Achse) selektiert
+    # OBJ_0002 (5000 Wissenschaft) UND OBJ_0003 (900 Schmuck) - die
+    # isolierte Wissenschafts-Achse blendet OBJ_0003 aus (das ist der
+    # Vorteil der neuen Achse gegenueber der Summen-Achse).
+    rows = repo.list_objects(wert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    rows = repo.list_objects(wissenschaftlicher_wert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_wert_pro_gewicht_min_max_filter(tmp_path):
     """wert_pro_gewicht_min/max als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
     Sortier-Achse. Spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze -

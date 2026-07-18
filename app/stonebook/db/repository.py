@@ -586,6 +586,8 @@ class ObjectRepo:
                      wert_max: float | None = None,
                      wert_chf_schmuck_min: float | None = None,
                      wert_chf_schmuck_max: float | None = None,
+                     wissenschaftlicher_wert_min: float | None = None,
+                     wissenschaftlicher_wert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
                      wert_pro_gewicht_max: float | None = None,
                      wert_pro_volumen_min: float | None = None,
@@ -1685,6 +1687,42 @@ class ObjectRepo:
         if wert_chf_schmuck_max is not None:
             where.append("o.Wert_CHF_Schmuck <= ?")
             params.append(float(wert_chf_schmuck_max))
+        # Wissenschaftlicher_Wert-Filter als Filter-Ebenen-Pendant zur
+        # Wissenschaftlicher_Wert_CHF-Sortier-Achse aus SORTABLE_COLUMNS.
+        # Spiegelt strukturell den wert_chf_schmuck_min/_max-Block auf die
+        # Wissenschafts-Achse: waehrend wert_min/wert_max die Summe aller
+        # CHF-Wertfelder ({wert_sql}: roh + poliert + Schmuck +
+        # Marktwert_Industrie + Wissenschaftlich) als Bereich filtert und
+        # damit Schmuck-Kandidaten (Cabochon-taugliche Stuecke mit hohem
+        # Wert_CHF_Schmuck) und Industrie-Massenware (Baryt-/Bentonit-
+        # Stuecke mit hohem Marktwert_Industrie) in das Filter-Ergebnis
+        # mischt, isoliert wissenschaftlicher_wert_min/_max den reinen
+        # Forschungs-/Museums-Wert (Holotypen, Typmaterial-Belege,
+        # Meilenstein-Funde, Referenzstuecke fuer Publikationen). Sammler-/
+        # Kurator-Frage vor Museumsleihgabe-Anfrage, Konservierungs-
+        # Prioritaets-Entscheidung oder Erbschafts-Aufteilung nach
+        # wissenschaftlichem Erbe: "welche Stuecke sind wissenschaftlich >=
+        # 1000 CHF bewertet?" -> wissenschaftlicher_wert_min=1000.0.
+        # Ergaenzt beste_verwendung_in=["Forschung"] (Enum-Verwendungs-
+        # Empfehlung als Filter) um die kontinuierliche Wert-Grenze: der
+        # Enum-Filter selektiert die Forschungs-Kandidaten, die neue Range-
+        # Grenze fokussiert auf ein preisliches Segment. Spiegelt die
+        # Wissenschaftlicher_Wert_CHF-Sortier-Achse: derselbe SQL-Ausdruck
+        # (o.Wissenschaftlicher_Wert_CHF ohne Aggregation) damit Filter und
+        # Sortierung dieselbe Zahlen-Domain teilen und kein Drift zwischen
+        # Filter- und Sortier-Definition auftritt. NULL-Semantik: nicht
+        # wissenschaftlich bewertete Stuecke (Wissenschaftlicher_Wert_CHF
+        # IS NULL, z.B. Schmuck-Kandidaten ohne Referenz-Charakter) fallen
+        # automatisch aus dem Filter (NULL >= X / NULL <= X sind beide
+        # NULL == FALSE) - spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-
+        # /wert_chf_schmuck_-Konvention und die NULL-an-Ende-Konvention der
+        # Sortier-Achse.
+        if wissenschaftlicher_wert_min is not None:
+            where.append("o.Wissenschaftlicher_Wert_CHF >= ?")
+            params.append(float(wissenschaftlicher_wert_min))
+        if wissenschaftlicher_wert_max is not None:
+            where.append("o.Wissenschaftlicher_Wert_CHF <= ?")
+            params.append(float(wissenschaftlicher_wert_max))
         # Wert_pro_Gewicht-Filter als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
         # Sortier-Achse: spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze.
         # Sammler-/Verkaeufer-Frage: "welche Stuecke rentieren sich pro Gramm
