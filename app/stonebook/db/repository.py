@@ -590,6 +590,8 @@ class ObjectRepo:
                      wissenschaftlicher_wert_max: float | None = None,
                      marktwert_industrie_min: float | None = None,
                      marktwert_industrie_max: float | None = None,
+                     wert_usd_talisman_min: float | None = None,
+                     wert_usd_talisman_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
                      wert_pro_gewicht_max: float | None = None,
                      wert_pro_volumen_min: float | None = None,
@@ -1764,6 +1766,46 @@ class ObjectRepo:
         if marktwert_industrie_max is not None:
             where.append("o.Marktwert_Industrie <= ?")
             params.append(float(marktwert_industrie_max))
+        # Wert_USD_Talisman-Filter als Filter-Ebenen-Pendant zur Wert_USD_Talisman-
+        # Sortier-Achse aus SORTABLE_COLUMNS (Commit 80b6ad0). Spiegelt strukturell
+        # den wert_chf_schmuck_-/wissenschaftlicher_wert_-/marktwert_industrie_-
+        # Block auf die einzige USD-denominierte Wert-Achse. Als USD-Feld ist
+        # Wert_USD_Talisman bewusst NICHT Teil der WERT_FELDER-Summe in stats.py
+        # (die gesamtwert_chf ausschliesslich als CHF-Aggregat bildet) und damit
+        # ueber wert_min/wert_max ({wert_sql}: roh + poliert + Schmuck +
+        # Marktwert_Industrie + Wissenschaftlich) nie erreichbar - der Talisman-
+        # Markt folgt US-basierten Healing-Stone-/Metaphysical-Konventionen mit
+        # eigener Preis-Skala (Etsy-/eBay-Notierungen, US-Steinmesse-Preise),
+        # die nicht ohne Wechselkurs-Umrechnung in die CHF-Summe einfliessen kann.
+        # Der Sammler-/Verkaeufer will die Talisman-Achse trotzdem isoliert
+        # filtern koennen - vor US-Talisman-Boerse, vor Etsy-/eBay-Angebot mit
+        # USD-Preis, vor Bewertung eines Chakra-/Kristall-Sets fuer den US-
+        # Wellness-Markt. Sammler-Frage vor US-Talisman-Boerse: "welche Stuecke
+        # sind fuer den US-Talisman-Markt >= 500 USD bewertet?" ->
+        # wert_usd_talisman_min=500.0. Ergaenzt beste_verwendung_in=["Talisman"]
+        # (Enum-Verwendungs-Empfehlung als Filter) um die kontinuierliche Wert-
+        # Grenze: der Enum-Filter selektiert die Talisman-Kandidaten, die neue
+        # Range-Grenze fokussiert auf ein preisliches Segment. Spiegelt die
+        # Wert_USD_Talisman-Sortier-Achse: derselbe SQL-Ausdruck
+        # (o.Wert_USD_Talisman ohne Aggregation) damit Filter und Sortierung
+        # dieselbe Zahlen-Domain teilen und kein Drift zwischen Filter- und
+        # Sortier-Definition auftritt. NULL-Semantik: nicht Talisman-bewertete
+        # Stuecke (Wert_USD_Talisman IS NULL, z.B. mineralogisch-wissenschaft-
+        # liche Belege ohne Metaphysical-Markt-Relevanz) fallen automatisch
+        # aus dem Filter (NULL >= X / NULL <= X sind beide NULL == FALSE) -
+        # spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-/wert_chf_schmuck_-
+        # /wissenschaftlicher_wert_-/marktwert_industrie_-Konvention und die
+        # NULL-an-Ende-Konvention der Sortier-Achse. Semantik-Warnung: die
+        # Zahlen-Domain ist USD, nicht CHF - Kombination mit wert_min/wert_max
+        # in derselben Query filtert zwei unterschiedliche Waehrungen ohne
+        # Umrechnung (spiegelt die stats.py-Trennung: gesamtwert_chf und der
+        # Talisman-USD-Wert werden dort ebenfalls getrennt aggregiert).
+        if wert_usd_talisman_min is not None:
+            where.append("o.Wert_USD_Talisman >= ?")
+            params.append(float(wert_usd_talisman_min))
+        if wert_usd_talisman_max is not None:
+            where.append("o.Wert_USD_Talisman <= ?")
+            params.append(float(wert_usd_talisman_max))
         # Wert_pro_Gewicht-Filter als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
         # Sortier-Achse: spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze.
         # Sammler-/Verkaeufer-Frage: "welche Stuecke rentieren sich pro Gramm

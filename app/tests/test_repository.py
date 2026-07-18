@@ -2482,6 +2482,63 @@ def test_marktwert_industrie_min_max_filter(tmp_path):
     c.close()
 
 
+def test_wert_usd_talisman_min_max_filter(tmp_path):
+    """wert_usd_talisman_min/max als Filter-Ebenen-Pendant zur Wert_USD_Talisman-
+    Sortier-Achse. Als USD-Feld bewusst NICHT Teil der CHF-Summen-Achse
+    wert_min/wert_max - der Talisman-Wert wuerde sonst mit CHF-Werten ohne
+    Wechselkurs-Umrechnung vermischt. Spiegelt strukturell die anderen
+    Verwendungs-Wert-Filter (Schmuck/Wissenschaft/Industrie) auf die einzige
+    USD-Achse. NULL-Semantik: nicht Talisman-bewertete Stuecke fallen
+    automatisch aus dem Filter.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wut.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_USD_Talisman, "
+        "Wert_CHF_Schmuck, Wissenschaftlicher_Wert_CHF) VALUES (?, ?, ?, ?)",
+        [
+            # Mittleres Talisman-Segment: 300 USD Chakra-Stein
+            ("OBJ_0001", 300.0, None, None),
+            # Premium-Talisman: 900 USD Rutil-Quarz-Anhaenger
+            ("OBJ_0002", 900.0, None, None),
+            # Wissenschaftlicher Meilenstein ohne Talisman-Relevanz -
+            # unter dem Talisman-Filter faellt OBJ_0003 raus, obwohl er
+            # in der CHF-Summe (wert_min>=500) via Wissenschaft>=5000 waere.
+            ("OBJ_0003", None, None, 5000.0),
+            # Schmuck-Kandidat ohne Talisman-Bewertung
+            ("OBJ_0004", None, 800.0, None),
+            # Kleines Talisman-Segment: 50 USD Roll-Stein
+            ("OBJ_0005", 50.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # US-Boersen-Untergrenze: >= 500 USD Talisman-Bewertung
+    rows = repo.list_objects(wert_usd_talisman_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Mittleres Segment (Etsy-Kandidaten): 100-500 USD
+    rows = repo.list_objects(wert_usd_talisman_min=100.0,
+                             wert_usd_talisman_max=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Kleine Roll-Stein-Kategorie: <= 100 USD
+    rows = repo.list_objects(wert_usd_talisman_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Alle mit dokumentierter Talisman-Bewertung: >= 0
+    rows = repo.list_objects(wert_usd_talisman_min=0.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Kontrast zur CHF-Summen-Achse: die USD-Werte fliessen bewusst NICHT
+    # in {wert_sql} ein, sodass OBJ_0002 (900 USD Talisman) in wert_min=500
+    # NICHT erscheint (er hat keine CHF-Werte), waehrend OBJ_0003 (5000
+    # CHF Wissenschaft) und OBJ_0004 (800 CHF Schmuck) via CHF-Summe
+    # erscheinen. Der Kontrast belegt die strukturelle Trennung der zwei
+    # Waehrungs-Domains (USD-Talisman vs. CHF-Summe).
+    rows = repo.list_objects(wert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003", "OBJ_0004"]
+    rows = repo.list_objects(wert_usd_talisman_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_wert_pro_gewicht_min_max_filter(tmp_path):
     """wert_pro_gewicht_min/max als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
     Sortier-Achse. Spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze -
