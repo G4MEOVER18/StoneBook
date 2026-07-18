@@ -588,6 +588,8 @@ class ObjectRepo:
                      wert_chf_schmuck_max: float | None = None,
                      wissenschaftlicher_wert_min: float | None = None,
                      wissenschaftlicher_wert_max: float | None = None,
+                     marktwert_industrie_min: float | None = None,
+                     marktwert_industrie_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
                      wert_pro_gewicht_max: float | None = None,
                      wert_pro_volumen_min: float | None = None,
@@ -1723,6 +1725,45 @@ class ObjectRepo:
         if wissenschaftlicher_wert_max is not None:
             where.append("o.Wissenschaftlicher_Wert_CHF <= ?")
             params.append(float(wissenschaftlicher_wert_max))
+        # Marktwert_Industrie-Filter als Filter-Ebenen-Pendant zur
+        # Marktwert_Industrie-Sortier-Achse aus SORTABLE_COLUMNS. Schliesst den
+        # Ring der drei isolierten CHF-Wert-Filter (wert_chf_schmuck_min/_max,
+        # wissenschaftlicher_wert_min/_max, marktwert_industrie_min/_max), die
+        # jeweils eine Verwendungs-Sicht - Schmuck-Verkauf, Forschung/Museum,
+        # industrielle Massenware - von der Summen-Achse wert_min/wert_max
+        # (die alle drei zusammen mit Roh/Poliert mischt) trennen. Waehrend
+        # wert_min/wert_max die Summe aller CHF-Wertfelder ({wert_sql}: roh +
+        # poliert + Schmuck + Marktwert_Industrie + Wissenschaftlich) als
+        # Bereich filtert und damit Schmuck-Kandidaten (Cabochon-taugliche
+        # Stuecke mit hohem Wert_CHF_Schmuck) und wissenschaftliche Meilenstein-
+        # Belege (Holotypen mit hohem Wissenschaftlicher_Wert_CHF) in das
+        # Filter-Ergebnis mischt, isoliert marktwert_industrie_min/_max den
+        # reinen Industrie-Marktwert (Baryt-/Bentonit-/Talk-/Feldspat-/Kies-
+        # Massenware, Rohstoffe fuer Baumaterial, Keramik, Fuellstoff,
+        # Chemikalien). Sammler-/Verkaeufer-Frage vor Industrie-Boersen-
+        # Sitzung, Grossmengen-Angebot an Rohstoff-Haendler oder Erbschafts-
+        # Aufteilung nach industrieller Verwertung: "welche Stuecke sind
+        # industriell >= 500 CHF bewertet?" -> marktwert_industrie_min=500.0.
+        # Ergaenzt beste_verwendung_in=["Industrie"] (Enum-Verwendungs-
+        # Empfehlung als Filter) um die kontinuierliche Wert-Grenze: der
+        # Enum-Filter selektiert die Industrie-Kandidaten, die neue Range-
+        # Grenze fokussiert auf ein preisliches Segment. Spiegelt die
+        # Marktwert_Industrie-Sortier-Achse: derselbe SQL-Ausdruck
+        # (o.Marktwert_Industrie ohne Aggregation) damit Filter und Sortierung
+        # dieselbe Zahlen-Domain teilen und kein Drift zwischen Filter- und
+        # Sortier-Definition auftritt. NULL-Semantik: nicht industriell
+        # bewertete Stuecke (Marktwert_Industrie IS NULL, z.B. Schmuck-
+        # Kandidaten oder Meilenstein-Referenzen ohne Massenware-Relevanz)
+        # fallen automatisch aus dem Filter (NULL >= X / NULL <= X sind beide
+        # NULL == FALSE) - spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-
+        # /wert_chf_schmuck_-/wissenschaftlicher_wert_-Konvention und die
+        # NULL-an-Ende-Konvention der Sortier-Achse.
+        if marktwert_industrie_min is not None:
+            where.append("o.Marktwert_Industrie >= ?")
+            params.append(float(marktwert_industrie_min))
+        if marktwert_industrie_max is not None:
+            where.append("o.Marktwert_Industrie <= ?")
+            params.append(float(marktwert_industrie_max))
         # Wert_pro_Gewicht-Filter als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
         # Sortier-Achse: spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze.
         # Sammler-/Verkaeufer-Frage: "welche Stuecke rentieren sich pro Gramm

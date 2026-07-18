@@ -2426,6 +2426,62 @@ def test_wissenschaftlicher_wert_min_max_filter(tmp_path):
     c.close()
 
 
+def test_marktwert_industrie_min_max_filter(tmp_path):
+    """marktwert_industrie_min/max als Filter-Ebenen-Pendant zur
+    Marktwert_Industrie-Sortier-Achse. Schliesst den Ring der drei isolierten
+    Verwendungs-Wert-Filter (Schmuck / Wissenschaft / Industrie) neben der
+    Summen-Achse wert_min/wert_max. Spiegelt strukturell den wert_chf_schmuck_-
+    und wissenschaftlicher_wert_-Block auf die Industrie-Massenware-Achse.
+    NULL-Semantik: nicht industriell bewertete Stuecke fallen automatisch aus
+    dem Filter (spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-Konvention).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wmi.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Marktwert_Industrie, "
+        "Wert_CHF_Schmuck, Wissenschaftlicher_Wert_CHF) VALUES (?, ?, ?, ?)",
+        [
+            # Mittleres Industrie-Segment: 300 CHF Baryt-Fund
+            ("OBJ_0001", 300.0, None, None),
+            # Premium-Industrie: 900 CHF Bentonit-Charge
+            ("OBJ_0002", 900.0, None, None),
+            # Schmuck-Kandidat ohne Industrie-Relevanz -
+            # unter wert_min>=500 (Summen-Achse) wuerde OBJ_0003 erscheinen,
+            # unter marktwert_industrie_min>=500 NICHT (der Punkt).
+            ("OBJ_0003", None, 700.0, None),
+            # Wissenschaftlicher Meilenstein-Beleg ohne Industrie-Bewertung
+            ("OBJ_0004", None, None, 2000.0),
+            # Kleines Industrie-Segment: 50 CHF Kies-Restposten
+            ("OBJ_0005", 50.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Boersen-Verkaufs-Untergrenze: >= 500 CHF Industrie-Bewertung
+    rows = repo.list_objects(marktwert_industrie_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Mittleres Segment (Restposten-Vorstufe): 100-500 CHF
+    rows = repo.list_objects(marktwert_industrie_min=100.0,
+                             marktwert_industrie_max=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Kleine Restposten-Kategorie: <= 100 CHF
+    rows = repo.list_objects(marktwert_industrie_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0005"]
+    # Alle mit dokumentierter Industrie-Bewertung: >= 0
+    rows = repo.list_objects(marktwert_industrie_min=0.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0005"]
+    # Kontrast zur Summen-Achse: wert_min=500 (Summen-Achse) selektiert
+    # OBJ_0002 (900 Industrie), OBJ_0003 (700 Schmuck) UND OBJ_0004 (2000
+    # Wissenschaft) - die isolierte Industrie-Achse blendet OBJ_0003 und
+    # OBJ_0004 aus (das ist der Vorteil der neuen Achse gegenueber der
+    # Summen-Achse).
+    rows = repo.list_objects(wert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    rows = repo.list_objects(marktwert_industrie_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    c.close()
+
+
 def test_wert_pro_gewicht_min_max_filter(tmp_path):
     """wert_pro_gewicht_min/max als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
     Sortier-Achse. Spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze -
