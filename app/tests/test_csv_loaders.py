@@ -3846,6 +3846,100 @@ def test_parse_range_annaeherungs_praefix_fr_it():
     assert csv_loaders.parse_range("about 5.5") == (5.5, 5.5)
 
 
+def test_parse_range_trailing_annaeherungs_suffix():
+    """Trailing Annaeherungs-Suffix auf der Wert-Achse (spiegelt Leading-Praefix).
+
+    Deckt die in Sammler-Notizen sehr verbreitete Reihenfolge "Wert zuerst,
+    Praezisions-Marker nachgeschoben" ab: ``5.5 ± 0.3, ca.`` / ``2.65(5) circa``
+    / ``500 CHF geschaetzt``. Bei reinen Wert-Zellen ohne Uncertainty-Struktur
+    ist der Suffix verlustfrei via Fallback (die Punkt-Range bleibt Punkt-Range,
+    die Approximations-Semantik gehoert in die notizen-Spalte); kritisch ist
+    die Kombination mit Uncertainty-Notation UND einem Komma-Trenner zwischen
+    Wert-Ausdruck und Marker - die Uncertainty-Patterns absorbieren Trailing-
+    Tokens ohne Komma als einheiten-aehnliche Fortsetzung, aber ein ``,`` bricht
+    die Token-Kette und das End-Anker-Matching schlaegt fehl. Ohne Suffix-Strip
+    fielen genau diese in Sammler-Notizen verbreiteten Formen (``"5.5 ± 0.3,
+    ca."``, ``"2.65(5), circa"``) still auf ``(center, center)``-Kollaps und
+    verloren die publizierte Toleranz - identischer Bug-Effekt wie in der
+    Leading-Form vor Einfuehrung von :data:`_APPROX_VALUE_PREFIX`. Spiegelt
+    strukturell :func:`test_parse_iso_date_trailing_annaeherungs_suffix` aus
+    :mod:`stonebook.migration.validators` auf die Wert-Achse.
+    """
+    # Reine Wert-Zelle + Trailing-Marker: Suffix wird gestrippt, Fallback-Zahl-
+    # Extraktion liefert die Punkt-Range (verlustfrei ohne Uncertainty).
+    assert csv_loaders.parse_range("5.5 ca.") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 circa") == (5.5, 5.5)
+    assert csv_loaders.parse_range("500 approximately") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 vermutlich") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 geschaetzt") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 ungefaehr") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 estimated") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 est.") == (500.0, 500.0)
+    # Uncertainty + Trailing-Marker OHNE Komma-Trenner: die Uncertainty-Patterns
+    # absorbieren "ca."/"circa"/etc. bereits ueber ihren Einheit-aehnlichen
+    # Trailing-Token-Loop. Regress-Anker: die Toleranz bleibt erhalten.
+    assert csv_loaders.parse_range("5.5 ± 0.3 ca.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5) circa") == pytest.approx((2.60, 2.70))
+    # Uncertainty + Komma-Trenner + Trailing-Marker: KRITISCHER Fix-Fall.
+    # Ohne Suffix-Strip faellt der Komma-Trenner auf ``(center, center)``-
+    # Kollaps zurueck und die Toleranz geht verloren.
+    assert csv_loaders.parse_range("5.5 ± 0.3, ca.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3), ca.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5), circa") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("100 ± 2, ungefaehr") == pytest.approx((98.0, 102.0))
+    # Uncertainty + Einheit + Komma-Trenner + Trailing-Marker: haeufigste
+    # Sammler-Notation aus mineralogischen Etiketten mit Nachtrag-Marker.
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³, ca.") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("2.65(5) g/cm³, circa") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5 ± 0.3 Mohs, geschaetzt") == pytest.approx((5.2, 5.8))
+    # Case-Insensitivitaet (spiegelt _APPROX_VALUE_PREFIX-Konvention).
+    assert csv_loaders.parse_range("5.5 CA.") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 Circa") == (5.5, 5.5)
+    assert csv_loaders.parse_range("500 GESCHAETZT") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 Vermutlich") == (500.0, 500.0)
+    # Leading + Trailing Marker in einer Rekursion: die beiden Strip-Zweige
+    # verkettet, damit "ca. 5.5 ± 0.3, ca." (beidseitige Kombination) die
+    # Toleranz behaelt.
+    assert csv_loaders.parse_range("ca. 5.5 ± 0.3, ca.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("etwa 2.65(5), circa") == pytest.approx((2.60, 2.70))
+    # DE-Komma-Dezimal-Locale mit Trailing-Marker (Excel-DE-Konvention).
+    assert csv_loaders.parse_range("5,5 ± 0,3, ca.") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2,65 vermutlich") == (2.65, 2.65)
+    # Range + Trailing-Marker (die Range-Grenzen bleiben nach dem Strip).
+    assert csv_loaders.parse_range("3-5 vermutlich") == (3.0, 5.0)
+    assert csv_loaders.parse_range("3.5-5.5 ca.") == (3.5, 5.5)
+    assert csv_loaders.parse_range("100-200 geschaetzt") == (100.0, 200.0)
+    # Kollisions-Schutz: aehnlich beginnende Woerter am Ende duerfen NICHT
+    # als Marker gelesen werden - der Vollwort-Anker via ``[.,;:!?]?\s*$``
+    # und die exakte Marker-Liste schuetzen vor Fehlmatches.
+    assert csv_loaders.parse_range("5.5 estimator") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 schaetzung") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 essentially") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 abouts") == (5.5, 5.5)
+    # Marker MUSS am String-Ende stehen (nicht mitten im Freitext) - eine
+    # Wort-Fortsetzung nach dem Marker verhindert den Suffix-Match, der
+    # Wert bleibt via Fallback-Extraktion Punkt-Range.
+    assert csv_loaders.parse_range("5 estimated Ref X") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5.5 ca. Ref Y") == (5.5, 5.5)
+    # FR/IT-Praepositions-Marker (vers/environ/verso/attorno) sind absichtlich
+    # NICHT im Trailing-Suffix - sie sind FR/IT-Praepositionen mit strikter
+    # Position-vor-Wert-Semantik (spiegelt die _TRAILING_APPROX_SUFFIX-
+    # Konvention aus validators.py, die dieselben Praepositions-Marker
+    # ebenfalls ausschliesst). Regress-Anker: die Formen bleiben Punkt-Range
+    # via Fallback.
+    assert csv_loaders.parse_range("5.5 vers") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 verso") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 environ") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 attorno") == (5.5, 5.5)
+    # Regress-Anker: die bestehenden Leading-Praefix-Formen bleiben unveraendert.
+    assert csv_loaders.parse_range("ca. 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("circa 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("etwa 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: reine Wert-Zellen ohne Marker bleiben Punkt-Range.
+    assert csv_loaders.parse_range("5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("500") == (500.0, 500.0)
+
+
 def test_read_ids_from_file_basisformen(tmp_path):
     """Regress-Anker: Kommentare/Leerzeilen/Inline-Kommentare/Trim.
 

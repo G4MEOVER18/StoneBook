@@ -304,6 +304,76 @@ _APPROX_VALUE_PREFIX = re.compile(
     re.IGNORECASE,
 )
 
+# Trailing Annaeherungs-Suffix am String-Ende: spiegelt :data:`_APPROX_VALUE_PREFIX`
+# auf die Suffix-Achse, strukturell identisch zu :data:`stonebook.migration.validators.
+# _TRAILING_APPROX_SUFFIX` fuer die Wert-Achse. Sammler-Notizen aus geerbten
+# Etiketten/Katalogen setzen den Praezisions-Marker regelmaessig NACH dem Wert
+# ("5.5 ca.", "2.65 g/cm³ circa", "500 CHF geschaetzt", "Dichte 2.65 ± 0.05,
+# ca.") - typische Reihenfolge in handschriftlichen Etiketten und in
+# Excel-CSV-Zeilen, wo der Nutzer den Wert eingibt und den Praezisions-Marker
+# nachtraeglich anfuegt.
+#
+# Bei reinen Wert-Zellen ohne Uncertainty-Struktur ("5.5 ca.", "500 vermutlich")
+# ist der Effekt der Trailing-Form verlustfrei via Fallback-Zahl-Extraktion
+# ((5.5, 5.5) bleibt (5.5, 5.5), die Approximations-Semantik geht in die
+# notizen-Spalte). Kritisch ist die Kombination mit Uncertainty-Notation, in
+# der eine Trennung des Wert-Ausdrucks vom Marker via Komma steht - genau die
+# in Sammler-Notizen verbreitete Notation "5.5 ± 0.3, ca.", "2.65(5), circa",
+# "2.65 g/cm³ ± 0.05, ungefaehr". Die Uncertainty-Patterns
+# :data:`_PLUS_MINUS_UNCERTAINTY` / :data:`_PARENTHESIS_UNCERTAINTY` absorbieren
+# Trailing-Tokens ohne Komma (der Trailing-Token-Loop in beiden Patterns
+# akzeptiert ``ca.``/``circa``/``geschaetzt`` als Einheit-aehnliche Tokens),
+# aber eine ``,`` bricht die Token-Kette und das End-Anker-Matching schlaegt fehl.
+# Ohne Suffix-Strip fielen alle Komma-getrennten Formen still auf die Fallback-
+# Zahl-Extraktion durch und lieferten via ``[center, tol]``-inverted-range-
+# Kollaps ``(center, center)`` (Toleranz verloren) - identischer Bug-Effekt
+# wie in der Leading-Form vor Einfuehrung von :data:`_APPROX_VALUE_PREFIX`.
+#
+# Marker-Menge spiegelt :data:`_APPROX_VALUE_PREFIX` MINUS die als Trailing-Form
+# nicht praxisrelevanten Vokabeln: ``um``/``gegen`` (starke Praepositions-
+# Ambivalenz - "5 um Grenze zu setzen" waere fehlinterpretiert), ``~``/``≈``
+# (typografische Marker konventionell nur als Praefix, spiegelt die
+# _TRAILING_APPROX_SUFFIX-Konvention in validators.py), ``vers``/``environ``/
+# ``verso``/``attorno`` (FR/IT-Praepositionen, in typischer FR/IT-Sammler-Notation
+# nur als Praefix vor dem Wert - "vers 500 CHF" ja, "500 CHF vers" nein, spiegelt
+# die Praeposition-nur-links-Konvention der Sprach-Konvention selbst).
+#
+# ``[\s,]+`` als Trenner vor dem Marker (statt reinem ``\s+``): akzeptiert
+# sowohl reine Whitespace-Trennung ("5.5 ± 0.3 ca.", die typographisch saubere
+# Form ohne Interpunktion zwischen Wert-Ausdruck und Marker) als auch die
+# Komma-getrennte Sammler-Notation ("5.5 ± 0.3, ca.", die in geerbten Notizen
+# haeufigere Form mit Komma-Trenner). Erweitert damit die von
+# :data:`stonebook.migration.validators._TRAILING_APPROX_SUFFIX` verwendete
+# reine ``\s+``-Trennung auf die Wert-Achse-spezifische Notation - Datums-
+# Zellen enthalten praktisch nie ein Komma vor dem Praezisions-Marker
+# ("13.06.2024, ca." ist sehr unueblich), Wert-Zellen mit Uncertainty-Struktur
+# ("5.5 ± 0.3, ca.") aber sehr wohl.
+#
+# ``\s*[.,;:!?]?\s*$`` erlaubt ein einzelnes Trailing-Satzzeichen nach dem
+# Marker: ``ca.`` (der Marker selbst enthaelt Punkt, ``ca\.?`` matcht ihn) ohne
+# weiteren Punkt, ``circa.`` (Marker ohne Punkt + Zeilen-End-Punkt aus Excel-
+# Autocomplete), ``geschaetzt,`` (Marker + Freitext-Fortsetzung wurde bereits
+# als "..., ca." bzw. anderer Punkt-Setz-Konvention abgetrennt und liegt vor
+# dem letzten Marker). Case-insensitiv (Excel-Autocorrect "Ca."/"Circa"/
+# "GESCHAETZT"). Wird in :func:`parse_range` NACH dem :data:`_APPROX_VALUE_PREFIX`-
+# Strip einsortiert, damit Leading- und Trailing-Strip in einer Rekursion
+# verkettet werden koennen ("ca. 5.5 ± 0.3, ca." -> Leading-Strip auf
+# "5.5 ± 0.3, ca." -> Rekursion greift den Trailing-Strip).
+_APPROX_VALUE_SUFFIX = re.compile(
+    r"[\s,]+(?:"
+    r"ca\.?|circa|approx\.?|approximately"
+    r"|around|about|roughly|estimated|est\."
+    r"|etwa|vermutlich"
+    r"|sch[äa]tzungsweise|schaetzungsweise"
+    r"|ungef[äa]hr|ungefaehr"
+    r"|gesch[äa]tzt|geschaetzt"
+    r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
+    r"|evtl\.?|eventuell"
+    r"|perhaps|possibly|maybe"
+    r")\s*[.,;:!?]?\s*$",
+    re.IGNORECASE,
+)
+
 # Einseitige Vergleichs-Grenze am String-Anfang: ``< 5``, ``> 5``, ``<= 5``,
 # ``>= 5``, ``≤ 5``, ``≥ 5``. Semantisch eine offene Range-Grenze (untere ODER
 # obere), keine Punkt-Angabe: ``< 5`` heisst "kleiner als 5" -> Range (-inf, 5),
@@ -1668,6 +1738,20 @@ def parse_range(text) -> tuple[float | None, float | None]:
         rest = _APPROX_VALUE_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_range(rest)
+    # Trailing Annaeherungs-Suffix am String-Ende strippen ("5.5 ± 0.3, ca." ->
+    # "5.5 ± 0.3", "2.65(5) circa" -> "2.65(5)", "500 CHF geschaetzt" -> "500 CHF").
+    # Siehe :data:`_APPROX_VALUE_SUFFIX` fuer Details: die Uncertainty-Patterns
+    # akzeptieren zwar Trailing-Tokens ohne Komma als Einheit-Alternative, aber
+    # eine ``,`` bricht die Token-Kette und das End-Anker-Matching schlaegt fehl -
+    # der Fallback via ``[center, tol]``-inverted-Range-Kollaps liefert ``(center,
+    # center)`` (Toleranz verloren). Der Suffix modifiziert nur die Praezisions-
+    # Angabe des Wert-Ausdrucks, nicht die Toleranz-Struktur - Strip + Rekursion
+    # analog zum :data:`_APPROX_VALUE_PREFIX`-Muster. Nach dem Leading-Strip
+    # einsortiert, damit "ca. 5.5 ± 0.3, ca." (beidseitige Marker-Kombination)
+    # in einer Rekursion aufgeloest wird.
+    suffix_stripped = _APPROX_VALUE_SUFFIX.sub("", s, count=1).strip()
+    if suffix_stripped and suffix_stripped != s:
+        return parse_range(suffix_stripped)
     # Einseitige Vergleichs-Grenze (``<``/``>``/``<=``/``>=``/``≤``/``≥``) am
     # String-Anfang: der Marker wird konsumiert, der Rest via parse_range
     # rekursiv geparst und das Ergebnis auf eine offene Bereichs-Grenze
