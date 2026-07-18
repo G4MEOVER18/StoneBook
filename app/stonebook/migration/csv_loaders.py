@@ -440,6 +440,83 @@ _APPROX_VALUE_SUFFIX = re.compile(
     re.IGNORECASE,
 )
 
+# ASCII-Ersatzformen des Unicode-±-Praefix am String-Anfang: ``+/-`` (Standard-
+# ASCII-Ersatz aus 7-bit-Mail-Transports, Terminal-Ausgaben, LaTeX-Roh-Exporten)
+# und ``+-`` (kompakte ASCII-Form, verbreitet in Excel-CSV-Kopien mit Character-
+# Set-Verlust und in geerbten Text-Notizen). Spiegelt strukturell die transparente
+# Naturalisierung des Unicode-``±``-Praefix durch :data:`_NUM_RE`: das Symbol
+# ist non-digit und wird als Vorzeichen-blockierendes Zeichen von der
+# Sign-Alternante durchgelassen, sodass die folgende Ziffer als positiver
+# Center-Wert extrahiert wird - ``±5.5`` -> (5.5, 5.5), semantisch "5.5 mit
+# implizite Unsicherheit". Die Trailing-Uncertainty-Form ``5.5 +/- 0.3`` /
+# ``5.5 +- 0.3`` ist bereits ueber :data:`_PLUS_MINUS_UNCERTAINTY` abgedeckt
+# (dort matcht der ``\+/-|\+-``-Zweig zwischen Center und Toleranz-Zahl); der
+# Leading-Praefix-Strip macht die Symmetrie zwischen Trailing- und Leading-
+# ASCII-Marker vollstaendig und schliesst die letzte Kollision zwischen den
+# Unicode- und ASCII-Formen der Uncertainty-Notation.
+#
+# Ohne diesen Strip ergibt sich eine silente Vorzeichen-Inversion bei ASCII-
+# Formen OHNE Whitespace zwischen Marker und Wert - eine typische Notation
+# aus Hand-Notation und aus Terminal-/Mail-Copy-Paste ohne Whitespace-Pflege:
+#
+#   ``"± 5.5"``    -> (5.5, 5.5)    (Unicode-±: naturally works via _NUM_RE-Skip)
+#   ``"± 5.5"``    -> (5.5, 5.5)    (Unicode-± ohne Whitespace: naturally works)
+#   ``"+/- 5.5"``  -> (5.5, 5.5)    (ASCII mit Whitespace: naturally works)
+#   ``"+/-5.5"``   -> (-5.5, -5.5)  (ASCII OHNE Whitespace: silente Sign-Inversion)
+#   ``"+-5.5"``    -> (-5.5, -5.5)  (ASCII kompakt ohne Whitespace: silente Sign-Inversion)
+#
+# Ohne Whitespace faellt der Trailing-``-`` des ASCII-Markers in _NUM_RE
+# unmittelbar vor die Ziffer, wird von der ``(?:(?<![\d.])-)?``-Sign-Alternante
+# als Vorzeichen an die folgende Zahl gebunden und das Ergebnis ist ein
+# negativer Center-Wert - wo semantisch ein positiver Center mit implizite
+# Unsicherheit gemeint war. Bei der Migration aus Text-Notizen, Terminal-
+# Ausgaben (Diagnose-Reports mit ``+/-``-Toleranz-Notation, oft ohne
+# Whitespace geschrieben) und Excel-CSV-Zeilen mit Character-Set-Verlust
+# (``±`` -> ``+/-``-ASCII-Fallback) entsteht damit silenter Vorzeichen-
+# Datenverlust auf jeder Wert-Zelle mit Leading-ASCII-±-Marker - der Wert
+# wird bei jeder Auswertung (Statistik-Report, Sortierung, JSON-Export) mit
+# invertiertem Vorzeichen gefuehrt.
+#
+# ``\+/?-`` matcht beide ASCII-Formen: ``+/-`` (mit Slash-Trenner, die
+# verbreitete ASCII-Konvention) und ``+-`` (ohne Slash, die kompakte Form).
+# ``\s*`` erlaubt optionale Whitespace-Trennung zwischen Marker und Wert
+# (idempotent zum naturally-working Whitespace-Fall - der Strip wirkt sich
+# dort semantisch nicht aus, weil _NUM_RE die positive Zahl ohnehin
+# extrahiert hat). Das Lookahead ``(?=[.\d])`` fordert eine Ziffer oder
+# leading-dot-Dezimal (``.5`` = 0.5) unmittelbar nach dem Marker (ggf. mit
+# Whitespace dazwischen), damit der Strip *nicht* auf pathologische
+# Sequenzen wie ``+/-abc`` oder ``+/-`` allein greift (dort faellt der
+# Strip ohnehin sinnvoll auf die Fallback-Zahl-Suche durch, aber der
+# Lookahead macht den Guard explizit und schuetzt vor kuenstlichen
+# Konflikten mit spaeter eingefuehrten Marker-Patterns).
+#
+# Wird in :func:`parse_range` nach :data:`_APPROX_VALUE_PREFIX` und
+# :data:`_LEADING_CURRENCY_PREFIX` einsortiert, damit die Verkettung
+# ``"ca. +/-5.5"`` / ``"CHF +/-500"`` transparent ueber die bereits
+# etablierte Praefix-Rekursions-Semantik aufloest: Approx-Strip ->
+# ``"+/-5.5"`` -> ASCII-PM-Strip -> ``"5.5"`` -> Fallback (5.5, 5.5). Vor
+# den Uncertainty-Zweigen einsortiert, damit ``"+/-5.5 ± 0.3"`` (Leading-
+# ASCII-± Marker + Trailing-Uncertainty) via Rekursion die Toleranz behaelt:
+# ASCII-PM-Strip -> ``"5.5 ± 0.3"`` -> Uncertainty-Match (5.2, 5.8). Vor
+# dem Vergleichs-Zweig einsortiert, damit ``"< +/-5.5"`` transparent auf
+# ``"< 5.5"`` reduziert und die obere-Grenze-Semantik (None, 5.5) liefert
+# (nicht praxisrelevant, aber verlustfrei via Rekursion).
+#
+# Kollisionsfrei zur negativen Sign-Bindung in _NUM_RE: der Strip laeuft
+# VOR der Zahl-Extraktion und entfernt genau die ASCII-±-Marker-Sequenz -
+# die Sign-Alternante von _NUM_RE sieht danach eine reine Ziffer ohne
+# Vorzeichen und liefert den positiven Center-Wert. Kollisionsfrei zu
+# tatsaechlichen negativen Werten wie ``"-5.5"`` (kein ``+`` am Anfang,
+# Strip blockt an ``^\s*\+``) und zu positiven Vorzeichen ``"+5.5"``
+# (kein ``-`` nach ``+``, Strip blockt an ``\+/?-`` - die Sequenz ``+5``
+# hat weder ``/`` noch ``-`` an der Position). Kollisionsfrei zu ASCII-±-
+# Notation OHNE Whitespace VOR Range-Grenzen wie ``"+/-5-10"`` (unklare
+# Semantik: gemeint entweder ``"+/-5 bis 10"`` oder ``"+/-5 bis -10"``);
+# der Strip liest den Marker als Praezisions-Modifier des ersten Werts
+# und rekursiert auf ``"5-10"`` -> (5.0, 10.0), was der wahrscheinlicheren
+# Interpretation entspricht.
+_LEADING_ASCII_PM_MARKER = re.compile(r"^\s*\+/?-\s*(?=[.\d])")
+
 # Einseitige Vergleichs-Grenze am String-Anfang: ``< 5``, ``> 5``, ``<= 5``,
 # ``>= 5``, ``≤ 5``, ``≥ 5``. Semantisch eine offene Range-Grenze (untere ODER
 # obere), keine Punkt-Angabe: ``< 5`` heisst "kleiner als 5" -> Range (-inf, 5),
@@ -1854,6 +1931,23 @@ def parse_range(text) -> tuple[float | None, float | None]:
     suffix_stripped = _APPROX_VALUE_SUFFIX.sub("", s, count=1).strip()
     if suffix_stripped and suffix_stripped != s:
         return parse_range(suffix_stripped)
+    # ASCII-Ersatzformen des Unicode-±-Praefix am String-Anfang strippen
+    # ("+/-5.5" -> "5.5", "+-5.5" -> "5.5"). Siehe :data:`_LEADING_ASCII_PM_MARKER`
+    # fuer Details: das Unicode-``±`` wird transparent via _NUM_RE-Skip als
+    # Vorzeichen-blockierendes Non-Digit-Zeichen behandelt und liefert die
+    # folgende Ziffer als positiven Center-Wert; die ASCII-Ersatzformen ``+/-``
+    # und ``+-`` enden aber auf ``-`` und werden ohne Whitespace vor dem Wert
+    # von der Sign-Alternante als Vorzeichen an die Zahl gebunden - Ergebnis
+    # ist ein silenter negativer Center-Wert, wo semantisch ein positiver
+    # gemeint war. Strip + Rekursion analog zur :data:`_APPROX_VALUE_PREFIX`-
+    # Kette, sodass die Verkettung mit anderen Praefixen (``"ca. +/-5.5"``,
+    # ``"CHF +/-500"``, ``"< +/-5.5"``) transparent aufloest und die
+    # Uncertainty-Kombination ``"+/-5.5 ± 0.3"`` die publizierte Toleranz
+    # behaelt.
+    if _LEADING_ASCII_PM_MARKER.match(s):
+        rest = _LEADING_ASCII_PM_MARKER.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_range(rest)
     # Einseitige Vergleichs-Grenze (``<``/``>``/``<=``/``>=``/``≤``/``≥``) am
     # String-Anfang: der Marker wird konsumiert, der Rest via parse_range
     # rekursiv geparst und das Ergebnis auf eine offene Bereichs-Grenze

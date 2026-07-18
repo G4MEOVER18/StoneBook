@@ -377,6 +377,144 @@ def test_parse_range_plus_minus_ascii_ersatzform():
     assert csv_loaders.parse_range("5.5 +/- 0.3 (Literatur)") == pytest.approx((5.2, 5.8))
 
 
+def test_parse_range_leading_ascii_pm_marker_ohne_whitespace():
+    """ASCII-Ersatzformen ``+/-`` und ``+-`` am String-Anfang OHNE Whitespace
+    vor dem Wert liefern denselben positiven Center-Wert wie die Unicode-Langform
+    ``±`` - der Marker gilt als Praezisions-Modifier, nicht als Sign-Bindung.
+
+    Silenter Bug ohne den Fix: Wo das Unicode-``±`` transparent via _NUM_RE-Skip
+    als Vorzeichen-blockierendes Non-Digit-Zeichen behandelt wird (``±5.5``
+    -> (5.5, 5.5)), enden die ASCII-Ersatzformen auf ``-`` und werden ohne
+    Whitespace vor dem Wert von der Sign-Alternante als Vorzeichen an die Zahl
+    gebunden:
+
+    * ``"±5.5"``    -> (5.5, 5.5)    (Unicode-±: naturally works)
+    * ``"± 5.5"``   -> (5.5, 5.5)    (Unicode-± mit Whitespace: naturally works)
+    * ``"+/- 5.5"`` -> (5.5, 5.5)    (ASCII mit Whitespace: naturally works)
+    * ``"+/-5.5"``  -> (-5.5, -5.5)  (ASCII OHNE Whitespace: silente Sign-Inversion)
+    * ``"+-5.5"``   -> (-5.5, -5.5)  (ASCII kompakt ohne Whitespace: silente Sign-Inversion)
+
+    Bei der Migration aus Hand-Notation (Sammler tippt ``+/-`` ohne Whitespace
+    zur Kompaktheit), aus Terminal-Diagnose-Reports (``+/-``-Toleranz-Notation
+    aus Mess-/Kalibrier-Tools ohne konsistente Whitespace-Pflege) und aus
+    Excel-CSV-Zeilen mit Character-Set-Verlust (``±`` -> ``+/-``-ASCII-Fallback
+    beim CSV-Export ohne Whitespace-Normalisierung) entstand damit silenter
+    Vorzeichen-Datenverlust auf jeder Wert-Zelle mit Leading-ASCII-±-Marker.
+    Im schlimmsten Fall (Wert in einer Statistik-Aggregation) verzerrte die
+    Vorzeichen-Inversion Summen/Durchschnitte/Median-Werte und machte den
+    Wert ununterscheidbar von einem echten negativen Messwert - die
+    Migration schrieb Wert_CHF_roh=-500 statt 500, Wert_CHF_poliert=-1000
+    statt 1000, oder Temperatur_min=-5 statt 5.
+
+    Der Fix strippt den ASCII-Praefix (``+/-`` oder ``+-``) am String-Anfang
+    per Regex ``^\\s*\\+/?-\\s*`` und rekursiert auf den verbleibenden Wert -
+    identisches Strip-und-Rekursions-Muster zu :data:`_APPROX_VALUE_PREFIX`
+    und :data:`_LEADING_CURRENCY_PREFIX`. Die Trailing-Uncertainty-Form
+    (``5.5 +/- 0.3``) bleibt unveraendert (dort matcht ohnehin
+    :data:`_PLUS_MINUS_UNCERTAINTY` und der Leading-Strip-Zweig blockt an
+    der Center-Zahl vor dem Marker).
+    """
+    # Standard-ASCII-Form ``+/-`` OHNE Whitespace (der eigentliche Bug-Fall).
+    # Vor dem Fix: (-5.5, -5.5) via _NUM_RE-Sign-Bindung; nach dem Fix:
+    # (5.5, 5.5) via Praefix-Strip und Rekursion.
+    assert csv_loaders.parse_range("+/-5.5") == (5.5, 5.5)
+    # Kompakte ASCII-Form ``+-`` ohne Slash-Trenner (spiegelt +/- auf die
+    # kompakte Konvention aus Hand-Notation und aus Notizen ohne Slash-
+    # Konvention).
+    assert csv_loaders.parse_range("+-5.5") == (5.5, 5.5)
+    # Idempotenz-Anker: die bereits naturally-working Whitespace-Form bleibt
+    # unveraendert (der Strip wirkt sich semantisch nicht aus, weil _NUM_RE
+    # die positive Zahl ohnehin extrahiert).
+    assert csv_loaders.parse_range("+/- 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("+- 5.5") == (5.5, 5.5)
+    # Ganzzahliger Center (typische Preis-Notation aus Auktions-Katalogen
+    # mit ASCII-Toleranz-Marker ohne Whitespace: ``+/-500 CHF``).
+    assert csv_loaders.parse_range("+/-500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("+-100") == (100.0, 100.0)
+    # DE-Komma-Dezimal mit ASCII-Praefix (Excel-DE-Roh-Export mit Character-
+    # Set-Verlust: ``±`` wurde bei der CSV-Serialisierung durch ``+/-`` ohne
+    # Whitespace ersetzt).
+    assert csv_loaders.parse_range("+/-2,65") == (2.65, 2.65)
+    assert csv_loaders.parse_range("+-2,65") == (2.65, 2.65)
+    # Leading-Dot-Dezimal ohne fuehrende Null (US-Konvention "no leading
+    # zero") nach dem Praefix - das Lookahead ``(?=[.\d])`` akzeptiert
+    # sowohl Digit als auch Dezimalpunkt-plus-Digit.
+    assert csv_loaders.parse_range("+/-.5") == (0.5, 0.5)
+    assert csv_loaders.parse_range("+-.5") == (0.5, 0.5)
+    # Kombination Leading-Praefix + Trailing-Uncertainty: der Praefix-Strip
+    # laeuft VOR den Uncertainty-Patterns, die publizierte Toleranz wird
+    # nach dem Strip via _PLUS_MINUS_UNCERTAINTY-Match auf die korrekten
+    # Bereichs-Grenzen aufgeloest.
+    assert csv_loaders.parse_range("+/-5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("+-5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Praefix + IUCr-Kompaktform: spiegelt die Langform-
+    # Kombination auf die Parenthesis-Uncertainty-Achse.
+    assert csv_loaders.parse_range("+/-5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("+-5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Annaeherungs-Praefix + ASCII-±-Praefix: der Approx-Strip
+    # laeuft zuerst, dann der ASCII-±-Strip via Rekursion, dann die
+    # Fallback-Zahl-Extraktion. Zweistufige Praefix-Rekursion.
+    assert csv_loaders.parse_range("ca. +/-5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("circa +/-5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("~+/-5.5") == (5.5, 5.5)
+    # Kombination Leading-Waehrungs-Praefix + ASCII-±-Praefix: typische
+    # Preis-Notation aus Auktions-Katalogen mit ASCII-Toleranz-Marker
+    # (``CHF +/-500`` = "Preis-Schaetzung um 500 CHF mit implizite
+    # Unsicherheit").
+    assert csv_loaders.parse_range("CHF +/-500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("$+/-500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("EUR +-500") == (500.0, 500.0)
+    # Vergleichs-Marker-Praefix + ASCII-±-Praefix: der Vergleichs-Zweig
+    # konsumiert den ``<``/``>`` und rekursiert auf den verbleibenden
+    # ASCII-±-Wert - die Semantik ist nicht praxisrelevant, aber verlustfrei.
+    assert csv_loaders.parse_range("< +/-5.5") == (None, 5.5)
+    assert csv_loaders.parse_range("> +/-5.5") == (5.5, None)
+    # DE/EN-Approx-Suffix am Ende + Leading-ASCII-±-Praefix (beidseitige
+    # Marker-Kombination): "+/-5.5, ca." -> Suffix-Strip -> "+/-5.5" ->
+    # ASCII-±-Strip -> "5.5" -> Fallback.
+    assert csv_loaders.parse_range("+/-5.5, ca.") == (5.5, 5.5)
+    assert csv_loaders.parse_range("+-5.5, geschaetzt") == (5.5, 5.5)
+    # Range nach ASCII-±-Praefix: der Strip konsumiert den Marker, der Rest
+    # wird als normaler Range gelesen (siehe Kollisions-Kommentar in
+    # _LEADING_ASCII_PM_MARKER: die Semantik "+/-5-10" ist mehrdeutig,
+    # aber der Strip liefert die wahrscheinlichere Range-Interpretation).
+    assert csv_loaders.parse_range("+/-5-10") == (5.0, 10.0)
+    # Trailing-Einheit nach ASCII-±-Praefix-Wert: die Einheit hat keine
+    # Zahlen und stoert die Extraktion nicht.
+    assert csv_loaders.parse_range("+/-5.5 mm") == (5.5, 5.5)
+    assert csv_loaders.parse_range("+-2.65 g/cm³") == (2.65, 2.65)
+    # Case-Insensitivitaets-Regression: die ASCII-Zeichen ``+``/``-``/``/``
+    # sind selbst case-invariant; der Praefix-Test ist deterministisch.
+    # Regression-Anker: reine negative Werte OHNE ``+``-Praefix bleiben
+    # unveraendert (der Strip blockt an ``^\s*\+``).
+    assert csv_loaders.parse_range("-5.5") == (-5.5, -5.5)
+    assert csv_loaders.parse_range("-100") == (-100.0, -100.0)
+    # Regression-Anker: reine positive Vorzeichen ``+5.5`` bleiben
+    # unveraendert (der Strip blockt an ``\+/?-`` - die Sequenz ``+5`` hat
+    # weder ``/`` noch ``-`` an der Position).
+    assert csv_loaders.parse_range("+5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("+100") == (100.0, 100.0)
+    # Regression-Anker: Trailing-Uncertainty-Form ohne Leading-Praefix
+    # bleibt unveraendert (der neue Zweig blockt am Praefix-Fehlen, die
+    # etablierte _PLUS_MINUS_UNCERTAINTY-Semantik greift).
+    assert csv_loaders.parse_range("5.5 +/- 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 +- 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5+/-0.3") == pytest.approx((5.2, 5.8))
+    # Regression-Anker: reine Wert-Zellen ohne Marker bleiben unveraendert.
+    assert csv_loaders.parse_range("5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    # Regression-Anker: pathologische Sequenzen ohne folgende Zahl (der
+    # Lookahead ``(?=[.\d])`` blockt den Strip und die Fallback-Zahl-Suche
+    # liefert None-None).
+    assert csv_loaders.parse_range("+/-") == (None, None)
+    assert csv_loaders.parse_range("+-") == (None, None)
+    assert csv_loaders.parse_range("+/-abc") == (None, None)
+    assert csv_loaders.parse_range("+-xyz") == (None, None)
+    # Regression-Anker: leere Eingabe und None bleiben (None, None).
+    assert csv_loaders.parse_range("") == (None, None)
+    assert csv_loaders.parse_range(None) == (None, None)
+
+
 def test_parse_range_uncertainty_mit_trailing_einheit():
     """Unsicherheits-Notation mit nachgestellter Einheit behaelt die publizierte Toleranz.
 
