@@ -286,6 +286,28 @@ _NUM_RE = re.compile(
 # ``vers`` matcht nicht in ``versichert``/``verse``/``versa``; ``environ`` nicht in
 # ``environment``/``environments``; ``verso`` nicht in ``versoehnung``/``version``;
 # ``attorno`` hat keinen DE/EN-Wortstamm-Konflikt.
+#
+# Die Symbolic-Marker-Klasse ``[~≈≅≃]`` deckt neben ASCII-Tilde (U+007E) und
+# Almost-Equal (``≈`` U+2248) auch die beiden weiteren, in Physik-/Engineering-/
+# Mineralogie-Publikationen gebraeuchlichen Unicode-Naeherungs-Symbole ab:
+# ``≅`` (U+2245, "APPROXIMATELY EQUAL TO", der LaTeX-Befehl ``\cong`` rendert
+# genau dieses Zeichen) und ``≃`` (U+2243, "ASYMPTOTICALLY EQUAL TO", LaTeX
+# ``\simeq``). Beide sind in Print-Publikationen und in aus LaTeX exportierten
+# Datenbank-CSVs verbreitete Naeherungs-Marker mit semantisch identischer
+# Bedeutung zu ``≈``/``~`` - "der Wert ist ungefaehr X". Bisher fielen alle
+# Formen mit diesen zwei Marker-Varianten still auf die Fallback-Zahl-
+# Extraktion durch, weil die Zeichenklasse nur ``~`` und ``≈`` enthielt; bei
+# Kombination mit Uncertainty ("≅ 5.5 ± 0.3", "≃ 2.65(5)") fiel ausserdem die
+# publizierte Toleranz ueber den ``[center, tol]``-inverted-Range-Kollaps auf
+# ``(center, center)`` still verloren - identischer Bug-Effekt wie bei
+# ``~``/``≈`` vor Einfuehrung dieser Klasse. Sammler-Notizen aus wissenschaft-
+# lichen Publikationen (IUCr-/NIST-/RRUFF-Tabellen mit ``≅``-annotierten
+# Referenz-Werten) und aus LaTeX-Autoformat-Quellen (``\cong``/``\simeq``
+# rendert Print zu ``≅``/``≃``) entstand damit silenter Praezisions-Datenverlust
+# auf jeder Wert-Achse mit diesen zwei Symbolen. Der Fix ist strukturell strikt
+# additiv - keine bestehende Match-Semantik veraendert sich. Case-Neutralitaet
+# ist bei Symbolen ohne Case-Distinktion nicht wirksam, aber re.IGNORECASE
+# bleibt fuer die Wort-Vokabeln in der Alternate-Kette weiterhin aktiv.
 _APPROX_VALUE_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:ca\.?|circa|approx\.?|approximately"
@@ -299,7 +321,7 @@ _APPROX_VALUE_PREFIX = re.compile(
     r"|perhaps|possibly|maybe"
     r"|vers|environ|verso|attorno"
     r")\s+"
-    r"|[~≈]\s*"
+    r"|[~≈≅≃]\s*"
     r")",
     re.IGNORECASE,
 )

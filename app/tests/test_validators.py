@@ -1644,6 +1644,70 @@ def test_parse_iso_date_annaeherungs_symbol():
     assert parse_iso_date("etwa 1985") == "1985-01-01"
 
 
+def test_parse_iso_date_annaeherungs_symbol_cong_simeq():
+    """Unicode-Naeherungs-Marker ``≅`` (U+2245, LaTeX \\cong) und ``≃`` (U+2243,
+    LaTeX \\simeq) als Leading-Approximations-Praefix vor dem Datum.
+
+    Spiegelt strukturell die bereits vorhandene Symbolic-Marker-Klasse
+    ``[~≈]`` auf zwei weitere, in Print-/LaTeX-Publikationen und in aus
+    LaTeX-exportierten Datenbank-CSVs (IUCr, NIST, RRUFF, Mindat.org)
+    gebraeuchliche Unicode-Symbole. In wissenschaftlichen Referenz-Tabellen
+    rendert der LaTeX-Befehl ``\\cong`` zu ``≅`` und ``\\simeq`` zu ``≃`` -
+    beide semantisch identisch zu ``≈``/``~`` (Naeherungs-Marker vor der
+    Datums-Angabe). Sammler-Notizen aus wissenschaftlichen Publikationen mit
+    LaTeX-Setz uebernehmen den Marker beim Copy&Paste unmittelbar vor der
+    Fund-/Erwerbs-/Publikations-Jahresangabe.
+
+    Bisher fielen alle Formen mit diesen zwei Marker-Varianten still auf None,
+    obwohl semantisch identisch zu ``≈``/``~``/``ca.``/``circa``. Spiegelt die
+    identische Klassen-Erweiterung in :data:`stonebook.migration.csv_loaders.
+    _APPROX_VALUE_PREFIX` auf die Datums-Achse.
+    """
+    # ≅ (U+2245, APPROXIMATELY EQUAL TO, LaTeX \cong) - null Leerzeichen erlaubt.
+    assert parse_iso_date("≅1985") == "1985-01-01"
+    assert parse_iso_date("≅ 1985") == "1985-01-01"
+    assert parse_iso_date("≅Juni 2024") == "2024-06-01"
+    assert parse_iso_date("≅ Juni 2024") == "2024-06-01"
+    assert parse_iso_date("≅13.06.2024") == "2024-06-13"
+    assert parse_iso_date("≅2024-06") == "2024-06-01"
+    # ≃ (U+2243, ASYMPTOTICALLY EQUAL TO, LaTeX \simeq).
+    assert parse_iso_date("≃1985") == "1985-01-01"
+    assert parse_iso_date("≃ 1985") == "1985-01-01"
+    assert parse_iso_date("≃Juni 2024") == "2024-06-01"
+    assert parse_iso_date("≃13.06.2024") == "2024-06-13"
+    assert parse_iso_date("≃2024-06") == "2024-06-01"
+    # Verkettet mit Wort-Praefix (rekursive Strippung): semantisch redundant,
+    # aber unschaedlich - jeder Praefix wird einmal pro Rekursionsebene gestrippt.
+    assert parse_iso_date("≅ca. 1985") == "1985-01-01"
+    assert parse_iso_date("≃ circa 2020") == "2020-01-01"
+    # Verkettet mit den bereits vorhandenen Symbolic-Markern (verschiedene
+    # Marker-Kombinationen) - rekursiver Strip loest die Kette symmetrisch auf.
+    assert parse_iso_date("≅~1985") == "1985-01-01"
+    assert parse_iso_date("≃≈2020") == "2020-01-01"
+    assert parse_iso_date("~≅1985") == "1985-01-01"
+    # DE-/EN-Datum mit Monatsnamen und Tag.
+    assert parse_iso_date("≅13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("≃June 13, 2024") == "2024-06-13"
+    # Dekaden-/Jahrhundert-/Saison-Formen mit dem neuen Praefix.
+    assert parse_iso_date("≅1980er") == "1980-01-01"
+    assert parse_iso_date("≃Sommer 2024") == "2024-06-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None (spiegelt ``~``/``≈``).
+    assert parse_iso_date("≅") is None
+    assert parse_iso_date("≃") is None
+    assert parse_iso_date("≅abc") is None
+    assert parse_iso_date("≃1700") is None  # ausserhalb 1800-2999
+    # Praefix nur am Anfang gestrippt - mittendrin/am Ende bleibt die Eingabe
+    # wie sie ist und matcht keinen Datums-Parser.
+    assert parse_iso_date("1985≅") is None
+    assert parse_iso_date("X ≃ 1985") is None
+    # Regress: die bereits vorher unterstuetzten Symbole bleiben unveraendert.
+    assert parse_iso_date("~1985") == "1985-01-01"
+    assert parse_iso_date("≈1985") == "1985-01-01"
+    # Regress: Wort-Praefixe unveraendert.
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+
+
 def test_parse_iso_date_wahrscheinlichkeits_praefix():
     """Wahrscheinlichkeits-/Vermutungs-Marker (DE/EN) als Praefix vor dem Datum.
 

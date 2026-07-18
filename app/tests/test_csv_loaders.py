@@ -3897,6 +3897,85 @@ def test_parse_range_annaeherungs_praefix_mit_uncertainty():
     assert csv_loaders.parse_range("5.5-7.5") == (5.5, 7.5)
 
 
+def test_parse_range_annaeherungs_praefix_unicode_cong_simeq():
+    """Unicode-Naeherungs-Marker ``≅`` (U+2245, LaTeX \\cong) und ``≃`` (U+2243,
+    LaTeX \\simeq) als Leading-Approximations-Praefix.
+
+    Spiegelt strukturell die bereits vorhandene Symbolic-Marker-Klasse
+    ``[~≈]`` auf zwei weitere, in Print-/LaTeX-Publikationen und in aus
+    LaTeX-exportierten Datenbank-CSVs gebraeuchliche Unicode-Symbole. In
+    Physik-/Engineering-/Mineralogie-Referenz-Tabellen (IUCr, NIST, RRUFF-
+    Datenbank, Handbook of Mineralogy) rendert der LaTeX-Befehl ``\\cong``
+    zu ``≅`` und ``\\simeq`` zu ``≃`` - beide semantisch identisch zu
+    ``≈``/``~`` (Naeherungs-Marker vor dem Wert).
+
+    Bisher fielen alle Formen mit diesen zwei Marker-Varianten still auf die
+    Fallback-Zahl-Extraktion durch; bei Uncertainty-Kombinationen ("≅ 5.5 ±
+    0.3", "≃ 2.65(5)") fiel ausserdem die publizierte Toleranz ueber den
+    ``[center, tol]``-inverted-Range-Kollaps auf ``(center, center)`` still
+    verloren - identischer Bug-Effekt wie bei ``~``/``≈`` vor Einfuehrung der
+    Symbolic-Marker-Klasse.
+    """
+    # ≅ (U+2245, APPROXIMATELY EQUAL TO, LaTeX \cong) - null Leerzeichen
+    # erlaubt (spiegelt die Symbolic-Marker-Konvention ohne Wort-Trennung).
+    assert csv_loaders.parse_range("≅5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≅ 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≅5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("≅ 5.5") == (5.5, 5.5)
+    # ≃ (U+2243, ASYMPTOTICALLY EQUAL TO, LaTeX \simeq).
+    assert csv_loaders.parse_range("≃5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≃ 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≃5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("≃ 5.5") == (5.5, 5.5)
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit beiden Markern - der Praefix wird
+    # gestrippt, die publizierte Toleranz laeuft in den _PARENTHESIS_UNCERTAINTY-
+    # Zweig.
+    assert csv_loaders.parse_range("≅2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("≃2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("≅100(2)") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("≃100(2)") == pytest.approx((98.0, 102.0))
+    # ASCII-Ersatzformen der Uncertainty-Struktur bleiben mit Praefix erhalten.
+    assert csv_loaders.parse_range("≅5.5 +/- 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≃5.5+-0.3") == pytest.approx((5.2, 5.8))
+    # DE-Komma-Dezimal in der Uncertainty-Notation bleibt mit Praefix erhalten
+    # (Suisse romande CSV-Excel-Konvention).
+    assert csv_loaders.parse_range("≅2,65 ± 0,05") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("≃2,65 ± 0,05") == pytest.approx((2.60, 2.70))
+    # Negatives Zentrum mit Praefix (Kryo-/Isotopen-Werte in Publikationen oft
+    # mit Approximations-Marker).
+    assert csv_loaders.parse_range("≅-1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("≃-1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("≅-2.65(5)") == pytest.approx((-2.70, -2.60))
+    # Praefix + Uncertainty + Trailing-Einheit - die Einheit bleibt symmetrisch
+    # zur reinen Uncertainty-Notation erhalten.
+    assert csv_loaders.parse_range("≅2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("≃5.5 ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≅100 ± 2 HV") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("≃-1.5 ± 0.3 °C") == pytest.approx((-1.8, -1.2))
+    # Praefix + Uncertainty + Trailing-Klammer-Annotation ((Literatur), [Ref]).
+    assert csv_loaders.parse_range("≅5.5 ± 0.3 (Literatur)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≃2.65(5) [Ref 42]") == pytest.approx((2.60, 2.70))
+    # Kombination mit Waehrungs-Praefix via Rekursion (spiegelt die identische
+    # Verkettungs-Semantik der uebrigen Symbolic-/Wort-Praefixe).
+    assert csv_loaders.parse_range("≅ CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("≃ EUR 2.65 ± 0.05") == pytest.approx((2.60, 2.70))
+    # Kombination mit Vergleichs-Praefix via Rekursion (spiegelt die identische
+    # Verkettungs-Semantik).
+    assert csv_loaders.parse_range("≅ > 500") == (500.0, None)
+    assert csv_loaders.parse_range("≃ < 100") == (None, 100.0)
+    # Symbolische Marker OHNE nachfolgende Zahl fallen still auf None - ohne
+    # Zahl gibt es keinen Wert (spiegelt ``~`` / ``≈`` Regress-Verhalten).
+    assert csv_loaders.parse_range("≅") == (None, None)
+    assert csv_loaders.parse_range("≃") == (None, None)
+    # Regress-Anker: die bereits vorher unterstuetzten Symbole bleiben unveraendert.
+    assert csv_loaders.parse_range("~5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("≈5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: Werte OHNE Approximations-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_parse_range_annaeherungs_praefix_fr_it():
     """FR-/IT-Annaeherungs-Marker (Suisse romande / Ticino / Val d'Aosta).
 

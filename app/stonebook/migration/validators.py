@@ -348,6 +348,23 @@ _MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\-](\d{4})\s*$")
 # symbolische Form akzeptiert auch null Leerzeichen (``~1985``), waehrend die
 # Wort-Variante weiter mindestens eines verlangt (sonst wuerde ``ca1985`` als
 # ``ca`` + ``1985`` zerlegt).
+#
+# Die Symbolic-Marker-Klasse ``[~≈≅≃]`` deckt neben ASCII-Tilde und Almost-
+# Equal (``≈``) auch die beiden weiteren, in wissenschaftlichen Publikationen
+# und LaTeX-Autoformat-Quellen gebraeuchlichen Naeherungs-Symbole ab: ``≅``
+# (U+2245, "APPROXIMATELY EQUAL TO", LaTeX ``\cong``) und ``≃`` (U+2243,
+# "ASYMPTOTICALLY EQUAL TO", LaTeX ``\simeq``). Beide sind in Print-Katalogen,
+# Auktions-PDFs mit LaTeX-Setz und in aus wissenschaftlichen Datenbanken
+# (IUCr, NIST, RRUFF, Mindat.org mit LaTeX-Rendering) exportierten Textfeldern
+# verbreitet und semantisch identisch zu ``≈``/``~`` als Naeherungs-Marker vor
+# einem Datum ("≅ 1985", "≃ Juni 2024"). Spiegelt die identische Klassen-
+# Erweiterung in :data:`stonebook.migration.csv_loaders._APPROX_VALUE_PREFIX`
+# auf die Datums-Achse - dieselbe LaTeX-Konvention aus wissenschaftlichen
+# Publikationen erzeugt bei Datums-Feldern (Fund-/Erwerbs-Jahr aus einer
+# Referenz-Publikation) denselben Marker vor der Datums-Angabe wie bei Wert-
+# Feldern (Dichte/Haerte/Mohs-Wert aus einer Referenz-Tabelle). Bisher fielen
+# alle DE/EN/FR/IT-Formen mit diesen zwei Symbolen still auf None, obwohl
+# semantisch identisch zu ``ca.``/``circa``/``etwa``.
 _APPROX_PREFIX = re.compile(
     r"^(?:"
     r"(?:ca\.?|circa|approx\.?|approximately"
@@ -431,7 +448,7 @@ _APPROX_PREFIX = re.compile(
     # ``attorno`` hat keinen DE/EN-Wortstamm-Konflikt.
     r"|vers|environ|verso|attorno"
     r")\s+"
-    r"|[~≈]\s*"
+    r"|[~≈≅≃]\s*"
     r")",
     re.IGNORECASE,
 )
