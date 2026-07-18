@@ -281,6 +281,52 @@ _APPROX_VALUE_PREFIX = re.compile(
     re.IGNORECASE,
 )
 
+# Einseitige Vergleichs-Grenze am String-Anfang: ``< 5``, ``> 5``, ``<= 5``,
+# ``>= 5``, ``≤ 5``, ``≥ 5``. Semantisch eine offene Range-Grenze (untere ODER
+# obere), keine Punkt-Angabe: ``< 5`` heisst "kleiner als 5" -> Range (-inf, 5),
+# ``≥ 500`` heisst "mindestens 500" -> Range [500, +inf). In Sammler-Notizen und
+# publizierten Referenz-Tabellen die uebliche Kurzform fuer eine unsichere
+# Bereichsgrenze ("Mohs > 7" bei einem Stueck, das Quarz ritzt, ohne dass die
+# genaue Haerte bestimmt wurde; "Dichte < 3" fuer ein zweifelsfrei leichteres
+# Mineral, dessen exakte Massendichte nicht vermessen wurde; "Wert >= 500 CHF"
+# fuer eine Mindest-Schaetzung ohne feste Obergrenze). Ohne Behandlung fiel jede
+# solche Notation still auf die Fallback-Zahl-Extraktion durch, die den
+# Vergleichs-Marker ignorierte und den nackten Wert als Punkt-Range (5.0, 5.0)
+# lieferte - die publizierte Ein-Seiten-Semantik ging stille verloren und die
+# Migration schrieb Mohs_Haerte_min=5 UND Mohs_Haerte_max=5 statt Mohs_Haerte_max=5
+# mit Mohs_Haerte_min=NULL (bzw. spiegelbildlich fuer den ``>``/``≥``-Fall).
+#
+# Der Marker wird als Gruppe extrahiert: ``<``/``<=``/``≤`` mappt auf obere
+# Grenze (lo=None, hi=Wert), ``>``/``>=``/``≥`` auf untere Grenze (lo=Wert,
+# hi=None). Die Gleich-Varianten (``<=``/``≤``/``>=``/``≥``) liefern semantisch
+# denselben Range wie ``<``/``>`` (die Bereichs-Grenzen sind in dieser Anwendung
+# ohnehin inklusiv gemeint, weil DB-Filter ``Mohs_Haerte_max >= X`` und
+# ``Mohs_Haerte_max <= X`` als geschlossene Intervalle geschrieben sind).
+#
+# Wird in :func:`parse_range` NACH dem :data:`_APPROX_VALUE_PREFIX`-Strip
+# geprueft, damit ``< ca. 5`` (Approximations-Marker im Vergleichs-Kontext) die
+# Approximation zunaechst konsumiert und danach die Vergleichs-Semantik ausliest.
+# Kollisionsfrei zu den Uncertainty-Zweigen (``5.5 ± 0.3``, ``5.5(3)``): diese
+# verlangen eine reine Zahl am Anfang; ``< 5.5 ± 0.3`` liesse man semantisch als
+# "obere Grenze mit publizierter Toleranz um 5.5" lesen, aber diese Kombination
+# ist in Sammler-Notizen extrem selten (Vergleichs-Marker impliziert bereits
+# Unsicherheit) - falls sie auftritt, konsumiert der Vergleichs-Zweig den Marker
+# und rekursiert; der Rest ``5.5 ± 0.3`` laeuft transparent in den Uncertainty-
+# Zweig und die publizierte Toleranz wird als Bereich (5.2, 5.8) zurueckgegeben,
+# der Vergleichs-Marker geht dann semantisch in die Approximations-Interpretation
+# der Toleranz-Grenzen ueber (nicht ideal, aber verlustfrei).
+#
+# Kollisionsfrei zu negativen Vorzeichen: das Regex verlangt ``<``/``>`` als
+# Praefix VOR jeder Zahl-Struktur; ``- 5`` (negative Zahl mit Leerzeichen)
+# blockt bereits an der Vorzeichen-Klasse. ``> -5`` (Vergleichs-Marker vor
+# negativer Zahl) wird korrekt geparst: der Marker konsumiert den ``>``, die
+# Rekursion parst ``-5`` als (-5.0, -5.0), und die Vergleichs-Interpretation
+# liefert (-5.0, None) = "groesser als -5". Die Vergleichs-Marker sind
+# ausschliesslich als Bereichs-Grenzen-Anzeiger etabliert; sie treten in
+# CSV-Wert-Feldern nirgends als Teil einer Zahl-Struktur auf (kein Vorzeichen,
+# kein Exponent-Zeichen, kein Dezimal-/Tausender-Trenner).
+_COMPARISON_PREFIX = re.compile(r"^\s*(<=|>=|<|>|≤|≥)\s*")
+
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
 # notieren: ``Dichte 2.65 ± 0.05`` = "Wert 2.65, Toleranz 0.05, Range [2.60, 2.70]".
@@ -1536,6 +1582,27 @@ def parse_range(text) -> tuple[float | None, float | None]:
         rest = _APPROX_VALUE_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_range(rest)
+    # Einseitige Vergleichs-Grenze (``<``/``>``/``<=``/``>=``/``≤``/``≥``) am
+    # String-Anfang: der Marker wird konsumiert, der Rest via parse_range
+    # rekursiv geparst und das Ergebnis auf eine offene Bereichs-Grenze
+    # abgebildet. ``<``/``<=``/``≤`` -> obere Grenze (lo=None, hi=Wert);
+    # ``>``/``>=``/``≥`` -> untere Grenze (lo=Wert, hi=None). Der Wert wird
+    # aus lo bzw. hi des rekursiven Ergebnisses gezogen (Kompatibilitaet mit
+    # Uncertainty-/Bracket-/Einheiten-Zweigen: ``< 5.5 ± 0.3`` liefert nach
+    # Rekursion (5.2, 5.8), und die Vergleichs-Interpretation nimmt die
+    # obere Toleranz-Grenze als konservativen Obergrenzen-Wert). Nach
+    # _APPROX_VALUE_PREFIX-Strip einsortiert, damit ``< ca. 5`` transparent
+    # als "obere Grenze 5, ungefaehr" gelesen wird. Siehe :data:`_COMPARISON_PREFIX`
+    # fuer Details zur Motivation, Marker-Menge und Kollisionsschutz.
+    cmp_match = _COMPARISON_PREFIX.match(s)
+    if cmp_match:
+        rest = s[cmp_match.end():].strip()
+        if rest:
+            inner_lo, inner_hi = parse_range(rest)
+            marker = cmp_match.group(1)
+            if marker in ("<", "<=", "≤"):
+                return None, inner_hi
+            return inner_lo, None
     # ``N ± M``-Notation vor der generischen Zahlen-Extraktion pruefen: die
     # Toleranz ist strukturell an das Zentrum gebunden, nicht ein zweiter
     # unabhaengiger Wert. Ohne diesen Zweig wuerde ``5.5 ± 0.3`` als

@@ -3839,6 +3839,85 @@ def test_read_ids_from_file_nicht_utf8_liefert_none(tmp_path):
     assert read_ids_from_file(p) is None
 
 
+def test_parse_range_einseitige_vergleichs_grenze():
+    """Einseitige Vergleichs-Grenze (``<``/``>``/``<=``/``>=``/``≤``/``≥``)
+    am Wert-Anfang wird als offene Range-Grenze geparst.
+
+    Sammler-Notizen und publizierte Referenz-Tabellen nutzen die Ein-Seiten-
+    Vergleichs-Notation regelmaessig fuer unsicher bestimmte Bereichsgrenzen:
+
+    * ``"Mohs > 7"`` bei einem Stueck, das Quarz ritzt (aber die exakte
+      Haerte nicht bestimmt wurde) -> Mohs_Haerte_min=7, Mohs_Haerte_max=NULL
+    * ``"Dichte < 3"`` fuer ein leichteres Mineral ohne exakte Massendichte
+      -> Dichte_min_gcm3=NULL, Dichte_max_gcm3=3
+    * ``"Wert >= 500 CHF"`` fuer eine Mindest-Schaetzung ohne feste Obergrenze
+      -> nur untere Wert-Grenze gesetzt
+
+    Vor dem Fix fielen alle diese Formen still auf die Fallback-Zahl-Extraktion
+    durch, die den Vergleichs-Marker ignorierte und den nackten Wert als
+    Punkt-Range ``(5.0, 5.0)`` lieferte - die publizierte Ein-Seiten-Semantik
+    ging stille verloren und die Migration schrieb Mohs_Haerte_min=5 UND
+    Mohs_Haerte_max=5 statt der korrekten Ein-Seiten-Setzung mit NULL an der
+    gegenueberliegenden Grenze (spiegelt die NULL-an-Ende-Konvention der
+    _min/_max-Sortier-/Filter-Achsen aus dem Repository).
+
+    Marker-Menge deckt beide ASCII-Formen (``<``/``>``, ``<=``/``>=``) und
+    beide Unicode-Aequivalente (``≤`` U+2264 "less-than or equal to", ``≥``
+    U+2265 "greater-than or equal to") ab. ASCII-Formen sind der Standard aus
+    Terminal-/E-Mail-/LaTeX-Roh-Notizen und aus 7-bit-CSV-Exporten; Unicode-
+    Formen sind der Standard aus DOCX-/PDF-/Print-Publikationen mit
+    Autoformat-Konvertierung und aus mathematischen Referenz-Tabellen. Die
+    Gleich-Varianten (``<=``/``≤``/``>=``/``≥``) liefern semantisch denselben
+    Range wie ``<``/``>`` (die Bereichs-Grenzen sind in dieser Anwendung
+    ohnehin inklusiv gemeint, weil DB-Filter ``Mohs_Haerte_max >= X`` und
+    ``Mohs_Haerte_max <= X`` als geschlossene Intervalle geschrieben sind).
+    """
+    # Nur-``<``-Marker: obere Grenze, untere bleibt None.
+    assert csv_loaders.parse_range("< 5") == (None, 5.0)
+    assert csv_loaders.parse_range("<5") == (None, 5.0)
+    assert csv_loaders.parse_range("< 5.5") == (None, 5.5)
+    assert csv_loaders.parse_range("< 100") == (None, 100.0)
+    # Nur-``>``-Marker: untere Grenze, obere bleibt None.
+    assert csv_loaders.parse_range("> 5") == (5.0, None)
+    assert csv_loaders.parse_range(">5") == (5.0, None)
+    assert csv_loaders.parse_range("> 7.0") == (7.0, None)
+    assert csv_loaders.parse_range("> 500") == (500.0, None)
+    # ``<=`` / ``>=``: identische Semantik wie ``<`` / ``>``.
+    assert csv_loaders.parse_range("<= 5") == (None, 5.0)
+    assert csv_loaders.parse_range("<=5") == (None, 5.0)
+    assert csv_loaders.parse_range(">= 5") == (5.0, None)
+    assert csv_loaders.parse_range(">=5") == (5.0, None)
+    # Unicode-Vergleichs-Zeichen ``≤`` (U+2264) und ``≥`` (U+2265).
+    assert csv_loaders.parse_range("≤ 5") == (None, 5.0)
+    assert csv_loaders.parse_range("≤5") == (None, 5.0)
+    assert csv_loaders.parse_range("≥ 5") == (5.0, None)
+    assert csv_loaders.parse_range("≥5") == (5.0, None)
+    # Komma-Dezimal-Locale (DE/EU-CSV-Excel-Export) wird durch die
+    # bestehende ``normalize_numeric_locale``-Preprocessing-Stufe abgedeckt;
+    # der Vergleichs-Marker greift auf die bereits normalisierte Dezimal-Form.
+    assert csv_loaders.parse_range("< 5,5") == (None, 5.5)
+    assert csv_loaders.parse_range(">= 2,65") == (2.65, None)
+    # Vergleichs-Marker vor negativer Zahl: der Marker konsumiert den Praefix,
+    # die Rekursion parst die negative Zahl korrekt.
+    assert csv_loaders.parse_range("> -5") == (-5.0, None)
+    assert csv_loaders.parse_range("< -1.5") == (None, -1.5)
+    # Kombination mit dem Approximations-Praefix: ``< ca. 5`` wird als
+    # "obere Grenze 5, ungefaehr" gelesen. Der Vergleichs-Zweig ist NACH dem
+    # _APPROX_VALUE_PREFIX-Strip einsortiert, damit "obere Grenze ca 5"
+    # transparent auf (None, 5.0) rekursiert.
+    assert csv_loaders.parse_range("< ca. 5") == (None, 5.0)
+    assert csv_loaders.parse_range(">= etwa 500") == (500.0, None)
+    # Kombination mit wissenschaftlicher Notation: der Vergleichs-Marker
+    # konsumiert den Praefix, die Rekursion parst die Zehnerpotenz.
+    assert csv_loaders.parse_range("< 1e3") == (None, 1000.0)
+    assert csv_loaders.parse_range(">= 2.5e-3") == (0.0025, None)
+    # Bestandsverhalten unveraendert: reine Zahlen liefern Punkt-Range
+    # (5.0, 5.0), Bereiche (5.0, 7.0), leere Eingaben (None, None).
+    assert csv_loaders.parse_range("5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("") == (None, None)
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
