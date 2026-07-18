@@ -4213,6 +4213,205 @@ def test_parse_range_einseitige_wort_vergleichs_grenze():
     assert csv_loaders.parse_range("") == (None, None)
 
 
+def test_parse_range_leading_currency_prefix_mit_uncertainty():
+    """Leading-Waehrungs-Prefix am Wert-Anfang (ISO-4217-Codes CHF/USD/EUR/GBP/JPY/...
+    und Waehrungs-Symbole ``$``/``€``/``£``/``¥``/... plus Compound-``$``-Prefixe
+    HK$/US$/NZ$/AU$/CA$/SG$/NT$) wird gestrippt, damit die nachfolgende
+    Uncertainty-Notation (``±``-Langform oder ``N(M)``-Kompaktform) die
+    publizierte Toleranz als Bereichsgrenzen behaelt.
+
+    Vor dem Fix fielen alle Kombinationen "Leading-Waehrungs-Marker +
+    Uncertainty" still auf die Fallback-Zahl-Extraktion durch, weil sowohl
+    :data:`_PLUS_MINUS_UNCERTAINTY` als auch :data:`_PARENTHESIS_UNCERTAINTY`
+    per ``^\\s*(-?\\d ...)``-Anker eine Zahl (oder Vorzeichen) am String-Anfang
+    verlangen:
+
+    * ``"CHF 500 ± 50"``   -> ``[500, 50]`` -> (500, 500)   (Toleranz verloren)
+    * ``"$500 ± 50"``      -> ``[500, 50]`` -> (500, 500)   (dito)
+    * ``"€2.65(5)"``       -> ``[2.65, 5]`` -> (2.65, 5.0)  (semantisch falscher Range)
+    * ``"USD 5.5 ± 0.3"``  -> ``[5.5, 0.3]`` -> (5.5, 5.5)  (Toleranz verloren)
+    * ``"HK$100 ± 5"``     -> ``[100, 5]`` -> (100, 100)    (Toleranz verloren)
+
+    In Auktions-Katalogen (Christie's, Bonhams, Sotheby's Fine Mineral,
+    Rocks & Minerals-Zeitschrift) und in Erbschafts-/Boersen-Schaetzungen
+    ist die Leading-Waehrungs-Konvention der Standard - der Waehrungs-Marker
+    identifiziert die Wert-Achse, waehrend die Uncertainty-Notation die
+    Streuung um den Schaetz-Wert publiziert. Beide Marker sind komplementaer:
+    ohne Waehrung ist die Zahl semantisch mehrdeutig (CHF/EUR/USD als
+    Wert-CHF-roh-Kandidat), ohne Uncertainty geht die Praezision verloren.
+
+    Vokabel-Liste und Zweig-Layout spiegeln die Symmetrie-Konvention von
+    :data:`_APPROX_VALUE_PREFIX`: identische Strip-und-Rekursion-Semantik,
+    identische Kombination-mit-Approximations-Marker-Auflösung ("ca. CHF
+    500 ± 50" und "CHF ca. 500 ± 50" liefern identische Ergebnisse via
+    Rekursion). Case-Insensitiv (Excel-Autocorrect "Chf"/"Usd" und
+    lowercase-Notation aus Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EUR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("USD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("GBP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("JPY 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("AUD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("SEK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NOK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DKK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NZD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PLN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CZK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HUF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RUB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CNY 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HKD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("SGD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("INR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("AED 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ILS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ZAR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MXN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TRY 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("THB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KRW 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Waehrungs-Symbole (Ein-Zeichen-Marker am String-Anfang, ohne Whitespace-
+    # Trennung typisch) + ±-Langform-Uncertainty.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("€500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("£500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("¥500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("¢500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("₹500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("₩500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("₽500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("₺500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("₪500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("₣500 ± 50") == pytest.approx((450.0, 550.0))
+    # Symbol + optionales Whitespace vor der Zahl (``$ 500`` und ``$500``
+    # sind beide typisch, Zeichen-Setz-Konvention variiert je nach Quelle).
+    assert csv_loaders.parse_range("$ 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("€ 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Compound-$-Prefixe (HK$, US$, NZ$, AU$, CA$, SG$, NT$) fuer die
+    # dominanten Nicht-USD-$-Waehrungen aus internationalen Auktions-
+    # Katalogen.
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("US$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NZ$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("AU$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CA$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("SG$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NT$500 ± 50") == pytest.approx((450.0, 550.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("CHF 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("USD 2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("EUR 100(2)") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("$5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("€2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("£100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in beiden
+    # Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CHF ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("$~500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa €5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("€ circa 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("approx. USD 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker
+    # (via _APPROX_VALUE_SUFFIX-Strip in der Rekursion): "CHF 500 ± 50, ca."
+    # -> Waehrungs-Strip -> "500 ± 50, ca." -> Trailing-Suffix-Strip ->
+    # "500 ± 50" -> Uncertainty-Match.
+    assert csv_loaders.parse_range("CHF 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("$500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("€2.65(5), circa") == pytest.approx((2.60, 2.70))
+    # Case-Insensitivitaet: Excel-Autocorrect "Chf"/"Usd" und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("chf 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Chf 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("usd 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Eur 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale (Suisse romande CSV-Excel-Konvention) mit
+    # Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("CHF 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("EUR 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit (die Einheit bleibt symmetrisch
+    # zur reinen Uncertainty-Notation erhalten).
+    assert csv_loaders.parse_range("CHF 5.5 ± 0.3 Mohs") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("$100 ± 2 HV") == pytest.approx((98.0, 102.0))
+    # Praefix + Uncertainty + Trailing-Klammer-Annotation.
+    assert csv_loaders.parse_range("CHF 500 ± 50 (Schaetzung)") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("€2.65(5) [Ref 42]") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Satzzeichen (Excel-CSV-Zeilen-Ende-
+    # Punkt/Komma aus Editor-Autocomplete).
+    assert csv_loaders.parse_range("CHF 500 ± 50.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("$500 ± 50,") == pytest.approx((450.0, 550.0))
+    # Interaktion mit _COMPARISON_PREFIX (Zeichen-Vergleich) und
+    # _COMPARISON_WORD_LOWER / _COMPARISON_WORD_UPPER (Wort-Vergleich):
+    # Leading-Waehrung + Vergleichs-Marker liefert die offene Range-Grenze
+    # nach dem Waehrungs-Strip; die Kombination in beiden Reihenfolgen
+    # loest ueber Rekursion auf.
+    assert csv_loaders.parse_range("CHF > 500") == (500.0, None)
+    assert csv_loaders.parse_range("CHF < 500") == (None, 500.0)
+    assert csv_loaders.parse_range(">= CHF 500") == (500.0, None)
+    assert csv_loaders.parse_range("<= EUR 500") == (None, 500.0)
+    assert csv_loaders.parse_range("mindestens CHF 500") == (500.0, None)
+    assert csv_loaders.parse_range("CHF mindestens 500") == (500.0, None)
+    assert csv_loaders.parse_range("hoechstens $500") == (None, 500.0)
+    assert csv_loaders.parse_range("$ maximal 500") == (None, 500.0)
+    # Kollisionsschutz: Fremdwoerter, die zufaellig mit den gleichen Buchstaben
+    # beginnen wie ISO-4217-Codes (``USDA`` = US-Landwirtschafts-Ministerium,
+    # ``SEKtoren``, ``AUDio``, ``NOKia``, ``PLNe``, ``CNYanide``), duerfen
+    # den Wert nicht vor der Uncertainty-Notation strippen - der ``\\b``-
+    # Wortgrenze hinter dem Code blockt Kollision, weil zwischen Code-Endung
+    # und Fremdwort-Fortsetzung keine Wortgrenze liegt. Ohne Uncertainty
+    # bleibt das Verhalten unveraendert (Fallback-Zahl-Extraktion findet den
+    # Wert weiterhin, aber die Waehrungs-Semantik geht verloren - was
+    # semantisch korrekt ist, weil "usda 500" keine Waehrungs-Zeile ist).
+    assert csv_loaders.parse_range("usda 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("USDA 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("chief 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("SEKtoren 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("AUDio 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("NOKia 500") == (500.0, 500.0)
+    # Kollisionsschutz gegen SI-Einheiten am Anfang (nicht-Waehrungs-
+    # Buchstaben-Sequenzen): ``kg``/``g``/``mm`` sind keine Waehrungen und
+    # duerfen keinen Praefix-Strip ausloesen.
+    assert csv_loaders.parse_range("kg 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("g 500") == (500.0, 500.0)
+    # Waehrungs-Marker OHNE nachfolgende Zahl fallen still auf None -
+    # ohne Zahl gibt es keinen Wert. Spiegelt die Konvention aus
+    # test_parse_range_annaeherungs_praefix_mit_uncertainty.
+    assert csv_loaders.parse_range("CHF") == (None, None)
+    assert csv_loaders.parse_range("CHF ") == (None, None)
+    assert csv_loaders.parse_range("$") == (None, None)
+    assert csv_loaders.parse_range("€") == (None, None)
+    # Regress-Anker: Waehrungs-Praefix vor reiner Zahl (ohne Uncertainty)
+    # bleibt rueckwaerts-kompatibel - der Praefix wird gestrippt und die
+    # reine Zahl-Extraktion laeuft weiter mit identischem Ergebnis.
+    assert csv_loaders.parse_range("CHF 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("$500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("EUR 5.5") == (5.5, 5.5)
+    # Regress-Anker: Waehrungs-Praefix vor Range-Notation (ohne Uncertainty)
+    # bleibt rueckwaerts-kompatibel - die Range-Grenzen laufen in die
+    # Fallback-Zahl-Extraktion nach dem Praefix-Strip.
+    assert csv_loaders.parse_range("CHF 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("CHF 500 - 1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("$500-$1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("EUR 5.5 to 7.5") == (5.5, 7.5)
+    # Regress-Anker: Trailing-Waehrungs-Form (bereits ueber die Trailing-
+    # Einheit-Alternate in _PLUS_MINUS_UNCERTAINTY abgedeckt) bleibt
+    # unveraendert - der Leading-Strip greift nicht.
+    assert csv_loaders.parse_range("500 CHF ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("500 ± 50 CHF") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("100(2)") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("500-1000") == (500.0, 1000.0)
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 

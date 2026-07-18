@@ -304,6 +304,72 @@ _APPROX_VALUE_PREFIX = re.compile(
     re.IGNORECASE,
 )
 
+# Leading-Waehrungs-Prefix am String-Anfang ("CHF 500 ± 50", "$500 ± 50",
+# "EUR 5.5(3) g/cm³", "€500 ± 50"). Spiegelt strukturell die
+# :data:`_APPROX_VALUE_PREFIX`-Strip-Logik auf die Waehrungs-Achse: ohne
+# Strip fielen alle Formen mit Leading-Waehrungs-Marker UND Uncertainty-
+# Struktur still auf die Fallback-Zahl-Extraktion durch, weil sowohl
+# :data:`_PLUS_MINUS_UNCERTAINTY` als auch :data:`_PARENTHESIS_UNCERTAINTY`
+# per ``^\s*(-?\d ...)``-Anker eine Zahl (oder Vorzeichen) am String-Anfang
+# verlangen. Die publizierte Standard-Unsicherheit ging via
+# ``[center, tol]``-inverted-Range-Kollaps ``(center, center)`` still
+# verloren - identischer Bug-Effekt wie bei ``"ca. 5.5 ± 0.3"`` vor
+# Einfuehrung von :data:`_APPROX_VALUE_PREFIX`.
+#
+# In Auktions-Katalogen (Christie's, Bonhams, Sotheby's Fine Mineral,
+# "Rocks & Minerals"-Zeitschrift) und in Erbschafts-/Boersen-Schaetzungen
+# ist die Leading-Waehrungs-Konvention Standard (``CHF 500 ± 50``, ``$500
+# ± 50``, ``EUR 500 ± 50``, ``€500 ± 50``); die Trailing-Form (``500 CHF
+# ± 50``, ``500 ± 50 CHF``) ist bereits ueber die Trailing-Einheit-
+# Alternate in :data:`_PLUS_MINUS_UNCERTAINTY` abgedeckt. Der Praefix-
+# Strip macht die Symmetrie zwischen Leading- und Trailing-Waehrungs-
+# Marker vollstaendig und macht die Auktions-/Publikations-Migration
+# verlustfrei fuer Wert-Zellen mit Standard-Unsicherheit.
+#
+# ISO-4217-Code-Whitelist deckt die G10-Waehrungen (CHF, EUR, USD, GBP,
+# JPY, CAD, AUD, NZD, SEK, NOK, DKK) plus die in internationalen Mineral-
+# Auktionen gebraeuchlichen Zusatz-Waehrungen (PLN, CZK, HUF, RUB, CNY,
+# HKD, SGD, INR, AED, ILS, ZAR, BRL, MXN, TRY, THB, KRW) ab. ``\b``
+# (Wortgrenze) hinter dem Code verhindert Kollision mit Fremdwoertern,
+# die zufaellig mit den gleichen Buchstaben beginnen (``USDA 500`` -
+# US-Landwirtschafts-Ministerium; ``SEKtoren 500``; ``AUDio 500``;
+# ``NOKia 500``; ``PLNe 500``; ``CNYanide 500``): zwischen Code-Endung
+# und Fremdwort-Fortsetzung liegt keine Wortgrenze, weil beide Zeichen
+# Wortzeichen sind. Case-Insensitiv, weil Sammler-Notizen in Excel-
+# Autocorrect-Kontexten sowohl uppercase (Standard-ISO-Form) als auch
+# lowercase (``chf 500``, ``usd 500``, verbreitet in geerbten Notizen
+# aus Konsolen-Tools ohne Caps-Lock) verwenden.
+#
+# Waehrungs-Symbole (Ein-Zeichen-Marker am String-Anfang): $ (USD), €
+# (EUR), £ (GBP), ¥ (JPY/CNY), ¢ (Cent), ₹ (INR), ₩ (KRW), ₽ (RUB), ₺
+# (TRY), ₪ (ILS), ₣ (French Franc, historisch), ₦ (NGN), ₫ (VND), ₴
+# (UAH), ₵ (GHS). Optionale Compound-$-Prefixes (HK$, US$, NZ$, AU$,
+# CA$, SG$, NT$) erfassen die verbreiteten Nicht-USD-$-Waehrungen aus
+# internationalen Auktions-Katalogen; der 2-Buchstaben-Prefix ist
+# uppercase-only, weil lowercase (``hk$500``) in der Praxis nicht
+# auftaucht und die Case-Sensitivitaet der Compound-Prefixe die
+# Kollisions-Sicherheit gegen zufaellig-2-Buchstaben-plus-$-Sequenzen
+# in freien Notizen erhoeht.
+#
+# Wird in :func:`parse_range` nach dem :data:`_APPROX_VALUE_PREFIX`-Strip
+# und vor dem :data:`_APPROX_VALUE_SUFFIX`-Strip einsortiert (via
+# Rekursion), damit die Verkettung "Approx-Marker + Waehrungs-Marker" in
+# beiden Reihenfolgen transparent aufloest: "ca. CHF 500 ± 50" -> Approx-
+# Strip -> "CHF 500 ± 50" -> Waehrungs-Strip -> "500 ± 50" -> Uncertainty-
+# Match; "CHF ca. 500 ± 50" -> Approx-Strip blockt (Anker), Waehrungs-
+# Strip -> "ca. 500 ± 50" -> Rekursion -> Approx-Strip -> "500 ± 50" ->
+# Uncertainty-Match.
+_LEADING_CURRENCY_PREFIX = re.compile(
+    r"^\s*(?:"
+    r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
+    r"|PLN|CZK|HUF|RUB|CNY|HKD|SGD|INR|AED|ILS|ZAR"
+    r"|BRL|MXN|TRY|THB|KRW)\b"
+    r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
+    r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"
+    r")\s*",
+    re.IGNORECASE,
+)
+
 # Trailing Annaeherungs-Suffix am String-Ende: spiegelt :data:`_APPROX_VALUE_PREFIX`
 # auf die Suffix-Achse, strukturell identisch zu :data:`stonebook.migration.validators.
 # _TRAILING_APPROX_SUFFIX` fuer die Wert-Achse. Sammler-Notizen aus geerbten
@@ -1736,6 +1802,23 @@ def parse_range(text) -> tuple[float | None, float | None]:
     # Muster mit :data:`stonebook.migration.validators._APPROX_PREFIX`.
     if _APPROX_VALUE_PREFIX.match(s):
         rest = _APPROX_VALUE_PREFIX.sub("", s, count=1).strip()
+        if rest and rest != s:
+            return parse_range(rest)
+    # Leading-Waehrungs-Prefix am String-Anfang strippen ("CHF 500 ± 50" ->
+    # "500 ± 50", "$500 ± 50" -> "500 ± 50", "€5.5(3)" -> "5.5(3)"). Siehe
+    # :data:`_LEADING_CURRENCY_PREFIX` fuer Details: die Uncertainty-Patterns
+    # sind per ``^\s*(-?\d ...)``-Anker gebunden und wuerden sonst still
+    # auf die Fallback-Zahl-Extraktion durchfallen und via ``[center, tol]``-
+    # inverted-Range-Kollaps ``(center, center)`` liefern (Toleranz
+    # verloren). Der Praefix ist rein syntaktische Waehrungs-Kennzeichnung
+    # ohne Einfluss auf den numerischen Wert - Strip + Rekursion analog zur
+    # :data:`_APPROX_VALUE_PREFIX`-Kette, sodass beide Reihenfolgen
+    # ("ca. CHF 500 ± 50", "CHF ca. 500 ± 50") transparent aufloesen. Vor
+    # dem Trailing-Suffix-Strip einsortiert, damit "CHF 500 ± 50, ca."
+    # (Leading-Waehrung + Trailing-Approx-Marker + Uncertainty) via
+    # zweifacher Rekursion die Toleranz behaelt.
+    if _LEADING_CURRENCY_PREFIX.match(s):
+        rest = _LEADING_CURRENCY_PREFIX.sub("", s, count=1).strip()
         if rest and rest != s:
             return parse_range(rest)
     # Trailing Annaeherungs-Suffix am String-Ende strippen ("5.5 ± 0.3, ca." ->
