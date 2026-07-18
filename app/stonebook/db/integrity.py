@@ -25,6 +25,28 @@ _TRAILING_ENUM_ANNOTATION = re.compile(
     r"\s*[\(\[\{][^\(\)\[\]\{\}]*[\)\]\}]\s*$"
 )
 
+# Trailing Slash-basierte Sub-Klassifikation ("Sammlung/Lehrzwecke",
+# "Sammlung/Museum", "Forschung/Univ. Bern"). In DE-Sammler-Notation als
+# Kompound-Klassifikation ueblich: Basis-Verwendung vor dem Slash + Zweck/
+# Zielinstitution/Vertriebsweg nach dem Slash - der Sammler notiert die
+# Sub-Klassifikation direkt am Enum-Wert, um den Empfehlungs-Kontext zu
+# behalten ("Sammlung/Lehrzwecke" = ich behalte das Stueck fuer die Sammlung,
+# konkret als Anschauungs-/Lehrbeispiel; "Forschung/Univ. Bern" = ich schicke
+# das Stueck zur Forschung, konkret an die Uni Bern). Spiegelt
+# :data:`_TRAILING_ENUM_ANNOTATION` (Klammer-Sub-Klassifikation) auf die
+# Slash-Separator-Achse: dieselbe Semantik (Basis-Enum-Wert wird durch die
+# Sub-Klassifikation nicht veraendert), aber die andere in Sammler-Notation
+# gaengige Trenner-Konvention. Wird ausschliesslich auf die Beste_Verwendung-
+# Achse angewandt, weil die anderen Enum-Felder (Kategorie, Kristallsystem,
+# Magnetismus, Status) keine Slash-Sub-Klassifikationen in der Sammler-
+# Konvention kennen (Magnetismus/schwach-Haematit gibt es als Klammer-Form,
+# aber nicht als Slash-Form; kristallographische Symmetrie ist immer die
+# Basis-Klasse ohne Zweck-Zusatz). Single-Level (kein geschachteltes /A/B/C),
+# alles nach dem ersten Slash bis zum Zeilenende wird gestrippt - kollisionsfrei
+# zur bracketed-Klammer-Strip, die davor laeuft (Reihenfolge egal, weil die
+# beiden Patterns disjunkte Suffixe treffen).
+_TRAILING_SLASH_SUBCLASSIFICATION = re.compile(r"\s*/[^/]*$")
+
 # Status-Werte, die das Schema (status TEXT NOT NULL DEFAULT 'platzhalter')
 # zulaesst, aber die Anwendungslogik kennt nur diese drei. Spiegelt
 # repository.VALID_STATUSES; lokal redefiniert statt importiert, weil
@@ -69,6 +91,22 @@ _VALID_KRISTALLSYSTEME: frozenset[str] = frozenset(
 # Source-of-Truth bleibt im Feldwoerterbuch.
 _VALID_MAGNETISMUS: frozenset[str] = frozenset(
     v for v in FIELD_BY_NAME["Magnetismus"].enum_values if v
+)
+# Gueltige Beste_Verwendung-Werte aus dem Feldwoerterbuch (ohne Default-
+# Leerstring, der "noch nicht entschieden" bedeutet und legitim ist). Spiegelt
+# _VALID_MAGNETISMUS / _VALID_KRISTALLSYSTEME / _VALID_KATEGORIEN auf die
+# Verwendungs-/Vermarktungs-Achse: das Schema hat keine CHECK-Klausel auf
+# Beste_Verwendung, daher koennen invalide Werte durch direkte DB-Editierung,
+# fehlerhafte CSV-/JSON-Imports (load_standard kopiert das Feld ueber
+# _convert_standard ohne Enum-Validierung) oder Migration aus inkonsistenten
+# Quell-CSVs einfliessen. Aus FIELD_BY_NAME abgeleitet statt als Literal, weil
+# die Liste sechs Verwendungs-Klassen umfasst (Schmuck/Sammlung/Forschung/
+# Industrie/Talisman/Dekoration) und re-typische Tippfehler ("schmuck" mit
+# Kleinbuchstabe, englische Form "jewelry", Kombinationsformen "Schmuck+Sammlung",
+# veraltete Klassifizierungen "Verkauf"/"Handel") hier still Daten verfaelschen
+# wuerden - die Single-Source-of-Truth bleibt im Feldwoerterbuch.
+_VALID_BESTE_VERWENDUNG: frozenset[str] = frozenset(
+    v for v in FIELD_BY_NAME["Beste_Verwendung"].enum_values if v
 )
 
 # Wertbereiche pro Feld. Ungleich angegebene Felder werden nicht geprueft.
@@ -144,6 +182,7 @@ class IntegrityReport:
     unknown_kategorie: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kategorie) - Kategorie nicht im Feldwoerterbuch-Enum
     unknown_kristallsystem: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, kristallsystem) - Kristallsystem nicht im Feldwoerterbuch-Enum
     unknown_magnetismus: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, magnetismus) - Magnetismus nicht im Feldwoerterbuch-Enum
+    unknown_beste_verwendung: list[tuple[str, str]] = field(default_factory=list)  # (obj_id, beste_verwendung) - Beste_Verwendung nicht im Feldwoerterbuch-Enum
     geaendert_vor_erstellt: list[tuple[str, str, str]] = field(default_factory=list)  # (obj_id, erstellt_am, geaendert_am) - logisch unmoeglich
 
     @property
@@ -165,6 +204,7 @@ class IntegrityReport:
                     or self.unknown_kategorie
                     or self.unknown_kristallsystem
                     or self.unknown_magnetismus
+                    or self.unknown_beste_verwendung
                     or self.geaendert_vor_erstellt)
 
     def as_dict(self) -> dict:
@@ -190,6 +230,7 @@ class IntegrityReport:
             "unknown_kategorie": [list(t) for t in self.unknown_kategorie],
             "unknown_kristallsystem": [list(t) for t in self.unknown_kristallsystem],
             "unknown_magnetismus": [list(t) for t in self.unknown_magnetismus],
+            "unknown_beste_verwendung": [list(t) for t in self.unknown_beste_verwendung],
             "geaendert_vor_erstellt": [list(t) for t in self.geaendert_vor_erstellt],
             "is_clean": self.is_clean,
         }
@@ -393,6 +434,53 @@ def check_integrity(conn: sqlite3.Connection, root: Path | None = None,
         ).fetchall()
         if _TRAILING_ENUM_ANNOTATION.sub("", r["Magnetismus"]).strip()
         not in _VALID_MAGNETISMUS
+    ]
+
+    # Beste_Verwendung-Validierung: spiegelt unknown_magnetismus /
+    # unknown_kristallsystem / unknown_kategorie auf die Verwendungs-/
+    # Vermarktungs-Empfehlungs-Achse. Das Schema hat keine CHECK-Klausel auf
+    # Beste_Verwendung; load_standard / _convert_standard kopiert das Feld ohne
+    # Enum-Validierung, sodass Tippfehler ("schmuck" mit Kleinbuchstabe vs.
+    # "Schmuck" im Feldwoerterbuch), englische Form ("jewelry" statt "Schmuck",
+    # "collection" statt "Sammlung"), Kombinationsformen ("Schmuck+Sammlung"
+    # als informelle Doppelklassifikation, "Sammlung/Forschung" mit Slash-
+    # Trenner) oder veraltete/freie Werte ("Verkauf", "Handel", "Boerse")
+    # still durch CSV-/JSON-Imports oder direkte DB-Editierung einfliessen
+    # koennen. Komplementaer zu unknown_kategorie (Objekt-Klassifikation:
+    # was IST das Stueck?), unknown_status (Lifecycle: wie ist der Pflegestand?),
+    # unknown_kristallsystem (kristallographische Symmetrie) und
+    # unknown_magnetismus (physikalische Reaktion): hier die vom Sammler
+    # gewaehlte Zielvermarktung als eine der wichtigsten Sortier-/Filter-Achsen
+    # neben der Kategorie - vor Boersenbesuch, Schmuck-Verkauf oder Museums-
+    # Uebergabe will man alle passenden Stuecke beisammen sehen (spiegelt die
+    # Beste_Verwendung-Sortier-/Filter-Achse aus repository.py, wo
+    # beste_verwendung_in als Mengen-Filter und Beste_Verwendung als
+    # Sortier-Spalte gefuehrt werden). Leerstring/NULL bleibt legitim als
+    # "noch nicht entschieden" (der Normalfall, bevor die Empfehlung
+    # feststeht, oder Migrations-Restbestaende aus alten v1/obj043-CSVs ohne
+    # Beste_Verwendung-Spalte) und wird uebergangen, damit der Pflege-
+    # Restbestand keine falsch-positiven erzeugt; tatsaechliche Tippfehler
+    # werden so isoliert sichtbar. Trailing-Klammer-Annotationen ("Schmuck
+    # (Anhaenger)", "Sammlung [Vitrine 3]", "Forschung {Uni Bern}") werden vor
+    # dem Enum-Vergleich gestrippt - die Sub-Klassifizierung in Klammern
+    # (Vermarktungs-Details, Vitrinen-Platz, Zielinstitution) aendert die
+    # Basis-Verwendung nicht und ist in Pflege-Notizen ueblich; spiegelt das
+    # parse_iso_date-Konzept exakt wie bei unknown_magnetismus / unknown_
+    # kristallsystem. Format spiegelt unknown_kategorie / unknown_status /
+    # unknown_kristallsystem / unknown_magnetismus: (obj_id, beste_verwendung)-
+    # Tuples mit dem Roh-Wert (nicht der gestrippten Form), damit sowohl die
+    # betroffene ID als auch der konkrete Falschwert direkt im Report stehen -
+    # ohne zusaetzliche SQL-Abfrage zur Diagnose.
+    rep.unknown_beste_verwendung = [
+        (r["obj_id"], r["Beste_Verwendung"])
+        for r in conn.execute(
+            "SELECT obj_id, Beste_Verwendung FROM objects "
+            "WHERE Beste_Verwendung IS NOT NULL AND TRIM(Beste_Verwendung) != '' "
+            "ORDER BY obj_id"
+        ).fetchall()
+        if _TRAILING_SLASH_SUBCLASSIFICATION.sub(
+            "", _TRAILING_ENUM_ANNOTATION.sub("", r["Beste_Verwendung"])
+        ).strip() not in _VALID_BESTE_VERWENDUNG
     ]
 
     for row in conn.execute(

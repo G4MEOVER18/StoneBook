@@ -632,6 +632,98 @@ def test_unknown_magnetismus_in_as_dict_serialisierbar(tmp_path):
     c.close()
 
 
+def test_unknown_beste_verwendung_wird_erkannt(tmp_path):
+    """Beste_Verwendung ausserhalb des Feldwoerterbuch-Enums wird gemeldet
+    (obj_id, beste_verwendung). Spiegelt unknown_magnetismus auf die
+    Verwendungs-/Vermarktungs-Empfehlungs-Achse: Schema hat keine CHECK-Klausel
+    auf Beste_Verwendung, daher koennen Tippfehler ("schmuck" mit Kleinbuchstabe),
+    englische Form ("jewelry"/"collection"), Kombinationsformen ("Schmuck+Sammlung")
+    oder freie/veraltete Werte ("Verkauf", "Handel", "Boerse") durch direkten
+    DB-Zugriff oder fehlerhaften CSV-/JSON-Import einfliessen, ohne dass die
+    Anwendung sie bemerkt. Trailing-Klammer-Annotationen und Trailing-Slash-
+    Sub-Klassifikationen ("Sammlung/Lehrzwecke", "Forschung/Univ. Bern") sind
+    legitime Sammler-Konvention und werden vor dem Enum-Vergleich gestrippt.
+    Leerstring/NULL bleibt legitim als "noch nicht entschieden".
+    """
+    c = open_db(tmp_path / "ubv.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "Schmuck"),                # ok (Feldwoerterbuch-Form)
+            ("OBJ_0002", "schmuck"),                # Case-Tippfehler
+            ("OBJ_0003", "Sammlung"),               # ok
+            ("OBJ_0004", "Forschung"),              # ok
+            ("OBJ_0005", "Industrie"),              # ok
+            ("OBJ_0006", "Talisman"),               # ok
+            ("OBJ_0007", "Dekoration"),             # ok
+            ("OBJ_0008", "jewelry"),                # englische Form
+            ("OBJ_0009", "collection"),             # englische Form
+            ("OBJ_0010", "Schmuck+Sammlung"),       # Kombinationsform
+            ("OBJ_0011", "Verkauf"),                # freier/veralteter Wert
+            ("OBJ_0012", "Handel"),                 # freier/veralteter Wert
+            ("OBJ_0013", "Boerse"),                 # freier/veralteter Wert
+            # Trailing-Slash-Sub-Klassifikation: Basis-Verwendung vor dem
+            # Slash bleibt im Enum-Wert, die Sub-Klassifikation nach dem Slash
+            # (Zweck/Zielinstitution/Vertriebsweg) wird vor dem Vergleich
+            # gestrippt - ueblich in DE-Sammler-Notation als Kompound-
+            # Klassifikation ("Sammlung/Lehrzwecke" = Sammlung + Lehrzweck).
+            ("OBJ_0014", "Sammlung/Lehrzwecke"),           # ok (Slash-Sub-Klassifikation)
+            ("OBJ_0015", "Forschung/Univ. Bern"),          # ok (Zielinstitution)
+            ("OBJ_0016", "schmuck/Anhaenger"),             # Case-Tippfehler trotz Slash-Sub
+            # Trailing-Klammer-Annotation: Basis-Verwendung bleibt im Enum-Wert,
+            # die Sub-Klassifizierung in Klammern (Vermarktungs-Details,
+            # Vitrinen-Platz, Zielinstitution) wird vor dem Vergleich gestrippt
+            # - ueblich in Pflege-Notizen ("Schmuck (Anhaenger)",
+            # "Sammlung [Vitrine 3]", "Forschung {Uni Bern}").
+            ("OBJ_0017", "Schmuck (Anhaenger)"),           # ok (Annotation)
+            ("OBJ_0018", "Sammlung [Vitrine 3]"),          # ok (eckige Klammern)
+            ("OBJ_0019", "Forschung {Uni Bern}"),          # ok (geschwungene Klammern)
+            ("OBJ_0020", "schmuck (Anhaenger)"),           # Case-Tippfehler trotz Annotation
+            ("OBJ_0021", None),                     # legitim (noch nicht entschieden)
+            ("OBJ_0022", ""),                       # legitim (Default-Leerstring)
+            ("OBJ_0023", "   "),                    # legitim (Whitespace = leer)
+        ],
+    )
+    c.commit()
+    rep = check_integrity(c)
+    # Sortiert nach obj_id; NULL/Leerstring/Whitespace und Werte mit gueltigem
+    # Enum-Kern (mit oder ohne Klammer-Annotation oder Slash-Sub-Klassifikation)
+    # tauchen nicht auf.
+    assert rep.unknown_beste_verwendung == [
+        ("OBJ_0002", "schmuck"),
+        ("OBJ_0008", "jewelry"),
+        ("OBJ_0009", "collection"),
+        ("OBJ_0010", "Schmuck+Sammlung"),
+        ("OBJ_0011", "Verkauf"),
+        ("OBJ_0012", "Handel"),
+        ("OBJ_0013", "Boerse"),
+        ("OBJ_0016", "schmuck/Anhaenger"),
+        ("OBJ_0020", "schmuck (Anhaenger)"),
+    ]
+    assert not rep.is_clean
+    c.close()
+
+
+def test_unknown_beste_verwendung_migrierte_db_clean(migrated_conn):
+    """Migrierte Beispiel-DB nutzt ausschliesslich gueltige Beste_Verwendung-
+    Werte (oder NULL/leer als "noch nicht entschieden")."""
+    rep = check_integrity(migrated_conn)
+    assert rep.unknown_beste_verwendung == []
+
+
+def test_unknown_beste_verwendung_in_as_dict_serialisierbar(tmp_path):
+    """as_dict liefert Tuples als Listen, damit das JSON-Format roundtrip-fest ist."""
+    import json
+    c = open_db(tmp_path / "abv.sqlite3")
+    c.execute("INSERT INTO objects (obj_id, Beste_Verwendung) VALUES (?, ?)",
+              ("OBJ_0001", "jewelry"))
+    c.commit()
+    d = check_integrity(c).as_dict()
+    assert d["unknown_beste_verwendung"] == [["OBJ_0001", "jewelry"]]
+    json.dumps(d, ensure_ascii=False)  # darf nicht crashen
+    c.close()
+
+
 def test_geaendert_vor_erstellt_wird_erkannt(tmp_path):
     """geaendert_am < erstellt_am ist logisch unmoeglich und sollte gemeldet werden.
 
