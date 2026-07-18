@@ -3918,6 +3918,120 @@ def test_parse_range_einseitige_vergleichs_grenze():
     assert csv_loaders.parse_range("") == (None, None)
 
 
+def test_parse_range_einseitige_wort_vergleichs_grenze():
+    """Wort-basierte einseitige Vergleichs-Grenze am Wert-Anfang wird als
+    offene Range-Grenze geparst - Naturssprachige Kurzform der ``<``/``>``/
+    ``<=``/``>=``-Marker aus :func:`test_parse_range_einseitige_vergleichs_grenze`.
+
+    Sammler-Notizen und Auktions-/Katalog-Texte nutzen die natur-sprachige
+    Kurzform der Vergleichs-Marker ebenso verbreitet wie die mathematische
+    Notation - eine Wert-Zelle "mindestens 500 CHF" oder "bis 500 CHF" ist
+    in der deutsch-sprachigen Katalog-Praxis (Auktions-Angebote, Boersen-
+    Preise, Erbschafts-Schaetzungen) weit haeufiger als die Kompakt-Form
+    "> 500" bzw. "< 500". Vor dem Fix fielen alle diese Formen still auf
+    die Fallback-Zahl-Extraktion durch: der Wort-Marker wurde als Freitext
+    gelesen und der nackte Wert als Punkt-Range (5.0, 5.0) geliefert - die
+    publizierte Ein-Seiten-Semantik ging stille verloren und die Migration
+    schrieb Mohs_Haerte_min=5 UND Mohs_Haerte_max=5 statt der korrekten
+    Ein-Seiten-Setzung mit NULL an der gegenueberliegenden Grenze.
+
+    Marker-Menge (Anspruch: die in Sammler-Notizen und Katalog-Texten
+    praxisrelevanten Formen, keine kreativen Freitext-Varianten):
+
+    Untere Grenze (>=): DE mindestens / mind. / min. / wenigstens /
+    zumindest / ab; EN at least / from.
+
+    Obere Grenze (<=): DE hoechstens / höchstens / maximal / max. /
+    bis zu / bis; EN at most / up to.
+    """
+    # Untere Grenze (>=): alle DE-/EN-Formen mappen auf (Wert, None).
+    assert csv_loaders.parse_range("mindestens 5") == (5.0, None)
+    assert csv_loaders.parse_range("mind. 5") == (5.0, None)
+    assert csv_loaders.parse_range("min. 5") == (5.0, None)
+    assert csv_loaders.parse_range("wenigstens 5") == (5.0, None)
+    assert csv_loaders.parse_range("zumindest 5") == (5.0, None)
+    assert csv_loaders.parse_range("ab 5") == (5.0, None)
+    assert csv_loaders.parse_range("at least 5") == (5.0, None)
+    assert csv_loaders.parse_range("from 5") == (5.0, None)
+    # Obere Grenze (<=): alle DE-/EN-Formen mappen auf (None, Wert).
+    assert csv_loaders.parse_range("hoechstens 5") == (None, 5.0)
+    assert csv_loaders.parse_range("höchstens 5") == (None, 5.0)
+    assert csv_loaders.parse_range("maximal 5") == (None, 5.0)
+    assert csv_loaders.parse_range("max. 5") == (None, 5.0)
+    assert csv_loaders.parse_range("bis 5") == (None, 5.0)
+    assert csv_loaders.parse_range("bis zu 5") == (None, 5.0)
+    assert csv_loaders.parse_range("at most 5") == (None, 5.0)
+    assert csv_loaders.parse_range("up to 5") == (None, 5.0)
+    # Case-Insensitivitaet: die :data:`_COMPARISON_WORD_LOWER` /
+    # :data:`_COMPARISON_WORD_UPPER` Patterns sind mit ``re.IGNORECASE``
+    # kompiliert, damit Excel-Autocorrect ("Mindestens") oder Fliesstext-
+    # Notation ("MINDESTENS", "At Least") transparent gelesen wird.
+    assert csv_loaders.parse_range("MINDESTENS 5") == (5.0, None)
+    assert csv_loaders.parse_range("Mindestens 5") == (5.0, None)
+    assert csv_loaders.parse_range("At Least 5") == (5.0, None)
+    assert csv_loaders.parse_range("UP TO 5") == (None, 5.0)
+    # Dezimal-Zahlen und DE-Komma-Dezimal-Locale nach Praefix-Strip.
+    assert csv_loaders.parse_range("mindestens 5.5") == (5.5, None)
+    assert csv_loaders.parse_range("mindestens 5,5") == (5.5, None)
+    assert csv_loaders.parse_range("ab 2,65") == (2.65, None)
+    assert csv_loaders.parse_range("bis 100 mg") == (None, 100.0)
+    # Wert-Feld-Praxis (Wert_min/_max-Grenze aus Auktions-/Boersen-Texten):
+    # DE-Tausendertrenner werden durch die bestehende
+    # ``normalize_numeric_locale``-Preprocessing-Stufe abgedeckt.
+    assert csv_loaders.parse_range("ab 500 CHF") == (500.0, None)
+    assert csv_loaders.parse_range("bis 500 CHF") == (None, 500.0)
+    assert csv_loaders.parse_range("ab 1.500,00 CHF") == (1500.0, None)
+    # Kombination mit dem Approximations-Praefix (``ca.``/``etwa``): der
+    # Wort-Marker konsumiert den Praefix, die Rekursion konsumiert die
+    # Approximation, das Endresultat behaelt die Ein-Seiten-Semantik.
+    assert csv_loaders.parse_range("mindestens ca. 5") == (5.0, None)
+    assert csv_loaders.parse_range("bis etwa 500") == (None, 500.0)
+    # Kombination mit dem Zeichen-Vergleichs-Marker: ``mindestens > 5``
+    # (redundante Notation aus Sammler-Notizen) wird verlustfrei geparst -
+    # der Wort-Marker konsumiert das Wort, die Rekursion konsumiert das
+    # ``>`` und liefert (5.0, None); die Wort-Interpretation "untere Grenze"
+    # ist identisch zur ``>``-Interpretation, sodass beide Marker konsistent
+    # dieselbe Grenze setzen.
+    assert csv_loaders.parse_range("mindestens > 5") == (5.0, None)
+    assert csv_loaders.parse_range("hoechstens < 5") == (None, 5.0)
+    # Kombination mit Uncertainty-Notation: der Wort-Marker konsumiert das
+    # Wort, die Rekursion parst die Toleranz-Struktur. "mindestens 5.5 ±
+    # 0.3" liefert (5.2, None): die untere Toleranz-Grenze wird als
+    # konservative Untergrenze uebernommen (spiegelt _COMPARISON_PREFIX's
+    # Uncertainty-Kompatibilitaet).
+    assert csv_loaders.parse_range("mindestens 5.5 ± 0.3") == pytest.approx((5.2, None))
+    # Negative Werte (thermodynamische Kontexte): ``ab -5`` liefert
+    # (-5.0, None), ``bis -5`` liefert (None, -5.0). Der Wort-Marker
+    # konsumiert das Wort, die Rekursion parst die negative Zahl.
+    assert csv_loaders.parse_range("ab -5") == (-5.0, None)
+    assert csv_loaders.parse_range("bis -5") == (None, -5.0)
+    assert csv_loaders.parse_range("mindestens -1.5") == (-1.5, None)
+    # Kollisions-Schutz: der Wort-Marker greift NUR am String-Anfang mit
+    # obligatorischem Whitespace nach dem Marker. Wort-Fortsetzungen
+    # (``abmessungen``, ``bislang``, ``maximaler``) haben KEIN Whitespace
+    # nach dem Marker-Anfangs-Prefix und fallen auf die Standard-Zahl-
+    # Extraktion durch (Punkt-Range).
+    assert csv_loaders.parse_range("abmessungen 5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("bislang 5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("maximaler 5") == (5.0, 5.0)
+    # Kollisions-Schutz: ``bis`` zwischen zwei Zahlen bleibt als Range-
+    # Separator erhalten, weil der Praefix-Anker den Wort-Marker NUR am
+    # String-Anfang akzeptiert - ``3 bis 5`` matcht NICHT (die ``3`` steht
+    # vorne). Spiegelt die etablierte Range-Separator-Behandlung.
+    assert csv_loaders.parse_range("3 bis 5") == (3.0, 5.0)
+    assert csv_loaders.parse_range("3 to 5") == (3.0, 5.0)
+    # Leere Fortsetzung: nur der Wort-Marker ohne Zahl faellt zurueck auf
+    # (None, None) - der Wort-Match verlangt ``\s+`` nach dem Marker,
+    # sodass ohne Zahl der Match nicht greift und die generische Zahl-
+    # Extraktion auf leere Eingabe (None, None) liefert.
+    assert csv_loaders.parse_range("mindestens") == (None, None)
+    assert csv_loaders.parse_range("bis") == (None, None)
+    # Bestandsverhalten unveraendert: reine Zahlen, Bereiche, leere Eingabe.
+    assert csv_loaders.parse_range("5") == (5.0, 5.0)
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("") == (None, None)
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 

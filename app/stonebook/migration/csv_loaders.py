@@ -327,6 +327,69 @@ _APPROX_VALUE_PREFIX = re.compile(
 # kein Exponent-Zeichen, kein Dezimal-/Tausender-Trenner).
 _COMPARISON_PREFIX = re.compile(r"^\s*(<=|>=|<|>|≤|≥)\s*")
 
+# Wort-basierte einseitige Vergleichs-Grenze am String-Anfang: die natur-
+# sprachige Kurzform der ``<``/``>``/``<=``/``>=``-Marker, die in Sammler-
+# Notizen und deutsch-/englisch-sprachigen Publikationen ebenso verbreitet
+# ist wie die mathematische Notation. ``mindestens 5`` = ``>= 5`` ->
+# (5, None); ``hoechstens 5`` = ``<= 5`` -> (None, 5); ``bis 500`` = ``<=
+# 500`` fuer Wert-Obergrenzen ("Wert bis 500 CHF") oder Grenzwerte im Feld-
+# text ("Haerte bis 6.5" = "hoechstens 6.5" auf der Mohs-Achse). Spiegelt
+# strukturell :data:`_COMPARISON_PREFIX` auf die Wort-Achse: der Marker
+# wird konsumiert, der Rest rekursiv geparst und das Ergebnis auf eine
+# offene Range-Grenze abgebildet.
+#
+# Ohne Behandlung fielen alle diese Formen still auf die Fallback-Zahl-
+# Extraktion durch: der Wort-Marker wurde als Freitext gelesen und der
+# nackte Wert als Punkt-Range (5.0, 5.0) geliefert - die publizierte
+# Ein-Seiten-Semantik ging stille verloren und die Migration schrieb
+# Mohs_Haerte_min=5 UND Mohs_Haerte_max=5 statt der korrekten
+# Ein-Seiten-Setzung mit NULL an der gegenueberliegenden Grenze.
+#
+# Marker-Menge (Anspruch: die in Sammler-Notizen und Auktions-/Katalog-
+# Texten praxisrelevanten Formen, keine kreativen Freitext-Varianten):
+#
+# Untere Grenze (>=, ``lo=Wert, hi=None``):
+#   * DE: ``mindestens``, ``mind.``, ``min.``, ``wenigstens``,
+#     ``zumindest``, ``ab``
+#   * EN: ``at least``, ``from``
+#
+# Obere Grenze (<=, ``lo=None, hi=Wert``):
+#   * DE: ``hoechstens``, ``höchstens``, ``maximal``, ``max.``,
+#     ``bis zu``, ``bis``
+#   * EN: ``at most``, ``up to``
+#
+# Praefix-Position auf ``^\s*`` anker-gebunden und mit Whitespace nach dem
+# Marker separiert (``\s+``): kollisionsfrei zu Fortsetzungen der Wort-
+# stamme (``abmessungen``, ``abbau``, ``maximal-wert``, ``bislang``),
+# weil die Marker-Fortsetzung nicht mit Whitespace beginnen kann. ``bis``
+# zwischen zwei Zahlen (``3 bis 5``) bleibt als Range-Separator erhalten,
+# weil der Praefix-Anker den Wort-Marker nur am String-Anfang akzeptiert -
+# ``3 bis 5`` matcht NICHT (die ``3`` steht vorne). ``min``/``max`` ohne
+# Punkt sind absichtlich AUSGESCHLOSSEN: ``min`` ist SI-Einheit fuer
+# Minute, ``max`` ist ein verbreiteter Vorname und Feldpraefix - beide
+# treten in Sammler-Notizen und Wert-Feldern auf und wuerden ohne
+# Punkt-Guard fehl-matchen. Die abgekuerzten Formen mit Punkt
+# (``min.``/``max.``/``mind.``) sind eindeutig als Marker markiert und
+# werden akzeptiert.
+_COMPARISON_WORD_LOWER = re.compile(
+    r"^\s*(?:"
+    r"mindestens|mind\.|min\.|"
+    r"wenigstens|zumindest|"
+    r"ab|"
+    r"at\s+least|from"
+    r")\s+",
+    re.IGNORECASE,
+)
+_COMPARISON_WORD_UPPER = re.compile(
+    r"^\s*(?:"
+    r"höchstens|hoechstens|"
+    r"maximal|max\.|"
+    r"bis\s+zu|bis|"
+    r"at\s+most|up\s+to"
+    r")\s+",
+    re.IGNORECASE,
+)
+
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
 # notieren: ``Dichte 2.65 ± 0.05`` = "Wert 2.65, Toleranz 0.05, Range [2.60, 2.70]".
@@ -1603,6 +1666,28 @@ def parse_range(text) -> tuple[float | None, float | None]:
             if marker in ("<", "<=", "≤"):
                 return None, inner_hi
             return inner_lo, None
+    # Wort-basierte einseitige Vergleichs-Grenze am String-Anfang: die natur-
+    # sprachige Kurzform der ``<``/``>``/``<=``/``>=``-Marker. ``mindestens 5``
+    # / ``ab 5`` / ``at least 5`` -> untere Grenze (lo=5, hi=None);
+    # ``hoechstens 5`` / ``bis 5`` / ``max. 5`` / ``at most 5`` / ``up to 5``
+    # -> obere Grenze (lo=None, hi=5). Nach _COMPARISON_PREFIX einsortiert,
+    # damit ``mindestens > 5`` die Wort-Form konsumiert und der Rest ``> 5``
+    # transparent den Zeichen-Marker greift (redundante Notation, verlustfrei).
+    # Siehe :data:`_COMPARISON_WORD_LOWER` / :data:`_COMPARISON_WORD_UPPER`
+    # fuer Details zur Marker-Menge, Kollisions-Schutz und Punkt-Guard-
+    # Konvention der abgekuerzten Formen.
+    word_lo = _COMPARISON_WORD_LOWER.match(s)
+    if word_lo:
+        rest = s[word_lo.end():].strip()
+        if rest:
+            inner_lo, _inner_hi = parse_range(rest)
+            return inner_lo, None
+    word_hi = _COMPARISON_WORD_UPPER.match(s)
+    if word_hi:
+        rest = s[word_hi.end():].strip()
+        if rest:
+            _inner_lo, inner_hi = parse_range(rest)
+            return None, inner_hi
     # ``N ± M``-Notation vor der generischen Zahlen-Extraktion pruefen: die
     # Toleranz ist strukturell an das Zentrum gebunden, nicht ein zweiter
     # unabhaengiger Wert. Ohne diesen Zweig wuerde ``5.5 ± 0.3`` als
