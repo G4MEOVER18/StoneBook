@@ -667,6 +667,38 @@ _COMPARISON_WORD_UPPER = re.compile(
     re.IGNORECASE,
 )
 
+# Marker-Menge fuer :data:`_COMPARISON_WORD_LOWER`, die in natuerlicher
+# Sprache DUAL-USE sind: sie fungieren *entweder* als "at least"-
+# Ein-Seiten-Marker (``from 5``, ``ab 500 CHF``) *oder* als Range-Start-
+# Marker in Kombination mit ``to``/``bis`` oder einem Ziffern-Bindestrich
+# (``from 5 to 7``, ``ab 5 bis 7``, ``ab 5-7``, ``from 500 to 700 CHF``).
+# Die Unterscheidung ist rein syntaktisch: bei folgendem Range-Separator
+# ist der Marker der Range-Start-Wort ("von X bis Y"-Konvention),
+# bei fehlendem Separator die etablierte Ein-Seiten-Semantik ("at
+# least X"). Alle anderen Marker (``mindestens``/``at least``/``ueber``/
+# ``mehr als``/``greater than``/``over``/``above``/``oberhalb``/
+# ``wenigstens``/``zumindest``/``min.``/``mind.``) sind ausschliesslich
+# Ein-Seiten-Marker und teilen die Range-Starter-Semantik nicht - sie
+# bleiben von der Dual-Use-Auswertung ausgenommen und wenden immer die
+# Ein-Seiten-Bounds-Setzung an, auch bei folgendem Range-Ausdruck
+# (``at least 5-7`` -> (5, None), spiegelt die Sammler-Semantik "der
+# Wert liegt mindestens im Range 5-7, also mindestens 5").
+_RANGE_STARTER_WORDS: frozenset[str] = frozenset({"from", "ab"})
+
+# Detektor fuer einen Range-Separator NACH der ersten Zahl im ``rest``-
+# Segment: entweder ein Wort-Separator (``to``/``bis`` mit obligatorischem
+# Whitespace links und rechts, damit ``bislang``/``together``/``tomorrow``
+# nicht mit-matcht) oder ein Ziffern-Bindestrich (ASCII-``-`` bzw. Unicode-
+# Dashes ``–``/``—``/``−`` zwischen zwei Zahlen; ASCII-Vorzeichen-Bindung
+# an eine folgende Zahl OHNE fuehrende Ziffer wird durch den Lookbehind
+# ``(?<=\d)`` ausgeschlossen, damit ``ab -5`` als "at least -5" statt als
+# Range ``ab -5`` gelesen wird). Wird ausschliesslich fuer die
+# :data:`_RANGE_STARTER_WORDS`-Dual-Use-Auswertung genutzt.
+_HAS_RANGE_TAIL = re.compile(
+    r"\s+(?:to|bis)\s+|(?<=\d)\s*[-–—−]\s*(?=[.\d])",
+    re.IGNORECASE,
+)
+
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
 # notieren: ``Dichte 2.65 ± 0.05`` = "Wert 2.65, Toleranz 0.05, Range [2.60, 2.70]".
@@ -2005,6 +2037,31 @@ def parse_range(text) -> tuple[float | None, float | None]:
     if word_lo:
         rest = s[word_lo.end():].strip()
         if rest:
+            # Range-Starter-Wort-Dual-Use: ``from``/``ab`` sind in
+            # natuerlicher Sprache doppel-genutzt - entweder als "at
+            # least"-Ein-Seiten-Marker (``from 5`` / ``ab 500 CHF``)
+            # oder als Range-Start-Wort in Kombination mit einem
+            # folgenden Range-Separator (``from 5 to 7`` / ``ab 5 bis
+            # 7`` / ``ab 5-7`` / ``from 500 to 700 CHF``). Bisher
+            # kollabierten alle Range-Formen still auf die Ein-Seiten-
+            # Interpretation (``from 5 to 7`` -> (5, None) statt der
+            # publizierten Range (5, 7)) und die obere Bereichsgrenze
+            # ging verloren; die neue Dual-Use-Auswertung erkennt einen
+            # Range-Separator (:data:`_HAS_RANGE_TAIL`: Wort-Separator
+            # ``to``/``bis`` oder Ziffern-Bindestrich) und leitet in
+            # diesem Fall die Rekursion auf ``rest`` durch, sodass die
+            # etablierte Range-Extraktion die publizierte Bereichs-
+            # Zuordnung uebernimmt. Ohne Range-Separator bleibt die
+            # etablierte "at least"-Semantik ohne Verhaltens-Aenderung
+            # erhalten (``from 5`` -> (5, None), ``ab 500 CHF`` ->
+            # (500, None)). Die Auswertung ist auf :data:`_RANGE_
+            # STARTER_WORDS` beschraenkt und laesst alle uebrigen
+            # Marker (mindestens/at least/ueber/mehr als/greater than/
+            # over/above/oberhalb/wenigstens/zumindest/min./mind.)
+            # bei ihrer strikten Ein-Seiten-Semantik.
+            marker_lower = word_lo.group(0).strip().lower()
+            if marker_lower in _RANGE_STARTER_WORDS and _HAS_RANGE_TAIL.search(rest):
+                return parse_range(rest)
             inner_lo, _inner_hi = parse_range(rest)
             return inner_lo, None
     word_hi = _COMPARISON_WORD_UPPER.match(s)

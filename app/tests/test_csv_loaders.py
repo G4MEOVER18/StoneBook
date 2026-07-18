@@ -4510,6 +4510,113 @@ def test_parse_range_einseitige_wort_vergleichs_grenze_strikt():
     assert csv_loaders.parse_range("under") == (None, None)
 
 
+def test_parse_range_range_starter_wort_dual_use():
+    """``from``/``ab`` sind in natuerlicher Sprache doppelt genutzt: entweder
+    als "at least"-Ein-Seiten-Marker (``from 5`` / ``ab 500 CHF``) oder als
+    Range-Start-Wort in Kombination mit einem folgenden Range-Separator
+    (``from 5 to 7`` / ``ab 5 bis 7`` / ``ab 5-7`` / ``from 500 to 700 CHF``).
+    Die Auswertung unterscheidet die beiden Faelle rein syntaktisch anhand
+    des Range-Separators im Rest-Segment: bei ``to``/``bis`` bzw. Ziffern-
+    Bindestrich (ASCII-``-`` oder Unicode-``–``/``—``/``−`` zwischen Zahlen)
+    im ``rest`` wird die Range-Semantik uebernommen; ohne Separator die
+    etablierte Ein-Seiten-Semantik.
+
+    Vor dem Fix kollabierten alle Range-Formen still auf die Ein-Seiten-
+    Interpretation - der Wort-Marker konsumierte die erste Zahl als
+    "at least"-Wert, die Rekursion parste den Rest (``to 7`` / ``bis 7``)
+    und die auf ``(lo, None)`` mappende Ein-Seiten-Setzung verwarf die
+    obere Bereichsgrenze silent:
+
+    * ``"from 5 to 7"``       -> (5, None)  (obere Grenze 7 verloren)
+    * ``"ab 5 bis 7"``        -> (5, None)  (dito, DE-Konvention)
+    * ``"ab 5-7"``            -> (5, None)  (Ziffern-Bindestrich verloren)
+    * ``"from 500 to 700 CHF"`` -> (500, None)  (Wert-Range zerbrochen)
+
+    Sammler-Notation aus Auktions-/Boersen-Katalogen und Erbschafts-
+    Schaetzungen verwendet die ``von X bis Y``/``from X to Y``-Range-
+    Konvention regelmaessig fuer Preis-Erwartungen ("erwartet from 500
+    to 700 CHF"), fuer Wert-Bereichs-Angaben ("Nachlassschaetzung ab
+    500 bis 700 EUR") und fuer physikalische Bereichs-Grenzen ("Haerte
+    from 5 to 7 Mohs", "Dichte ab 2.6 bis 2.8 g/cm³") - beide Grenzen
+    sind publiziert, die Range-Erhaltung ist fuer die Sortier-/Filter-
+    Ebene der Range-Felder (Mohs_min/_max, Dichte_min/_max_gcm3,
+    Wert_CHF_*) essenziell.
+
+    Die Auswertung ist auf :data:`_RANGE_STARTER_WORDS` (``from``, ``ab``)
+    beschraenkt und laesst alle uebrigen Wort-Marker (``mindestens``,
+    ``at least``, ``ueber``, ``mehr als``, ``greater than``, ``over``,
+    ``above``, ``oberhalb``, ``wenigstens``, ``zumindest``, ``min.``,
+    ``mind.``) bei ihrer strikten Ein-Seiten-Semantik - diese Marker sind
+    in natuerlicher Sprache eindeutig "at least"-Marker (``at least
+    5-7`` = "der Wert liegt mindestens im Range 5-7, also mindestens 5",
+    NICHT "der Wert liegt im Range 5-7") und teilen die Range-Starter-
+    Semantik nicht.
+    """
+    # Range-Starter mit Wort-Separator ``to``/``bis``: die publizierte
+    # Range-Zuordnung wird uebernommen.
+    assert csv_loaders.parse_range("from 5 to 7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("from 500 to 700") == (500.0, 700.0)
+    assert csv_loaders.parse_range("ab 5 bis 7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("ab 500 bis 700") == (500.0, 700.0)
+    # Range-Starter mit Ziffern-Bindestrich (ASCII + Unicode-Dashes):
+    assert csv_loaders.parse_range("from 5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("ab 5-7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("from 5 - 7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("ab 5 - 7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("from 5–7") == (5.0, 7.0)   # en-dash
+    assert csv_loaders.parse_range("ab 5—7") == (5.0, 7.0)     # em-dash
+    assert csv_loaders.parse_range("from 5−7") == (5.0, 7.0)   # U+2212 minus
+    # Range-Starter mit Einheit auf beiden Grenzen (Standard-Katalog-
+    # Notation).
+    assert csv_loaders.parse_range("from 5 mm to 7 mm") == (5.0, 7.0)
+    assert csv_loaders.parse_range("ab 2.6 g/cm³ bis 2.8 g/cm³") == (2.6, 2.8)
+    assert csv_loaders.parse_range("from 500 to 700 CHF") == (500.0, 700.0)
+    assert csv_loaders.parse_range("ab 500 bis 700 EUR") == (500.0, 700.0)
+    # DE-Komma-Dezimal auf beiden Grenzen (Suisse romande CSV-Excel-
+    # Konvention):
+    assert csv_loaders.parse_range("ab 2,6 bis 2,8") == (2.6, 2.8)
+    assert csv_loaders.parse_range("from 5,5 to 7,5") == (5.5, 7.5)
+    # Case-Insensitivitaet (spiegelt die etablierte re.IGNORECASE-
+    # Konvention der Comparison-Word-Regexes):
+    assert csv_loaders.parse_range("FROM 5 TO 7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("From 5 To 7") == (5.0, 7.0)
+    assert csv_loaders.parse_range("AB 5 BIS 7") == (5.0, 7.0)
+    # Ein-Seiten-Semantik OHNE Range-Separator bleibt unveraendert
+    # (die Regress-Anker aus dem Bestand-Test verbleiben verlustfrei):
+    assert csv_loaders.parse_range("from 5") == (5.0, None)
+    assert csv_loaders.parse_range("ab 500 CHF") == (500.0, None)
+    assert csv_loaders.parse_range("ab 1.500,00 CHF") == (1500.0, None)
+    # Ein-Seiten-Semantik mit negativen Werten - der Ziffern-Bindestrich-
+    # Detektor verlangt eine Ziffer VOR dem ``-`` (Lookbehind ``(?<=\\d)``),
+    # sodass die Sign-Bindung ``-5`` nicht faelschlich als Range-Separator
+    # gelesen wird.
+    assert csv_loaders.parse_range("ab -5") == (-5.0, None)
+    assert csv_loaders.parse_range("from -5") == (-5.0, None)
+    # Andere Wort-Marker sind KEINE Range-Starter und behalten die
+    # strikte Ein-Seiten-Semantik auch bei folgendem Range-Ausdruck:
+    assert csv_loaders.parse_range("at least 5-7") == (5.0, None)
+    assert csv_loaders.parse_range("at least 5 to 7") == (5.0, None)
+    assert csv_loaders.parse_range("mindestens 5-7") == (5.0, None)
+    assert csv_loaders.parse_range("mindestens 5 bis 7") == (5.0, None)
+    assert csv_loaders.parse_range("ueber 5 bis 7") == (5.0, None)
+    assert csv_loaders.parse_range("over 5 to 7") == (5.0, None)
+    assert csv_loaders.parse_range("greater than 5 to 7") == (5.0, None)
+    assert csv_loaders.parse_range("more than 5-7") == (5.0, None)
+    assert csv_loaders.parse_range("wenigstens 5-7") == (5.0, None)
+    assert csv_loaders.parse_range("oberhalb 5-7") == (5.0, None)
+    # Bestandsverhalten der Zwischen-Zahl-Separator-Semantik unveraendert:
+    # ``to``/``bis`` als reine Range-Separator zwischen zwei Zahlen (ohne
+    # vorangestellten Range-Starter) bleiben verlustfrei.
+    assert csv_loaders.parse_range("3 bis 5") == (3.0, 5.0)
+    assert csv_loaders.parse_range("3 to 5") == (3.0, 5.0)
+    assert csv_loaders.parse_range("5-7") == (5.0, 7.0)
+    # Bestandsverhalten der oberen-Wort-Marker unveraendert:
+    assert csv_loaders.parse_range("bis 5") == (None, 5.0)
+    assert csv_loaders.parse_range("bis zu 500") == (None, 500.0)
+    assert csv_loaders.parse_range("up to 5") == (None, 5.0)
+    assert csv_loaders.parse_range("at most 5") == (None, 5.0)
+
+
 def test_parse_range_leading_currency_prefix_mit_uncertainty():
     """Leading-Waehrungs-Prefix am Wert-Anfang (ISO-4217-Codes CHF/USD/EUR/GBP/JPY/...
     und Waehrungs-Symbole ``$``/``€``/``£``/``¥``/... plus Compound-``$``-Prefixe
