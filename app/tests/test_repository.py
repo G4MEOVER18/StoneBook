@@ -542,6 +542,99 @@ def test_wert_pro_volumen_min_max_filter(tmp_path):
     c.close()
 
 
+def test_mohs_mitte_min_max_filter(tmp_path):
+    """mohs_mitte_min/_max als Filter-Ebenen-Pendant zur Mohs_Haerte_Mitte-
+    Sortier-Achse. Spiegelt strukturell mohs_min/mohs_max auf die Mittelpunkt-
+    Achse: waehrend das min/max-Spaltenpaar Single-Point-Pflege asymmetrisch
+    filtert (Quarz "7" nur als Mohs_Haerte_min gepflegt faellt aus dem
+    mohs_max=X-Filter raus, weil Mohs_Haerte_max NULL nie <= X ist), gibt
+    mohs_mitte den typischen Wert unabhaengig von der Pflege-Konvention.
+
+    NULL-Semantik: beide Haerte-Grenzen NULL laesst die COALESCE-Summe NULL
+    werden - solche Objekte fallen implizit aus dem Filter (spiegelt mohs_-
+    /dichte_-/volumen_-/wert_pro_gewicht_-Konvention).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "mmi_filter.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Mohs_Haerte_min, Mohs_Haerte_max) "
+        "VALUES (?, ?, ?)",
+        [
+            # Zweiseitiger Bereich, Mittelpunkt 5.5 (Apatit)
+            ("OBJ_0001", 5.0, 6.0),
+            # Single-Point min only -> Mittelpunkt 7.0 (Quarz)
+            ("OBJ_0002", 7.0, None),
+            # Single-Point max only -> Mittelpunkt 10.0 (Diamant)
+            ("OBJ_0003", None, 10.0),
+            # Zweiseitiger Bereich, Mittelpunkt 1.5 (Talk)
+            ("OBJ_0004", 1.0, 2.0),
+            # Beide NULL -> Mittelpunkt NULL -> aus dem Filter raus
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Schmuck-Haerte: >= 7 (Quarz-Grenze) - erfasst Single-Point-Quarz und Diamant
+    rows = repo.list_objects(mohs_mitte_min=7.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Strichtest-tauglich: <= 3 - erfasst Talk-Bereich unabhaengig von Pflege
+    rows = repo.list_objects(mohs_mitte_max=3.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # Mittelharter Bereich (4..7): Apatit + Single-Point-Quarz
+    rows = repo.list_objects(mohs_mitte_min=4.0, mohs_mitte_max=7.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Alle NULL-Traeger fallen aus dem Filter (mohs_mitte_min=0.0 ist no-op
+    # semantisch, aber testet, dass NULL nicht als 0 durchkommt)
+    rows = repo.list_objects(mohs_mitte_min=0.0)
+    assert "OBJ_0005" not in [r["obj_id"] for r in rows]
+    c.close()
+
+
+def test_dichte_mitte_min_max_filter(tmp_path):
+    """dichte_mitte_min/_max als Filter-Ebenen-Pendant zur Dichte_Mitte-
+    Sortier-Achse. Spiegelt mohs_mitte_min/_max auf die Massendichte-Achse:
+    typischer Wert pro Stueck via COALESCE-Mittelpunkt, unabhaengig davon,
+    ob Pflege als Punkt (Quarz 2.65 nur Dichte_min_gcm3) oder als Bereich
+    (Quarz-Serie 2.6..2.7) erfolgt ist.
+
+    NULL-Semantik: beide Grenzen NULL -> Mittelpunkt NULL -> aus dem Filter
+    raus, spiegelt die mohs_mitte_-/volumen_-/wert_pro_gewicht_-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "dmi_filter.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Dichte_min_gcm3, Dichte_max_gcm3) "
+        "VALUES (?, ?, ?)",
+        [
+            # Zweiseitiger Bereich, Mittelpunkt 2.65 (Quarz-Familie)
+            ("OBJ_0001", 2.6, 2.7),
+            # Single-Point min only -> Mittelpunkt 7.5 (Galenit)
+            ("OBJ_0002", 7.5, None),
+            # Single-Point max only -> Mittelpunkt 5.0 (Pyrit-Bereichs-Max)
+            ("OBJ_0003", None, 5.0),
+            # Zweiseitiger Bereich, Mittelpunkt 2.1 (Opal)
+            ("OBJ_0004", 1.9, 2.3),
+            # Beide NULL -> Mittelpunkt NULL -> aus dem Filter raus
+            ("OBJ_0005", None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Erz-Vermutung: >= 4 g/cm3 (Pyrit/Galenit) - unabhaengig von Punkt-/Bereichs-Pflege
+    rows = repo.list_objects(dichte_mitte_min=4.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Leichte Stuecke: <= 2.5 g/cm3 (Opal/Bims)
+    rows = repo.list_objects(dichte_mitte_max=2.5)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # Silikat-Bereich (2..3): Quarz-Familie + Opal
+    rows = repo.list_objects(dichte_mitte_min=2.0, dichte_mitte_max=3.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0004"]
+    # NULL-Traeger fallen aus dem Filter
+    rows = repo.list_objects(dichte_mitte_min=0.0)
+    assert "OBJ_0005" not in [r["obj_id"] for r in rows]
+    c.close()
+
+
 def test_sort_by_dimensionen(tmp_path):
     """Sortierung nach Laenge_mm/Breite_mm/Hoehe_mm fuer Vitrinen-/Schubladen-Auswahl."""
     from stonebook.db.database import open_db

@@ -612,8 +612,12 @@ class ObjectRepo:
                      volumen_max: float | None = None,
                      mohs_min: float | None = None,
                      mohs_max: float | None = None,
+                     mohs_mitte_min: float | None = None,
+                     mohs_mitte_max: float | None = None,
                      dichte_min: float | None = None,
                      dichte_max: float | None = None,
+                     dichte_mitte_min: float | None = None,
+                     dichte_mitte_max: float | None = None,
                      seltenheit_global_min: int | None = None,
                      seltenheit_global_max: int | None = None,
                      seltenheit_fundort_min: int | None = None,
@@ -1976,6 +1980,35 @@ class ObjectRepo:
         if mohs_max is not None:
             where.append("o.Mohs_Haerte_max <= ?")
             params.append(float(mohs_max))
+        # mohs_mitte_min/_max als Filter-Ebenen-Pendant zur Mohs_Haerte_Mitte-
+        # Sortier-Achse aus SORTABLE_COLUMNS. Waehrend mohs_min/mohs_max das
+        # min/max-Spaltenpaar getrennt beschneiden (der Bereich MUSS ganz
+        # innerhalb [mohs_min..mohs_max] liegen) und dabei Single-Point-
+        # gepflegte Stuecke ("Quarz 7" nur als min gesetzt, "Diamant 10" nur
+        # als max) asymmetrisch verhalten, filtert mohs_mitte_min/_max den
+        # typischen Wert pro Stueck: bei zweiseitigem Bereich ((min+max)/2),
+        # bei Single-Point-Pflege den einzelnen Wert via COALESCE. Sammler-
+        # Frage "welche Stuecke sind typisch mittelhart (4..7)?" ->
+        # mohs_mitte_min=4.0, mohs_mitte_max=7.0 - liefert Apatit-/Quarz-
+        # Bereich unabhaengig davon, ob Pflege als Punkt (Mohs_Haerte_min=6)
+        # oder als Bereich (min=4, max=7) erfolgt ist. Spiegelt die
+        # Wert_pro_Gewicht_chf_g-/Wert_pro_Volumen_chf_mm3-Konvention: derselbe
+        # SQL-Ausdruck wie in der SELECT-Liste bzw. der Sortier-Achse, damit
+        # Filter und Sortierung dieselbe Zahlen-Domain teilen. NULL-Semantik:
+        # beide Haerte-Grenzen NULL laesst die COALESCE-Summe NULL werden, und
+        # NULL >= X / NULL <= X sind beide NULL == FALSE - solche Objekte
+        # fallen implizit aus dem Filter (spiegelt die mohs_-/dichte_-
+        # /volumen_-/wert_pro_gewicht_-Konvention).
+        if mohs_mitte_min is not None:
+            where.append(
+                "((COALESCE(o.Mohs_Haerte_min, o.Mohs_Haerte_max) "
+                "+ COALESCE(o.Mohs_Haerte_max, o.Mohs_Haerte_min)) / 2.0) >= ?")
+            params.append(float(mohs_mitte_min))
+        if mohs_mitte_max is not None:
+            where.append(
+                "((COALESCE(o.Mohs_Haerte_min, o.Mohs_Haerte_max) "
+                "+ COALESCE(o.Mohs_Haerte_max, o.Mohs_Haerte_min)) / 2.0) <= ?")
+            params.append(float(mohs_mitte_max))
         # Dichte-Filter analog zur Mohs-Haerte ueber das min/max-Spaltenpaar.
         # Sammler-Frage: "welche Stuecke sind dicht genug fuer Erz-Vermutung
         # (>=5 g/cm3, Magnetit/Haematit/Galenit)?" -> dichte_min=5.0; oder
@@ -1987,6 +2020,28 @@ class ObjectRepo:
         if dichte_max is not None:
             where.append("o.Dichte_max_gcm3 <= ?")
             params.append(float(dichte_max))
+        # dichte_mitte_min/_max als Filter-Ebenen-Pendant zur Dichte_Mitte-
+        # Sortier-Achse aus SORTABLE_COLUMNS. Spiegelt mohs_mitte_min/_max auf
+        # die Massendichte-Achse: waehrend dichte_min/dichte_max das min/max-
+        # Spaltenpaar getrennt beschneiden und damit Single-Point-Pflege
+        # asymmetrisch verhalten (Quarz 2.65 nur als min gesetzt, Galenit 7.5
+        # nur als max), filtert dichte_mitte_min/_max den typischen Wert pro
+        # Stueck via derselben COALESCE-Mittelpunkt-Konstruktion. Sammler-
+        # Frage "welche Stuecke sind typisch schwer (>=4 g/cm3, Erz-Kandidaten
+        # unabhaengig von Pflege-Konvention)?" -> dichte_mitte_min=4.0.
+        # NULL-Semantik identisch zu mohs_mitte_ (beide Grenzen NULL -> Mittel-
+        # punkt NULL -> aus dem Filter raus, spiegelt die volumen_-/wert_pro_
+        # gewicht_-Konvention).
+        if dichte_mitte_min is not None:
+            where.append(
+                "((COALESCE(o.Dichte_min_gcm3, o.Dichte_max_gcm3) "
+                "+ COALESCE(o.Dichte_max_gcm3, o.Dichte_min_gcm3)) / 2.0) >= ?")
+            params.append(float(dichte_mitte_min))
+        if dichte_mitte_max is not None:
+            where.append(
+                "((COALESCE(o.Dichte_min_gcm3, o.Dichte_max_gcm3) "
+                "+ COALESCE(o.Dichte_max_gcm3, o.Dichte_min_gcm3)) / 2.0) <= ?")
+            params.append(float(dichte_mitte_max))
         # Globale Seltenheit (1=haeufig .. 10=sehr selten) als Bereichsfilter.
         # Sammler-Frage: "welche Stuecke sind global Top-Rare (>=8)?" liefert
         # die Vitrinen-Schaustuecke; ``seltenheit_global_max=3`` selektiert
