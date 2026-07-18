@@ -264,6 +264,28 @@ _NUM_RE = re.compile(
 # weise``/``schaetzungsweise``, ``gesch[äa]tzt``/``geschaetzt``, ``m[öo]glicher-
 # weise``/``moeglicherweise``) parallel wie im Datums-Praefix - Windows-CP1252/
 # Excel-DE nativ vs. 7-bit-ASCII-Notizen aus Terminal-/E-Mail-/LaTeX-Quellen.
+# FR-/IT-Annaeherungs-Marker (Suisse romande / Ticino / Val d'Aosta): ``vers`` (FR)
+# = "gegen"/"um", ``environ`` (FR) = "ungefaehr", ``verso`` (IT) = "gegen"/"um",
+# ``attorno`` (IT, bare Praefix-Form ohne Artikel-Kontraktion). ``circa`` ist zwar
+# IT-Vokabular, aber via Latin-Wurzel bereits im DE-/EN-Block oben abgedeckt.
+# Spiegelt strukturell den identischen FR/IT-Block aus
+# :data:`stonebook.migration.validators._APPROX_PREFIX` auf die Wert-Achse. Sammler-
+# Notizen aus franzoesisch-sprachigen Alpen-Fundorten (Wallis/Val d'Anniviers,
+# Chamonix, Mont-Blanc) und aus italienisch-sprachigen Ticino-/Val-d'Aosta-
+# Sammlungen (Museo cantonale di storia naturale, "Rivista Mineralogica Ticinese"-
+# Etiketten) nutzen diese Vokabeln fuer approximierte Wert-Angaben ebenso wie fuer
+# approximierte Datums-Angaben - "vers 500 CHF" fuer eine Preis-Schaetzung ohne
+# publizierte Streuung, "verso 5.5 Mohs" fuer eine Haerte-Naeherung ohne exakte
+# Messung, "environ 2.65 ± 0.05 g/cm³" fuer eine Dichte-Schaetzung mit publizierter
+# Standard-Unsicherheit aus einer FR-sprachigen Referenz-Tabelle. Bisher fielen
+# alle FR/IT-Praefix-Formen still auf die Fallback-Zahl-Extraktion durch, obwohl
+# semantisch identisch zu ``ca.``/``circa``/``etwa`` - Analog zum DE/EN-Block ist
+# der Effekt bei Uncertainty-Kombinationen ("environ 2.65 ± 0.05") ein Praezisions-
+# Verlust: die publizierte Toleranz kollabiert via ``[center, tol]``-inverted-Range
+# auf ``(center, center)``. Kollisions-Schutz durch das gemeinsame ``\s+``-Suffix:
+# ``vers`` matcht nicht in ``versichert``/``verse``/``versa``; ``environ`` nicht in
+# ``environment``/``environments``; ``verso`` nicht in ``versoehnung``/``version``;
+# ``attorno`` hat keinen DE/EN-Wortstamm-Konflikt.
 _APPROX_VALUE_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:ca\.?|circa|approx\.?|approximately"
@@ -275,6 +297,7 @@ _APPROX_VALUE_PREFIX = re.compile(
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
     r"|perhaps|possibly|maybe"
+    r"|vers|environ|verso|attorno"
     r")\s+"
     r"|[~≈]\s*"
     r")",

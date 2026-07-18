@@ -3759,6 +3759,93 @@ def test_parse_range_annaeherungs_praefix_mit_uncertainty():
     assert csv_loaders.parse_range("5.5-7.5") == (5.5, 7.5)
 
 
+def test_parse_range_annaeherungs_praefix_fr_it():
+    """FR-/IT-Annaeherungs-Marker (Suisse romande / Ticino / Val d'Aosta).
+
+    ``vers`` (FR) und ``verso`` (IT) sind die Standard-Vokabeln fuer "gegen"/
+    "um" einen Wert herum; ``environ`` (FR) fuer "ungefaehr"; ``attorno`` (IT)
+    fuer "rund um". Semantisch identisch zu ``ca.``/``circa``/``etwa`` -
+    Praefix wird gestrippt, die verbleibende Wert-Struktur laeuft in die
+    normale Pipeline (Uncertainty-Match oder Fallback-Zahl-Suche). Spiegelt
+    :func:`test_parse_iso_date_annaeherungs_praefix_fr_it` auf die Wert-Achse:
+    ``_APPROX_VALUE_PREFIX`` in :mod:`stonebook.migration.csv_loaders` und
+    ``_APPROX_PREFIX`` in :mod:`stonebook.migration.validators` teilen dieselbe
+    FR/IT-Vokabel-Auswahl, damit ein FR-/IT-Sammler die Marker konsistent auf
+    Datums- und Wert-Feldern einsetzen kann.
+    """
+    # FR: vers (= gegen/um) - Praefix vor reiner Zahl.
+    assert csv_loaders.parse_range("vers 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("vers 500") == (500.0, 500.0)
+    # FR: environ (= ungefaehr) - Praefix vor reiner Zahl.
+    assert csv_loaders.parse_range("environ 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("environ 2.65") == (2.65, 2.65)
+    # IT: verso (= gegen/um).
+    assert csv_loaders.parse_range("verso 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("verso 100") == (100.0, 100.0)
+    # IT: attorno (= rund um) - bare Praefix-Form ohne Artikel.
+    assert csv_loaders.parse_range("attorno 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("attorno 2.65") == (2.65, 2.65)
+    # Case-Insensitivitaet (spiegelt DE/EN-Praefixe).
+    assert csv_loaders.parse_range("VERS 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("Vers 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("VERSO 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("ENVIRON 5.5") == (5.5, 5.5)
+    # FR/IT-Praefix + ±-Langform-Uncertainty (die publizierte Toleranz bleibt
+    # nach dem Praefix-Strip als Bereichs-Grenzen erhalten - das ist der
+    # eigentliche Nutzen des Praefix-Zweigs gegenueber der Fallback-Zahl-
+    # Extraktion, die bei kombiniertem Praefix + Uncertainty die Toleranz
+    # via inverted-Range-Kollaps stille verlieren wuerde).
+    assert csv_loaders.parse_range("vers 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("environ 2.65 ± 0.05") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("verso 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("attorno 100 ± 2") == pytest.approx((98.0, 102.0))
+    # FR/IT-Praefix + IUCr-Kompakt-Uncertainty ``N(M)``.
+    assert csv_loaders.parse_range("vers 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("environ 2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("verso 100(2)") == pytest.approx((98.0, 102.0))
+    # FR/IT-Praefix + Range-Notation (die Range-Grenzen laufen in die Fallback-
+    # Zahl-Extraktion nach dem Praefix-Strip).
+    assert csv_loaders.parse_range("vers 5.5-7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("environ 5.5 - 7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("verso 100-200") == (100.0, 200.0)
+    # FR/IT-Praefix + DE-Komma-Dezimal-Locale (FR/IT-Sammler-Notizen aus einem
+    # DE-/FR-/IT-Excel-Export nutzen ohnehin den Komma-Dezimal, weil sowohl
+    # Suisse romande als auch Ticino/Val d'Aosta die Komma-Konvention teilen).
+    assert csv_loaders.parse_range("environ 2,65") == (2.65, 2.65)
+    assert csv_loaders.parse_range("vers 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    # Verkettung mit DE/EN-Praefix (die Rekursion loest die Praefixe
+    # sequentiell auf - ein FR-/IT-Sammler in einer gemischten Notiz kann
+    # beide Sprachen kombinieren, ohne dass die Praezisions-Angabe stille
+    # auf die Fallback-Extraktion durchfaellt).
+    assert csv_loaders.parse_range("vers ca. 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("ca. vers 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("environ approx 2.65 ± 0.05") == pytest.approx((2.60, 2.70))
+    # Kein False-Positive fuer aehnlich beginnende Woerter - der Praefix muss
+    # durch ``\s+`` vom Rest getrennt sein (spiegelt den identischen
+    # Kollisions-Schutz aus :data:`stonebook.migration.validators._APPROX_PREFIX`
+    # fuer die Wort-Fortsetzungen versichert/versa/environment/versoehnung/version).
+    # Ohne den Whitespace-Anker wuerde die FR/IT-Vokabel in Freitext-Ausdruecken
+    # als Praefix fehlgelesen und die eingebettete Zahl als Wert extrahiert.
+    assert csv_loaders.parse_range("versichert 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("versa 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("versoehnung 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("version 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("environment 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("environments 5.5") == (5.5, 5.5)
+    # Ohne Wert-Rest fallen die reinen Marker still auf (None, None) - ohne
+    # Zahl gibt es keinen Wert (spiegelt die "ca."/"circa"/"~"-Regress-Anker
+    # aus :func:`test_parse_range_annaeherungs_praefix_mit_uncertainty`).
+    assert csv_loaders.parse_range("vers") == (None, None)
+    assert csv_loaders.parse_range("verso") == (None, None)
+    assert csv_loaders.parse_range("environ") == (None, None)
+    assert csv_loaders.parse_range("attorno") == (None, None)
+    # Regress-Anker: bestehende DE/EN-Praefixe bleiben unveraendert.
+    assert csv_loaders.parse_range("ca. 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("circa 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("etwa 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("about 5.5") == (5.5, 5.5)
+
+
 def test_read_ids_from_file_basisformen(tmp_path):
     """Regress-Anker: Kommentare/Leerzeilen/Inline-Kommentare/Trim.
 
