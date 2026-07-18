@@ -4213,6 +4213,86 @@ def test_parse_range_einseitige_wort_vergleichs_grenze():
     assert csv_loaders.parse_range("") == (None, None)
 
 
+def test_parse_range_einseitige_wort_vergleichs_grenze_strikt():
+    """Strikte Vergleichs-Wort-Marker (``ueber``/``über``/``mehr als``/``over``/
+    ``above``/``more than``/``greater than`` fuer die untere Grenze, ``unter``/
+    ``unterhalb``/``weniger als``/``under``/``below``/``less than`` fuer die
+    obere Grenze) werden als offene Range-Grenze geparst - Ergaenzung zu den
+    nicht-strikten Formen aus :func:`test_parse_range_einseitige_wort_vergleichs_grenze`.
+
+    Sammler-Notizen aus Auktions-/Boersen-Katalogen (Christie's, Bonhams,
+    "Rocks & Minerals") und geerbten Erbschafts-Schaetzungen verwenden die
+    strikte Notation (``ueber 500 CHF``, ``mehr als 500 EUR``, ``over $500``)
+    in Fluchtklauseln ("Mindestwert nicht bekannt, aber ueber 500") und
+    in Preis-Erwartungen ("erwartet ueber 500"). Die untere-strikte Form
+    kommt in geerbten Sammlungen aus dem D-A-CH-Raum sehr haeufig vor;
+    die obere-strikte Form ("unter 500", ``below $500``) taucht in
+    Angebot-Grenzen ("bevorzugt unter 500") und in Fund-Etiketten mit
+    Wertschaetzungen der Vorbesitzer auf.
+
+    Die strikte (>) vs. nicht-strikte (>=) Unterscheidung wird nicht in den
+    Range-Grenzen erhalten - der interne Container kennt nur offene/
+    geschlossene Grenzen, und die praxisrelevante Frage ist "welche Seite
+    ist unbekannt?", nicht "ist der Grenzwert selbst enthalten?". Spiegelt
+    die identische Vereinfachung in :data:`_COMPARISON_PREFIX`, wo ``<`` und
+    ``<=`` bereits identisch auf die obere-Grenze-offen abgebildet werden.
+    """
+    # Untere Grenze (>): DE-Formen mappen auf (Wert, None).
+    assert csv_loaders.parse_range("ueber 500") == (500.0, None)
+    assert csv_loaders.parse_range("über 500") == (500.0, None)
+    assert csv_loaders.parse_range("mehr als 500") == (500.0, None)
+    assert csv_loaders.parse_range("oberhalb 500") == (500.0, None)
+    # Untere Grenze (>): EN-Formen mappen auf (Wert, None).
+    assert csv_loaders.parse_range("over 500") == (500.0, None)
+    assert csv_loaders.parse_range("above 500") == (500.0, None)
+    assert csv_loaders.parse_range("more than 500") == (500.0, None)
+    assert csv_loaders.parse_range("greater than 500") == (500.0, None)
+    # Obere Grenze (<): DE-Formen mappen auf (None, Wert).
+    assert csv_loaders.parse_range("unter 500") == (None, 500.0)
+    assert csv_loaders.parse_range("unterhalb 500") == (None, 500.0)
+    assert csv_loaders.parse_range("weniger als 500") == (None, 500.0)
+    # Obere Grenze (<): EN-Formen mappen auf (None, Wert).
+    assert csv_loaders.parse_range("under 500") == (None, 500.0)
+    assert csv_loaders.parse_range("below 500") == (None, 500.0)
+    assert csv_loaders.parse_range("less than 500") == (None, 500.0)
+    # Case-Insensitivitaet (Excel-Autocorrect, Fliesstext-Titel):
+    assert csv_loaders.parse_range("UEBER 500") == (500.0, None)
+    assert csv_loaders.parse_range("Mehr Als 500") == (500.0, None)
+    assert csv_loaders.parse_range("OVER 500") == (500.0, None)
+    assert csv_loaders.parse_range("Less Than 500") == (None, 500.0)
+    # Kombination mit Waehrungs-Praefix (Auktions-Katalog-Notation):
+    assert csv_loaders.parse_range("ueber CHF 500") == (500.0, None)
+    assert csv_loaders.parse_range("mehr als 500 CHF") == (500.0, None)
+    assert csv_loaders.parse_range("over $500") == (500.0, None)
+    assert csv_loaders.parse_range("under 500 EUR") == (None, 500.0)
+    # Dezimal-Zahlen mit DE-Komma-Locale:
+    assert csv_loaders.parse_range("ueber 2,65") == (2.65, None)
+    assert csv_loaders.parse_range("under 2.5") == (None, 2.5)
+    # Negative Werte (thermodynamische Kontexte):
+    assert csv_loaders.parse_range("ueber -5") == (-5.0, None)
+    assert csv_loaders.parse_range("unter -5") == (None, -5.0)
+    # Kollisions-Schutz: Wort-Fortsetzungen ohne Whitespace nach dem Marker-
+    # Anfang fallen auf die Standard-Zahl-Extraktion durch (Punkt-Range).
+    # ``overall``/``override``/``underneath``/``understanding``/``unterschiedlich``/
+    # ``ueberall``/``oberflaeche`` haben KEIN Whitespace nach dem Marker-Prefix
+    # und werden korrekt NICHT als Vergleichs-Marker interpretiert.
+    assert csv_loaders.parse_range("overall 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("override 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("underneath 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("understanding 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("unterschiedlich 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("ueberall 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("oberflaeche 500") == (500.0, 500.0)
+    # Kollisions-Schutz: die Marker greifen NUR am String-Anfang. Zwischen
+    # zwei Zahlen bleiben "ueber"/"unter"/"over"/"under" als Freitext, die
+    # Fallback-Zahl-Extraktion nimmt die erste/letzte Zahl.
+    assert csv_loaders.parse_range("3 ueber 5") == (3.0, 5.0)
+    assert csv_loaders.parse_range("3 under 5") == (3.0, 5.0)
+    # Leere Fortsetzung: nur Marker ohne Zahl faellt zurueck auf (None, None).
+    assert csv_loaders.parse_range("ueber") == (None, None)
+    assert csv_loaders.parse_range("under") == (None, None)
+
+
 def test_parse_range_leading_currency_prefix_mit_uncertainty():
     """Leading-Waehrungs-Prefix am Wert-Anfang (ISO-4217-Codes CHF/USD/EUR/GBP/JPY/...
     und Waehrungs-Symbole ``$``/``€``/``£``/``¥``/... plus Compound-``$``-Prefixe

@@ -509,20 +509,31 @@ _COMPARISON_PREFIX = re.compile(r"^\s*(<=|>=|<|>|≤|≥)\s*")
 #
 # Untere Grenze (>=, ``lo=Wert, hi=None``):
 #   * DE: ``mindestens``, ``mind.``, ``min.``, ``wenigstens``,
-#     ``zumindest``, ``ab``
-#   * EN: ``at least``, ``from``
+#     ``zumindest``, ``ab``, ``ueber``/``über``, ``oberhalb``,
+#     ``mehr als``
+#   * EN: ``at least``, ``from``, ``over``, ``above``, ``more than``,
+#     ``greater than``
 #
 # Obere Grenze (<=, ``lo=None, hi=Wert``):
 #   * DE: ``hoechstens``, ``höchstens``, ``maximal``, ``max.``,
-#     ``bis zu``, ``bis``
-#   * EN: ``at most``, ``up to``
+#     ``bis zu``, ``bis``, ``unter``, ``unterhalb``, ``weniger als``
+#   * EN: ``at most``, ``up to``, ``under``, ``below``, ``less than``
+#
+# Die strikte (>) vs. nicht-strikte (>=) Semantik wird nicht unterschieden -
+# der interne Range-Container kennt nur offene/geschlossene Grenzen, und die
+# fuer Sammler-CSVs relevante Frage ist "welche Seite ist unbekannt?", nicht
+# "ist der Grenzwert selbst enthalten?". Spiegelt die Konvention aus
+# :data:`_COMPARISON_PREFIX`, wo ``<`` und ``<=`` bereits identisch auf die
+# obere-Grenze-offen abgebildet werden.
 #
 # Praefix-Position auf ``^\s*`` anker-gebunden und mit Whitespace nach dem
 # Marker separiert (``\s+``): kollisionsfrei zu Fortsetzungen der Wort-
-# stamme (``abmessungen``, ``abbau``, ``maximal-wert``, ``bislang``),
-# weil die Marker-Fortsetzung nicht mit Whitespace beginnen kann. ``bis``
-# zwischen zwei Zahlen (``3 bis 5``) bleibt als Range-Separator erhalten,
-# weil der Praefix-Anker den Wort-Marker nur am String-Anfang akzeptiert -
+# stamme (``abmessungen``, ``abbau``, ``maximal-wert``, ``bislang``,
+# ``ueberall``, ``ueberpruefung``, ``overall``, ``override``, ``underneath``,
+# ``understanding``, ``unterschiedlich``, ``oberflaeche``), weil die Marker-
+# Fortsetzung nicht mit Whitespace beginnen kann. ``bis`` zwischen zwei
+# Zahlen (``3 bis 5``) bleibt als Range-Separator erhalten, weil der
+# Praefix-Anker den Wort-Marker nur am String-Anfang akzeptiert -
 # ``3 bis 5`` matcht NICHT (die ``3`` steht vorne). ``min``/``max`` ohne
 # Punkt sind absichtlich AUSGESCHLOSSEN: ``min`` ist SI-Einheit fuer
 # Minute, ``max`` ist ein verbreiteter Vorname und Feldpraefix - beide
@@ -534,8 +545,12 @@ _COMPARISON_WORD_LOWER = re.compile(
     r"^\s*(?:"
     r"mindestens|mind\.|min\.|"
     r"wenigstens|zumindest|"
-    r"ab|"
-    r"at\s+least|from"
+    r"oberhalb|"
+    r"mehr\s+als|"
+    r"ab|über|ueber|"
+    r"at\s+least|"
+    r"greater\s+than|more\s+than|"
+    r"above|over|from"
     r")\s+",
     re.IGNORECASE,
 )
@@ -543,8 +558,12 @@ _COMPARISON_WORD_UPPER = re.compile(
     r"^\s*(?:"
     r"höchstens|hoechstens|"
     r"maximal|max\.|"
-    r"bis\s+zu|bis|"
-    r"at\s+most|up\s+to"
+    r"unterhalb|"
+    r"weniger\s+als|"
+    r"bis\s+zu|bis|unter|"
+    r"at\s+most|up\s+to|"
+    r"less\s+than|"
+    r"below|under"
     r")\s+",
     re.IGNORECASE,
 )
