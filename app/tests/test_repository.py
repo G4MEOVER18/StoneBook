@@ -2539,6 +2539,65 @@ def test_wert_usd_talisman_min_max_filter(tmp_path):
     c.close()
 
 
+def test_wert_chf_roh_und_poliert_min_max_filter(tmp_path):
+    """wert_chf_roh_min/max und wert_chf_poliert_min/max als Filter-Ebenen-
+    Pendant zu den zwei Prozess-Zustands-Sortier-Achsen. Komplettiert den Ring
+    der fuenf CHF-Einzelwert-Filter (roh, poliert, Schmuck, Marktwert_Industrie,
+    Wissenschaftlich) als eigenstaendige Range-Filter. Waehrend die drei
+    Verwendungs-Wert-Filter die 'wofuer'-Sicht abdecken, ergaenzen roh/poliert
+    die 'in welchem Prozess-Zustand'-Sicht (Grundmaterial vs. bearbeitetes
+    Endprodukt). NULL-Semantik: nicht Roh- bzw. nicht Poliert-bewertete
+    Stuecke fallen automatisch aus dem jeweiligen Filter.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wrp.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Wert_CHF_roh, Wert_CHF_poliert, "
+        "Wert_CHF_Schmuck) VALUES (?, ?, ?, ?)",
+        [
+            # Reines Roh-Segment: 300 CHF Grundmaterial
+            ("OBJ_0001", 300.0, None, None),
+            # Roh-und-Poliert dokumentiert: 100 roh + 900 poliert
+            ("OBJ_0002", 100.0, 900.0, None),
+            # Nur poliert: 500 CHF Endprodukt
+            ("OBJ_0003", None, 500.0, None),
+            # Nur Schmuck-Bewertung ohne Prozess-Zustand
+            ("OBJ_0004", None, None, 700.0),
+            # Kleines Roh-Segment: 50 CHF Rohling-Restposten
+            ("OBJ_0005", 50.0, None, None),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Steinschleifer-Grundmaterial-Untergrenze: >= 100 CHF Roh
+    rows = repo.list_objects(wert_chf_roh_min=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Kleine Rohling-Kategorie: <= 100 CHF Roh
+    rows = repo.list_objects(wert_chf_roh_max=100.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0005"]
+    # Roh-Zwischen-Segment: 100-500 CHF
+    rows = repo.list_objects(wert_chf_roh_min=100.0, wert_chf_roh_max=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Poliert-Boersen-Untergrenze: >= 500 CHF Endprodukt
+    rows = repo.list_objects(wert_chf_poliert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003"]
+    # Poliert-Boersen-Obergrenze: <= 500 CHF Endprodukt
+    rows = repo.list_objects(wert_chf_poliert_max=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Kombination: dokumentierte Roh- UND Poliert-Werte (>= 0 in beiden Achsen)
+    # selektiert nur die Stuecke mit beiden Prozess-Zustaenden - der Wert-
+    # schoepfungs-Vergleich Roh-vs.-Poliert ist damit direkt als Filter
+    # erreichbar (statt post-hoc ueber die Summen-Achse zu suchen).
+    rows = repo.list_objects(wert_chf_roh_min=0.0, wert_chf_poliert_min=0.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002"]
+    # Kontrast zur Summen-Achse: OBJ_0004 hat 700 CHF Schmuck-Wert (kein
+    # Roh, kein Poliert) - die Summen-Achse wert_min=500 nimmt ihn auf,
+    # die reinen Prozess-Filter blenden ihn aus.
+    rows = repo.list_objects(wert_min=500.0)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0002", "OBJ_0003", "OBJ_0004"]
+    c.close()
+
+
 def test_wert_pro_gewicht_min_max_filter(tmp_path):
     """wert_pro_gewicht_min/max als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
     Sortier-Achse. Spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze -

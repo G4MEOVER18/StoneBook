@@ -592,6 +592,10 @@ class ObjectRepo:
                      marktwert_industrie_max: float | None = None,
                      wert_usd_talisman_min: float | None = None,
                      wert_usd_talisman_max: float | None = None,
+                     wert_chf_roh_min: float | None = None,
+                     wert_chf_roh_max: float | None = None,
+                     wert_chf_poliert_min: float | None = None,
+                     wert_chf_poliert_max: float | None = None,
                      wert_pro_gewicht_min: float | None = None,
                      wert_pro_gewicht_max: float | None = None,
                      wert_pro_volumen_min: float | None = None,
@@ -1806,6 +1810,51 @@ class ObjectRepo:
         if wert_usd_talisman_max is not None:
             where.append("o.Wert_USD_Talisman <= ?")
             params.append(float(wert_usd_talisman_max))
+        # Wert_CHF_roh- und Wert_CHF_poliert-Filter als Filter-Ebenen-Pendant
+        # zur Wert_CHF_roh-/Wert_CHF_poliert-Sortier-Achse aus SORTABLE_COLUMNS
+        # (Commit 90d14fb). Komplettiert damit den Ring der fuenf CHF-
+        # Einzelwert-Filter (roh, poliert, Schmuck, Marktwert_Industrie,
+        # Wissenschaftlich) als eigenstaendige Range-Filter neben der Summen-
+        # Achse wert_min/wert_max. Waehrend die drei Verwendungs-Wert-Filter
+        # (wert_chf_schmuck_ fuer Schmuck-Verkauf, wissenschaftlicher_wert_
+        # fuer Forschung/Museum, marktwert_industrie_ fuer industrielle
+        # Massenware) die "wofuer ist das Stueck bewertet"-Sicht abdecken,
+        # ergaenzen wert_chf_roh_ und wert_chf_poliert_ die "in welchem
+        # Prozess-Zustand ist das Stueck bewertet"-Sicht (Grundmaterial vor
+        # Bearbeitung vs. bearbeitetes Endprodukt). Sammler-Frage vor Verkauf
+        # an einen Steinschleifer/Handwerker: "welche Roh-Stuecke sind als
+        # Grundmaterial >= 100 CHF bewertet?" -> wert_chf_roh_min=100.0; oder
+        # vor Vergleich Roh-vs.-Poliert zur Rentabilitaets-Einschaetzung ("lohnt
+        # sich das Polieren dieses Stuecks?" - der Roh-Wert ist die Basis, der
+        # Delta zu Wert_CHF_poliert die Wertschoepfung durch Bearbeitung);
+        # analog fuer die Poliert-Achse Sammler-Frage vor Verkauf an einen
+        # Schmuck-Endkunden oder Deko-Boerse ("welche polierten Stuecke sind
+        # >= 500 CHF bewertet?" -> wert_chf_poliert_min=500.0) sowie vor Foto-
+        # Session-Auswahl (polierte Stuecke brauchen anderes Licht-Setup als
+        # Roh-Stuecke). Spiegelt die zwei Sortier-Achsen: derselbe SQL-Ausdruck
+        # (o.Wert_CHF_roh bzw. o.Wert_CHF_poliert ohne Aggregation) damit
+        # Filter und Sortierung dieselbe Zahlen-Domain teilen und kein Drift
+        # zwischen Filter- und Sortier-Definition auftritt. NULL-Semantik:
+        # nicht Roh-bewertete Stuecke (Wert_CHF_roh IS NULL, z.B. Stuecke die
+        # nur poliert erworben wurden) bzw. nicht Poliert-bewertete Stuecke
+        # (Wert_CHF_poliert IS NULL, z.B. Roh-Stuecke ohne Bearbeitung) fallen
+        # automatisch aus dem jeweiligen Filter (NULL >= X / NULL <= X sind
+        # beide NULL == FALSE) - spiegelt die gewicht_-/laenge_-/mohs_-/dichte_-
+        # /wert_chf_schmuck_-/wissenschaftlicher_wert_-/marktwert_industrie_-
+        # /wert_usd_talisman_-Konvention und die NULL-an-Ende-Konvention der
+        # Sortier-Achsen.
+        if wert_chf_roh_min is not None:
+            where.append("o.Wert_CHF_roh >= ?")
+            params.append(float(wert_chf_roh_min))
+        if wert_chf_roh_max is not None:
+            where.append("o.Wert_CHF_roh <= ?")
+            params.append(float(wert_chf_roh_max))
+        if wert_chf_poliert_min is not None:
+            where.append("o.Wert_CHF_poliert >= ?")
+            params.append(float(wert_chf_poliert_min))
+        if wert_chf_poliert_max is not None:
+            where.append("o.Wert_CHF_poliert <= ?")
+            params.append(float(wert_chf_poliert_max))
         # Wert_pro_Gewicht-Filter als Filter-Ebenen-Pendant zur Wert_pro_Gewicht_chf_g-
         # Sortier-Achse: spezifische Marktwert-Dichte (CHF/g) als Bereichs-Grenze.
         # Sammler-/Verkaeufer-Frage: "welche Stuecke rentieren sich pro Gramm
