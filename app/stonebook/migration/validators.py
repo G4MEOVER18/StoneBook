@@ -1444,6 +1444,52 @@ _MONTH_NAMES: dict[str, int] = {
     "octubre": 10,
     "noviembre": 11,
     "diciembre": 12,
+    # Portugiesische Monatsnamen (Sammler-Region Portugal mit den historisch
+    # bedeutenden Wolframit-/Quarz-Fundstellen Panasqueira und Beira Baixa sowie
+    # aus geerbten Sammler-Notizen aus lusophonen Fundstellen: Brasilien mit
+    # Ouro Preto/Minas Gerais fuer Turmalin/Topas/Aquamarin, Serra Pelada fuer
+    # Gold, Mozambique fuer Rubin und Turmalin). Die Portugal-Sparte teilt sich
+    # den Wolframit-Guertel mit der spanischen Panasqueira-Grenze (bereits im
+    # ES-Block als "Panasqueira-Grenzgebiet zu Portugal" erwaehnt) und
+    # brasilianische Pegmatite (Minas Gerais/Bahia) sind eine der weltweit
+    # groessten Quellen fuer Turmalin-/Beryll-/Topas-Sammlungen; PT-BR-
+    # Auktionsanbieter und Museu de Historia Natural de Lisboa pflegen ihre
+    # Kataloge in PT-Sprache. PT-Monatsnamen enthalten Diakritika nur in
+    # ``março`` (c-cedille), die :func:`_normalize_month_name` via NFKD-
+    # Dekomposition und Combining-Mark-Filter auf ``marco`` strippt - identisch
+    # zur Behandlung von FR ``février``/``août``/``décembre`` und ES ``otoño``.
+    # Damit mappen sowohl ``março`` (Standard-PT-Schreibweise) als auch
+    # ``marco`` (ASCII-Notation aus DBs mit nur-ASCII-Feldern) auf denselben
+    # Dict-Key. Der ASCII-Key kollidiert NICHT mit IT/ES ``marzo`` (der
+    # bereits eingetragen ist), weil PT ``marco`` mit ``c`` geschrieben wird,
+    # nicht mit ``z`` - beide Formen koexistieren als separate Dict-Keys auf
+    # denselben Monatswert 03. Kollisionsfrei zum DE/EN/IT/FR/ES-Bestand:
+    # abril (bereits im ES-Block), agosto (bereits im IT-Block), novembre
+    # (bereits im IT-/FR-Block), dezembro (bereits im DE-Block) sind
+    # identische Schreibweisen auf denselben Monatswert; alle anderen PT-
+    # Vollnamen (janeiro/fevereiro/marco/maio/junho/julho/setembro/outubro)
+    # sind PT-spezifisch und schneidungsfrei. PT-Kurzformen ``set`` (September)
+    # und ``out`` (Oktober) sind PT-spezifisch und ergaenzen die bereits vom
+    # IT-Block bekannten ``sett``/``ott``-Kurzformen sowie EN ``sep``/``oct``.
+    # Die uebrigen PT-Kurzformen (jan/fev/mar/abr/mai/jun/jul/ago/nov/dez)
+    # ueberschneiden sich mit DE/EN/FR/IT/ES-Kurzformen auf dieselben Monats-
+    # werte - semantisch identisch, keine neuen Kollisionen.
+    "janeiro": 1,
+    "fevereiro": 2,
+    "marco": 3,
+    # "abril" bereits im ES-Block eingetragen (identische PT/ES-Schreibweise).
+    "maio": 5,
+    "junho": 6,
+    "julho": 7,
+    # "agosto" bereits im IT-Block eingetragen (identische PT/IT/ES-Schreibweise).
+    "setembro": 9, "set": 9,
+    "outubro": 10, "out": 10,
+    # "novembre" bereits im IT-Block eingetragen; PT schreibt "novembro"
+    # (ohne trailing -e). Beide sind separate Dict-Keys auf denselben Monat.
+    "novembro": 11,
+    # DE ist "dezember" (mit -r), PT ist "dezembro" (mit -o) - separate
+    # Dict-Keys auf denselben Monatswert 12.
+    "dezembro": 12,
     # Roemische Monatsziffern (I..XII) - traditionelle Schreibweise auf aelteren
     # mineralogischen Etiketten, Museums-Eingangsbuechern und in osteuropaeischen
     # Sammlungs-Notizen ("13.VI.1985" = 13. Juni 1985). Wird durch
