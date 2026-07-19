@@ -1450,6 +1450,44 @@ def test_text_ausgabe_zeigt_sammlung_erfasst_pro_monat(tmp_path, capsys):
             < out.index("Sammlung erfasst pro Monat:"))
 
 
+def test_text_ausgabe_zeigt_sammlung_erfasst_pro_wochentag(tmp_path, capsys):
+    """Erfassungs-Wochentag-Block liegt unter dem Monats-Block und ist Mo->So sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepw.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-17 09:00:00"),   # Mo
+            ("OBJ_0002", "2024-06-13 14:30:00"),   # Do
+            ("OBJ_0003", "2024-06-15 08:00:00"),   # Sa
+            ("OBJ_0004", "2024-06-16 12:00:00"),   # So
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Wochentag:" in out
+    block = out.split("Sammlung erfasst pro Wochentag:", 1)[1]
+    # ISO-8601 Reihenfolge: Mo -> Do -> Sa -> So
+    assert block.index("Mo") < block.index("Do") < block.index("Sa") < block.index("So")
+    # Liegt unter dem Erfassungs-Monats-Block (spiegelt _format_text-Reihenfolge)
+    assert (out.index("Sammlung erfasst pro Monat:")
+            < out.index("Sammlung erfasst pro Wochentag:"))
+
+
+def test_text_ausgabe_ohne_erstellt_am_wochentag_keine_zeile(tmp_path, capsys):
+    """Leere DB → Erfassungs-Wochentag-Block bleibt aus (analog zu den anderen Erfassungs-Bloecken)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "sepw0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Sammlung erfasst pro Wochentag:" not in out
+
+
 def test_text_ausgabe_zeigt_pflege_aktivitaet_pro_jahr(tmp_path, capsys):
     """Pflege-Aktivitaets-Block liegt unter den Erfassungs-Bloecken und ist chronologisch sortiert."""
     from stonebook.db.database import open_db
@@ -1572,6 +1610,44 @@ def test_text_ausgabe_ohne_geaendert_am_monat_keine_zeile(tmp_path, capsys):
     main(["--db", str(db_file)])
     out = capsys.readouterr().out
     assert "Pflege-Aktivitaet pro Monat:" not in out
+
+
+def test_text_ausgabe_zeigt_pflege_aktivitaet_pro_wochentag(tmp_path, capsys):
+    """Pflege-Wochentag-Block liegt unter dem Pflege-Monats-Block und ist Mo->So sortiert."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "paw.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 09:00:00"),   # Do
+            ("OBJ_0002", "2024-06-13 10:00:00"),   # Do (zweite Pflege-Tour)
+            ("OBJ_0003", "2024-06-15 14:30:00"),   # Sa
+            ("OBJ_0004", "2024-06-17 08:00:00"),   # Mo
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Wochentag:" in out
+    block = out.split("Pflege-Aktivitaet pro Wochentag:", 1)[1]
+    # ISO-8601 Reihenfolge: Mo -> Do -> Sa
+    assert block.index("Mo") < block.index("Do") < block.index("Sa")
+    # Liegt unter dem Pflege-Monats-Block (spiegelt _format_text-Reihenfolge)
+    assert (out.index("Pflege-Aktivitaet pro Monat:")
+            < out.index("Pflege-Aktivitaet pro Wochentag:"))
+
+
+def test_text_ausgabe_ohne_geaendert_am_wochentag_keine_zeile(tmp_path, capsys):
+    """Leere DB → Pflege-Wochentag-Block bleibt aus (analog zu den anderen Pflege-Bloecken)."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "paw0.sqlite3"
+    c = open_db(db_file)
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Pflege-Aktivitaet pro Wochentag:" not in out
 
 
 def test_text_ausgabe_zeigt_funde_pro_monat(tmp_path, capsys):

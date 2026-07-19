@@ -75,9 +75,11 @@ class Statistik:
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
+    by_erstellt_am_wochentag: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahr: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_monat: dict[str, int] = field(default_factory=dict)
+    by_geaendert_am_wochentag: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -1174,9 +1176,11 @@ class Statistik:
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
+            "by_erstellt_am_wochentag": dict(self.by_erstellt_am_wochentag),
             "by_geaendert_am_jahr": dict(self.by_geaendert_am_jahr),
             "by_geaendert_am_jahrzehnt": dict(self.by_geaendert_am_jahrzehnt),
             "by_geaendert_am_monat": dict(self.by_geaendert_am_monat),
+            "by_geaendert_am_wochentag": dict(self.by_geaendert_am_wochentag),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -1815,6 +1819,35 @@ def _count_erstellt_am_monat(conn: sqlite3.Connection) -> dict[str, int]:
     return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
 
 
+def _count_erstellt_am_wochentag(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``erstellt_am``-Wochentag (Erfassungs-Tour-Rhythmik).
+
+    Spiegelt :func:`_count_funddatum_wochentag` um die Erfassungs-Achse: zeigt,
+    an welchen Wochentagen die Sammlung typisch digitalisiert wird - Wochenend-
+    Erfassung (Sa/So-Spitze der freizeit-nahen Sammler) vs. Werktags-Erfassung
+    (pensionierte Sammler mit gleichmaessiger Verteilung, Berufs-Sammler mit
+    Feiertags-Konzentration). Aggregiert ueber alle Wochen, Labels ``"Mo"``..
+    ``"So"``, Reihenfolge ISO-8601 (Mo=1 zuerst, So=7 zuletzt).
+
+    ``erstellt_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(erstellt_am, 1, 10)`` extrahiert das
+    reine Datum. Das anschliessende ``strftime('%Y-%m-%d', ...) =
+    substr(..., 1, 10)``-Round-Trip-Predicate erfuellt genau bei bit-genau
+    strikter YYYY-MM-DD-Form, spiegelt die :func:`_count_funddatum_wochentag`-
+    Konvention. Kaputte Stempel historischer Imports ohne strikte YYYY-MM-DD-
+    Form fallen aus dem Histogramm.
+    """
+    sql = (
+        "SELECT ((CAST(strftime('%w', substr(erstellt_am, 1, 10)) AS INTEGER) + 6) % 7) + 1 "
+        "       AS iso_dow, COUNT(*) AS n FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND strftime('%Y-%m-%d', substr(erstellt_am, 1, 10)) = substr(erstellt_am, 1, 10) "
+        "GROUP BY iso_dow ORDER BY iso_dow ASC"
+    )
+    return {_WOCHENTAG_LABEL[str(r["iso_dow"])]: r["n"]
+            for r in conn.execute(sql).fetchall()}
+
+
 def _count_geaendert_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
     """Zaehlt Objekte pro ``geaendert_am``-Jahr (Pflege-Aktivitaet pro Jahr).
 
@@ -1916,6 +1949,38 @@ def _count_geaendert_am_monat(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY monat ORDER BY monat ASC"
     )
     return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_geaendert_am_wochentag(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``geaendert_am``-Wochentag (Pflege-Tour-Rhythmik).
+
+    Spiegelt :func:`_count_erstellt_am_wochentag` um die Aenderungs-Achse und
+    schliesst die Wochentag-Trias auf allen drei Zeit-Achsen ab (Funddatum /
+    erstellt_am / geaendert_am). Waehrend die Erfassungs-Wochentag-Sicht das
+    initiale Digitalisieren beziffert (wann wird ein Stueck erstmals in die
+    DB aufgenommen), beziffert die Aenderungs-Wochentag-Sicht die redaktionelle
+    Pflege (wann wird ein Stueck zuletzt beruehrt: KI-Analyse uebernommen,
+    Foto nachgereicht, Mineral-Bestimmung korrigiert). Die Differenz beider
+    Histogramme zeigt die nachtraegliche Pflege-Verschiebung pro Wochentag,
+    die im reinen Erfassungs-Rhythmik-Bild untergeht.
+
+    ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(geaendert_am, 1, 10)`` extrahiert das
+    reine Datum. Round-Trip-Predicate ``strftime('%Y-%m-%d', ...) =
+    substr(..., 1, 10)`` erfuellt genau bei bit-genau strikter YYYY-MM-DD-Form,
+    spiegelt die :func:`_count_erstellt_am_wochentag`- und
+    :func:`_count_funddatum_wochentag`-Konvention. Kaputte Stempel historischer
+    Imports ohne strikte YYYY-MM-DD-Form fallen aus dem Histogramm.
+    """
+    sql = (
+        "SELECT ((CAST(strftime('%w', substr(geaendert_am, 1, 10)) AS INTEGER) + 6) % 7) + 1 "
+        "       AS iso_dow, COUNT(*) AS n FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND strftime('%Y-%m-%d', substr(geaendert_am, 1, 10)) = substr(geaendert_am, 1, 10) "
+        "GROUP BY iso_dow ORDER BY iso_dow ASC"
+    )
+    return {_WOCHENTAG_LABEL[str(r["iso_dow"])]: r["n"]
+            for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -2975,6 +3040,12 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Indoor-Phasen (Winter, Boersenvorbereitung) vs. Aussen-Pausen waehrend
     # der Feld-Saison. Spiegelt by_funddatum_monat um die Erfassungs-Achse.
     st.by_erstellt_am_monat = _count_erstellt_am_monat(conn)
+    # Erfassungs-Tour-Rhythmik (Mo..So, ueber alle Wochen aggregiert):
+    # spiegelt by_funddatum_wochentag um die Erfassungs-Achse. Zeigt, an
+    # welchen Wochentagen typisch digitalisiert wird - Wochenend-Erfassung
+    # (freizeit-nah), Werktags-Erfassung (pensioniert), Feiertags-
+    # Konzentration (Berufs-Sammler).
+    st.by_erstellt_am_wochentag = _count_erstellt_am_wochentag(conn)
     # Rarity-Histogramm: wie verteilt sich die Sammlung auf der globalen
     # Seltenheits-Skala (1=haeufig .. 10=sehr selten)? Komplementaer zu den
     # seltenheit_global_min/max-Filtern: zeigt nicht nur "ein Stueck ist hier
@@ -3061,6 +3132,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Sommer-Feldsaison pflegearm bleibt. Die Differenz zur Erfassungs-
     # Saisonalitaet zeigt die nachtraegliche Pflege-Verschiebung pro Saison.
     st.by_geaendert_am_monat = _count_geaendert_am_monat(conn)
+    # Pflege-Tour-Rhythmik (Mo..So, ueber alle Wochen aggregiert): spiegelt
+    # by_erstellt_am_wochentag auf die Aenderungs-Achse und schliesst die
+    # Wochentag-Trias auf allen drei Zeit-Achsen (Funddatum / erstellt_am /
+    # geaendert_am) ab. Zeigt, an welchen Wochentagen typisch nachgepflegt
+    # wird - Wochenend-Pflege bei freizeit-nahen Sammlern, Werktags-Pflege
+    # bei pensionierten Sammlern. Die Differenz zur Erfassungs-Rhythmik
+    # zeigt die nachtraegliche Pflege-Verschiebung pro Wochentag.
+    st.by_geaendert_am_wochentag = _count_geaendert_am_wochentag(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]

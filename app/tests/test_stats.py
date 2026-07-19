@@ -704,6 +704,46 @@ def test_by_erstellt_am_monat_leer(tmp_path):
     c.close()
 
 
+def test_by_erstellt_am_wochentag_aus_seed_db(tmp_path):
+    """Erfassungs-Wochentag-Histogramm mappt YYYY-MM-DD HH:MM:SS auf Mo..So."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag_e.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-15 10:00:00"),   # Sa
+            ("OBJ_0002", "2024-06-15 11:00:00"),   # Sa (zweiter Erfassungs-Batch)
+            ("OBJ_0003", "2024-06-16 12:00:00"),   # So
+            ("OBJ_0004", "2024-06-17 09:00:00"),   # Mo
+            ("OBJ_0005", "2024-06-14 14:00:00"),   # Fr
+            # Kaputte Stempel (rollover / non-strict) fallen raus:
+            ("OBJ_0006", "2024-02-30 09:00:00"),   # rollover -> ignoriert
+            ("OBJ_0007", ""),                       # leer -> ignoriert
+            ("OBJ_0008", None),                     # NULL -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_erstellt_am_wochentag == {"Mo": 1, "Fr": 1, "Sa": 2, "So": 1}
+    # ISO-8601 Reihenfolge Mo..So:
+    assert list(st.by_erstellt_am_wochentag.keys()) == ["Mo", "Fr", "Sa", "So"]
+    assert st.as_dict()["by_erstellt_am_wochentag"] == {
+        "Mo": 1, "Fr": 1, "Sa": 2, "So": 1,
+    }
+    c.close()
+
+
+def test_by_erstellt_am_wochentag_leer(tmp_path):
+    """Leere DB → leere Erfassungs-Wochentag-Statistik."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag_e_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_erstellt_am_wochentag == {}
+    c.close()
+
+
 def test_by_geaendert_am_jahr_aus_seed_db(tmp_path):
     """Pflege-Aktivitaets-Histogramm zaehlt Objekte pro geaendert_am-Jahr."""
     from stonebook.db.database import open_db
@@ -876,6 +916,41 @@ def test_by_geaendert_am_monat_im_as_dict(tmp_path):
     d = compute_statistics(c).as_dict()
     assert d["by_geaendert_am_monat"] == {"06": 1}
     json.dumps(d, ensure_ascii=False)
+    c.close()
+
+
+def test_by_geaendert_am_wochentag_aus_seed_db(tmp_path):
+    """Pflege-Wochentag-Histogramm mappt geaendert_am YYYY-MM-DD HH:MM:SS auf Mo..So."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag_g.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-13 09:00:00"),   # Do
+            ("OBJ_0002", "2024-06-13 10:00:00"),   # Do (zweite Pflege-Tour)
+            ("OBJ_0003", "2024-06-17 08:00:00"),   # Mo
+            ("OBJ_0004", "2024-06-14 09:00:00"),   # Fr
+            # Kaputte Stempel fallen raus:
+            ("OBJ_0005", "unbekannt"),              # freitext -> ignoriert
+            ("OBJ_0006", "2024"),                   # nur Jahr -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_wochentag == {"Mo": 1, "Do": 2, "Fr": 1}
+    assert list(st.by_geaendert_am_wochentag.keys()) == ["Mo", "Do", "Fr"]
+    assert st.as_dict()["by_geaendert_am_wochentag"] == {"Mo": 1, "Do": 2, "Fr": 1}
+    c.close()
+
+
+def test_by_geaendert_am_wochentag_leer(tmp_path):
+    """Leere DB → leere Pflege-Wochentag-Statistik."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag_g_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_wochentag == {}
     c.close()
 
 

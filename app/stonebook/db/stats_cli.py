@@ -1006,6 +1006,16 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Sammlung erfasst pro Monat:"]
         for monat, n in st.by_erstellt_am_monat.items():
             lines.append(f"  {monat:40s} {n}")
+    if st.by_erstellt_am_wochentag:
+        # Erfassungs-Tour-Rhythmik (Mo..So, ueber alle Wochen aggregiert):
+        # spiegelt "Funde pro Wochentag" auf die Erfassungs-Achse. Zeigt, an
+        # welchen Wochentagen typisch digitalisiert wird - Wochenend-Erfassung
+        # (freizeit-nah), Werktags-Erfassung (pensioniert), Feiertags-
+        # Konzentration (Berufs-Sammler). Reihenfolge Mo->So (ISO 8601 /
+        # DE-Wochentag-Konvention), spiegelt "Funde pro Wochentag".
+        lines += ["", "Sammlung erfasst pro Wochentag:"]
+        for wochentag, n in st.by_erstellt_am_wochentag.items():
+            lines.append(f"  {wochentag:40s} {n}")
     if st.by_geaendert_am_jahr:
         # Pflege-Aktivitaet pro Aenderungs-Jahr: spiegelt "Sammlung erfasst
         # pro Jahr" auf die Aenderungs-Achse. Macht nachtraegliche Pflege-
@@ -1037,6 +1047,17 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Pflege-Aktivitaet pro Monat:"]
         for monat, n in st.by_geaendert_am_monat.items():
             lines.append(f"  {monat:40s} {n}")
+    if st.by_geaendert_am_wochentag:
+        # Pflege-Tour-Rhythmik (Mo..So, ueber alle Wochen aggregiert):
+        # spiegelt "Sammlung erfasst pro Wochentag" auf die Aenderungs-Achse
+        # und schliesst die Wochentag-Trias auf allen drei Zeit-Achsen
+        # (Funddatum / erstellt_am / geaendert_am) ab. Zeigt, an welchen
+        # Wochentagen typisch nachgepflegt wird - Wochenend-Pflege bei
+        # freizeit-nahen Sammlern, Werktags-Pflege bei pensionierten
+        # Sammlern. Reihenfolge Mo->So (ISO 8601 / DE-Wochentag-Konvention).
+        lines += ["", "Pflege-Aktivitaet pro Wochentag:"]
+        for wochentag, n in st.by_geaendert_am_wochentag.items():
+            lines.append(f"  {wochentag:40s} {n}")
     if st.by_seltenheit_global:
         # Rarity-Histogramm 1..10: wo liegt der Bestand-Schwerpunkt der Sammlung?
         # Komplementaer zum seltenheit_global_min/max-Filter (Drill-down auf
