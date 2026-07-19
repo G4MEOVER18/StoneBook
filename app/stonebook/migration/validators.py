@@ -448,7 +448,24 @@ _APPROX_PREFIX = re.compile(
     # ``attorno`` hat keinen DE/EN-Wortstamm-Konflikt.
     r"|vers|environ|verso|attorno"
     r")\s+"
-    r"|[~≈≅≃]\s*"
+    # ``∼`` (U+223C, TILDE OPERATOR, LaTeX ``\sim``) als weiterer Symbolic-
+    # Marker in der Symbolic-Marker-Klasse. Semantisch identisch zu ``~``
+    # (ASCII TILDE, U+007E), aber typografisch getrennt: ``∼`` ist der
+    # mathematische Naeherungs-Operator, den LaTeX im Math-Mode fuer
+    # ``\sim`` rendert (waehrend ``~`` in LaTeX ``\textasciitilde`` ist,
+    # ein Text-Mode-Symbol). PDF-Text-Extraktion aus LaTeX-gesetzten
+    # Publikationen (IUCr, NIST, RRUFF, Mindat.org, Handbook of Mineralogy)
+    # exportiert den Math-Mode-Tilde als U+223C, nicht als ASCII-``~`` -
+    # spiegelt strukturell die identische Konvention der uebrigen Symbolic-
+    # Marker der Klasse: ``≈``/``≅``/``≃`` sind alle die Unicode-Punkte der
+    # LaTeX-Math-Mode-Naeherungs-Symbole (``\approx``/``\cong``/``\simeq``),
+    # der ASCII-``~`` ist die Text-Mode-Variante, und ``∼`` schliesst die
+    # letzte Luecke der Math-Mode-Symbol-Achse. Bisher fielen alle Datums-
+    # Formen mit ``∼``-Praefix still auf None, obwohl semantisch identisch
+    # zu ``~``/``≈``/``≅``/``≃`` - identischer Bug-Effekt wie bei ``≅1985``
+    # vor Einfuehrung von ``≅`` in c6ce6ac. Spiegelt die identische Klassen-
+    # Erweiterung in :data:`stonebook.migration.csv_loaders._APPROX_VALUE_PREFIX`.
+    r"|[~≈≅≃∼]\s*"
     r")",
     re.IGNORECASE,
 )

@@ -1708,6 +1708,69 @@ def test_parse_iso_date_annaeherungs_symbol_cong_simeq():
     assert parse_iso_date("circa 2020") == "2020-01-01"
 
 
+def test_parse_iso_date_annaeherungs_symbol_sim():
+    """Unicode-Naeherungs-Marker ``∼`` (U+223C, TILDE OPERATOR, LaTeX \\sim) als
+    Leading-Approximations-Praefix vor dem Datum.
+
+    Spiegelt strukturell die bereits vorhandene Symbolic-Marker-Klasse
+    ``[~≈≅≃]`` auf den mathematischen Tilde-Operator U+223C, den LaTeX im
+    Math-Mode fuer den Befehl ``\\sim`` rendert (waehrend der ASCII-Tilde
+    U+007E in LaTeX ``\\textasciitilde`` ist, ein Text-Mode-Symbol). PDF-
+    Text-Extraktion aus LaTeX-gesetzten Publikationen (IUCr, NIST, RRUFF,
+    Mindat.org, Handbook of Mineralogy) exportiert den Math-Mode-Tilde als
+    U+223C und nicht als ASCII-``~``, sodass Sammler-Notizen beim Copy&Paste
+    aus solchen Quellen den Unicode-Punkt uebernehmen.
+
+    Bisher fielen alle Datums-Formen mit ``∼``-Praefix still auf None,
+    obwohl semantisch identisch zu ``~``/``≈``/``≅``/``≃`` - identischer
+    Bug-Effekt wie bei ``≅1985`` vor Einfuehrung von ``≅`` in c6ce6ac.
+    Schliesst die letzte Luecke der Math-Mode-Naeherungs-Symbol-Achse
+    (``≈``=``\\approx``, ``≅``=``\\cong``, ``≃``=``\\simeq``, ``∼``=``\\sim``).
+    Spiegelt die identische Klassen-Erweiterung in
+    :data:`stonebook.migration.csv_loaders._APPROX_VALUE_PREFIX`.
+    """
+    # ∼ (U+223C) - null Leerzeichen erlaubt, Basisformen.
+    assert parse_iso_date("∼1985") == "1985-01-01"
+    assert parse_iso_date("∼ 1985") == "1985-01-01"
+    assert parse_iso_date("∼Juni 2024") == "2024-06-01"
+    assert parse_iso_date("∼ Juni 2024") == "2024-06-01"
+    assert parse_iso_date("∼13.06.2024") == "2024-06-13"
+    assert parse_iso_date("∼2024-06") == "2024-06-01"
+    # DE-/EN-Datum mit Monatsnamen und Tag.
+    assert parse_iso_date("∼13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("∼June 13, 2024") == "2024-06-13"
+    # Dekaden-/Saison-Formen mit dem neuen Praefix.
+    assert parse_iso_date("∼1980er") == "1980-01-01"
+    assert parse_iso_date("∼Sommer 2024") == "2024-06-01"
+    # Verkettet mit Wort-Praefix (rekursive Strippung): semantisch redundant,
+    # aber unschaedlich.
+    assert parse_iso_date("∼ca. 1985") == "1985-01-01"
+    assert parse_iso_date("∼ circa 2020") == "2020-01-01"
+    # Verkettet mit den bereits vorhandenen Symbolic-Markern - rekursiver
+    # Strip loest die Kette symmetrisch auf.
+    assert parse_iso_date("∼~1985") == "1985-01-01"
+    assert parse_iso_date("∼≈2020") == "2020-01-01"
+    assert parse_iso_date("~∼1985") == "1985-01-01"
+    assert parse_iso_date("∼≅1985") == "1985-01-01"
+    assert parse_iso_date("≃∼2020") == "2020-01-01"
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None (spiegelt ``~``/``≈``).
+    assert parse_iso_date("∼") is None
+    assert parse_iso_date("∼abc") is None
+    assert parse_iso_date("∼1700") is None  # ausserhalb 1800-2999
+    # Praefix nur am Anfang gestrippt - mittendrin/am Ende bleibt die Eingabe
+    # wie sie ist und matcht keinen Datums-Parser.
+    assert parse_iso_date("1985∼") is None
+    assert parse_iso_date("X ∼ 1985") is None
+    # Regress: die bereits vorher unterstuetzten Symbole bleiben unveraendert.
+    assert parse_iso_date("~1985") == "1985-01-01"
+    assert parse_iso_date("≈1985") == "1985-01-01"
+    assert parse_iso_date("≅1985") == "1985-01-01"
+    assert parse_iso_date("≃1985") == "1985-01-01"
+    # Regress: Wort-Praefixe unveraendert.
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+
+
 def test_parse_iso_date_wahrscheinlichkeits_praefix():
     """Wahrscheinlichkeits-/Vermutungs-Marker (DE/EN) als Praefix vor dem Datum.
 
