@@ -169,6 +169,7 @@ class Statistik:
     wert_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_geaendert_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -197,6 +198,7 @@ class Statistik:
     gewicht_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_geaendert_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_nachfrage: list[tuple[str, float]] = field(default_factory=list)
@@ -1399,6 +1401,9 @@ class Statistik:
             "wert_pro_geaendert_am_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_geaendert_am_monat
             ],
+            "wert_pro_geaendert_am_wochentag": [
+                (t, round(w, 2)) for t, w in self.wert_pro_geaendert_am_wochentag
+            ],
             "wert_pro_seltenheit_global": [
                 (s, round(w, 2)) for s, w in self.wert_pro_seltenheit_global
             ],
@@ -1482,6 +1487,9 @@ class Statistik:
             ],
             "gewicht_pro_geaendert_am_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_geaendert_am_monat
+            ],
+            "gewicht_pro_geaendert_am_wochentag": [
+                (t, round(g, 2)) for t, g in self.gewicht_pro_geaendert_am_wochentag
             ],
             "gewicht_pro_seltenheit_global": [
                 (s, round(g, 2)) for s, g in self.gewicht_pro_seltenheit_global
@@ -2646,6 +2654,53 @@ def _sum_by_erstellt_am_wochentag(conn: sqlite3.Connection, value_sql: str,
         where = f"{where} AND {extra_where}"
     sql = (
         f"SELECT ((CAST(strftime('%w', substr(erstellt_am, 1, 10)) AS INTEGER) "
+        f"        + 6) % 7) + 1 AS iso_dow, "
+        f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
+        f"GROUP BY iso_dow HAVING w > 0 "
+        f"ORDER BY w DESC, iso_dow ASC"
+    )
+    return [(_WOCHENTAG_LABEL[str(r["iso_dow"])], float(r["w"]))
+            for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_geaendert_am_wochentag(conn: sqlite3.Connection, value_sql: str,
+                                   extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``geaendert_am``-Wochentag (Mo..So).
+
+    Pendant zu :func:`_count_geaendert_am_wochentag` (Anzahl), aber summiert
+    Wert/Gewicht je Wochentag-Bucket. Spiegelt :func:`_sum_by_erstellt_am_wochentag`
+    auf die Aenderungs-Achse: waehrend die Erfassungs-Wochentag-Sicht die
+    Digitalisierungs-Ergiebigkeit zeigt ("an welchen Wochentagen wandern die
+    wertvollsten Stuecke in die DB?"), zeigt die Aenderungs-Wochentag-Sicht die
+    Pflege-Ergiebigkeit ("an welchen Wochentagen werden die wertvollsten Stuecke
+    zuletzt nachgepflegt?"). Bei nie-aktualisierten Alt-Eintraegen konvergiert
+    die Pflege-Wochentag-Spitze auf die Erfassungs-Wochentag-Spitze (geaendert_am
+    == erstellt_am im _now()-Pfad als identische Strings); bei aktiv nachgepflegten
+    Stuecken driftet sie in den aktuellen Pflege-Wochentag ab und beziffert damit
+    den wertlichen/gewichtmaessigen Schwerpunkt der letzten Datenpflege-Rhythmik
+    (z.B. Sonntag-Abend-Katalog-Sessions als typischer Pflege-Slot vs. Werktags-
+    Kleinserien-Nachbesserungen).
+
+    Akzeptiert nur strikte YYYY-MM-DD-Formen mit gueltigem Kalender-Tag,
+    spiegelt die :func:`_sum_by_erstellt_am_wochentag`- und
+    :func:`_count_geaendert_am_wochentag`-Konvention: die Round-Trip-Gleichheit
+    ``strftime('%Y-%m-%d', substr(geaendert_am, 1, 10)) =
+    substr(geaendert_am, 1, 10)`` faengt Kalender-Rollovers, Julian-Day-
+    Interpretation und Freitext transparent ab. ``geaendert_am`` hat im
+    repository._now()-Pfad das Format ``YYYY-MM-DD HH:MM:SS`` -
+    ``substr(..., 1, 10)`` extrahiert das reine Datum.
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach ISO-
+    Wochentag-Nummer (Mo=1 zuerst). Ohne Limit, weil maximal 7 Wochentag-
+    Buckets vorkommen koennen.
+    """
+    where = ("geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+             "AND strftime('%Y-%m-%d', substr(geaendert_am, 1, 10)) "
+             "= substr(geaendert_am, 1, 10)")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(strftime('%w', substr(geaendert_am, 1, 10)) AS INTEGER) "
         f"        + 6) % 7) + 1 AS iso_dow, "
         f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
         f"GROUP BY iso_dow HAVING w > 0 "
@@ -5027,6 +5082,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
     st.wert_pro_erstellt_am_wochentag = _sum_by_erstellt_am_wochentag(conn, wert_sql)
     st.gewicht_pro_erstellt_am_wochentag = _sum_by_erstellt_am_wochentag(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Aenderungs-Wochentag-Ergiebigkeit: spiegelt wert_/gewicht_pro_erstellt_am_
+    # wochentag auf die Pflege-Achse und schliesst die Wochentag-Wert-Sicht auf
+    # der dritten Zeit-Achse (Fund/Erfassung/Aenderung). Bei nie-aktualisierten
+    # Alt-Eintraegen konvergiert die Pflege-Wochentag-Spitze auf die Erfassungs-
+    # Wochentag-Spitze (geaendert_am == erstellt_am im _now()-Pfad als
+    # identische Strings); bei aktiv nachgepflegten Stuecken driftet sie in den
+    # aktuellen Pflege-Wochentag ab und beziffert den wertlichen/gewicht-
+    # maessigen Schwerpunkt der letzten Datenpflege-Rhythmik (Sonntag-Abend-
+    # Katalog-Sessions als typischer Pflege-Slot vs. Werktags-Kleinserien-
+    # Nachbesserungen). Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
+    st.wert_pro_geaendert_am_wochentag = _sum_by_geaendert_am_wochentag(conn, wert_sql)
+    st.gewicht_pro_geaendert_am_wochentag = _sum_by_geaendert_am_wochentag(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Rarity-Wert-/Gewicht-Sicht: wie verteilt sich Sammlungswert/Masse auf der
     # globalen Seltenheits-Skala (1..10)? Komplementaer zu by_seltenheit_global

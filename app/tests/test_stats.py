@@ -2390,6 +2390,139 @@ def test_gewicht_pro_erstellt_am_wochentag_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_geaendert_am_wochentag_aus_seed_db(tmp_path):
+    """Wertsumme pro geaendert_am-Wochentag ueber alle Wochen; absteigend nach Summe.
+
+    Spiegelt wert_pro_erstellt_am_wochentag auf die Pflege-Achse: die
+    Pflege-Wochentag-Sicht zeigt, an welchen Wochentagen die wertvollsten
+    Stuecke zuletzt redaktionell beruehrt wurden. Sonntag-Abend-Katalog-
+    Sessions als typischer Pflege-Slot heben den So-Wert-Bucket
+    ueberproportional an; Werktags-Kleinserien-Nachbesserungen verteilen
+    den Wert flacher.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgw.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # Sonntag-Pflege-Slot summiert: 500 + 200 + 300 = 1000
+            ("OBJ_0001", "2024-06-16 20:00:00", 500.0, None),   # So
+            ("OBJ_0002", "2024-06-16 21:00:00", 200.0, None),   # So (zweiter Batch)
+            ("OBJ_0003", "2024-06-23 20:00:00", 100.0, 200.0),  # So (spaeter)
+            # Samstag: 400
+            ("OBJ_0004", "2024-06-15 19:00:00", 400.0, None),   # Sa
+            # Mittwoch: 250
+            ("OBJ_0005", "2024-06-12 14:00:00", 250.0, None),   # Mi
+            # Ohne Wert -> faellt raus
+            ("OBJ_0006", "2024-06-14 08:00:00", None, None),    # Fr, kein Wert
+            # Ohne strikte YYYY-MM-DD-Form -> ignoriert
+            ("OBJ_0007", "", 999.0, None),
+            ("OBJ_0008", "2024 10:00:00", 999.0, None),
+            ("OBJ_0009", "2024-07", 999.0, None),
+            ("OBJ_0010", "2024-13-01 10:00:00", 999.0, None),
+            ("OBJ_0011", "2024-02-30 10:00:00", 999.0, None),   # rollover
+            ("OBJ_0012", "unbekannt", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: So (1000), Sa (400), Mi (250)
+    assert st.wert_pro_geaendert_am_wochentag == [
+        ("So", 1000.0),
+        ("Sa", 400.0),
+        ("Mi", 250.0),
+    ]
+    assert st.as_dict()["wert_pro_geaendert_am_wochentag"] == [
+        ("So", 1000.0), ("Sa", 400.0), ("Mi", 250.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_geaendert_am_wochentag_leer(tmp_path):
+    """Ohne CHF-Werte oder strikte geaendert_am-Stempel: leere Wochentag-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgw_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_wochentag == []
+    c.close()
+
+
+def test_wert_pro_geaendert_am_wochentag_tie_break_iso_dow(tmp_path):
+    """Bei gleicher Summe sortiert der Tie-Break aufsteigend nach ISO-Wochentag.
+
+    Mo (=1) kommt vor Sa (=6), Sa vor So (=7) - spiegelt die uebrige
+    Wochentag-Reihenfolge (Mo->So), identisch zu wert_pro_erstellt_am_wochentag.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgw_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-17 09:00:00", 100.0),  # Mo
+            ("OBJ_0002", "2024-06-15 10:00:00", 100.0),  # Sa
+            ("OBJ_0003", "2024-06-16 11:00:00", 100.0),  # So
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_wochentag == [
+        ("Mo", 100.0),
+        ("Sa", 100.0),
+        ("So", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_wochentag_aus_seed_db(tmp_path):
+    """Gewichtsumme pro geaendert_am-Wochentag; 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Pflege-Wochentag-Achse:
+    waehrend die Wert-Spitze auf einem So-Katalog-Slot liegen kann, kann
+    die Gewicht-Spitze auf einem Sa-Pflege-Slot mit schweren Handstuecken
+    liegen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgw.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # Sonntag-Pflege-Slot fuer schwere Handstuecke: 800 + 400 = 1200
+            ("OBJ_0001", "2024-06-16 10:00:00", 800.0),   # So
+            ("OBJ_0002", "2024-06-23 11:00:00", 400.0),   # So
+            # Samstag: Kleinserien-Nachbesserung: 100 + 50 = 150
+            ("OBJ_0003", "2024-06-15 09:00:00", 100.0),   # Sa
+            ("OBJ_0004", "2024-06-15 12:00:00", 50.0),    # Sa
+            # NULL/0 -> raus
+            ("OBJ_0005", "2024-06-14 08:00:00", None),
+            ("OBJ_0006", "2024-06-13 08:00:00", 0.0),
+            # Ignoriert (nicht-strikt)
+            ("OBJ_0007", "2024 10:00:00", 999.0),
+            ("OBJ_0008", "2024-02-30 10:00:00", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: So (1200), Sa (150)
+    assert st.gewicht_pro_geaendert_am_wochentag == [
+        ("So", 1200.0),
+        ("Sa", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_geaendert_am_wochentag"] == [
+        ("So", 1200.0), ("Sa", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_wochentag_leer(tmp_path):
+    """Ohne Gewicht: leere Wochentag-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgw_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_geaendert_am_wochentag == []
+    c.close()
+
+
 def test_funddatum_spanne_aus_seed_db(tmp_path):
     """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
     from stonebook.db.database import open_db
