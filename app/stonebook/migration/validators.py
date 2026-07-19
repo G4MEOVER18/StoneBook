@@ -2010,6 +2010,36 @@ _SEASON_MONTHS: dict[str, int] = {
     # Dict-Key ``otono`` mappen - spiegelt die identische Behandlung von FR
     # ``été``->``ete`` und ES-Monatsnamen mit Diakritika im gleichen NFKD-Pfad.
     "verano": 6, "otono": 9, "invierno": 12,
+    # Portugiesische Saison-Namen (Sammler-Region Portugal mit den Wolframit-/
+    # Quarz-Fundstellen Panasqueira/Beira Baixa sowie brasilianische Pegmatit-
+    # Region Minas Gerais/Bahia/Espirito Santo, aus der Sammler-Notizen und
+    # Foto-Captions haeufig in PT-Sprache gepflegt sind: "verão de 2019 em
+    # Minas Gerais", "outono de 2020 em Panasqueira", "inverno de 1985 em
+    # Ouro Preto") - symmetrische Ergaenzung zum PT-Monat-Block in
+    # :data:`_MONTH_NAMES` (janeiro..dezembro, Vorgaenger-Commit). Konvention
+    # identisch zu DE/EN/FR/IT/ES: meteorologischer Saison-Startmonat des
+    # genannten Jahres (Maerz/Juni/September/Dezember). "primavera" und
+    # "inverno" bereits ueber den IT-/ES-Block eingetragen (identische PT/IT/
+    # ES-Schreibweise, identische Monatswerte).
+    #
+    # Der Sommer-Name "verão" enthaelt Diakritika (a-tilde U+00E3), der
+    # bestehende NFKD-Post-Strip in :func:`_normalize_season_name`
+    # dekomponiert U+00E3 zu ``a`` + Combining-Tilde und strippt letzteres,
+    # sodass sowohl "verão 2024" als auch die ASCII-Notation "verao 2024"
+    # (aus DBs mit nur-ASCII-Feldern) auf denselben Dict-Key "verao" mappen -
+    # spiegelt die identische Behandlung von ES "otoño"->"otono" und FR
+    # "été"->"ete" im gleichen NFKD-Pfad. Der ASCII-Key "verao" kollidiert
+    # NICHT mit dem bereits eingetragenen ES "verano", weil PT mit -ao
+    # (nasalisierter Vokal, ohne trailing -n) geschrieben wird, ES mit -ano
+    # (klassisch lateinische Endung mit -n) - beide Formen koexistieren als
+    # separate Dict-Keys auf denselben Monatswert 06 (Regression-Assert im
+    # Testblock sichert die Koexistenz).
+    #
+    # Der Herbst-Name "outono" ist rein ASCII (keine Diakritika) und PT-
+    # spezifisch (differenziert vom ES-Post-Strip-Key "otono" mit ES-
+    # Anfangsvokal o, PT hat den Diphthong-Anfang ou-) - separate Dict-Keys
+    # auf denselben Monatswert 09.
+    "verao": 6, "outono": 9,
 }
 # Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Saison-Wort und Jahr
 # deckt die natuerlichsprachige DE-/EN-Prosa-Form ab: ``Sommer von 2024`` /

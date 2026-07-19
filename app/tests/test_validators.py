@@ -2119,6 +2119,69 @@ def test_parse_iso_date_spanische_saison_namen():
     assert parse_iso_date("13 diciembre 1999") == "1999-12-13"
 
 
+def test_parse_iso_date_portugiesische_saison_namen():
+    """Portugiesische Saison-Namen (Sammler-Region Portugal mit Panasqueira/
+    Beira Baixa sowie brasilianische Pegmatit-Region Minas Gerais/Bahia).
+
+    primavera=Fruehling (Monat 3, teilt sich Schreibweise/Monat mit IT/ES),
+    verao=Sommer (Monat 6, NFKD-Post-Strip der Standard-PT-Schreibweise
+    ``verão`` mit A-Tilde), outono=Herbst (Monat 9, PT-spezifisch, ASCII,
+    differenziert vom ES-Post-Strip-Key ``otono``), inverno=Winter
+    (Monat 12, teilt sich Schreibweise/Monat mit IT/ES). Symmetrie-
+    Vervollstaendigung zum bereits gepflegten PT-Monat-Block (janeiro..
+    dezembro) im Vorgaenger-Commit.
+    """
+    # Voll-Formen Season + Jahr (spiegelt DE/EN/FR/IT/ES-Testblock)
+    assert parse_iso_date("primavera 2024") == "2024-03-01"
+    assert parse_iso_date("verao 2024") == "2024-06-01"
+    assert parse_iso_date("verão 2024") == "2024-06-01"
+    assert parse_iso_date("outono 2024") == "2024-09-01"
+    assert parse_iso_date("inverno 2024") == "2024-12-01"
+    # Case-Insensitivitaet (Caps-Lock-Etiketten, Titel-Case, PT-A-Tilde-
+    # Uppercase-Form).
+    assert parse_iso_date("Primavera 2024") == "2024-03-01"
+    assert parse_iso_date("Verão 2024") == "2024-06-01"
+    assert parse_iso_date("VERÃO 2024") == "2024-06-01"
+    assert parse_iso_date("Outono 2024") == "2024-09-01"
+    assert parse_iso_date("INVERNO 2024") == "2024-12-01"
+    # Year-first Notation (Ordner-Struktur, Excel-Auto-Fill)
+    assert parse_iso_date("2024 verao") == "2024-06-01"
+    assert parse_iso_date("2024/verão") == "2024-06-01"
+    assert parse_iso_date("2024-outono") == "2024-09-01"
+    # Praepositions-Alternante von/of (spiegelt auf PT-Saison; die PT-eigene
+    # Praeposition "de" ist nicht in :data:`_SEASON_YEAR` gefuehrt, daher
+    # bewusst nicht getestet - Sammler verwenden die nackte Form oder die
+    # bereits akzeptierten Praepositionen von/of).
+    assert parse_iso_date("verao von 2024") == "2024-06-01"
+    assert parse_iso_date("inverno of 2019") == "2019-12-01"
+    # Kombination mit Approx-Praefix
+    assert parse_iso_date("ca. verao 2024") == "2024-06-01"
+    assert parse_iso_date("circa outono 2019") == "2019-09-01"
+    # Ungueltiges Jahr (ausserhalb [1800, 2999])
+    assert parse_iso_date("verao 1700") is None
+    assert parse_iso_date("outono 3000") is None
+    # Regress: bestehende DE/EN/FR/IT/ES-Saisonen bleiben unveraendert
+    assert parse_iso_date("Sommer 2024") == "2024-06-01"
+    assert parse_iso_date("summer 2024") == "2024-06-01"
+    assert parse_iso_date("Winter 2024") == "2024-12-01"
+    assert parse_iso_date("printemps 2024") == "2024-03-01"
+    assert parse_iso_date("ete 2024") == "2024-06-01"
+    assert parse_iso_date("estate 2024") == "2024-06-01"
+    # Kollisions-Schutz: PT "verao" und ES "verano" koexistieren als
+    # separate Dict-Keys auf denselben Monatswert 06; PT "outono" und ES
+    # "otono" (Post-NFKD-Strip von "otoño") koexistieren als separate Dict-
+    # Keys auf denselben Monatswert 09. Beide Formen bleiben nach dem
+    # PT-Ausbau nebeneinander erkennbar.
+    assert parse_iso_date("verano 2024") == "2024-06-01"
+    assert parse_iso_date("otono 2024") == "2024-09-01"
+    assert parse_iso_date("otoño 2024") == "2024-09-01"
+    # Regress: PT-Monat-Namen bleiben unveraendert (Kollisions-Schutz
+    # zwischen PT-Monat und PT-Saison, keine Ueberschneidungen).
+    assert parse_iso_date("13 junho 2024") == "2024-06-13"
+    assert parse_iso_date("13 janeiro 2024") == "2024-01-13"
+    assert parse_iso_date("13 dezembro 1999") == "1999-12-13"
+
+
 def test_parse_iso_date_kompositum_saison():
     """DE-Kompositum-Formen ``Frueh<Saison>``/``Spaet<Saison>`` fuer die drei
     innerhalb eines Kalenderjahres liegenden Saisons.
