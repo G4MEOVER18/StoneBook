@@ -1947,6 +1947,23 @@ _SEASON_MONTHS: dict[str, int] = {
     # ebenfalls Nicht-Season-Bedeutungen tragen koennen) und wird in
     # Sammler-Notizen fast durchgaengig als Saison verstanden.
     "primavera": 3, "estate": 6, "autunno": 9, "inverno": 12,
+    # Spanische Saison-Namen (Sammler-Region Andalusien/Almeria/La Union sowie
+    # geerbte Sammler-Notizen aus lateinamerikanischen Fundstellen: Cerro Rico
+    # Potosi Bolivien, Chuquicamata Chile, La Rinconada Peru) - symmetrische
+    # Ergaenzung zum ES-Monat-Block in :data:`_MONTH_NAMES` (enero..diciembre,
+    # 652ac1a). Konvention identisch zu DE/EN/FR/IT: meteorologischer Saison-
+    # Startmonat des genannten Jahres (Maerz/Juni/September/Dezember).
+    # "primavera" bereits im IT-Block eingetragen (identische ES/IT-Schreibweise
+    # auf denselben Monatswert 03). verano=Sommer und invierno=Winter sind
+    # rein ASCII und ES-spezifisch (keine Kollision mit DE/EN/FR/IT-Bestand).
+    # Der Herbst-Name enthaelt Diakritika (``otoño`` mit Tilde-N), der bestehende
+    # NFKD-Post-Strip in :func:`_normalize_season_name` (spiegelt
+    # :func:`_normalize_month_name`) dekomponiert U+00F1 zu ``n`` + Combining-
+    # Tilde und strippt letzteres, sodass sowohl "otoño 2024" als auch die
+    # ASCII-Notation "otono 2024" (aus DBs mit nur-ASCII-Feldern) auf denselben
+    # Dict-Key ``otono`` mappen - spiegelt die identische Behandlung von FR
+    # ``été``->``ete`` und ES-Monatsnamen mit Diakritika im gleichen NFKD-Pfad.
+    "verano": 6, "otono": 9, "invierno": 12,
 }
 # Praepositions-Alternante ``\s+(?:von|of)\s+`` zwischen Saison-Wort und Jahr
 # deckt die natuerlichsprachige DE-/EN-Prosa-Form ab: ``Sommer von 2024`` /
