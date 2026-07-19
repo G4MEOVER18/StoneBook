@@ -165,6 +165,7 @@ class Statistik:
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_erstellt_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -192,6 +193,7 @@ class Statistik:
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_erstellt_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -1385,6 +1387,9 @@ class Statistik:
             "wert_pro_erstellt_am_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_erstellt_am_monat
             ],
+            "wert_pro_erstellt_am_wochentag": [
+                (t, round(w, 2)) for t, w in self.wert_pro_erstellt_am_wochentag
+            ],
             "wert_pro_geaendert_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_geaendert_am_jahr
             ],
@@ -1465,6 +1470,9 @@ class Statistik:
             ],
             "gewicht_pro_erstellt_am_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_erstellt_am_monat
+            ],
+            "gewicht_pro_erstellt_am_wochentag": [
+                (t, round(g, 2)) for t, g in self.gewicht_pro_erstellt_am_wochentag
             ],
             "gewicht_pro_geaendert_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_geaendert_am_jahr
@@ -2593,6 +2601,51 @@ def _sum_by_funddatum_wochentag(conn: sqlite3.Connection, value_sql: str,
         where = f"{where} AND {extra_where}"
     sql = (
         f"SELECT ((CAST(strftime('%w', substr(Funddatum, 1, 10)) AS INTEGER) "
+        f"        + 6) % 7) + 1 AS iso_dow, "
+        f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
+        f"GROUP BY iso_dow HAVING w > 0 "
+        f"ORDER BY w DESC, iso_dow ASC"
+    )
+    return [(_WOCHENTAG_LABEL[str(r["iso_dow"])], float(r["w"]))
+            for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_erstellt_am_wochentag(conn: sqlite3.Connection, value_sql: str,
+                                  extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``erstellt_am``-Wochentag (Mo..So).
+
+    Pendant zu :func:`_count_erstellt_am_wochentag` (Anzahl), aber summiert
+    Wert/Gewicht je Wochentag-Bucket. Spiegelt :func:`_sum_by_funddatum_wochentag`
+    auf die Erfassungs-Achse: waehrend die Anzahl-Sicht die Erfassungs-Tour-
+    Rhythmik zeigt ("an welchen Wochentagen digitalisiere ich?"), zeigt die
+    Wert-/Gewicht-Sicht die Wochentag-Ergiebigkeit der Erfassung ("an welchen
+    Wochentagen wandern die wertvollsten/schwersten Stuecke in die DB").
+    Wochenend-Erfassungs-Sitzungen fuer nachgereichte Katalog-Wertwellen
+    (freizeit-nahe Sammler mit Sa/So-Marathon-Sessions) heben den Sa-/So-Wert-
+    Bucket ueberproportional an; Werktags-Kleinserien-Erfassung (pensionierte
+    Sammler mit gleichmaessiger Verteilung) verteilt den Wert flacher ueber
+    die Woche.
+
+    Akzeptiert nur strikte YYYY-MM-DD-Formen mit gueltigem Kalender-Tag,
+    spiegelt die :func:`_sum_by_funddatum_wochentag`- und
+    :func:`_count_erstellt_am_wochentag`-Konvention: die Round-Trip-Gleichheit
+    ``strftime('%Y-%m-%d', substr(erstellt_am, 1, 10)) =
+    substr(erstellt_am, 1, 10)`` faengt Kalender-Rollovers, Julian-Day-
+    Interpretation und Freitext transparent ab. ``erstellt_am`` hat im
+    repository._now()-Pfad das Format ``YYYY-MM-DD HH:MM:SS`` -
+    ``substr(..., 1, 10)`` extrahiert das reine Datum.
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach ISO-
+    Wochentag-Nummer (Mo=1 zuerst). Ohne Limit, weil maximal 7 Wochentag-
+    Buckets vorkommen koennen.
+    """
+    where = ("erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+             "AND strftime('%Y-%m-%d', substr(erstellt_am, 1, 10)) "
+             "= substr(erstellt_am, 1, 10)")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(strftime('%w', substr(erstellt_am, 1, 10)) AS INTEGER) "
         f"        + 6) % 7) + 1 AS iso_dow, "
         f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
         f"GROUP BY iso_dow HAVING w > 0 "
@@ -4961,6 +5014,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
     st.wert_pro_funddatum_wochentag = _sum_by_funddatum_wochentag(conn, wert_sql)
     st.gewicht_pro_funddatum_wochentag = _sum_by_funddatum_wochentag(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Erfassungs-Wochentag-Ergiebigkeit: spiegelt wert_/gewicht_pro_funddatum_
+    # wochentag auf die Erfassungs-Achse - an welchem Wochentag ueber alle
+    # Wochen aggregiert der hoechste Wert bzw. das hoechste Gewicht
+    # digitalisiert wurde. Komplementaer zu by_erstellt_am_wochentag (Anzahl -
+    # Erfassungs-Tour-Rhythmik) und zu wert_/gewicht_pro_erstellt_am_monat
+    # (Erfassungs-Saison): Wochenend-Erfassungs-Sitzungen fuer nachgereichte
+    # Katalog-Wertwellen (freizeit-nahe Sammler mit Sa/So-Marathon-Sessions)
+    # heben den Sa-/So-Wert-Bucket ueberproportional an, waehrend Werktags-
+    # Kleinserien-Erfassung (pensionierte Sammler) den Wert flacher verteilt.
+    # Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
+    st.wert_pro_erstellt_am_wochentag = _sum_by_erstellt_am_wochentag(conn, wert_sql)
+    st.gewicht_pro_erstellt_am_wochentag = _sum_by_erstellt_am_wochentag(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Rarity-Wert-/Gewicht-Sicht: wie verteilt sich Sammlungswert/Masse auf der
     # globalen Seltenheits-Skala (1..10)? Komplementaer zu by_seltenheit_global
