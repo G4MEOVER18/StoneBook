@@ -1433,6 +1433,25 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Gewicht pro Funddatum-Monat (g):"]
         for monat, gewicht in st.gewicht_pro_funddatum_monat:
             lines.append(f"  {monat:40s} {gewicht:>12,.1f}")
+    if st.wert_pro_funddatum_wochentag:
+        # Wochentag-Ertrag in CHF: welcher Wochentag bringt ueber alle Wochen
+        # aggregiert den meisten Wert? Komplementaer zu by_funddatum_wochentag
+        # (Anzahl - Tour-Rhythmik "an welchen Wochentagen sammle ich?") und zu
+        # wert_pro_funddatum_monat (Saison-Ergiebigkeit). Boersen-Touren
+        # (typisch Samstag) heben den Sa-Wert-Bucket ueberproportional an,
+        # weil pro Fund mehr CHF eingesammelt werden als bei Sonntags-Feld-
+        # Touren. Reihenfolge: absteigend nach Summe (top zuerst).
+        lines += ["", "Wert pro Funddatum-Wochentag (CHF):"]
+        for wochentag, wert in st.wert_pro_funddatum_wochentag:
+            lines.append(f"  {wochentag:40s} {wert:>12,.0f}")
+    if st.gewicht_pro_funddatum_wochentag:
+        # Spiegelbild Gewicht: welcher Wochentag bringt die meiste Masse?
+        # Wert- und Gewicht-Wochentag-Spitzen entkoppeln sich oft (Wert-Spitze
+        # Samstag durch Boersen-Kleinstuecke, Gewicht-Spitze Sonntag durch
+        # Feld-Tour-Handstuecke).
+        lines += ["", "Gewicht pro Funddatum-Wochentag (g):"]
+        for wochentag, gewicht in st.gewicht_pro_funddatum_wochentag:
+            lines.append(f"  {wochentag:40s} {gewicht:>12,.1f}")
     if st.wert_pro_erstellt_am_monat:
         # Saison-Sicht des Erfassungs-Werts: welcher Monat des Jahres bringt
         # ueber alle Jahre den hoechsten Erfassungs-Wert? Komplementaer zu

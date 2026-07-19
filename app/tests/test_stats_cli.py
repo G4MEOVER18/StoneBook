@@ -2785,6 +2785,92 @@ def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_funddatum_monat_zeile(tmp_p
     assert "Gewicht pro Funddatum-Monat" not in out
 
 
+def test_text_ausgabe_zeigt_wert_pro_funddatum_wochentag(tmp_path, capsys):
+    """Wert-pro-Funddatum-Wochentag-Block listet die wertvollsten Wochentage absteigend."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpfw.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-15", 1000.0),   # Sa
+            ("OBJ_0002", "2024-06-16", 400.0),    # So
+            ("OBJ_0003", "2024-06-13", 100.0),    # Do
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Funddatum-Wochentag (CHF):" in out
+    block = out.split("Wert pro Funddatum-Wochentag (CHF):", 1)[1]
+    # Reihenfolge nach Summe absteigend: Sa (1000), So (400), Do (100)
+    assert block.index("Sa") < block.index("So") < block.index("Do")
+    # Wochentag-Block steht unter dem Monats-Block
+    assert out.index("Wert pro Funddatum-Monat (CHF):") < out.index(
+        "Wert pro Funddatum-Wochentag (CHF):"
+    )
+
+
+def test_text_ausgabe_ohne_werte_keine_wert_pro_funddatum_wochentag_zeile(tmp_path, capsys):
+    """Ohne CHF-Werte erscheint der Wochentag-Wert-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "wpfw0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", "2024-06-15"), ("OBJ_0002", "2024-06-16")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Wert pro Funddatum-Wochentag" not in out
+
+
+def test_text_ausgabe_zeigt_gewicht_pro_funddatum_wochentag(tmp_path, capsys):
+    """Gewicht-pro-Funddatum-Wochentag-Block listet die schwersten Wochentage."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpfw.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-06-16", 800.0),    # So (Feld-Tour, schwer)
+            ("OBJ_0002", "2024-06-15", 150.0),    # Sa
+            ("OBJ_0003", "2024-06-13", 50.0),     # Do
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Funddatum-Wochentag (g):" in out
+    block = out.split("Gewicht pro Funddatum-Wochentag (g):", 1)[1]
+    # Reihenfolge nach Summe absteigend: So (800), Sa (150), Do (50)
+    assert block.index("So") < block.index("Sa") < block.index("Do")
+    # Wochentag-Block steht unter dem Monats-Block
+    assert out.index("Gewicht pro Funddatum-Monat (g):") < out.index(
+        "Gewicht pro Funddatum-Wochentag (g):"
+    )
+
+
+def test_text_ausgabe_ohne_gewicht_keine_gewicht_pro_funddatum_wochentag_zeile(tmp_path, capsys):
+    """Ohne Gewichts-Daten erscheint der Wochentag-Gewicht-Block gar nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "gpfw0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", "2024-06-15"), ("OBJ_0002", "2024-06-16")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Gewicht pro Funddatum-Wochentag" not in out
+
+
 def test_text_ausgabe_zeigt_objekte_pro_kategorie(tmp_path, capsys):
     """Objekte-pro-Kategorie-Block zaehlt absteigend nach Anzahl."""
     from stonebook.db.database import open_db

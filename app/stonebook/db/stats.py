@@ -161,6 +161,7 @@ class Statistik:
     wert_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -187,6 +188,7 @@ class Statistik:
     gewicht_pro_funddatum_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -1371,6 +1373,9 @@ class Statistik:
             "wert_pro_funddatum_monat": [
                 (m, round(w, 2)) for m, w in self.wert_pro_funddatum_monat
             ],
+            "wert_pro_funddatum_wochentag": [
+                (t, round(w, 2)) for t, w in self.wert_pro_funddatum_wochentag
+            ],
             "wert_pro_erstellt_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_erstellt_am_jahr
             ],
@@ -1448,6 +1453,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_monat": [
                 (m, round(g, 2)) for m, g in self.gewicht_pro_funddatum_monat
+            ],
+            "gewicht_pro_funddatum_wochentag": [
+                (t, round(g, 2)) for t, g in self.gewicht_pro_funddatum_wochentag
             ],
             "gewicht_pro_erstellt_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_erstellt_am_jahr
@@ -2552,6 +2560,46 @@ def _sum_by_funddatum_monat(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, k ASC"
     )
     return [(r["k"], float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_funddatum_wochentag(conn: sqlite3.Connection, value_sql: str,
+                                extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Wochentag (Mo..So).
+
+    Pendant zu :func:`_count_funddatum_wochentag` (Anzahl), aber summiert
+    Wert/Gewicht je Wochentag-Bucket. Waehrend die Anzahl-Sicht die Tour-
+    Rhythmik zeigt ("an welchen Wochentagen sammle ich?"), zeigt die Wert-/
+    Gewicht-Sicht die Wochentag-Ergiebigkeit ("an welchen Wochentagen kommt
+    der wertvollste/schwerste Fund"). Boersen-Touren (typisch Samstag)
+    heben den Sa-Wert-Bucket ueberproportional an, weil pro Fund mehr
+    CHF/g eingesammelt werden als bei Sonntags-Feld-Touren; umgekehrt
+    schiebt eine Feld-Saison mit einzelnen schweren Handstuecken das
+    Wochentag-Gewicht in die Feld-Tour-Tage.
+
+    Akzeptiert nur strikte YYYY-MM-DD-Formen mit gueltigem Kalender-Tag,
+    spiegelt die :func:`_count_funddatum_wochentag`-Konvention: die
+    Round-Trip-Gleichheit ``strftime('%Y-%m-%d', substr(..., 1, 10)) =
+    substr(..., 1, 10)`` faengt Kalender-Rollovers (``"2024-02-30"``),
+    Julian-Day-Interpretation (``"2024"``) und Freitext transparent ab.
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach ISO-
+    Wochentag-Nummer (Mo=1 zuerst). Ohne Limit, weil maximal 7 Wochentag-
+    Buckets vorkommen koennen.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND strftime('%Y-%m-%d', substr(Funddatum, 1, 10)) "
+             "= substr(Funddatum, 1, 10)")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(strftime('%w', substr(Funddatum, 1, 10)) AS INTEGER) "
+        f"        + 6) % 7) + 1 AS iso_dow, "
+        f"       SUM({value_sql}) AS w FROM objects WHERE {where} "
+        f"GROUP BY iso_dow HAVING w > 0 "
+        f"ORDER BY w DESC, iso_dow ASC"
+    )
+    return [(_WOCHENTAG_LABEL[str(r["iso_dow"])], float(r["w"]))
+            for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_funddatum_jahrzehnt(conn: sqlite3.Connection, value_sql: str,
@@ -4903,6 +4951,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # vergleichbar; keine Limit-Parameter, weil max 12 Eintraege moeglich.
     st.wert_pro_funddatum_monat = _sum_by_funddatum_monat(conn, wert_sql)
     st.gewicht_pro_funddatum_monat = _sum_by_funddatum_monat(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Wochentag-Ertrag: welcher Wochentag bringt ueber alle Wochen aggregiert
+    # den meisten Wert/das meiste Gewicht? Komplementaer zu by_funddatum_
+    # wochentag (Anzahl - Tour-Rhythmik) und zu wert_/gewicht_pro_funddatum_
+    # monat (Saison-Ergiebigkeit). Boersen-Touren (typisch Samstag) heben den
+    # Sa-Wert-Bucket ueberproportional an; Feld-Saison-Touren mit schweren
+    # Handstuecken schieben das Wochentag-Gewicht in die Feld-Tour-Tage.
+    # Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
+    st.wert_pro_funddatum_wochentag = _sum_by_funddatum_wochentag(conn, wert_sql)
+    st.gewicht_pro_funddatum_wochentag = _sum_by_funddatum_wochentag(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Rarity-Wert-/Gewicht-Sicht: wie verteilt sich Sammlungswert/Masse auf der
     # globalen Seltenheits-Skala (1..10)? Komplementaer zu by_seltenheit_global
