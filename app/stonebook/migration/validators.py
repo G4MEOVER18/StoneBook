@@ -5362,25 +5362,41 @@ def parse_coordinates(text) -> tuple[float, float] | None:
     s = s.replace("%2C", ",").replace("%2c", ",")
     # Fullwidth-CJK-Interpunktion auf ASCII normalisieren: Fullwidth-Komma
     # (U+FF0C ``，``), Fullwidth-Full-Stop (U+FF0E ``．``), Fullwidth-Solidus
-    # (U+FF0F ``／``). Alle drei sind die Standard-Interpunktion aus CJK-Text-
-    # Eingabe (Japanese/Chinese-IME liefert ``，`` statt ``,`` und ``．`` statt
-    # ``.`` als Default; typisch auch fuer Copy-Paste aus CJK-Publikationen,
-    # aus wechselnden IME-Kontexten und aus MS-Office-Autoformat mit CJK-
-    # Locale). Ohne Normalisierung fallen alle CJK-Interpunktions-Formen durch
-    # die _DECIMAL_PAIR-Separator-Klasse ``[ \t,;/&]`` (kennt keine Fullwidth-
-    # Zeichen) und den Decimal-Punkt der _NUM_RE-Zahl-Extraktion und liefern
-    # stille None - der Sammler-Workflow "GPS-Koordinate aus CJK-Referenz
-    # kopieren, ins Fundort-Feld einfuegen" scheitert unsichtbar. Fullwidth-
-    # Ziffern (U+FF10..U+FF19) sind bereits transparent behandelt, weil
-    # Python ``\d`` Unicode-Decimal per Default matcht (die CJK-Ziffern-Formen
-    # sind decimal-property-Zeichen); nur die Interpunktion braucht den
-    # expliziten Strip. Single-Pass-Replace vor allen Pattern-Versuchen ist
-    # symmetrisch zum U+2212-/``º``-/``%2C``-Strip auf ihren jeweiligen
-    # semantischen Achsen; die drei Zeichen haben im Koordinaten-Kontext
-    # keine andere Bedeutung als ihre ASCII-Aequivalente.
+    # (U+FF0F ``／``), Fullwidth-Semikolon (U+FF1B ``；``) und Ideographic-
+    # Komma (U+3001 ``、``). Alle fuenf sind die Standard-Interpunktion aus
+    # CJK-Text-Eingabe (Japanese/Chinese-IME liefert ``，`` statt ``,`` und
+    # ``．`` statt ``.`` als Default; typisch auch fuer Copy-Paste aus CJK-
+    # Publikationen, aus wechselnden IME-Kontexten und aus MS-Office-
+    # Autoformat mit CJK-Locale). Ohne Normalisierung fallen alle CJK-
+    # Interpunktions-Formen durch die _DECIMAL_PAIR-Separator-Klasse
+    # ``[ \t,;/&]`` (kennt keine Fullwidth-Zeichen) und den Decimal-Punkt
+    # der _NUM_RE-Zahl-Extraktion und liefern stille None - der Sammler-
+    # Workflow "GPS-Koordinate aus CJK-Referenz kopieren, ins Fundort-Feld
+    # einfuegen" scheitert unsichtbar. Fullwidth-Ziffern (U+FF10..U+FF19)
+    # sind bereits transparent behandelt, weil Python ``\d`` Unicode-Decimal
+    # per Default matcht (die CJK-Ziffern-Formen sind decimal-property-
+    # Zeichen); nur die Interpunktion braucht den expliziten Strip. Single-
+    # Pass-Replace vor allen Pattern-Versuchen ist symmetrisch zum U+2212-/
+    # ``º``-/``%2C``-Strip auf ihren jeweiligen semantischen Achsen; die
+    # fuenf Zeichen haben im Koordinaten-Kontext keine andere Bedeutung als
+    # ihre ASCII-Aequivalente. Fullwidth-Semikolon (U+FF1B) spiegelt den
+    # bereits im :data:`_DECIMAL_PAIR`-Separator akzeptierten ASCII-``;``
+    # auf die CJK-Achse - CJK-GIS-Reports und Sammler-Notizen aus JP/ZH-
+    # Locale nutzen ``；`` als Achsen-Trenner in derselben Weise, wie
+    # DE-/EU-Excel-CSV-Exporte ``;`` als Feld-Trenner nutzen. Ideographic-
+    # Komma (U+3001) ist die CJK-Enumeration-Interpunktion und wird in
+    # Foto-Captions und Fundort-Beschreibungen aus JP-Sammler-Notizen
+    # regelmaessig als Achsen-Trenner zwischen zwei Zahl-Feldern gesetzt
+    # ("46.5、7.5" statt "46.5, 7.5"), spiegelt semantisch die ``、``=``,``-
+    # Konvention der JIS-Interpunktions-Tabelle. Beide Zeichen sind
+    # kollisionsfrei zu ihren ASCII-Aequivalenten, weil weder ``；`` noch
+    # ``、`` im Koordinaten-Kontext eine andere Bedeutung als "Trenner"
+    # tragen.
     s = (s.replace("，", ",")
           .replace("．", ".")
-          .replace("／", "/"))
+          .replace("／", "/")
+          .replace("；", ";")
+          .replace("、", ","))
     # OSM-URL-Hash-Fragment "#map=<zoom>/<lat>/<lon>" vor allen Zahl-Paar-Patterns
     # extrahieren: das erste Slash-getrennte Feld ist der Zoom-Level, nicht die
     # Latitude - _DECIMAL_PAIR wuerde sonst (zoom, lat) statt (lat, lon) greifen

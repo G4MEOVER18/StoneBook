@@ -7324,11 +7324,12 @@ def test_parse_coordinates_url_encoded_komma():
 
 
 def test_parse_coordinates_fullwidth_cjk_interpunktion():
-    """Fullwidth-CJK-Interpunktion (U+FF0C ``，``, U+FF0E ``．``, U+FF0F ``／``)
-    wird transparent auf ASCII normalisiert.
+    """Fullwidth-CJK-Interpunktion (U+FF0C ``，``, U+FF0E ``．``, U+FF0F ``／``,
+    U+FF1B ``；``, U+3001 ``、``) wird transparent auf ASCII normalisiert.
 
-    Japanese/Chinese-IME liefern ``，``/``．``/``／`` als Default-Interpunktion
-    (statt der ASCII-Aequivalente ``,``/``.``/``/``). Sammler mit CJK-Locale
+    Japanese/Chinese-IME liefern ``，``/``．``/``／``/``；`` und den JIS-
+    Interpunktions-``、`` als Default-Interpunktion (statt der ASCII-
+    Aequivalente ``,``/``.``/``/``/``;``/``,``). Sammler mit CJK-Locale
     oder aus einem CJK-IME-Kontext kopiertem Text tippen die Koordinaten mit
     der Fullwidth-Form, ohne den Unterschied zu bemerken - die Zeichen sind
     monospace-visuell nur an der Breite unterscheidbar. Vor dem Fix fielen
@@ -7346,21 +7347,43 @@ def test_parse_coordinates_fullwidth_cjk_interpunktion():
     assert parse_coordinates("46．5，7．5") == (46.5, 7.5)
     # Fullwidth-Solidus als Separator (spiegelt den ASCII-Slash-Zweig)
     assert parse_coordinates("46.5／7.5") == (46.5, 7.5)
+    # Fullwidth-Semikolon als Separator (spiegelt den ASCII-Semikolon-Zweig
+    # in :data:`_DECIMAL_PAIR`, typisch fuer CJK-GIS-Reports und JP/ZH-
+    # Sammler-Notizen mit ``；`` als Achsen-Trenner)
+    assert parse_coordinates("46.5；7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5； 7.5") == (46.5, 7.5)
+    # Ideographic-Komma als Separator (JIS-Interpunktion aus JP-Sammler-
+    # Notizen und Foto-Captions, spiegelt semantisch ``、``=``,``-Konvention)
+    assert parse_coordinates("46.5、7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5、 7.5") == (46.5, 7.5)
     # Fullwidth-Komma mit ASCII-Vorzeichen
     assert parse_coordinates("-46.5，-7.5") == (-46.5, -7.5)
     # Fullwidth-Komma mit U+2212-Minus (beide Fixes greifen unabhaengig)
     assert parse_coordinates("−46.5，−7.5") == (-46.5, -7.5)
+    # Fullwidth-Semikolon / Ideographic-Komma mit Vorzeichen und Minus-Marker
+    assert parse_coordinates("-46.5；-7.5") == (-46.5, -7.5)
+    assert parse_coordinates("−46.5、−7.5") == (-46.5, -7.5)
     # Fullwidth-Komma in DMS-/Prefix-Notation
     assert parse_coordinates("N46.5°，E7.5°") == (46.5, 7.5)
+    # Fullwidth-Semikolon / Ideographic-Komma in DMS-/Prefix-Notation
+    assert parse_coordinates("N46.5°；E7.5°") == (46.5, 7.5)
+    assert parse_coordinates("N46.5°、E7.5°") == (46.5, 7.5)
     # Fullwidth-Ziffern (U+FF10..U+FF19) sind schon vorher transparent
     # (Regression-Anker fuer Python-\\d-Unicode-Decimal-Semantik).
     assert parse_coordinates("４６.５，７.５") == (46.5, 7.5)
+    # Fullwidth-Ziffern + Fullwidth-Semikolon / Ideographic-Komma
+    # (beide Fixes greifen kombiniert)
+    assert parse_coordinates("４６.５；７.５") == (46.5, 7.5)
+    assert parse_coordinates("４６.５、７.５") == (46.5, 7.5)
     # Out-of-range bleibt None (Validierung greift wie sonst)
     assert parse_coordinates("46.5，200.0") is None
     assert parse_coordinates("100.0，7.5") is None
+    assert parse_coordinates("46.5；200.0") is None
+    assert parse_coordinates("100.0、7.5") is None
     # Regression: ASCII-Interpunktion weiter gueltig
     assert parse_coordinates("46.5,7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5/7.5") == (46.5, 7.5)
+    assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
 
 
 def test_parse_coordinates_url_query_params():
