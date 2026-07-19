@@ -4268,6 +4268,64 @@ def test_parse_range_trailing_annaeherungs_suffix():
     assert csv_loaders.parse_range("500") == (500.0, 500.0)
 
 
+def test_parse_range_trailing_annaeherungs_suffix_presumably():
+    """Trailing ``presumably``-Suffix (EN-Wahrscheinlichkeits-/Vermutungs-Marker).
+
+    Deckt die letzte Symmetrie-Luecke in :data:`_APPROX_VALUE_SUFFIX`: der
+    Marker ``presumably`` war bereits in :data:`_APPROX_VALUE_PREFIX` (Leading-
+    Achse), :data:`stonebook.migration.validators._APPROX_PREFIX` (Datums-
+    Leading) und :data:`stonebook.migration.validators._TRAILING_APPROX_SUFFIX`
+    (Datums-Trailing) gepflegt, fehlte aber in der Wert-Trailing-Achse -
+    Sammler-Notation "Wert zuerst, EN-Vermutungs-Marker nachgeschoben" mit
+    Komma-Trenner (``"5.5 ± 0.3, presumably"``) fiel still auf den
+    ``(center, center)``-Kollaps und verlor die publizierte Toleranz.
+    Semantisch identisch zu ``possibly``/``perhaps``/``maybe`` (bereits in der
+    Menge) und zu den DE-Aequivalenten ``vermutlich``/``wahrscheinlich``. Der
+    Fix schliesst die letzte Achse, damit die vier Marker-Mengen
+    (Datums-Leading/-Trailing, Wert-Leading/-Trailing) lexikalisch identisch
+    sind.
+    """
+    # Uncertainty + Komma-Trenner + Trailing ``presumably``: der Fix-Fall.
+    assert csv_loaders.parse_range("5.5 ± 0.3, presumably") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5(3), presumably") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("2.65(5), presumably") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("100 ± 2, presumably") == pytest.approx((98.0, 102.0))
+    # Uncertainty + Einheit + Komma-Trenner + Trailing ``presumably``.
+    assert csv_loaders.parse_range("2.65 ± 0.05 g/cm³, presumably") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("5.5 ± 0.3 Mohs, presumably") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("500 ± 50 CHF, presumably") == pytest.approx((450.0, 550.0))
+    # Reine Wert-Zelle + Trailing ``presumably`` (verlustfrei via Fallback).
+    assert csv_loaders.parse_range("500 presumably") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 presumably.") == (500.0, 500.0)
+    assert csv_loaders.parse_range("5.5 presumably") == (5.5, 5.5)
+    # Case-Insensitivitaet (spiegelt die restliche Marker-Menge).
+    assert csv_loaders.parse_range("5.5 ± 0.3, PRESUMABLY") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3, Presumably") == pytest.approx((5.2, 5.8))
+    # Leading + Trailing ``presumably`` in einer Rekursion.
+    assert csv_loaders.parse_range("ca. 5.5 ± 0.3, presumably") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("presumably 5.5 ± 0.3, presumably") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("etwa 2.65(5), presumably") == pytest.approx((2.60, 2.70))
+    # DE-Komma-Dezimal-Locale + Trailing ``presumably``.
+    assert csv_loaders.parse_range("5,5 ± 0,3, presumably") == pytest.approx((5.2, 5.8))
+    # Range + Trailing ``presumably`` (die Range-Grenzen bleiben nach dem Strip).
+    assert csv_loaders.parse_range("3-5 presumably") == (3.0, 5.0)
+    assert csv_loaders.parse_range("100-200 presumably") == (100.0, 200.0)
+    # Kollisions-Schutz: aehnlich beginnende Woerter am Ende sind KEINE
+    # Marker (Vollwort-Anker via ``[.,;:!?]?\s*$``).
+    assert csv_loaders.parse_range("5.5 presuming") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 presume") == (5.5, 5.5)
+    assert csv_loaders.parse_range("5.5 presumptuous") == (5.5, 5.5)
+    # Regress-Anker: bereits gepflegte Trailing-Marker bleiben unveraendert
+    # (der Fix ist rein additiv).
+    assert csv_loaders.parse_range("5.5 ± 0.3, possibly") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3, vermutlich") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("5.5 ± 0.3, ca.") == pytest.approx((5.2, 5.8))
+    # Regress-Anker: die bereits gepflegte Leading-``presumably``-Form
+    # (aus :data:`_APPROX_VALUE_PREFIX`) bleibt unveraendert.
+    assert csv_loaders.parse_range("presumably 5.5") == (5.5, 5.5)
+    assert csv_loaders.parse_range("presumably 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+
+
 def test_read_ids_from_file_basisformen(tmp_path):
     """Regress-Anker: Kommentare/Leerzeilen/Inline-Kommentare/Trim.
 

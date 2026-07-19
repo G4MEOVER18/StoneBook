@@ -506,7 +506,26 @@ _APPROX_VALUE_SUFFIX = re.compile(
     r"|gesch[äa]tzt|geschaetzt"
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
-    r"|perhaps|possibly|maybe"
+    # ``presumably`` als EN-Wahrscheinlichkeits-/Vermutungs-Marker in der
+    # Trailing-Achse - spiegelt den bereits in :data:`_APPROX_VALUE_PREFIX`
+    # (Leading), :data:`stonebook.migration.validators._APPROX_PREFIX`
+    # (Datums-Leading) und :data:`stonebook.migration.validators._TRAILING_APPROX_SUFFIX`
+    # (Datums-Trailing) gefuehrten Eintrag auf die letzte fehlende Achse.
+    # Semantisch identisch zu ``vermutlich``/``wahrscheinlich``/``perhaps``/
+    # ``possibly``/``maybe`` (Unsicherheits-Marker), die alle in der Trailing-
+    # Menge stehen; die bisherige Auslassung war eine reine Symmetrie-Luecke.
+    # Bisher fielen alle Trailing-Formen mit ``presumably`` nach Komma-Trenner
+    # still auf die Fallback-Zahl-Extraktion durch: ``_PLUS_MINUS_UNCERTAINTY``
+    # / ``_PARENTHESIS_UNCERTAINTY`` ankern per ``^...$``, und ``,\s*presumably``
+    # nach dem Uncertainty-Ausdruck bricht das End-Anker-Matching, sodass
+    # ``"5.5 ± 0.3, presumably"`` via inverted-range-Kollaps ``(5.5, 5.5)``
+    # lieferte (Toleranz verloren); analog fuer ``"2.65(5), presumably"``,
+    # ``"500 ± 50 CHF, presumably"``, ``"2.65 ± 0.05 g/cm³, presumably"`` und
+    # die Verkettung mit Leading-Approx-Marker (``"ca. 5.5 ± 0.3, presumably"``
+    # via Leading-Strip + Rekursion). Der Suffix-Strip liefert die identische
+    # ``(5.2, 5.8)`` bzw. ``(2.6, 2.7)`` bzw. ``(450, 550)`` wie die etablierten
+    # Marker der Menge (``possibly``, ``vermutlich``, ``wahrscheinlich``).
+    r"|perhaps|possibly|maybe|presumably"
     r")\s*[.,;:!?]?\s*$",
     re.IGNORECASE,
 )
