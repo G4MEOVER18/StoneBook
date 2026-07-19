@@ -7273,6 +7273,65 @@ def test_parse_coordinates_himmelsrichtung_fr_it_vollnamen():
     assert parse_coordinates("estimated 46.5, established 7.5") is None
 
 
+def test_parse_coordinates_himmelsrichtung_es_vollnamen():
+    """ES-Vollnamen der Himmelsrichtungen (Andalusien/Sierra Almagrera/Rodalquilar/
+    Riotinto/Cartagena und lateinamerikanische Sammler-Notizen).
+
+    Alle vier Achsen haben in ES eigenstaendige Wortstaemme: ``norte`` (N),
+    ``sur`` (S), ``este`` (E), ``oeste`` (W). Vor dieser Erweiterung fielen
+    alle ES-Formen still auf die Fallback-Route (kein Direction-Marker erkannt,
+    generische Zahl-Paar-Extraktion nimmt die Reihenfolge ohne Vorzeichen-
+    Information), was aus einem typischen Andalusien-Etikett
+    ``"Sur 37.2, Oeste 2.4"`` silent ``(37.2, 2.4)`` (Nord-/Osthalbkugel) statt
+    ``(-37.2, -2.4)`` erzeugte. Spiegelt die ES-Monats-/Saison-Namen-Erweiterungen
+    auf die Direction-Wort-Achse.
+    """
+    # Prefix-Form: Andalusien/Sierra-Almagrera-/Rodalquilar-Fundort-Notizen
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Norte 37.2, Oeste 2.4") == (37.2, -2.4)
+    assert parse_coordinates("Sur 37.2, Este 2.4") == (-37.2, 2.4)
+    # Decimal-Suffix-Form ("37.2° Norte, 2.4° Este") - Cartagena/La-Union-Museum-Etikett
+    assert parse_coordinates("37.2° Norte, 2.4° Este") == (37.2, 2.4)
+    assert parse_coordinates("37.2° Sur, 2.4° Oeste") == (-37.2, -2.4)
+    # Lateinamerikanische Sammler-Notiz (Peru/Chile/Bolivien-Suedhalbkugel)
+    assert parse_coordinates("Sur 12.3, Oeste 75.6") == (-12.3, -75.6)
+    # Case-insensitive
+    assert parse_coordinates("NORTE 37.2, ESTE 2.4") == (37.2, 2.4)
+    assert parse_coordinates("sur 37.2, oeste 2.4") == (-37.2, -2.4)
+    # Mit trailing Punkt nach Kurzform ("Norte." / "Este." aus Katalog-Abkuerzung)
+    assert parse_coordinates("Norte. 37.2, Este. 2.4") == (37.2, 2.4)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Norte 37.2, Lon: Este 2.4") == (37.2, 2.4)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Este 2.4, Norte 37.2") == (37.2, 2.4)
+    # Mixed-Sprache (kommt in geerbten Sammlungs-Notizen vor: ES-Fundort mit
+    # DE/EN-Katalog-Kopf): ES-Marker auf einer Achse, DE/EN auf der anderen
+    assert parse_coordinates("Norte 37.2, East 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Norte 37.2, Ost 2.4") == (37.2, 2.4)
+    # Wort-Grenzen: ES-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. Fundort-Feld mit Freitext, der solche Praefixe enthaelt,
+    # darf nicht als Direction fehl-normalisiert werden.
+    # ``norte`` in ``norteafricano``/``norteamericano``: kein Match wegen
+    # nachfolgender Wort-Zeichen.
+    assert parse_coordinates("norteafricano 37.2, esteban 2.4") is None
+    # ``este`` in ``esteban``/``estepa``/``esteem``: kein Match.
+    assert parse_coordinates("esteban 37.2, estepa 2.4") is None
+    # ``sur`` in ``surface``/``sursee`` (LU-Ort): kein Match.
+    assert parse_coordinates("surface 37.2, sursaturation 2.4") is None
+    # ``oeste`` in ``oesten``/``oestrogen``: kein Match.
+    assert parse_coordinates("oesten 37.2, oestrogen 2.4") is None
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-Direction-Formen bleiben
+    # unveraendert (die neuen ES-Alternativen im Regex duerfen die
+    # existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    # Einzelbuchstaben bleiben unveraendert
+    assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace

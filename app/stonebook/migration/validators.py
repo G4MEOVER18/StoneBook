@@ -4346,7 +4346,7 @@ _LON_LABELED_VALUE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 _LABELED_SENTINEL: tuple[float, float] = (float("nan"), float("nan"))
-# Vollnamen der Himmelsrichtungen (DE/EN/FR/IT) werden vor dem Pattern-Matching
+# Vollnamen der Himmelsrichtungen (DE/EN/FR/IT/ES) werden vor dem Pattern-Matching
 # auf die Ein-Buchstaben-Form reduziert, mit der _DMS/_DECIMAL_PAIR/_PREFIX_PAIR
 # arbeitet. Verbreitet in GPS-Logs/Foto-Captions: ``"North 46.5, East 7.5"``,
 # ``"Nord 46.5°, Ost 7.5°"``, ``"Norden 46.5 Osten 7.5"``.
@@ -4370,16 +4370,36 @@ _LABELED_SENTINEL: tuple[float, float] = (float("nan"), float("nan"))
 # haben keine gemeinsamen Praefixe mit DE/EN-Direction-Namen (``ost`` beginnt mit
 # ``o``, aber die Alternation ``ost(?:en)?`` scheitert auf Position 1 an ``u``
 # bzw. ``v`` bei ``ouest``/``ovest`` und die spezifischere Alternative gewinnt).
+#
+# ES-Zusatz (Andalusien / Sierra Almagrera / Rodalquilar / Riotinto / Cartagena
+# und weitere spanischsprachige Fundregionen; ebenso lateinamerikanische Sammler-
+# Notizen aus Mexiko/Chile/Peru/Bolivien). Neu sind alle vier Achsen mit ES-
+# eigenstaendigen Wortstaemmen: ``norte`` (N), ``sur`` (S), ``este`` (E),
+# ``oeste`` (W). Bisher fielen alle ES-Formen still auf die Fallback-Route,
+# sodass ein Sammler-Fund bei ``"Sur 37.2, Oeste 2.4"`` (Suedhalbkugel, West-
+# halbkugel) als ``(37.2, 2.4)`` (Nord-, Osthalbkugel) in die DB kam. Spiegelt
+# die ES-Monats-/Saison-Namen-Erweiterungen in :data:`_MONTH_NAMES` (enero..
+# diciembre) und :data:`_SEASON_MONTHS` (primavera/verano/otono/invierno) auf
+# die Direction-Wort-Achse. Kollisions-Schutz durch die ``\b``-Wortgrenzen:
+# ``norte`` matcht nicht in ``norteafricano``/``norteamericano`` (der folgende
+# Buchstabe ist Wort-Zeichen, keine Wort-Grenze); ``este`` matcht nicht in
+# ``esteban``/``estepa``/``esteem``/``ester`` (dito), ``sur`` matcht nicht in
+# ``sursee``/``surface``/``sursaturation`` (dito), ``oeste`` matcht nicht in
+# ``oesten``/``oestrogen`` (dito). Die ES-``este``-Alternative kollidiert nicht
+# mit der FR-/IT-``est``-Alternative aus dem vorigen Block: bei Eingabe ``este``
+# scheitert ``est`` an der Wort-Grenze nach dem ``t`` (nachfolgendes ``e`` ist
+# Wort-Zeichen), sodass die ``este``-Alternative uebernimmt.
 _DIRECTION_WORD = re.compile(
     r"\b(?:"
     r"north|south|east|west"
     r"|nord(?:en)?|sued(?:en)?|s[uü]d(?:en)?|ost(?:en)?|west(?:en)?"
     r"|ouest|ovest|est"
+    r"|norte|sur|oeste|este"
     r")\b\.?",
     re.IGNORECASE,
 )
 _DIRECTION_LETTER: dict[str, str] = {
-    "n": "N", "north": "N", "nord": "N", "norden": "N",
+    "n": "N", "north": "N", "nord": "N", "norden": "N", "norte": "N",
     "s": "S", "south": "S",
     # ``sud`` (ohne ``e``/Umlaut) ist die nackte FR-/IT-Schreibweise (Suisse
     # romande, Ticino, Val d'Aosta) und die englisch-nahe Kompaktform, die auch
@@ -4392,9 +4412,21 @@ _DIRECTION_LETTER: dict[str, str] = {
     # zur ``S``-Direction-Letter reduziert wurde. Silenter Vorzeichen-Verlust
     # aller FR-/IT-Foto-Captions/GPS-Logs mit bare ``Sud``-Praefix.
     "sued": "S", "sueden": "S", "süd": "S", "süden": "S", "sud": "S",
+    # ``sur`` ist die ES-Vollform fuer Sued (Andalusien/Lateinamerika-Sammler-
+    # Notizen). Kein Konflikt mit anderen Sprachen: DE ``sued``, FR/IT ``sud``,
+    # EN ``south`` haben abweichende Wortstaemme.
+    "sur": "S",
     "e": "E", "east": "E", "est": "E",
+    # ``este`` ist die ES-Vollform fuer Ost (spiegelt die ES-``sur``-Erweiterung
+    # auf die Ost-Achse). Der Lookup-Schluessel ist noetig, weil das bestehende
+    # ``est``-Pattern (FR/IT) an der Wort-Grenze nach dem ``t`` scheitert und
+    # deshalb die ES-``este``-Alternative im Regex uebernimmt.
+    "este": "E",
     "o": "O", "ost": "O", "osten": "O",
     "w": "W", "west": "W", "westen": "W", "ouest": "W", "ovest": "W",
+    # ``oeste`` ist die ES-Vollform fuer West (spiegelt die ES-``norte``/
+    # ``sur``/``este``-Erweiterungen auf die West-Achse).
+    "oeste": "W",
 }
 
 
