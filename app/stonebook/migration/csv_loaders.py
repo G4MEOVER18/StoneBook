@@ -318,7 +318,56 @@ _APPROX_VALUE_PREFIX = re.compile(
     r"|gesch[äa]tzt|geschaetzt"
     r"|wahrscheinlich|m[öo]glicherweise|moeglicherweise"
     r"|evtl\.?|eventuell"
-    r"|perhaps|possibly|maybe"
+    r"|perhaps|possibly|maybe|presumably"
+    # Hearsay-/Zuschreibungs-Marker (DE ``angeblich`` sowie EN ``allegedly``/
+    # ``supposedly``/``reportedly``/``purportedly``) - spiegelt strukturell die
+    # bereits in :data:`stonebook.migration.validators._APPROX_PREFIX` gepflegte
+    # Hearsay-Marker-Menge auf die Wert-Achse. In geerbten Sammlungs-Notizen,
+    # Museums-Etiketten und Auktions-Katalog-Provenienz-Eintraegen setzt der
+    # Vorbesitzer/Kurator/Auktionator den Hearsay-Marker vor die Wert-Angabe,
+    # wenn die Preis-/Gewichts-/Dichte-/Haerte-Aussage aus zweiter Hand kommt
+    # (Verkaeufer-Angabe, Vorbesitzer-Erzaehlung, Katalog-Referenz statt eigener
+    # Messung/Bewertung): "angeblich 500 CHF Marktwert laut Vorbesitzer",
+    # "angeblich 2.65 g/cm3 Dichte aus altem Etikett", "allegedly 500 CHF from
+    # the seller's estimate", "supposedly Mohs 7 per the old label", "reportedly
+    # 5.5 g weight from an unverified source", "purportedly a Mohs 8 hardness
+    # per the auction catalogue". Semantisch identisch zu ``vermutlich``/
+    # ``wahrscheinlich``/``perhaps``/``possibly`` (Unsicherheits-Marker mit
+    # dokumentierter Herkunfts-Fragezeichen), aber auf der Hearsay-Achse (Wert
+    # stammt aus Erzaehlung/Zuschreibung, nicht aus eigener Messung) - Strip +
+    # Rekursion wie bei den uebrigen Wahrscheinlichkeits-Marken, das Range-
+    # Tupel-Output ist identisch zur reinen Form (der Hearsay-Marker gehoert
+    # konzeptionell in die notizen-Spalte, nicht in die numerische Bereichs-
+    # Grenze). ``presumably`` (EN-Wahrscheinlichkeits-/Vermutungs-Marker,
+    # bereits in :data:`stonebook.migration.validators._APPROX_PREFIX` gepflegt)
+    # wird symmetrisch zu ``vermutlich`` in derselben Alternation aufgenommen -
+    # spiegelt die EN-Standard-Vermutungs-Notation aus akademischen
+    # Publikationen und aus englisch-sprachigen Sammler-Notizen.
+    #
+    # Bisher fielen alle Hearsay-Praefix-Formen still auf die Fallback-Zahl-
+    # Extraktion durch: die Uncertainty-Patterns :data:`_PLUS_MINUS_UNCERTAINTY`
+    # / :data:`_PARENTHESIS_UNCERTAINTY` sind per ``^\s*(-?\d ...)``-Anker
+    # gebunden und matchen nicht, wenn der String mit einem Nicht-Ziffer-Marker
+    # beginnt, der nicht in der Approx-Praefix-Whitelist steht. Die publizierte
+    # Standard-Unsicherheit ging via ``[center, tol]``-inverted-Range-Kollaps
+    # ``(center, center)`` still verloren - identischer Bug-Effekt wie bei
+    # ``"ca. 5.5 ± 0.3"`` vor Einfuehrung der uebrigen Approx-Marker in
+    # :data:`_APPROX_VALUE_PREFIX`: aus ``"angeblich 500 ± 50 CHF"``
+    # entstand silenter Toleranz-Datenverlust (Range (450, 550) kollabierte
+    # auf (500, 500)); analog fuer ``"allegedly 5.5 ± 0.3"`` /
+    # ``"reportedly 2.65(5)"`` / ``"purportedly 500 ± 50 EUR"`` /
+    # ``"supposedly 5.5 +/- 0.3"`` und alle Verkettungen mit Leading-Waehrungs-
+    # Marker (``"angeblich CHF 500 ± 50"`` via zweifacher Rekursion) oder mit
+    # Trailing-Approx-Marker (``"angeblich 500 ± 50, ca."`` via Leading-Strip
+    # gefolgt vom Trailing-Strip). Kollisionsfrei zu den bestehenden Wahr-
+    # scheinlichkeits-/Approx-Markern (lexikalisch disjunkt); Kollisions-Schutz
+    # gegen Fremdwoerter durch das obligatorische ``\s+``-Suffix in der
+    # Praefix-Regex (``angeblich`` matcht nicht in ``angeblichkeit``/anderen
+    # nicht-Standard-Ableitungen, weil dort kein Whitespace folgt; ``allegedly``/
+    # ``supposedly``/``reportedly``/``purportedly``/``presumably`` sind
+    # lexikalisch eindeutige Adverb-Formen ohne DE-/FR-/IT-Wortstamm-Konflikt).
+    # Case-insensitive spiegelt die uebrige Marker-Menge.
+    r"|angeblich|allegedly|supposedly|reportedly|purportedly"
     r"|vers|environ|verso|attorno"
     r")\s+"
     r"|[~≈≅≃]\s*"

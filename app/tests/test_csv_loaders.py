@@ -4063,6 +4063,117 @@ def test_parse_range_annaeherungs_praefix_fr_it():
     assert csv_loaders.parse_range("about 5.5") == (5.5, 5.5)
 
 
+def test_parse_range_annaeherungs_praefix_hearsay():
+    """Hearsay-/Zuschreibungs-Marker (DE ``angeblich`` sowie EN ``allegedly``/
+    ``supposedly``/``reportedly``/``purportedly``) plus EN ``presumably`` als
+    Leading-Annaeherungs-Praefix auf der Wert-Achse.
+
+    Spiegelt strukturell die bereits in
+    :data:`stonebook.migration.validators._APPROX_PREFIX` gepflegte Hearsay-
+    Marker-Menge auf die Wert-Achse. In geerbten Sammlungs-Notizen, Museums-
+    Etiketten und Auktions-Katalog-Provenienz-Eintraegen setzt der Vorbesitzer/
+    Kurator/Auktionator den Hearsay-Marker vor die Wert-Angabe, wenn die
+    Preis-/Gewichts-/Dichte-/Haerte-Aussage aus zweiter Hand kommt: "angeblich
+    500 CHF Marktwert laut Vorbesitzer", "allegedly 500 CHF from the seller's
+    estimate", "supposedly Mohs 7 per the old label", "reportedly 5.5 g weight
+    from an unverified source", "purportedly a Mohs 8 hardness per the auction
+    catalogue", "presumably 500 CHF Nachlassschaetzung".
+
+    Vor dem Fix fielen alle Hearsay-Praefix-Formen still auf die Fallback-
+    Zahl-Extraktion durch, weil sowohl :data:`_PLUS_MINUS_UNCERTAINTY` als auch
+    :data:`_PARENTHESIS_UNCERTAINTY` per ``^\\s*(-?\\d ...)``-Anker eine reine
+    Zahl am String-Anfang verlangen. Die publizierte Standard-Unsicherheit
+    ging via ``[center, tol]``-inverted-Range-Kollaps ``(center, center)``
+    still verloren - identischer Bug-Effekt wie bei ``"ca. 5.5 ± 0.3"`` vor
+    Einfuehrung der uebrigen Approx-Marker in :data:`_APPROX_VALUE_PREFIX`.
+    """
+    # DE-Hearsay-Praefix + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("angeblich 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("angeblich 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("angeblich 2.65 ± 0.05") == pytest.approx((2.60, 2.70))
+    # EN-Hearsay-Praefix + ±-Langform-Uncertainty.
+    assert csv_loaders.parse_range("allegedly 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("supposedly 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("reportedly 2.65 ± 0.05") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("purportedly 100 ± 2") == pytest.approx((98.0, 102.0))
+    # EN-Vermutungs-Marker ``presumably`` (bereits in
+    # stonebook.migration.validators._APPROX_PREFIX gepflegt, jetzt symmetrisch
+    # auf die Wert-Achse).
+    assert csv_loaders.parse_range("presumably 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("presumably 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet (Excel-Autocorrect uppercase Anfang, gemischtes
+    # Kanon, Caps-Lock aus Katalog-Import).
+    assert csv_loaders.parse_range("Angeblich 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ANGEBLICH 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("Allegedly 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("SUPPOSEDLY 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("Reportedly 2.65(5)") == pytest.approx((2.60, 2.70))
+    # Hearsay-Praefix + IUCr-Kompakt-Uncertainty ``N(M)`` - der Praefix wird
+    # gestrippt, die publizierte Toleranz laeuft in den
+    # _PARENTHESIS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("angeblich 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("allegedly 2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("reportedly 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("purportedly 100(2)") == pytest.approx((98.0, 102.0))
+    assert csv_loaders.parse_range("supposedly 12.345(67)") == pytest.approx((12.278, 12.412))
+    assert csv_loaders.parse_range("presumably 100(2)") == pytest.approx((98.0, 102.0))
+    # Hearsay-Praefix + ASCII-Ersatzformen der Uncertainty-Struktur.
+    assert csv_loaders.parse_range("angeblich 5.5 +/- 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("allegedly 5.5+/-0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("supposedly 5.5+-0.3") == pytest.approx((5.2, 5.8))
+    # Hearsay-Praefix + Uncertainty + Trailing-Einheit.
+    assert csv_loaders.parse_range("angeblich 500 ± 50 CHF") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("allegedly 500 ± 50 EUR") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("reportedly 2.65 ± 0.05 g/cm³") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("supposedly 5.5 ± 0.3 mm") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("purportedly 5.5(3) Mohs") == pytest.approx((5.2, 5.8))
+    # Hearsay-Praefix + DE-Komma-Dezimal-Locale.
+    assert csv_loaders.parse_range("angeblich 2,65 ± 0,05") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("allegedly 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    # Verkettung mit Leading-Waehrungs-Marker (die Rekursion loest die Praefixe
+    # sequentiell auf - Hearsay-Marker + Waehrungs-Marker + Uncertainty).
+    assert csv_loaders.parse_range("angeblich CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("allegedly USD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("reportedly EUR 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Verkettung mit Trailing-Approx-Suffix (die beidseitige Marker-Kombination
+    # loest via Leading-Strip gefolgt vom Trailing-Strip in einer Rekursion auf).
+    assert csv_loaders.parse_range("angeblich 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("allegedly 5.5 ± 0.3, ca.") == pytest.approx((5.2, 5.8))
+    # Verkettung mit anderem Approx-Praefix (Rekursion loest beide sequentiell auf).
+    assert csv_loaders.parse_range("angeblich ca. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("allegedly circa 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    # Negatives Zentrum mit Hearsay-Praefix (Kryo-/Isotopen-Werte in
+    # zweitrangigen Provenienz-Notizen).
+    assert csv_loaders.parse_range("angeblich -1.5 ± 0.3") == pytest.approx((-1.8, -1.2))
+    assert csv_loaders.parse_range("reportedly -2.65(5)") == pytest.approx((-2.70, -2.60))
+    # Hearsay-Praefix + Range-Notation (die Range-Grenzen laufen in die
+    # Fallback-Zahl-Extraktion nach dem Praefix-Strip).
+    assert csv_loaders.parse_range("angeblich 5.5-7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("allegedly 5.5 - 7.5") == (5.5, 7.5)
+    assert csv_loaders.parse_range("reportedly 100-200") == (100.0, 200.0)
+    # Hearsay-Praefix vor reiner Zahl (ohne Uncertainty) - Praefix gestrippt,
+    # reine Zahl-Extraktion laeuft weiter (Regress-Anker der Grund-Funktion).
+    assert csv_loaders.parse_range("angeblich 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("allegedly 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("supposedly 500 CHF") == (500.0, 500.0)
+    assert csv_loaders.parse_range("reportedly Mohs 7") == (7.0, 7.0)
+    assert csv_loaders.parse_range("presumably 500 CHF") == (500.0, 500.0)
+    # Ohne Wert-Rest fallen die reinen Marker still auf (None, None) - ohne
+    # Zahl gibt es keinen Wert (spiegelt die "ca."/"circa"/"~"-Regress-Anker).
+    assert csv_loaders.parse_range("angeblich") == (None, None)
+    assert csv_loaders.parse_range("allegedly") == (None, None)
+    assert csv_loaders.parse_range("supposedly") == (None, None)
+    assert csv_loaders.parse_range("reportedly") == (None, None)
+    assert csv_loaders.parse_range("purportedly") == (None, None)
+    assert csv_loaders.parse_range("presumably") == (None, None)
+    # Regress-Anker: bestehende DE/EN-/FR-/IT-Praefixe bleiben unveraendert.
+    assert csv_loaders.parse_range("ca. 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("vermutlich 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("vers 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("verso 5.5 ± 0.3") == pytest.approx((5.2, 5.8))
+
+
 def test_parse_range_trailing_annaeherungs_suffix():
     """Trailing Annaeherungs-Suffix auf der Wert-Achse (spiegelt Leading-Praefix).
 
