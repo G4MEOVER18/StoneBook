@@ -1416,6 +1416,34 @@ _MONTH_NAMES: dict[str, int] = {
     "octobre": 10,
     # "novembre" bereits im IT-Block eingetragen (identische FR/IT-Schreibweise).
     "decembre": 12,
+    # Spanische Monatsnamen (Sammler-Region Andalusien mit den historisch
+    # bedeutenden Fundstellen Almeria/Sierra Almagrera/Rodalquilar, Riotinto-
+    # Grube in Huelva, Panasqueira-Grenzgebiet zwischen Spanien und Portugal
+    # sowie La Union in Cartagena; geerbte Sammler-Notizen aus spanisch-
+    # sprachigen Katalogen von Museo Nacional de Ciencias Naturales in Madrid
+    # und ES-Auktionsanbietern wie Fabre Minerals/Iberian Minerals). ES-Monatsnamen
+    # sind alle ASCII (keine Diakritika), daher keine Regex-/Character-Class-
+    # Aenderung noetig. Kollisionsfrei zum DE/EN/IT/FR-Bestand: marzo/agosto sind
+    # bereits im IT-Block eingetragen (identische ES/IT-Schreibweise, identische
+    # Monatswerte); mar/apr/may/jun/jul/sep/oct/nov/dic ueberschneiden sich mit
+    # bestehenden DE/EN/IT-Kurzformen auf dieselben Monatswerte - semantisch
+    # identisch, keine neuen Kollisionen. Die Latin-America-Variante ``setiembre``
+    # (ohne p) ist in Kolumbien/Argentinien/Peru die gaengigere Schreibweise
+    # (RAE-akzeptiert seit 1985) und tritt in geerbten Sammler-Notizen aus
+    # suedamerikanischen Fundstellen (Cerro Rico Potosi Bolivien, Chuquicamata
+    # Chile, La Rinconada Peru) verbreitet auf.
+    "enero": 1, "ene": 1,
+    "febrero": 2,
+    # "marzo" bereits im IT-Block eingetragen (identische ES/IT-Schreibweise).
+    "abril": 4, "abr": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    # "agosto"/"ago" bereits im IT-Block eingetragen (identische ES/IT-Schreibweise).
+    "septiembre": 9, "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
     # Roemische Monatsziffern (I..XII) - traditionelle Schreibweise auf aelteren
     # mineralogischen Etiketten, Museums-Eingangsbuechern und in osteuropaeischen
     # Sammlungs-Notizen ("13.VI.1985" = 13. Juni 1985). Wird durch
