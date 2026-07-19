@@ -1711,6 +1711,49 @@ def test_text_ausgabe_ohne_funddatum_keine_monat_zeile(tmp_path, capsys):
     assert "Funde pro Monat:" not in out
 
 
+def test_text_ausgabe_zeigt_funde_pro_wochentag(tmp_path, capsys):
+    """Wochentag-Block liegt unter dem Monats-Block und gibt Mo->So chronologisch aus."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpw.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-06-17"),   # Mo
+            ("OBJ_0002", "2024-06-13"),   # Do
+            ("OBJ_0003", "2024-06-15"),   # Sa
+            ("OBJ_0004", "2024-06-16"),   # So
+        ],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Wochentag:" in out
+    block = out.split("Funde pro Wochentag:", 1)[1]
+    # Aufsteigend ISO 8601: Mo -> Do -> Sa -> So
+    assert block.index("Mo") < block.index("Do") < block.index("Sa") < block.index("So")
+    # Liegt unter dem Monats-Block (spiegelt _format_text-Reihenfolge)
+    assert out.index("Funde pro Monat:") < out.index("Funde pro Wochentag:")
+
+
+def test_text_ausgabe_ohne_funddatum_keine_wochentag_zeile(tmp_path, capsys):
+    """Ohne strikte YYYY-MM-DD-Funddaten erscheint der Wochentag-Block nicht."""
+    from stonebook.db.database import open_db
+    db_file = tmp_path / "fpw0.sqlite3"
+    c = open_db(db_file)
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [("OBJ_0001", None), ("OBJ_0002", ""), ("OBJ_0003", "2024"),
+         ("OBJ_0004", "unbekannt"), ("OBJ_0005", "2024-07")],
+    )
+    c.commit()
+    c.close()
+    main(["--db", str(db_file)])
+    out = capsys.readouterr().out
+    assert "Funde pro Wochentag:" not in out
+
+
 def test_text_ausgabe_zeigt_wert_pro_funddatum_jahr(tmp_path, capsys):
     """Wert-pro-Funddatum-Jahr-Block listet die wertvollsten Sammeljahre absteigend."""
     from stonebook.db.database import open_db

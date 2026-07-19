@@ -941,6 +941,82 @@ def test_by_funddatum_monat_leer(tmp_path):
     c.close()
 
 
+def test_by_funddatum_wochentag_aus_seed_db(tmp_path):
+    """Wochentag-Histogramm mappt strikte YYYY-MM-DD-Funddaten auf Mo..So.
+
+    Der 13. Juni 2024 ist ein Donnerstag, 14.6. Freitag, 15.6. Samstag,
+    16.6. Sonntag, 17.6. Montag - deckt alle sieben Wochentag-Buckets ab und
+    prueft die ISO-8601-Reihenfolge (Mo=1 zuerst, So=7 zuletzt).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            # Wochenend-Sammler-Muster: Sa/So doppelt so haeufig wie
+            # Wochentage.
+            ("OBJ_0001", "2024-06-15"),   # Sa
+            ("OBJ_0002", "2024-06-15"),   # Sa (zweite Tour am selben Tag)
+            ("OBJ_0003", "2024-06-16"),   # So
+            ("OBJ_0004", "2024-06-16"),   # So
+            ("OBJ_0005", "2024-06-17"),   # Mo
+            ("OBJ_0006", "2024-06-13"),   # Do
+            ("OBJ_0007", "2024-06-14"),   # Fr
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_wochentag == {"Mo": 1, "Do": 1, "Fr": 1, "Sa": 2, "So": 2}
+    # Reihenfolge ISO-8601 aufsteigend (Mo zuerst, So zuletzt):
+    assert list(st.by_funddatum_wochentag.keys()) == ["Mo", "Do", "Fr", "Sa", "So"]
+    assert st.as_dict()["by_funddatum_wochentag"] == {
+        "Mo": 1, "Do": 1, "Fr": 1, "Sa": 2, "So": 2,
+    }
+    c.close()
+
+
+def test_by_funddatum_wochentag_ignoriert_nicht_strikte_form(tmp_path):
+    """Reine Jahres-/Monat-Angaben, Freitext-Marker und Kalender-Rollovers zaehlen nicht.
+
+    SQLite ``strftime`` akzeptiert ``"2024-02-30"`` und rollt still auf den
+    1. Maerz, und interpretiert ``"2024"`` als Julian-Day-Number - beide
+    Faelle wuerden das Wochentag-Histogramm verzerren. Die Round-Trip-
+    Gleichheit ``strftime('%Y-%m-%d', ...) = substr(..., 1, 10)`` faengt sie
+    alle: nur bit-genau strikte YYYY-MM-DD-Formen zaehlen.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024"),           # nur Jahr -> ignoriert
+            ("OBJ_0002", "2024-07"),        # nur Jahr+Monat -> ignoriert
+            ("OBJ_0003", "2024-13-01"),     # Monat 13 -> ignoriert
+            ("OBJ_0004", "2024-02-30"),     # rollover auf Maerz -> ignoriert
+            ("OBJ_0005", "unbekannt"),      # Freitext -> ignoriert
+            ("OBJ_0006", ""),               # leer -> ignoriert
+            ("OBJ_0007", None),             # NULL -> ignoriert
+            ("OBJ_0008", "2024-06-14"),     # Fr -> zaehlt
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_wochentag == {"Fr": 1}
+    c.close()
+
+
+def test_by_funddatum_wochentag_leer(tmp_path):
+    """Ohne gueltige Funddaten ist die Wochentag-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "wtag_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_wochentag == {}
+    c.close()
+
+
 def test_by_seltenheit_global_aus_seed_db(tmp_path):
     """Histogramm der globalen Seltenheit (1..10), aufsteigend nach Skalenwert."""
     from stonebook.db.database import open_db

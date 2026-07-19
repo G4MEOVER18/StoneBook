@@ -965,6 +965,21 @@ def _format_text(st: Statistik, top: int = DEFAULT_TOP_N) -> str:
         lines += ["", "Funde pro Monat:"]
         for monat, n in st.by_funddatum_monat.items():
             lines.append(f"  {monat:40s} {n}")
+    if st.by_funddatum_wochentag:
+        # Wochentag-Histogramm (Mo..So), ueber alle Wochen aggregiert:
+        # ergaenzt die Monats-Sicht um die Tour-Rhythmik-Achse. Waehrend
+        # das Monats-Histogramm die Saison-Verteilung zeigt (Berg-Saison
+        # Juli/August, Boersen-Dezember), beantwortet die Wochentag-Sicht
+        # "an welchen Wochentagen sammle ich?" - Wochenend-Sammler mit
+        # Sa/So-Spitze, pensionierte Sammler mit gleichmaessiger Verteilung,
+        # Berufs-Sammler mit Feiertags-/Ferien-Konzentration. Reihenfolge
+        # Mo->So (ISO 8601 / DE-Wochentag-Konvention) - laesst das
+        # Wochenende visuell rechts am Rand liegen und spiegelt die
+        # chronologisch-aufsteigende Reihenfolge der uebrigen Zeit-
+        # Histogramme.
+        lines += ["", "Funde pro Wochentag:"]
+        for wochentag, n in st.by_funddatum_wochentag.items():
+            lines.append(f"  {wochentag:40s} {n}")
     if st.by_erstellt_am_jahr:
         # Sammlungswachstum-Histogramm pro Erfassungs-Jahr: spiegelt "Funde pro
         # Jahr" um die Achse, wann das Objekt digitalisiert wurde (statt wann

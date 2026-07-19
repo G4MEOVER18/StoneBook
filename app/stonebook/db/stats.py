@@ -71,6 +71,7 @@ class Statistik:
     by_funddatum_jahr: dict[str, int] = field(default_factory=dict)
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
+    by_funddatum_wochentag: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
@@ -1169,6 +1170,7 @@ class Statistik:
             "by_funddatum_jahr": dict(self.by_funddatum_jahr),
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
+            "by_funddatum_wochentag": dict(self.by_funddatum_wochentag),
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
@@ -1636,6 +1638,78 @@ def _count_funddatum_monat(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY monat ORDER BY monat ASC"
     )
     return {r["monat"]: r["n"] for r in conn.execute(sql).fetchall()}
+
+
+_WOCHENTAG_LABEL: dict[str, str] = {
+    "1": "Mo", "2": "Di", "3": "Mi", "4": "Do",
+    "5": "Fr", "6": "Sa", "7": "So",
+}
+
+
+def _count_funddatum_wochentag(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Wochentag (Mo..So), ueber alle Wochen aggregiert.
+
+    Ergaenzt die Jahres-/Dekaden-/Monats-Sicht (:func:`_count_funddatum_jahr`,
+    :func:`_count_funddatum_jahrzehnt`, :func:`_count_funddatum_monat`) um die
+    Wochentag-Achse: waehrend die Monats-Sicht die Saison-Verteilung eines
+    Sammler-Lebens beziffert (Berg-Saison Juli/August, Boersen-Dezember), zeigt
+    die Wochentag-Sicht die typische Tour-Rhythmik - Wochenend-Sammler mit
+    Spitze am Samstag/Sonntag vs. pensionierte Sammler mit gleichmaessiger
+    Verteilung ueber die Woche vs. Berufs-Sammler mit Feiertags-/Ferien-
+    Spitzen (Mi/Do im Semesterferien-Kontext). Sammler-Frage der Selbst-
+    Analyse: "an welchen Wochentagen sammle ich eigentlich?" - beantwortbar
+    weder aus dem Monats-Histogramm (aggregiert ueber Wochentage weg) noch
+    aus dem Jahres-Histogramm (aggregiert ueber die Woche weg).
+
+    Label sind die zweibuchstabigen DE-Wochentag-Kuerzel (``Mo``/``Di``/``Mi``/
+    ``Do``/``Fr``/``Sa``/``So``); Wochentage ohne Treffer fehlen im Dict.
+    Reihenfolge folgt der ISO-8601-Konvention (Montag=1 zuerst, Sonntag=7
+    zuletzt) - spiegelt die DE-Wochentag-Konvention (Woche beginnt am
+    Montag) und laesst das Wochenende visuell rechts am Rand liegen; das
+    entspricht der uebrigen Reihenfolgen-Konvention der Zeit-Histogramme
+    (chronologisch aufsteigend, aelteste/erste Position links).
+
+    Akzeptiert nur strikte YYYY-MM-DD-Funddaten mit gueltigem Kalender-Tag:
+    reine Jahres- oder Jahr+Monat-Angaben (``"2024"``, ``"2024-07"``) haben
+    keinen Tag und lassen sich keinem Wochentag zuordnen; ungueltige
+    Kalender-Tage (``"2024-02-30"``, ``"2024-13-01"``) und Freitext-Marker
+    (``"Fruehling"``, ``"unbekannt"``) fallen ebenfalls aus dem Histogramm.
+    SQLite ``strftime('%w', ...)`` liefert fuer diese Faelle transparent NULL
+    (unerkanntes Datum), wodurch die :samp:`IS NOT NULL`-WHERE-Klausel sie
+    ausschliesst - kein Bucket-0-Sammelbecken, das die Wochentag-Statistik
+    verzerren wuerde. Spiegelt damit die :func:`_count_funddatum_monat`-
+    Konvention (nur strikte Formen mit gueltigem Monat 01-12 zaehlen).
+
+    Reuse-Pfad: SQLite ``strftime('%w', substr(Funddatum, 1, 10))`` liefert
+    0=Sonntag..6=Samstag (Standard-C-Konvention); die ISO-8601-Konvention
+    hat Montag=1..Sonntag=7. Die Umrechnung
+    ``((strftime_dow + 6) % 7) + 1`` mappt 0->7, 1->1, 2->2, ..., 6->6 und
+    liefert die ISO-Nummer, die dann via :data:`_WOCHENTAG_LABEL` zum DE-
+    Kuerzel wird. GROUP BY auf der ISO-Nummer sortiert die Rueckgabe
+    chronologisch (Mo=1 links, So=7 rechts), spiegelt die uebrigen Zeit-
+    Histogramm-Konventionen.
+    """
+    # ``strftime('%Y-%m-%d', substr(Funddatum, 1, 10)) = substr(Funddatum, 1, 10)``
+    # ist der strengste Round-Trip-Test: SQLite akzeptiert an ``strftime``/
+    # ``date``-Modifier auch Kalender-rollovers (``"2024-02-30"`` -> ``"2024-03-01"``)
+    # und interpretiert kurze Ziffern-Strings ohne Trenner als Julian-Day-Number
+    # (``"2024"`` -> ``"-4707-06-09"``). Beide Faelle wuerden das Wochentag-
+    # Histogramm silent verzerren (der 30. Februar bekaeme den Wochentag des 1.
+    # Maerz zugeschlagen, das reine Jahr bekaeme den Julian-Day-2024-Wochentag),
+    # die Round-Trip-Gleichheit faengt sie alle: NULL-Rueckgabe fuer nicht
+    # parsebare Formen (``"unbekannt"``, ``"2024-07"``, ``"2024-13-01"``), und
+    # rollover-Rueckgabe fuer akzeptiert-aber-rolled-over Formen (``"2024-02-30"``)
+    # weicht vom Original-substring ab. Nur bit-genaue Round-Trip-Gleichheit
+    # zaehlt als "kalendermaessig-strikte" YYYY-MM-DD-Form.
+    sql = (
+        "SELECT ((CAST(strftime('%w', substr(Funddatum, 1, 10)) AS INTEGER) + 6) % 7) + 1 "
+        "       AS iso_dow, COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND strftime('%Y-%m-%d', substr(Funddatum, 1, 10)) = substr(Funddatum, 1, 10) "
+        "GROUP BY iso_dow ORDER BY iso_dow ASC"
+    )
+    return {_WOCHENTAG_LABEL[str(r["iso_dow"])]: r["n"]
+            for r in conn.execute(sql).fetchall()}
 
 
 def _count_funddatum_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
@@ -2876,6 +2950,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.by_funddatum_jahr = _count_funddatum_jahr(conn, limit=top_jahre)
     st.by_funddatum_jahrzehnt = _count_funddatum_jahrzehnt(conn)
     st.by_funddatum_monat = _count_funddatum_monat(conn)
+    # Funddatum-Wochentag-Histogramm (Mo..So, ueber alle Wochen aggregiert):
+    # ergaenzt die Monats-Sicht um die Tour-Rhythmik-Achse. Waehrend das
+    # Monats-Histogramm die Saison-Verteilung eines Sammler-Lebens beziffert
+    # (Berg-Saison Juli/August, Boersen-Dezember), beantwortet das Wochentag-
+    # Histogramm "an welchen Wochentagen sammle ich?" - Wochenend-Sammler
+    # zeigen die Sa/So-Spitze, pensionierte Sammler eine gleichmaessige
+    # Verteilung, Berufs-Sammler eine Feiertags-/Ferien-Konzentration.
+    # Reihenfolge Mo->So spiegelt die DE-Wochentag-/ISO-8601-Konvention.
+    st.by_funddatum_wochentag = _count_funddatum_wochentag(conn)
     # Sammlungswachstum-Histogramm: Objekte pro Jahr ihres erstellt_am-Stempels.
     # Komplementaer zu by_funddatum_jahr (wann gefunden) - hier wann erfasst.
     # Beantwortet "in welchen Jahren bin ich besonders aktiv im Digitalisieren gewesen?"
