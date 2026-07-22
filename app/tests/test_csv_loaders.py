@@ -63,6 +63,40 @@ def test_normalize_id_kompaktform_und_alternative_praefixe():
     assert normalize_id("OBJEKT43") is None   # 'EKT' zwischen Buchstaben und Zahl
 
 
+def test_normalize_id_punkt_und_whitespace_separator():
+    """OBJ + Punkt/Whitespace als Trenner - Sammler-Notation und Datei-/Ordnernamen.
+
+    Waehrend Bindestrich und Unterstrich als Separator bereits abgedeckt sind
+    (``OBJ-43``/``OBJ_43``), verwenden Sammler-Notizen in Freitext und
+    Windows-Explorer-Umbenennungen haeufig auch Punkt und Whitespace als
+    natuerlichen Trenner (``OBJ.43``, ``OBJ 43``, ``OBJ. 43``); vorher fielen
+    alle vier Formen silent auf None, obwohl semantisch identisch zur
+    Bindestrich-/Unterstrich-Variante.
+    """
+    # Whitespace als Trenner
+    assert normalize_id("OBJ 43") == "OBJ_0043"
+    assert normalize_id("obj 7") == "OBJ_0007"
+    assert normalize_id("OBJ 001") == "OBJ_0001"
+    # Mehrere Whitespaces (Copy-Paste-Artefakt)
+    assert normalize_id("OBJ  43") == "OBJ_0043"
+    # Punkt als Trenner
+    assert normalize_id("OBJ.43") == "OBJ_0043"
+    assert normalize_id("OBJ.001") == "OBJ_0001"
+    assert normalize_id("obj.7") == "OBJ_0007"
+    # Punkt + Whitespace (Prosa-Freitext-Notation)
+    assert normalize_id("OBJ. 43") == "OBJ_0043"
+    assert normalize_id("OBJ .43") == "OBJ_0043"
+    # Regress: existierende Trenner-Formen bleiben gueltig
+    assert normalize_id("OBJ-43") == "OBJ_0043"
+    assert normalize_id("OBJ_43") == "OBJ_0043"
+    assert normalize_id("OBJ43") == "OBJ_0043"
+    # Ungueltige Formen bleiben None (keine schwache Aufweichung)
+    assert normalize_id("OBJEKT43") is None
+    assert normalize_id("OBJ X43") is None
+    assert normalize_id("OBJ.43X") is None
+    assert normalize_id("OBJ 43 44") is None
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)

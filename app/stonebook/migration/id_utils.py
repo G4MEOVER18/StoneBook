@@ -5,8 +5,13 @@ from pathlib import Path
 # Reihenfolge ist Priorität: spezifischere/strengere Muster zuerst, damit
 # allgemeinere (z.B. ``^(\d+)$``) nicht ein anderes Muster ueberschatten.
 _PATTERNS = [
-    # Voll qualifiziert mit Separator: ``OBJ-001``, ``OBJ_0001``, ``obj-43``.
-    re.compile(r"^OBJ[-_](\d+)$", re.IGNORECASE),
+    # Voll qualifiziert mit Separator: ``OBJ-001``, ``OBJ_0001``, ``obj-43``,
+    # sowie mit Punkt-/Whitespace-Separator ``OBJ.43``, ``OBJ 43``, ``OBJ. 43``.
+    # Sammler-Notizen und Dateinamen in Freitext verwenden neben Bindestrich/
+    # Unterstrich haeufig Punkt und Whitespace (Windows-Explorer-Umbenennungen,
+    # OCR-Scan-Ergebnisse, handschriftliche Katalog-Eintraege) - alle vier
+    # semantisch identisch als "OBJ + Trenner + Nummer".
+    re.compile(r"^OBJ[-_.\s]+(\d+)$", re.IGNORECASE),
     # Kompaktform ohne Separator: ``OBJ001``, ``obj43`` -- verbreitet in
     # Datei-/Ordnernamen, in denen ``-``/``_`` weggelassen wird.
     re.compile(r"^OBJ(\d+)$", re.IGNORECASE),
