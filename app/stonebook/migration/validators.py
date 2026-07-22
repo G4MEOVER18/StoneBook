@@ -1358,6 +1358,33 @@ _TRAILING_APPROX_SUFFIX = re.compile(
     r"|angeblich"
     r"|perhaps|possibly|maybe|presumably"
     r"|allegedly|supposedly|reportedly|purportedly"
+    # ES-/PT-Trailing-Annaeherungs-Marker (Sammler-Region Andalusien / latein-
+    # amerikanische Fundstellen / Panasqueira / brasilianische Pegmatite).
+    # Spiegelt die _APPROX_PREFIX-Erweiterung fuer ES/PT (commit a1ee553) auf
+    # die Trailing-Achse: waehrend "hacia 1985" (ES) und "verso 1985" (IT)
+    # als Leading-Praefix natuerlich sind, kommen "1985 aproximadamente"
+    # (ES/PT), "1985 provavelmente" (PT) und "1985 talvez" (PT) als
+    # Trailing-Suffix in Sammler-Notizen und Museums-Etiketten mit Datum-
+    # voran + Praezisions-Marker-nachgeschoben ebenso natuerlich vor.
+    # ``aproximadamente`` (ES/PT geteilt) = "ungefaehr"/"circa" - der direkte
+    # Aequivalent zur DE ``ungefaehr``/EN ``approximately`` Trailing-Form,
+    # verbreitet in wissenschaftlichen ES-/PT-Publikationen und formalisierten
+    # Katalog-Eintraegen ("Fund 1985 aproximadamente en Sierra Almagrera",
+    # "Erwerb 1985 aproximadamente em Panasqueira"). ``provavelmente`` (PT)
+    # = "wahrscheinlich" - der PT-Aequivalent zur DE ``wahrscheinlich``/EN
+    # ``presumably`` Trailing-Form, verbreitet in narrativen PT-BR-Sammler-
+    # Notizen. ``talvez`` (PT) = "vielleicht"/"eventuell" - der PT-Aequivalent
+    # zur DE ``evtl.``/``eventuell``/EN ``perhaps``/``maybe`` Trailing-Form,
+    # verbreitet in PT-BR-Sammler-Notizen mit Unsicherheits-Marker.
+    # ``hacia`` (ES) fuer die Leading-Form ist nicht als Trailing-Form
+    # ueblich (semantisch "gegen 1985 herum" spiegelt sich nicht auf "1985
+    # gegen" - waehrend "hacia 1985" natuerlich ist, ist "1985 hacia" nicht
+    # idiomatisch); analog zur bewussten Auslassung von DE ``um``/``gegen``
+    # und FR ``vers``/IT ``verso`` (Leading-Praeposition-Semantik ohne
+    # Trailing-Entsprechung). Bisher fielen alle ES-/PT-Trailing-Formen
+    # still auf None, obwohl semantisch identisch zu ``ca.``/``ungefaehr``/
+    # ``approximately`` Trailing.
+    r"|aproximadamente|provavelmente|talvez"
     r")\s*$",
     re.IGNORECASE,
 )

@@ -1612,6 +1612,62 @@ def test_parse_iso_date_annaeherungs_suffix_geschaetzt():
     assert parse_iso_date("1985 estimated") == "1985-01-01"
 
 
+def test_parse_iso_date_trailing_annaeherungs_suffix_es_pt():
+    """ES-/PT-Trailing-Annaeherungs-Marker (Sammler-Region Andalusien / latein-
+    amerikanische Fundstellen / Panasqueira / brasilianische Pegmatit-Region).
+
+    Spiegelt die _APPROX_PREFIX-Erweiterung fuer ES/PT (commit a1ee553) auf
+    die Trailing-Achse: waehrend "hacia 1985"/"verso 1985" als Leading-Praefix
+    natuerlich sind, kommen "1985 aproximadamente" (ES/PT), "1985 provavelmente"
+    (PT) und "1985 talvez" (PT) als Trailing-Suffix in Sammler-Notizen und
+    Museums-Etiketten mit Datum-voran + Praezisions-Marker-nachgeschoben
+    ebenso natuerlich vor. Semantisch identisch zu ``1985 ca.``/``1985
+    ungefähr`` - Suffix wird gestrippt, das ISO-Datum-Output ist identisch
+    zur reinen Form.
+    """
+    # ES/PT: 1985 aproximadamente (= 1985 ungefaehr / circa)
+    assert parse_iso_date("1985 aproximadamente") == "1985-01-01"
+    assert parse_iso_date("2024 aproximadamente") == "2024-01-01"
+    # PT: 1985 provavelmente (= 1985 wahrscheinlich)
+    assert parse_iso_date("1985 provavelmente") == "1985-01-01"
+    assert parse_iso_date("2024 provavelmente") == "2024-01-01"
+    # PT: 1985 talvez (= 1985 vielleicht/eventuell)
+    assert parse_iso_date("1985 talvez") == "1985-01-01"
+    assert parse_iso_date("2024 talvez") == "2024-01-01"
+    # Mit Monat + Jahr (ES/PT-Monatsnamen)
+    assert parse_iso_date("junio 2024 aproximadamente") == "2024-06-01"
+    assert parse_iso_date("junho 2024 aproximadamente") == "2024-06-01"
+    assert parse_iso_date("junho 2024 provavelmente") == "2024-06-01"
+    assert parse_iso_date("junho 2024 talvez") == "2024-06-01"
+    # Mit vollem Datum
+    assert parse_iso_date("13.06.2024 aproximadamente") == "2024-06-13"
+    assert parse_iso_date("2024-06-13 provavelmente") == "2024-06-13"
+    # Case-insensitive (spiegelt DE/EN-Suffixe)
+    assert parse_iso_date("1985 APROXIMADAMENTE") == "1985-01-01"
+    assert parse_iso_date("1985 Aproximadamente") == "1985-01-01"
+    assert parse_iso_date("1985 PROVAVELMENTE") == "1985-01-01"
+    assert parse_iso_date("1985 Talvez") == "1985-01-01"
+    # Kombination mit Leading-Approx-Praefix (Rekursion loest sequentiell)
+    assert parse_iso_date("ca. 1985 aproximadamente") == "1985-01-01"
+    assert parse_iso_date("aproximadamente 1985 aproximadamente") == "1985-01-01"
+    assert parse_iso_date("hacia 1985 talvez") == "1985-01-01"
+    # Suffix ohne Whitespace davor wird NICHT gestrippt (spiegelt die
+    # \\s+-Grenze aller Suffix-Eintraege)
+    assert parse_iso_date("1985aproximadamente") is None
+    assert parse_iso_date("1985talvez") is None
+    # Reiner Marker ohne Datum bleibt None
+    assert parse_iso_date("aproximadamente") is None
+    assert parse_iso_date("provavelmente") is None
+    assert parse_iso_date("talvez") is None
+    # Bestehende Suffixe unveraendert (kein Regress)
+    assert parse_iso_date("1985 ca.") == "1985-01-01"
+    assert parse_iso_date("1985 ungefähr") == "1985-01-01"
+    assert parse_iso_date("1985 estimated") == "1985-01-01"
+    assert parse_iso_date("1985 geschätzt") == "1985-01-01"
+    assert parse_iso_date("1985 wahrscheinlich") == "1985-01-01"
+    assert parse_iso_date("1985 perhaps") == "1985-01-01"
+
+
 def test_parse_iso_date_annaeherungs_praefix_fr_it():
     """FR-/IT-Annaeherungs-Marker (Suisse romande / Ticino / Val d'Aosta).
 
