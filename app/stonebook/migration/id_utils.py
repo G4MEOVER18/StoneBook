@@ -21,6 +21,15 @@ _PATTERNS = [
     re.compile(r"^Object\s+(\d+)$", re.IGNORECASE),
     # DE-Nummerierungs-Praefix: ``Nr. 43`` / ``Nr 43`` / ``Nr.43`` (mit/ohne Punkt/Whitespace).
     re.compile(r"^Nr\.?\s*(\d+)$", re.IGNORECASE),
+    # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
+    # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
+    # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen
+    # U+00B0 (FR-/internationale Zeitschriften-Tradition), ``Nº 43`` mit maskulinem Ordinal-
+    # Zeichen U+00BA (PT-/ES-Standard), ``№ 43`` mit Unicode-Numero-Zeichen U+2116 (Norm-Zeichen
+    # nach ISO 8859-5 und in russisch-/serbisch-/bulgarisch-sprachigen Etiketten verbreitet).
+    re.compile(r"^No\.?\s*(\d+)$", re.IGNORECASE),
+    re.compile(r"^N[°º]\s*(\d+)$", re.IGNORECASE),
+    re.compile(r"^№\s*(\d+)$"),
     # Hash-Praefix (Foto-/Tagebuch-Notizen): ``#43`` / ``# 43``.
     re.compile(r"^#\s*(\d+)$"),
     # Reine Zahl: ``43``.

@@ -97,6 +97,53 @@ def test_normalize_id_punkt_und_whitespace_separator():
     assert normalize_id("OBJ 43 44") is None
 
 
+def test_normalize_id_internationale_nummer_praefixe():
+    """Internationale Nummerierungs-Praefixe (EN ``No.``, FR/PT/ES ``N°``/``Nº``, Unicode ``№``).
+
+    Waehrend die DE-Form ``Nr. 43`` bereits abgedeckt ist, verwenden mehrsprachige
+    Sammler-Notizen, EN-uebersetzte Etiketten aus Auktionskatalogen und Museums-
+    Etiketten aus dem franzoesisch-/portugiesisch-/spanisch-/russisch-sprachigen
+    Raum die semantisch identischen internationalen Varianten:
+
+    * ``No.`` mit optionalem Punkt (EN-Standard, auch in DE-sprachiger Community
+      aus EN-Uebersetzungen praesent),
+    * ``N°`` mit Grad-Zeichen U+00B0 (FR-/internationale Zeitschriften-Tradition),
+    * ``Nº`` mit maskulinem Ordinal-Zeichen U+00BA (PT-/ES-Standard),
+    * ``№`` mit Unicode-Numero-Zeichen U+2116 (Norm-Zeichen, russisch-/serbisch-/
+      bulgarisch-sprachige Etiketten).
+
+    Bisher fielen alle vier Formen still auf None, obwohl semantisch identisch zur
+    DE-Nummerierungs-Praefix-Form.
+    """
+    # EN "No." mit/ohne Punkt und Whitespace (Analog zur DE Nr.-Form)
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("No 43") == "OBJ_0043"
+    assert normalize_id("No.43") == "OBJ_0043"
+    assert normalize_id("no. 7") == "OBJ_0007"
+    assert normalize_id("NO. 43") == "OBJ_0043"
+    # FR/international mit Grad-Zeichen U+00B0
+    assert normalize_id("N° 43") == "OBJ_0043"
+    assert normalize_id("N°43") == "OBJ_0043"
+    assert normalize_id("n° 7") == "OBJ_0007"
+    # PT/ES mit maskulinem Ordinal-Zeichen U+00BA
+    assert normalize_id("Nº 43") == "OBJ_0043"
+    assert normalize_id("Nº43") == "OBJ_0043"
+    assert normalize_id("nº 7") == "OBJ_0007"
+    # Unicode-Numero-Zeichen U+2116 (standalone, ohne fuehrendes N)
+    assert normalize_id("№ 43") == "OBJ_0043"
+    assert normalize_id("№43") == "OBJ_0043"
+    assert normalize_id("№ 7") == "OBJ_0007"
+    # Regress: bestehende DE-Form bleibt gueltig
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("Nr 43") == "OBJ_0043"
+    assert normalize_id("Nr.43") == "OBJ_0043"
+    # Ungueltige Formen bleiben None
+    assert normalize_id("No. 43X") is None
+    assert normalize_id("N° 43 44") is None
+    assert normalize_id("N 43") is None  # blosses N ohne °/º/Wortzusatz
+    assert normalize_id("Nox 43") is None
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
