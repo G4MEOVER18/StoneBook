@@ -4647,6 +4647,81 @@ def test_parse_iso_date_temporale_praeposition_fr_it():
     assert parse_iso_date("during 1985") == "1985-01-01"
 
 
+def test_parse_iso_date_temporale_praeposition_es_pt():
+    """ES-/PT-Temporal-Praepositionen und Filler-Woerter (Sammler-Region
+    Andalusien / lateinamerikanische Fundstellen / Panasqueira / brasilia-
+    nische Pegmatit-Region).
+
+    ES ``en`` deckt die haeufigste ES-Temporal-Praeposition ab (via die
+    bereits vorhandene FR-Alternante ``en``, semantisch und ortografisch
+    identisch); PT ``em`` deckt die haeufigste PT-Temporal-Praeposition ab.
+    ES ``año``/``años`` (mit Tilde-N) und ASCII-transliterierte Form
+    ``ano``/``anos`` (zugleich PT-Standard-Schreibweise) decken die Filler-
+    Wort-Achse ab. Spiegelt die FR/IT-Erweiterungen auf die iberoromanische
+    Sprach-Achse.
+    """
+    # PT: em + Jahr (Standard-Form)
+    assert parse_iso_date("em 1985") == "1985-01-01"
+    assert parse_iso_date("em 2024") == "2024-01-01"
+    # PT: em + Monat + Jahr (PT-Monatsname junho)
+    assert parse_iso_date("em junho 2024") == "2024-06-01"
+    assert parse_iso_date("em janeiro 2024") == "2024-01-01"
+    # PT: em + Saison (nach _SEASON_MONTHS-Aufloesung mit verao/inverno)
+    assert parse_iso_date("em verao 2024") == "2024-06-01"
+    assert parse_iso_date("em inverno 2024") == "2024-12-01"
+    # PT: em + Filler-Wort ano/anos (Standard-PT-Schreibweise)
+    assert parse_iso_date("em ano 1985") == "1985-01-01"
+    assert parse_iso_date("em anos 1980") == "1980-01-01"
+    # ES: en + año/años (mit Tilde-N, ES-Standard-Schreibweise)
+    assert parse_iso_date("en año 1985") == "1985-01-01"
+    assert parse_iso_date("en años 1980") == "1980-01-01"
+    # ES: en + ano/anos (ASCII-transliteriert, Windows-CP1252/Excel-ES ohne
+    # Diakritika)
+    assert parse_iso_date("en ano 1985") == "1985-01-01"
+    assert parse_iso_date("en anos 1980") == "1980-01-01"
+    # ES: en + Monat + Jahr (ES-Monatsname junio)
+    assert parse_iso_date("en junio 2024") == "2024-06-01"
+    assert parse_iso_date("en enero 2024") == "2024-01-01"
+    # ES: en + Saison (nach _SEASON_MONTHS-Aufloesung mit verano/invierno)
+    assert parse_iso_date("en verano 2024") == "2024-06-01"
+    assert parse_iso_date("en invierno 2024") == "2024-12-01"
+    # ano/anos ohne Praeposition (Listen-Stil, symmetrisch zu IT anno/anni)
+    assert parse_iso_date("ano 1985") == "1985-01-01"
+    assert parse_iso_date("anos 1980") == "1980-01-01"
+    assert parse_iso_date("año 1985") == "1985-01-01"
+    assert parse_iso_date("años 1980") == "1980-01-01"
+    # Case-insensitive (spiegelt DE/EN/FR/IT-Praepositionen)
+    assert parse_iso_date("EM 1985") == "1985-01-01"
+    assert parse_iso_date("EN AÑO 1985") == "1985-01-01"
+    assert parse_iso_date("Em Junho 2024") == "2024-06-01"
+    # Verkettet mit Approx-Praefix (Rekursion loest sequentiell auf)
+    assert parse_iso_date("hacia en 1985") == "1985-01-01"
+    assert parse_iso_date("aproximadamente em 1985") == "1985-01-01"
+    assert parse_iso_date("talvez em 1985") == "1985-01-01"
+    # False-Positive-Schutz: kurze Wortstaemme nicht in laengeren Woertern
+    # matchen (\\s+-Grenze schuetzt vor Anschnitt)
+    assert parse_iso_date("emergent 1985") is None
+    assert parse_iso_date("embark 1985") is None
+    assert parse_iso_date("ember 1985") is None
+    assert parse_iso_date("anonymous 1985") is None
+    assert parse_iso_date("another 1985") is None
+    # Bestehende Praepositionen unveraendert (Regression-Anker)
+    assert parse_iso_date("im Jahr 1985") == "1985-01-01"
+    assert parse_iso_date("in 2024") == "2024-01-01"
+    assert parse_iso_date("in June 2024") == "2024-06-01"
+    assert parse_iso_date("am 13.06.2024") == "2024-06-13"
+    assert parse_iso_date("en 1985") == "1985-01-01"       # FR (bleibt)
+    assert parse_iso_date("nel 1985") == "1985-01-01"      # IT (bleibt)
+    assert parse_iso_date("nella primavera 2020") == "2020-03-01"
+    assert parse_iso_date("anno 1985") == "1985-01-01"     # IT (bleibt)
+    assert parse_iso_date("anni 1980") == "1980-01-01"     # IT (bleibt)
+    # Anno-Domini-Schutz bleibt greifen (kein Regress durch die Klasse-
+    # Erweiterung; der (?!\\s+domini)-Lookahead schuetzt weiter die IT-anno-
+    # Alternante, waehrend die neue a[ñn]os?-Klasse keinen Domini-Kontext hat).
+    # Regress-Check: anno domini 1985 wird durch _LEADING_ERA_MARKER geparst.
+    assert parse_iso_date("anno domini 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_boundary_praefix():
     """Boundary-/Richtungs-Praefix (vor/nach/before/after/pre-/post-) wird gestrippt.
 

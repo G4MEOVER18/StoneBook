@@ -626,8 +626,21 @@ _TEMPORAL_PREFIX = re.compile(
     # mit DE-/EN-Wortstaemmen (``en`` ist als Standalone-Wort weder in DE
     # noch in EN gebraeuchlich; ``nel``/``nello``/``nei``/``negli``/``nelle``/
     # ``nella`` haben keine Praefix-Kollision mit DE/EN-Woertern).
+    # ES-/PT-Zusatz (Sammler-Region Andalusien / lateinamerikanische Fund-
+    # stellen; Panasqueira / brasilianische Pegmatit-Region). ``em`` (PT)
+    # deckt die haeufigste PT-Temporal-Praeposition vor Jahr/Monat/Saison ab
+    # ("em 1985", "em junho 2024", "em verao 2024" - identisch zu DE
+    # ``im``/FR ``en``/EN ``in``). Kollisions-Schutz durch das ``\s+``-Suffix:
+    # ``em`` matcht nicht in ``embark``/``embed``/``ember`` (nach ``em``
+    # folgt Wort-Zeichen, kein Whitespace). Der ES-Aequivalent ``en`` (in)
+    # ist bereits durch die FR-Alternante ``en`` abgedeckt (semantisch und
+    # ortografisch identisch zur FR-Praeposition, spiegelt die transparente
+    # Sprach-Ueberschneidung der FR/ES/PT-Konvention). Spiegelt die FR/IT-
+    # Erweiterungen auf die PT-Sprach-Achse und schliesst die zweite Sprach-
+    # familie (iberoromanisch) der Temporal-Praeposition-Achse.
     r"(?:im|in|am|vom|von|on|aus|w[äa]hrend|waehrend|during"
     r"|en|nel|nello|nella|nei|negli|nelle"
+    r"|em"
     r")\s+"
     r"(?:(?:dem|den|der|des|the)\s+)?"
     # FR-/IT-Filler-Woerter (Jahr-Aequivalent): FR ``an``/``annee``/``annees``
@@ -649,10 +662,29 @@ _TEMPORAL_PREFIX = re.compile(
     # dedizierten ``anno\s+domini``-Alternate, der die Vollform als 2-Token-Aera-
     # Marker strippt; der negative Lookahead sorgt dafuer, dass die Filler-Regel
     # hier den 1-Token-``anno``-Fall an die spezifischere Aera-Regel abgibt.
-    r"(?:(?:jahr|jahre|jahres|jahren|year|an|ann[eé]e|ann[eé]es|anno(?!\s+domini)|anni)\s+)?"
+    # ES-/PT-Filler-Woerter (Jahr-Aequivalent): ES ``año``/``años`` (mit
+    # Tilde-N U+00F1) und ASCII-transliterierte Form ``ano``/``anos`` (die
+    # zugleich die PT-Standard-Schreibweise ist - ohne Diakritika). Symmetrie
+    # zur FR ``an``/``annee``/``annees``-Alternante und IT ``anno``/``anni``-
+    # Alternante, damit "en año 1985" (ES), "en ano 1985" (ASCII-ES/PT),
+    # "no ano 1985" (PT mit Artikel-Kontraktion), "em ano 1985" (PT mit
+    # bare Praeposition) und "aproximadamente en el año 1985" (ES Vollform)
+    # transparent gestrippt werden. Character-Klasse ``a[ñn]os?`` deckt
+    # gleichzeitig ``año`` (ES mit Diakritika, Windows-CP1252/Excel-ES nativ),
+    # ``ano`` (ASCII-transliterierte ES / native PT-Standard-Form) und die
+    # jeweiligen Plural-Formen ``años``/``anos`` ab, ohne die IT-Doppel-N-
+    # Form ``anno`` zu schlucken (dort steht ``nn``, die Klasse matcht nur
+    # ein einzelnes ``ñ`` oder ``n``). Kollisions-Schutz durch das
+    # ``\s+``-Suffix: ``ano`` matcht nicht in ``anonymous``/``another``/
+    # ``anode`` (nach ``ano`` folgt Wort-Zeichen, kein Whitespace); ``a[ñn]os``
+    # matcht nicht in ``anosmia``/``anosognosia`` (medizinische Fach-Vokabel,
+    # in Sammler-Kontext praktisch nicht relevant, aber die \\s+-Grenze
+    # schuetzt symmetrisch). Spiegelt die iberoromanische Sprach-Achse auf
+    # die Filler-Wort-Achse.
+    r"(?:(?:jahr|jahre|jahres|jahren|year|an|ann[eé]e|ann[eé]es|anno(?!\s+domini)|anni|a[ñn]os?)\s+)?"
     r"|"
     # Nur "Jahr"-Wort ohne Praeposition (Listen-/Tabellen-Stil)
-    r"(?:jahr|jahre|jahres|jahren|year|anno(?!\s+domini)|anni|ann[eé]e|ann[eé]es)\s+"
+    r"(?:jahr|jahre|jahres|jahren|year|anno(?!\s+domini)|anni|ann[eé]e|ann[eé]es|a[ñn]os?)\s+"
     r")",
     re.IGNORECASE,
 )
