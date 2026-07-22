@@ -72,6 +72,27 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # ``keine daten`` / ``kein datum`` sind natuerlich-sprachliche
         # Varianten, die dieselbe Semantik tragen.
         "keine angabe", "keine daten", "kein datum",
+        # Weitere DE-Datum-spezifische Marker, die in Museums-Etiketten und
+        # geerbten Sammler-Katalogen als Standard-Konvention fuer "Fund-Datum
+        # nicht ermittelbar" auftreten. Spiegelt die etablierten Datum-spezifi-
+        # schen Prosa- und Katalog-Formen der uebrigen Sprachen auf die DE-
+        # Achse: ``undatiert`` (kompakte Adjektiv-Form, DE-Katalog-Standard fuer
+        # "ohne Datum-Angabe", verbreitet in Naturhistorischen Museen und
+        # Mineralien-Sammlungs-Etiketten), ``nicht datiert`` (natuerlich-
+        # sprachliche Prosa-Form, parallel zu ``kein datum``), ``ohne datum``
+        # (DE-Katalog-Konvention symmetrisch zur FR ``sans date`` / IT ``senza
+        # data`` / ES ``sin fecha`` / PT ``sem data``) und ``datum unbekannt``
+        # (invertierte DE-Prosa-Form, parallel zur FR ``date inconnue`` / ES
+        # ``fecha desconocida`` / PT ``data desconhecida``). Bisher fielen
+        # DE-Bestaende mit diesen expliziten Markern in den silent-data-loss-
+        # Report als "invalid Datum, bitte pruefen", obwohl der User semantisch
+        # bewusst "kein Datum verfuegbar" markiert hatte. Kollisionsfreiheit
+        # zu gueltigen Datums-Formen: keine der Marker enthaelt Ziffern oder
+        # Datums-Trenner, sodass gueltige DE-Eingaben ("13. Juni 2024",
+        # "Juni undatiert" - solche Mischformen kommen nicht vor) unveraendert
+        # durchlaufen. Alle Marker sind lowercase (Consumer .lower()t den
+        # Input vor dem Check, wie im Bestand konventionalisiert).
+        "undatiert", "nicht datiert", "ohne datum", "datum unbekannt",
         # Franzoesische Aequivalente (Suisse romande - Wallis/Waadt/Genf/
         # Neuenburg/Freiburg, ~23% Bevoelkerungsanteil laut BFS) sowie geerbte
         # Sammler-Notizen und Auktions-Etiketten aus franzoesisch-sprachigen

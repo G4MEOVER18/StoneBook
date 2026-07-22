@@ -6782,6 +6782,82 @@ def test_parse_iso_date_es_pt_no_data_marker():
     assert parse_iso_date("32.13.2024") is None
 
 
+def test_parse_iso_date_de_datum_spezifische_no_data_marker():
+    """DE-Datum-spezifische No-Data-Marker liefern None (nicht als silent-data-loss
+    Fund gemeldet).
+
+    Schliesst die DE-Achse der Datum-spezifischen Katalog- und Prosa-Formen,
+    die in den uebrigen Sprachen bereits abgedeckt sind (FR: ``sans date`` /
+    ``date inconnue`` / ``pas de date``, IT: ``senza data``, ES: ``sin fecha`` /
+    ``fecha desconocida``, PT: ``sem data`` / ``data desconhecida``). Bisher
+    fuehrte die DE-Seite nur die generische ``unbekannt``-Form und die
+    Abkuerzungen ``k.a.``/``n.a.`` sowie die ausgeschriebenen ``keine angabe``/
+    ``keine daten``/``kein datum``-Varianten; die DE-Katalog-Konvention
+    ``undatiert`` (kompakte Adjektiv-Form aus Museums-Etiketten), ``ohne
+    datum`` (symmetrisch zur FR ``sans date`` / IT ``senza data``),
+    ``nicht datiert`` (natuerlich-sprachliche Prosa-Form) und ``datum
+    unbekannt`` (invertierte DE-Prosa-Form, parallel zur FR ``date inconnue``)
+    fehlten. Bestaende mit diesen Markern fielen als "invalid Datum" statt
+    "no data" in den silent-data-loss-Report, obwohl der User semantisch
+    bewusst "kein Datum verfuegbar" markiert hatte.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Kompakte Adjektiv-Form (Museums-/Sammlungs-Etiketten)
+    assert parse_iso_date("undatiert") is None
+    assert parse_iso_date("Undatiert") is None
+    assert parse_iso_date("UNDATIERT") is None
+    # Natuerlich-sprachliche Prosa-Form
+    assert parse_iso_date("nicht datiert") is None
+    assert parse_iso_date("Nicht Datiert") is None
+    assert parse_iso_date("NICHT DATIERT") is None
+    # DE-Katalog-Konvention (symmetrisch zu FR sans date / IT senza data /
+    # ES sin fecha / PT sem data)
+    assert parse_iso_date("ohne datum") is None
+    assert parse_iso_date("Ohne Datum") is None
+    assert parse_iso_date("OHNE DATUM") is None
+    # Invertierte DE-Prosa-Form (parallel zu FR date inconnue / ES fecha
+    # desconocida / PT data desconhecida)
+    assert parse_iso_date("datum unbekannt") is None
+    assert parse_iso_date("Datum Unbekannt") is None
+    assert parse_iso_date("DATUM UNBEKANNT") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  undatiert  ") is None
+    assert parse_iso_date("  ohne datum  ") is None
+    assert parse_iso_date("  datum unbekannt  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("undatiert", "nicht datiert", "ohne datum",
+                   "datum unbekannt"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("undatiert", "nicht datiert", "ohne datum",
+                   "datum unbekannt"):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE-Marker bleiben in der Menge
+    # (keine Kollision durch die neuen Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "keine angabe" in DATE_NO_DATA_MARKERS
+    assert "kein datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: FR/IT/ES/PT-Aequivalente bleiben in der Menge
+    # (der DE-Zusatz darf keine bestehenden Sprach-Achsen verdraengen).
+    assert "sans date" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    assert "sin fecha" in DATE_NO_DATA_MARKERS
+    assert "sem data" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # DE-Marker triggern nicht auf ISO-Datums-Strings).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid"
+    # (kein Trigger auf die Marker-Menge, Fall-Through zur Parse-Kette).
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
