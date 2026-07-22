@@ -5061,11 +5061,115 @@ def test_parse_iso_date_bindestrich_separator_mit_monatsname():
     # Bestehende Formate weiterhin gueltig (kein Regress)
     assert parse_iso_date("13. Juni 2024") == "2024-06-13"
     assert parse_iso_date("13/Jun/2024") == "2024-06-13"
-    # 2-stellige Jahresangaben weiterhin nicht akzeptiert (zu mehrdeutig)
-    assert parse_iso_date("01-Jun-99") is None
+    # 2-stellige Jahresangaben werden mit Pivot 30 (00-30 -> 20YY, 31-99 -> 19YY)
+    # aufgeloest - symmetrisch zur DD.MM.YY-Kompakt-Form via _DAY_MONTH_2Y (siehe
+    # test_parse_iso_date_zweistelliges_jahr_monatsname fuer die volle Achse).
+    assert parse_iso_date("01-Jun-99") == "1999-06-01"
     # Unbekannter Monat / Jahr ausserhalb 1800-2999
     assert parse_iso_date("01-Foo-2024") is None
     assert parse_iso_date("01-Jun-1700") is None
+
+
+def test_parse_iso_date_zweistelliges_jahr_monatsname():
+    """DD-Monatsname-YY mit zweistelligem Jahr ("01-Jun-99", "13. Juni 24",
+    "13/Jun/24", "01-JAN-24") mit Sammler-typischem Pivot 30 (00-30 -> 20YY,
+    31-99 -> 19YY).
+
+    Symmetrische Erweiterung von :data:`_DAY_MONTH_2Y` (numerische DD.MM.YY-Form)
+    auf die Monatsname-Achse. Sehr verbreitet in Oracle-DB-Exporten mit
+    ``TO_CHAR(dat, 'DD-MON-YY')`` als Default-Format, in aelteren Excel-
+    Tabellen mit Locale-abhaengig-formatierten Datums-Spalten und aus
+    DE-/CH-typischen Sammler-Etiketten mit ausgeschriebenem Monatsnamen und
+    knapper Jahr-Notation. Vor dem Fix fielen alle Formen still auf None,
+    weil :data:`_DAY_MONTH_YEAR` ein 4-Ziffer-Jahr verlangt und die
+    2-Ziffer-Jahr-Semantik nur in der numerischen Kompakt-Achse via
+    :data:`_DAY_MONTH_2Y` verfuegbar war.
+    """
+    # Oracle-Default DD-MON-YY (Bindestrich-Separator, Case-Insensitivitaet)
+    assert parse_iso_date("01-Jun-99") == "1999-06-01"
+    assert parse_iso_date("01-Jun-24") == "2024-06-01"
+    assert parse_iso_date("01-JAN-24") == "2024-01-01"
+    assert parse_iso_date("31-DEC-99") == "1999-12-31"
+    # DE-Vollform mit Punkt-Separator
+    assert parse_iso_date("13. Juni 24") == "2024-06-13"
+    assert parse_iso_date("1. Januar 20") == "2020-01-01"
+    assert parse_iso_date("31. Dezember 99") == "1999-12-31"
+    # Punkt-Separator ohne Whitespace (DE-Kompakt-Form)
+    assert parse_iso_date("13.Jun.24") == "2024-06-13"
+    assert parse_iso_date("13.Juni.24") == "2024-06-13"
+    # Slash-Separator (Log-/Export-Konvention)
+    assert parse_iso_date("13/Jun/24") == "2024-06-13"
+    assert parse_iso_date("13/Juni/24") == "2024-06-13"
+    # Whitespace als Separator (13 Jun 24, 13 Juni 24)
+    assert parse_iso_date("13 Jun 24") == "2024-06-13"
+    assert parse_iso_date("13 Juni 24") == "2024-06-13"
+    # Bindestrich-Separator DE-Vollform
+    assert parse_iso_date("13-Juni-24") == "2024-06-13"
+    # Ein-Ziffer-Tag / Monatsname
+    assert parse_iso_date("1-Jan-24") == "2024-01-01"
+    assert parse_iso_date("1. Mai 24") == "2024-05-01"
+    # Pivot-Konvention: YY <= 30 -> 20YY, YY >= 31 -> 19YY
+    assert parse_iso_date("13. Juni 00") == "2000-06-13"
+    assert parse_iso_date("13. Juni 30") == "2030-06-13"
+    assert parse_iso_date("13. Juni 31") == "1931-06-13"
+    assert parse_iso_date("13. Juni 85") == "1985-06-13"
+    assert parse_iso_date("13. Juni 99") == "1999-06-13"
+    # Umlaut / Diakritika: März → 3, février → 2
+    assert parse_iso_date("5. März 22") == "2022-03-05"
+    assert parse_iso_date("13. février 24") == "2024-02-13"
+    # Italienische Vollform (Ticino / geerbte Notizen)
+    assert parse_iso_date("13 giugno 24") == "2024-06-13"
+    # Franzoesische Vollform (Suisse romande / geerbte Notizen)
+    assert parse_iso_date("13 juin 24") == "2024-06-13"
+    # Roemische Monatsziffer (alte Etiketten)
+    assert parse_iso_date("13.VI.24") == "2024-06-13"
+    assert parse_iso_date("13.I.24") == "2024-01-13"
+    # Englische Ordinal-Suffixe (1st/2nd/3rd/4th)
+    assert parse_iso_date("1st Jun 24") == "2024-06-01"
+    assert parse_iso_date("3rd Mar 24") == "2024-03-03"
+    # Monatsname-Kurzform mit Trailing-Punkt und Slash
+    assert parse_iso_date("13/Jun./24") == "2024-06-13"
+    # Whitespace-Toleranz aussen
+    assert parse_iso_date("  13.Jun.24  ") == "2024-06-13"
+    # Regress-Anker: 4-Ziffer-Formen bleiben unveraendert
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
+    assert parse_iso_date("01-Jun-2024") == "2024-06-01"
+    assert parse_iso_date("13/Jun/2024") == "2024-06-13"
+    # Regress-Anker: numerische 2-Ziffer-Form bleibt via _DAY_MONTH_2Y
+    assert parse_iso_date("13.06.24") == "2024-06-13"
+    assert parse_iso_date("13/06/24") == "2024-06-13"
+
+
+def test_parse_iso_date_zweistelliges_jahr_monatsname_ungueltig():
+    """Ungueltige DD-Monatsname-YY-Formen fallen auf None.
+
+    Semantisch ungueltige Kombinationen (Tag > 31, unbekannter Monatsname,
+    nicht existente Kalender-Tage wie Feb 30) und strukturell nicht passende
+    Formen (fehlender Tag, fehlender Monat, Whitespace innerhalb der
+    Jahres-Ziffern, 1- oder 3-Ziffer-Jahr im Kontext einer 2-Ziffer-Regel)
+    werden abgewiesen.
+    """
+    # Tag > 31
+    assert parse_iso_date("32-Jun-24") is None
+    assert parse_iso_date("50. Juni 24") is None
+    # Ungueltiger Kalender-Tag (Feb 30, Apr 31)
+    assert parse_iso_date("30-Feb-24") is None
+    assert parse_iso_date("31-Apr-24") is None
+    # Unbekannter Monat
+    assert parse_iso_date("01-Foo-24") is None
+    assert parse_iso_date("13. Junix 24") is None
+    # Reine Zahl statt Monatsname (faellt auf andere Patterns durch, nicht hier)
+    assert parse_iso_date("13-13-24") is None  # 13 als Monat via _DAY_MONTH_2Y ist auch invalid
+    # Englische MMM-DD-YY-Reihenfolge bewusst NICHT im Scope (out-of-scope-Anker)
+    assert parse_iso_date("Jun 13 24") is None
+    assert parse_iso_date("Jun-13-24") is None
+    # Fehlender Tag (nur Monatsname + 2-Ziffer-Jahr) - "Jun 24" mehrdeutig
+    # (Monat + Jahr vs Tag + Monat), bleibt weiter None
+    assert parse_iso_date("Jun 24") is None
+    assert parse_iso_date("Juni 24") is None
+    # Regress-Anker: 4-Ziffer-Jahr-Form bleibt via _DAY_MONTH_YEAR
+    assert parse_iso_date("01-Jun-2024") == "2024-06-01"
+    assert parse_iso_date("13. Juni 2024") == "2024-06-13"
 
 
 def test_parse_iso_date_slash_separator_mit_monatsname():

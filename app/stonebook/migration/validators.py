@@ -2866,6 +2866,83 @@ _DAY_MONTH_2Y = re.compile(
     r"^\s*(\d{1,2})([./-])(\d{1,2})\2(\d{2})\s*$"
 )
 
+# DD-Monatsname-YY mit zweistelligem Jahr: "01-Jun-99", "13-Juni-24",
+# "13. Juni 24", "13/Jun/24", "13.Jun.24", "5 Jun 24", "01-JAN-24".
+# Symmetrische Erweiterung von :data:`_DAY_MONTH_2Y` (numerischer Monat, DD.MM.YY)
+# auf die Monatsname-Achse. Sehr verbreitet in Oracle-DB-Exporten mit
+# ``TO_CHAR(dat, 'DD-MON-YY')`` als Default-Format (der Oracle-Server nutzt
+# NLS_DATE_FORMAT ``DD-MON-YY`` als Default, wenn kein expliziter
+# ``TO_CHAR``-Formatstring gesetzt ist), in aelteren Excel-Tabellen mit
+# lokale-abhaengig-formatierten Datums-Spalten und aus DE-/CH-typischen
+# Sammler-Etiketten mit Text-Monatsnamen und knapper Jahr-Notation
+# ("Erwerb 13-Jun-99 auf Boerse Zuerich", "Fund 13. Juni 24 Aaregebiet").
+# Bisher fielen alle Formen still auf None, weil :data:`_DAY_MONTH_YEAR`
+# ein 4-Ziffer-Jahr (``\d{4}``) verlangt und weder die Oracle-DD-MMM-YY-
+# Konvention (Bindestrich-getrennt, Case-Insensitiv, EN-Monatsname-Kurzform)
+# noch die DE-Kompakt-Form mit ausgeschriebenem Monatsnamen (13. Juni 24,
+# 13/Juni/24) matchen konnte. Aus dem typischen Migrations-Workflow "alte
+# Oracle-Export-CSV mit DD-MON-YY-Datums-Spalte importieren" oder "geerbtes
+# Sammler-Etikett mit Kompakt-Datum uebernehmen" entstand damit silenter
+# Funddatum-Datenverlust auf der zweistelligen Kurzform - obwohl die
+# semantisch identische DD.MM.YY-Form via :data:`_DAY_MONTH_2Y` bereits
+# transparent aufgeloest wurde und die semantisch identische DD-Monatsname-
+# YYYY-Form via :data:`_DAY_MONTH_YEAR` (siehe Test
+# test_parse_iso_date_bindestrich_separator_mit_monatsname) auch bereits
+# funktioniert. Die 2-Ziffer-Monatsname-Form schliesst damit die
+# Symmetrie-Luecke.
+#
+# Struktur spiegelt :data:`_DAY_MONTH_YEAR`: Tag (1-2 Ziffern) + optionales
+# EN-Ordinal-Suffix (``st|nd|rd|th``) + optionaler Separator
+# (``[./ \-]?``) + Monatsname (inklusive DE/FR/IT-Diakritika via
+# ``ÄÖÜäöüÀ-ÖØ-öø-ÿŒœ``-Klasse, wird spaeter via
+# :func:`_normalize_month_name` NFKD-normalisiert und im
+# :data:`_MONTH_NAMES`-Dict nachgeschlagen) + optionaler
+# Trailing-Punkt (Monatsname-Abkuerzung ``Jun.``) + optionaler Separator
+# (``[,./\-]?``) + zweistelliges Jahr (``\d{2}``) + optionaler Whitespace.
+# Case-Insensitiv via ``re.IGNORECASE`` (Oracle ``TO_CHAR`` liefert
+# Grossbuchstaben-Kurzform ``JUN``/``JAN``/``DEC``, geerbte Etiketten
+# nutzen Mixed-Case ``Juni``/``June``, Kompakt-Notizen aus Handys mit
+# Auto-Capitalize schreiben titelised ``Jun``/``Dec``).
+#
+# Zweistelliges Jahr wird mit demselben Pivot 30 wie :data:`_DAY_MONTH_2Y`
+# aufgeloest: ``YY <= 30`` -> ``20YY`` (00-30 auf 2000-2030), ``YY >= 31``
+# -> ``19YY`` (31-99 auf 1931-1999). Der Pivot ist bewusst identisch zur
+# numerischen Kompakt-Form, damit die 2-Ziffer-Jahr-Semantik ueber alle
+# Datums-Achsen (numerisch DD.MM.YY, Monatsname DD-Mon-YY) konsistent
+# ist - der Sammler kann ``13.06.24`` und ``13-Jun-24`` als semantisch
+# aequivalent uebernehmen. Der Pivot 30 mappt die aelteren Sammler-Notizen
+# mit YY >= 31 korrekt in das 20. Jhdt. (Boersen-Kaeufe der 80er/90er,
+# geerbte Museums-Etiketten der 30er-70er) und laesst YY <= 30 fuer
+# aktuelle und geplante Datums-Angaben bis 2030 im 21. Jhdt.
+#
+# Kollisionsfrei zu :data:`_DAY_MONTH_YEAR` (vier Ziffern erforderlich; die
+# `\d{2}\s*$`-Endung dieses Patterns matcht nur exakt zwei Ziffern vor
+# Zeilenende, sodass "13 Juni 2024" mit vier Ziffern nicht auf diese
+# 2-Ziffer-Form durchfaellt - der Regex-Engine positioniert den
+# `\d{2}`-Zweig auf die letzten zwei Ziffern und der `\s*$`-Anker
+# schlaegt fehl, weil "20" davor uebrig bleibt) und zu :data:`_DAY_MONTH_2Y`
+# (numerischer Monat via `(\d{1,2})` statt Buchstaben-Klasse; die beiden
+# Patterns sind strukturell disjunkt, weil der Monats-Zweig entweder Ziffern
+# oder Buchstaben verlangt, nicht beides). Kollisionsfrei zu
+# :data:`_ENGLISH_MONTH_DAY_YEAR` (Monatsname am Anfang statt Tag am
+# Anfang; die MMM-DD-YY-Form aus englischen Auktions-Katalogen ist bewusst
+# NICHT im Scope, weil sie in Sammler-Kontext deutlich seltener als die
+# DD-MMM-YY-Oracle-Form ist und Verwirrung mit dem Range-Muster "Feb 3-8"
+# vermeiden wuerde - falls die MMM-DD-YY-Achse spaeter noetig wird, ist
+# das ein separater Commit).
+#
+# Tag/Monat-Validierung ueber :class:`datetime.date`-Konstruktor
+# (Feb 30/31, Apr 31 -> ValueError -> None). Monatsname muss valide sein
+# via :func:`_normalize_month_name` - ungueltiger Name (Junk-Wort,
+# nicht existierende Kurzform) faellt via `if month` durch auf die
+# uebrigen Patterns.
+_DAY_MONTH_NAME_2Y = re.compile(
+    r"^\s*(\d{1,2})(?:st|nd|rd|th)?\s*[./\-]?\s*"
+    r"([A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿŒœ]+)\.?"
+    r"\s*[,./\-]?\s*(\d{2})\s*$",
+    re.IGNORECASE,
+)
+
 # ISO 8601 Wochendatum: "2024-W25", "2024W25" (compact), "2024-W25-3" (mit Tag).
 # Konvention: ohne expliziten Wochentag → Montag der Woche (ISO-Wochenstart).
 # Verbreitet in Log-/Build-Stempeln und manchen Sammlungs-Notizen ("KW25 2024").
@@ -5145,6 +5222,26 @@ def parse_iso_date(text) -> str | None:
         month = _normalize_month_name(m.group(2))
         year = int(m.group(3))
         if month and 1 <= day <= 31 and 1800 <= year <= 2999:
+            try:
+                return datetime.date(year, month, day).isoformat()
+            except ValueError:
+                return None
+    # Zweistelliges Jahr mit Monatsname ("01-Jun-99", "13-Juni-24", "13. Juni 24",
+    # "13/Jun/24"). Symmetrische Erweiterung von :data:`_DAY_MONTH_2Y` (numerische
+    # Monats-Achse) auf die Monatsname-Achse; Pivot 30 identisch zur numerischen
+    # Kompakt-Form (00-30 -> 20YY, 31-99 -> 19YY). Nach :data:`_DAY_MONTH_YEAR`
+    # geprueft, damit vollstaendige 4-Ziffer-Jahre in der DD-Mon-YYYY-Form
+    # (deterministisch, keine Pivot-Konvention noetig) den kuerzeren Direkt-
+    # Pfad behalten. Siehe :data:`_DAY_MONTH_NAME_2Y` fuer Details zur
+    # Struktur-Guard-Analyse, Pivot-Konvention und Kollisionsfreiheit gegen
+    # die 4-Ziffer-Achse und die numerische 2-Ziffer-Achse.
+    m = _DAY_MONTH_NAME_2Y.match(s)
+    if m:
+        day = int(m.group(1))
+        month = _normalize_month_name(m.group(2))
+        yy = int(m.group(3))
+        year = 2000 + yy if yy <= 30 else 1900 + yy
+        if month and 1 <= day <= 31:
             try:
                 return datetime.date(year, month, day).isoformat()
             except ValueError:
