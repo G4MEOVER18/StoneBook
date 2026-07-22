@@ -2354,6 +2354,15 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "dreikoenigstag": (1, 6),
     "heiligedreikoenige": (1, 6),
     "epiphany": (1, 6),
+    # FR-Aequivalente (Suisse romande, Savoyen, Alpen-Fundstellen). Norm-
+    # Schluessel entstehen aus NFKD-Diakritika-Strip in :func:`_holiday_key`:
+    # "Jour de l'An" -> "jourdelan", "Nouvel An" -> "nouvelan",
+    # "Épiphanie" -> "epiphanie" (E-acute NFKD-gestrippt),
+    # "Fête des Rois" -> "fetedesrois" (E-circumflex NFKD-gestrippt).
+    "jourdelan": (1, 1),
+    "nouvelan": (1, 1),
+    "epiphanie": (1, 6),
+    "fetedesrois": (1, 6),
     # Februar
     "valentinstag": (2, 14),
     "valentinesday": (2, 14),
@@ -2377,6 +2386,9 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "labourday": (5, 1),
     "laborday": (5, 1),
     "mayday": (5, 1),
+    # FR "Fête du Travail" / "Fête des Travailleurs" - identisches Datum wie DE.
+    "fetedutravail": (5, 1),
+    "fetedestravailleurs": (5, 1),
     # Juni
     # Peter und Paul (29. Juni): katholisches Hochfest der Apostelfuersten,
     # gesetzlicher Feiertag in den Schweizer Kantonen Tessin und Graubuenden;
@@ -2412,6 +2424,11 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "assumptionofmary": (8, 15),
     "assumptionofthevirginmary": (8, 15),
     "assumptionofourlady": (8, 15),
+    # FR "Assomption" - identisches Datum, katholischer Hochfest-Termin,
+    # gesetzlicher Feiertag in Frankreich und in katholischen Suisse-romande-
+    # Kantonen (Wallis/Freiburg/Jura).
+    "assomption": (8, 15),
+    "assomptiondemarie": (8, 15),
     # Oktober
     "tagderdeutscheneinheit": (10, 3),
     "germanunityday": (10, 3),
@@ -2433,6 +2450,11 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     # November
     "allerheiligen": (11, 1),
     "allsaintsday": (11, 1),
+    # FR "Toussaint" - identisches Datum wie Allerheiligen; katholischer
+    # Hochfest-Termin, gesetzlicher Feiertag in Frankreich und den
+    # katholischen Suisse-romande-Kantonen. Verbreiteter Datums-Marker in
+    # FR-sprachigen Alpen-Fundort-Notizen (Val d'Anniviers, Chamonix).
+    "toussaint": (11, 1),
     # Allerseelen / All Souls' Day (2. November): katholischer Gedenktag der
     # verstorbenen Glaeubigen, direkt nach Allerheiligen (bereits vorhanden,
     # (11, 1)). Kein gesetzlicher Feiertag in DACH, aber als kirchlicher
@@ -2448,6 +2470,9 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "nikolaus": (12, 6),
     "nikolaustag": (12, 6),
     "stnicholasday": (12, 6),
+    # FR "Saint Nicolas" (6. Dezember) - identisches Datum, in FR-sprachigen
+    # katholischen Regionen (Lothringen, Suisse romande) verbreitet.
+    "saintnicolas": (12, 6),
     # Mariae Empfaengnis / Immaculate Conception (8. Dezember): katholisches
     # Hochfest, gesetzlicher Feiertag in Oesterreich (national) sowie in
     # den katholischen Schweizer Kantonen Luzern, Uri, Schwyz, Obwalden,
@@ -2468,6 +2493,10 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "ersterweihnachtsfeiertag": (12, 25),
     "christmas": (12, 25),
     "christmasday": (12, 25),
+    # FR "Noël" / "Jour de Noël" - identisches Datum wie DE Weihnachten.
+    # Norm-Schluessel entsteht per NFKD-Strip der Trema aus "Noël" -> "noel".
+    "noel": (12, 25),
+    "jourdenoel": (12, 25),
     "stephanstag": (12, 26),
     "stefanstag": (12, 26),
     "zweitenweihnachtsfeiertag": (12, 26),
@@ -2476,6 +2505,13 @@ _HOLIDAY_MONTH_DAY: dict[str, tuple[int, int]] = {
     "silvester": (12, 31),
     "silvesterabend": (12, 31),
     "newyearseve": (12, 31),
+    # FR "Saint-Sylvestre" / "Réveillon" (31. Dezember) - identisches Datum
+    # wie DE Silvester (das der DE-Name selbst aus dem franzoesisch-lateinisch-
+    # kirchlichen "Fête de Saint-Sylvestre" I ableitet). Norm-Schluessel per
+    # NFKD-Strip: "Saint-Sylvestre" -> "saintsylvestre", "Réveillon" ->
+    # "reveillon".
+    "saintsylvestre": (12, 31),
+    "reveillon": (12, 31),
 }
 # Variable Feiertage: Osterdatums-relative Offsets in Tagen (positive = nach
 # Ostersonntag, negative = davor). Der konkrete Kalendertag jedes Feiertags
@@ -2503,22 +2539,32 @@ _HOLIDAY_EASTER_OFFSET: dict[str, int] = {
     # Karwoche vor Ostersonntag
     "palmsonntag": -7,
     "palmsunday": -7,
+    "dimanchedesrameaux": -7,  # FR "Dimanche des Rameaux"
     "gruendonnerstag": -3,
     "maundythursday": -3,
     "holythursday": -3,
+    "jeudisaint": -3,  # FR "Jeudi Saint"
     "karfreitag": -2,
     "goodfriday": -2,
+    "vendredisaint": -2,  # FR "Vendredi Saint"
     "karsamstag": -1,
     "karsonnabend": -1,
     "holysaturday": -1,
+    "samedisaint": -1,  # FR "Samedi Saint"
     # Ostersonntag = Anker (0)
     "ostern": 0,
     "ostersonntag": 0,
     "easter": 0,
     "eastersunday": 0,
+    # FR "Pâques" / "Dimanche de Pâques" - NFKD-Strip der A-circumflex ergibt
+    # "paques"/"dimanchedepaques". Norm-Schluessel spiegelt die FR-Praesenz
+    # in Suisse-romande-Sammlungs-Notizen (Val d'Anniviers/Chamonix/Wallis).
+    "paques": 0,
+    "dimanchedepaques": 0,
     # Osterwoche
     "ostermontag": 1,
     "eastermonday": 1,
+    "lundidepaques": 1,  # FR "Lundi de Pâques"
     # Fastnachtszeit vor Ostern (relativ zu Aschermittwoch)
     "aschermittwoch": -46,
     "ashwednesday": -46,
@@ -2541,18 +2587,23 @@ _HOLIDAY_EASTER_OFFSET: dict[str, int] = {
     "ascension": 39,
     "ascensionofchrist": 39,
     "ascensionofourlord": 39,
+    "jeudidelascension": 39,  # FR "Jeudi de l'Ascension"
     "pfingsten": 49,
     "pfingstsonntag": 49,
     "pentecost": 49,
     "whitsun": 49,
     "whitsunday": 49,
+    "pentecote": 49,  # FR "Pentecôte" (e-circumflex NFKD-gestrippt)
+    "dimanchedepentecote": 49,  # FR "Dimanche de Pentecôte"
     "pfingstmontag": 50,
     "whitmonday": 50,
     "pentecostmonday": 50,
+    "lundidepentecote": 50,  # FR "Lundi de Pentecôte"
     "trinitatis": 56,
     "trinitysunday": 56,
     "fronleichnam": 60,
     "corpuschristi": 60,
+    "fetedieu": 60,  # FR "Fête-Dieu" (e-circumflex NFKD-gestrippt)
 }
 
 
@@ -3652,11 +3703,24 @@ def _holiday_key(name: str) -> str:
     :data:`_HOLIDAY_EASTER_OFFSET`) sind gegen denselben Norm-Schluessel
     indiziert, und ein aus dem :data:`_HOLIDAY_YEAR`-Regex gefallener Name
     wird pro Aufruf nur einmal normalisiert.
+
+    NFKD-Dekomposition + Combining-Mark-Filter strippt uebrige lateinische
+    Diakritika (FR: é/è/ê/à/â/î/ô/û/ç/ï/ë, IT: à/è/ì/ò/ù, ES: á/í/ó/ñ/ü),
+    sodass FR-Feiertagsnamen wie "Noël"/"Pâques"/"Épiphanie"/"Pentecôte"
+    auf ASCII-Aequivalente noel/paques/epiphanie/pentecote mappen. DE-
+    Umlaute werden vorher explizit auf ae/oe/ue/ss transliteriert
+    (historische DE-Schreibweise), damit der Filter sie nicht auf a/o/u/s
+    zusammenfaltet - Reihenfolge ist wesentlich. Spiegelt die identische
+    Kaskade in :func:`_normalize_month_name` / :func:`_normalize_season_name`.
     """
     key = name.strip().lower()
     key = (
         key.replace("ä", "ae").replace("ö", "oe")
         .replace("ü", "ue").replace("ß", "ss")
+    )
+    key = "".join(
+        c for c in unicodedata.normalize("NFKD", key)
+        if not unicodedata.combining(c)
     )
     return re.sub(r"[\s.\-'’‘`]+", "", key)
 

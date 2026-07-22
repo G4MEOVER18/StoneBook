@@ -2723,6 +2723,85 @@ def test_parse_iso_date_variable_easter_feiertage():
     assert parse_iso_date("Neujahr 2024") == "2024-01-01"
 
 
+def test_parse_iso_date_franzoesische_feiertage():
+    """FR-Feiertagsnamen (Suisse romande, FR-sprachige Alpen-Fundstellen).
+
+    Deckt beide Achsen ab: Fixed-Date (Nouvel An, Épiphanie, Fête du Travail,
+    Assomption, Toussaint, Saint Nicolas, Noël, Saint-Sylvestre) und Osterzyklus
+    (Dimanche des Rameaux, Jeudi/Vendredi/Samedi Saint, Pâques, Lundi de Pâques,
+    Ascension, Pentecôte, Lundi de Pentecôte, Fête-Dieu). Alle Dates identisch
+    zu ihren DE-Aequivalenten (Weihnachten/Ostern/Karfreitag/...), die FR-
+    Notation ergaenzt die Norm-Schluessel-Menge, ohne Dates zu aendern.
+
+    :func:`_holiday_key` strippt lateinische Diakritika (Trema/Circumflex/
+    Acute/Grave) per NFKD + Combining-Filter, sodass ``"Noël"`` -> ``noel``,
+    ``"Pâques"`` -> ``paques``, ``"Épiphanie"`` -> ``epiphanie``,
+    ``"Pentecôte"`` -> ``pentecote`` alle auf ASCII-Norm-Schluessel mappen -
+    spiegelt die identische Kaskade in :func:`_normalize_month_name` /
+    :func:`_normalize_season_name`, die FR-/IT-/ES-/PT-Monatsnamen mit
+    Diakritika ebenfalls per NFKD auf ASCII-Aequivalente reduziert.
+    """
+    # Fixed-Date FR: Kalenderdatum aus _HOLIDAY_MONTH_DAY
+    assert parse_iso_date("Jour de l'An 2024") == "2024-01-01"
+    assert parse_iso_date("Nouvel An 2024") == "2024-01-01"
+    assert parse_iso_date("Épiphanie 2024") == "2024-01-06"
+    assert parse_iso_date("Epiphanie 2024") == "2024-01-06"  # ASCII-Fallback
+    assert parse_iso_date("Fête des Rois 2024") == "2024-01-06"
+    assert parse_iso_date("Fête du Travail 2024") == "2024-05-01"
+    assert parse_iso_date("Fête des Travailleurs 2024") == "2024-05-01"
+    assert parse_iso_date("Assomption 2024") == "2024-08-15"
+    assert parse_iso_date("Assomption de Marie 2024") == "2024-08-15"
+    assert parse_iso_date("Toussaint 2020") == "2020-11-01"
+    assert parse_iso_date("Saint Nicolas 2022") == "2022-12-06"
+    assert parse_iso_date("Noël 2023") == "2023-12-25"
+    assert parse_iso_date("Jour de Noël 2023") == "2023-12-25"
+    assert parse_iso_date("Saint-Sylvestre 2020") == "2020-12-31"
+    assert parse_iso_date("Réveillon 2020") == "2020-12-31"
+    # Variable FR: Datum aus _HOLIDAY_EASTER_OFFSET (Ostersonntag 2024 = 31.03.)
+    assert parse_iso_date("Dimanche des Rameaux 2024") == "2024-03-24"
+    assert parse_iso_date("Jeudi Saint 2024") == "2024-03-28"
+    assert parse_iso_date("Vendredi Saint 2024") == "2024-03-29"
+    assert parse_iso_date("Samedi Saint 2024") == "2024-03-30"
+    assert parse_iso_date("Pâques 2024") == "2024-03-31"
+    assert parse_iso_date("Dimanche de Pâques 2024") == "2024-03-31"
+    assert parse_iso_date("Lundi de Pâques 2024") == "2024-04-01"
+    assert parse_iso_date("Jeudi de l'Ascension 2024") == "2024-05-09"
+    assert parse_iso_date("Pentecôte 2024") == "2024-05-19"
+    assert parse_iso_date("Dimanche de Pentecôte 2024") == "2024-05-19"
+    assert parse_iso_date("Lundi de Pentecôte 2024") == "2024-05-20"
+    assert parse_iso_date("Fête-Dieu 2024") == "2024-05-30"
+    # Case-Insensitivitaet
+    assert parse_iso_date("noël 2023") == "2023-12-25"
+    assert parse_iso_date("NOEL 2023") == "2023-12-25"
+    assert parse_iso_date("pâques 2024") == "2024-03-31"
+    assert parse_iso_date("PÂQUES 2024") == "2024-03-31"
+    # Praepositions-Trenner (von / of) - Whitespace zwischen FR-Name und Jahr
+    assert parse_iso_date("Noël von 2023") == "2023-12-25"
+    assert parse_iso_date("Pâques of 2024") == "2024-03-31"
+    # Year-first Reihenfolge
+    assert parse_iso_date("2023 Noël") == "2023-12-25"
+    assert parse_iso_date("2024/Pâques") == "2024-03-31"
+    assert parse_iso_date("2020-Toussaint") == "2020-11-01"
+    # Annaeherungspraefix + FR-Feiertag
+    assert parse_iso_date("ca. Noël 2023") == "2023-12-25"
+    assert parse_iso_date("~ Pâques 2024") == "2024-03-31"
+    # Klammern-/Trailing-Punct-Strip
+    assert parse_iso_date("(Noël 2023)") == "2023-12-25"
+    assert parse_iso_date("Toussaint 2020.") == "2020-11-01"
+    assert parse_iso_date("Noël 2023 (Foto)") == "2023-12-25"
+    # Jahr ausserhalb 1800-2999 -> None
+    assert parse_iso_date("Noël 1799") is None
+    assert parse_iso_date("Pâques 3000") is None
+    # Regress-Anker: DE-/EN-Formen bleiben gueltig, keine Kollision
+    assert parse_iso_date("Weihnachten 2023") == "2023-12-25"
+    assert parse_iso_date("Christmas 2023") == "2023-12-25"
+    assert parse_iso_date("Ostern 2024") == "2024-03-31"
+    assert parse_iso_date("Karfreitag 2024") == "2024-03-29"
+    assert parse_iso_date("Pfingsten 2024") == "2024-05-19"
+    assert parse_iso_date("Allerheiligen 2020") == "2020-11-01"
+    assert parse_iso_date("Mariä Empfängnis 2023") == "2023-12-08"  # Umlaut-Regress
+
+
 def test_parse_iso_date_adventssonntage():
     """Adventssonntage (1.-4. Advent) werden jahresspezifisch berechnet.
 
