@@ -2610,15 +2610,17 @@ def test_parse_iso_date_dach_konfessionelle_fixed_date_feiertage():
     assert parse_iso_date("Mariä Himmelfahrt") is None
     assert parse_iso_date("Josefstag") is None
     # Variable konfessionelle Feiertage (Volkstrauertag = zweitletzter Sonntag
-    # vor 1. Advent, Totensonntag = letzter Sonntag vor 1. Advent, Advent 1-4,
-    # Buss- und Bettag = Mittwoch vor Totensonntag) fallen weiter auf None -
-    # sie erfordern jaehrlich unterschiedliche Datums-Berechnung (relativ zum
-    # ersten Advent, der jaehrlich zwischen 27.11. und 03.12. springt) und sind
-    # aus Konservativitaets-Gruenden nicht in diesem konfessionellen Fixed-Date-
-    # Fix behandelt.
+    # vor 1. Advent, Totensonntag = letzter Sonntag vor 1. Advent, Buss- und
+    # Bettag = Mittwoch vor Totensonntag) fallen weiter auf None - sie erfordern
+    # jaehrlich unterschiedliche Datums-Berechnung (relativ zum ersten Advent,
+    # der jaehrlich zwischen 27.11. und 03.12. springt) und sind aus
+    # Konservativitaets-Gruenden nicht in diesem konfessionellen Fixed-Date-
+    # Fix behandelt. Die Adventssonntage 1-4 haben inzwischen einen eigenen
+    # dedizierten Zweig via :func:`_advent_sunday` (Christmas-Anker-
+    # Rueckversetzung) und liefern jahresspezifische ISO-Daten -
+    # siehe test_parse_iso_date_adventssonntage.
     assert parse_iso_date("Volkstrauertag 2024") is None
     assert parse_iso_date("Totensonntag 2024") is None
-    assert parse_iso_date("1. Advent 2024") is None
     assert parse_iso_date("Bettag 2024") is None
     # Regress-Anker: bestehende Fixed-Date-Feiertage und Standard-Formate
     assert parse_iso_date("Weihnachten 2023") == "2023-12-25"
@@ -2719,6 +2721,96 @@ def test_parse_iso_date_variable_easter_feiertage():
     assert parse_iso_date("Weihnachten 2024") == "2024-12-25"
     assert parse_iso_date("Silvester 2024") == "2024-12-31"
     assert parse_iso_date("Neujahr 2024") == "2024-01-01"
+
+
+def test_parse_iso_date_adventssonntage():
+    """Adventssonntage (1.-4. Advent) werden jahresspezifisch berechnet.
+
+    Konvention: 4. Advent = letzter Sonntag am oder vor dem 24. Dezember (bzw.
+    24. Dezember selbst, wenn dieser Sonntag ist); die drei uebrigen Advente
+    liegen jeweils 7 Tage frueher. Ordinal-Praefix als Zahl ("1."/"1st") oder
+    Wort ("Erster"/"First") - beide Sprach-Achsen (DE/EN); Grundwort "Advent",
+    "Adventssonntag" oder "Sunday of Advent" / "Sonntag im Advent".
+    """
+    # Referenz-Datenset (kirchlicher Kalender / DBK-Publikationen):
+    # 2020: Dec 24 = Do, damit 4. Advent = 20.12.; 1. Advent = 29.11.
+    assert parse_iso_date("1. Advent 2020") == "2020-11-29"
+    assert parse_iso_date("2. Advent 2020") == "2020-12-06"
+    assert parse_iso_date("3. Advent 2020") == "2020-12-13"
+    assert parse_iso_date("4. Advent 2020") == "2020-12-20"
+    # 2023: Dec 24 = So, damit 4. Advent = 24.12.; 1. Advent = 3.12.
+    assert parse_iso_date("1. Advent 2023") == "2023-12-03"
+    assert parse_iso_date("4. Advent 2023") == "2023-12-24"
+    # 2000/2017/2028: Dec 24 = So (Cross-Century-Anker)
+    assert parse_iso_date("4. Advent 2000") == "2000-12-24"
+    assert parse_iso_date("4. Advent 2017") == "2017-12-24"
+    assert parse_iso_date("4. Advent 2028") == "2028-12-24"
+    # 2019: Dec 24 = Di, damit 4. Advent = 22.12.; 1. Advent = 1.12.
+    assert parse_iso_date("1. Advent 2019") == "2019-12-01"
+    assert parse_iso_date("4. Advent 2019") == "2019-12-22"
+    # 2024: Dec 24 = Di, damit 4. Advent = 22.12.
+    assert parse_iso_date("1. Advent 2024") == "2024-12-01"
+    assert parse_iso_date("4. Advent 2024") == "2024-12-22"
+    # Ordinal-Suffix "st/nd/rd/th" (englische Konvention)
+    assert parse_iso_date("1st Advent 2020") == "2020-11-29"
+    assert parse_iso_date("2nd Advent 2020") == "2020-12-06"
+    assert parse_iso_date("3rd Advent 2020") == "2020-12-13"
+    assert parse_iso_date("4th Advent 2020") == "2020-12-20"
+    # Wort-Ordinal DE
+    assert parse_iso_date("Erster Advent 2020") == "2020-11-29"
+    assert parse_iso_date("Zweiter Advent 2020") == "2020-12-06"
+    assert parse_iso_date("Dritter Advent 2020") == "2020-12-13"
+    assert parse_iso_date("Vierter Advent 2020") == "2020-12-20"
+    # Wort-Ordinal EN
+    assert parse_iso_date("First Advent 2020") == "2020-11-29"
+    assert parse_iso_date("Fourth Advent 2023") == "2023-12-24"
+    # Grundwort-Varianten
+    assert parse_iso_date("1. Adventssonntag 2020") == "2020-11-29"
+    assert parse_iso_date("Erster Adventssonntag 2020") == "2020-11-29"
+    assert parse_iso_date("1. Adventsonntag 2020") == "2020-11-29"  # ohne Doppel-S
+    assert parse_iso_date("First Sunday of Advent 2020") == "2020-11-29"
+    assert parse_iso_date("4th Sunday of Advent 2023") == "2023-12-24"
+    assert parse_iso_date("Vierter Sonntag im Advent 2023") == "2023-12-24"
+    assert parse_iso_date("2. Sonntag im Advent 2020") == "2020-12-06"
+    # Year-first Reihenfolge
+    assert parse_iso_date("2020 1. Advent") == "2020-11-29"
+    assert parse_iso_date("2023/4. Advent") == "2023-12-24"
+    assert parse_iso_date("2020-Erster Advent") == "2020-11-29"
+    assert parse_iso_date("2020 First Sunday of Advent") == "2020-11-29"
+    # Praepositions-Trenner (von/of) analog _QUARTER_LONG / _HALFYEAR_LONG
+    assert parse_iso_date("1. Advent von 2020") == "2020-11-29"
+    assert parse_iso_date("First Advent of 2020") == "2020-11-29"
+    assert parse_iso_date("Vierter Advent von 2023") == "2023-12-24"
+    # Case-Insensitivitaet
+    assert parse_iso_date("ERSTER ADVENT 2020") == "2020-11-29"
+    assert parse_iso_date("erster advent 2020") == "2020-11-29"
+    assert parse_iso_date("1. ADVENT 2020") == "2020-11-29"
+    # Praefix-Verkettung mit _APPROX_PREFIX (Rekursions-Pfad)
+    assert parse_iso_date("ca. 1. Advent 2020") == "2020-11-29"
+    assert parse_iso_date("circa 4. Advent 2023") == "2023-12-24"
+    assert parse_iso_date("etwa Erster Advent 2020") == "2020-11-29"
+    assert parse_iso_date("~ 1. Advent 2020") == "2020-11-29"
+    # Klammer-/Anfuehrungszeichen-/Trailing-Punct-Strip
+    assert parse_iso_date("(1. Advent 2020)") == "2020-11-29"
+    assert parse_iso_date('"1. Advent 2020"') == "2020-11-29"
+    assert parse_iso_date("1. Advent 2020.") == "2020-11-29"
+    assert parse_iso_date("1. Advent 2020 (Foto)") == "2020-11-29"
+    # Ungueltige Ordinal-Positionen -> None
+    assert parse_iso_date("5. Advent 2020") is None
+    assert parse_iso_date("0. Advent 2020") is None
+    # Bare Grundwort ohne Ordinal-Praefix -> None (Locale-Ambiguitaet: bezeichnet
+    # entweder die ganze Adventszeit oder einen unbestimmten Sonntag; kein
+    # deterministisches Datum ableitbar - vgl. Muttertag/Vatertag-Ausschluss).
+    assert parse_iso_date("Advent 2020") is None
+    # False-Positive-Guard: "Advent" als Wortstamm anderer Woerter
+    assert parse_iso_date("Adventskalender 2020") is None
+    # Jahr ausserhalb 1800-2999 -> None
+    assert parse_iso_date("1. Advent 1799") is None
+    assert parse_iso_date("1. Advent 3000") is None
+    # Regress-Anker: Fixed-Date-Feiertage in derselben Dezember-Naehe weiterhin gruen
+    assert parse_iso_date("Nikolaus 2020") == "2020-12-06"
+    assert parse_iso_date("Heiligabend 2020") == "2020-12-24"
+    assert parse_iso_date("Weihnachten 2020") == "2020-12-25"
 
 
 def test_parse_iso_date_relative_jahresposition():

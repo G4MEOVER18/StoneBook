@@ -2775,6 +2775,80 @@ _HALFYEAR_LONG_YEAR_FIRST = re.compile(
     re.IGNORECASE,
 )
 
+# Adventssonntag + Jahr ("1. Advent 2020", "4. Adventssonntag 2023", "Erster
+# Advent 2020", "Fourth Sunday of Advent 2020"). Konvention: die vier Adventssonntage
+# sind kirchen-kalendarisch definiert als die vier Sonntage vor Weihnachten (25.12.).
+# Der 4. Advent ist der letzte Sonntag am oder vor dem 24.12.; ist der 24.12. selbst
+# ein Sonntag (2000, 2006, 2017, 2023, 2028), so ist der 24.12. der 4. Advent.
+# Der 3./2./1. Advent liegt dann jeweils 7/14/21 Tage frueher. Die Berechnung ist
+# jahresspezifisch (weil der Wochentag des 24.12. jedes Jahr variiert) und wird
+# analog zu :func:`_easter_sunday` / :func:`_variable_holiday_iso` zur Parse-Zeit
+# aufgeloest. In DACH-Sammler-Notizen als Datums-Marker verbreitet, da die
+# Adventszeit die klassische Vor-Weihnachts-Pflege-Saison fuer Vitrinen-Aufarbeitung
+# und Katalog-Uebergaben ist ("Erwerb 1. Advent 2020 auf der Sinsheimer Boerse",
+# "Fund 4. Advent 2023 im Familien-Nachlass", "Foto-Session 2. Advent 2019
+# Vorbereitung Weihnachts-Ausstellung"). Bisher fielen alle Advent-Formen still
+# auf None, obwohl die Datums-Bedeutung jahresspezifisch eindeutig ist -
+# der Kalender-Wochentag-Bezug ist deterministisch und identisch zur Osterzyklus-
+# Semantik der :func:`_variable_holiday_iso` (nur mit Weihnachts-Anker statt
+# Oster-Anker). Beide Ordinal-Formen (numerisch "1."/"1st" und Wort "Erster"/
+# "First") werden akzeptiert; Feiertag-Wort "Advent"/"Adventssonntag"/
+# "Sunday of Advent" ebenfalls. Praepositions-Alternante ``\s+(?:von|of)\s+``
+# spiegelt _QUARTER_LONG / _HALFYEAR_LONG.
+_ADVENT_ORDINAL_WORDS: dict[str, int] = {
+    "erster": 1, "zweiter": 2, "dritter": 3, "vierter": 4,
+    "first": 1, "second": 2, "third": 3, "fourth": 4,
+}
+_ADVENT_YEAR = re.compile(
+    r"^\s*"
+    r"(?:([1-4])\s*(?:st|nd|rd|th|\.)?\s+"
+    r"|(erster|zweiter|dritter|vierter|first|second|third|fourth)\s+)"
+    r"(?:(?:sonntag|sunday)\s+(?:im|des|of)\s+)?"
+    r"advent(?:s?sonntag)?"
+    r"(?:\s*[,_/\-]\s*|\s+(?:von|of)\s+|\s+)"
+    r"(\d{4})\s*$",
+    re.IGNORECASE,
+)
+_ADVENT_YEAR_FIRST = re.compile(
+    r"^\s*(\d{4})"
+    r"(?:\s*[,_/\-]\s*|\s+(?:von|of)\s+|\s+)"
+    r"(?:([1-4])\s*(?:st|nd|rd|th|\.)?\s+"
+    r"|(erster|zweiter|dritter|vierter|first|second|third|fourth)\s+)"
+    r"(?:(?:sonntag|sunday)\s+(?:im|des|of)\s+)?"
+    r"advent(?:s?sonntag)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _advent_sunday(year: int, index: int) -> tuple[int, int]:
+    """(Monat, Tag) des ``index``-ten Adventssonntags im Jahr ``year`` (1..4).
+
+    4. Advent = letzter Sonntag am oder vor dem 24. Dezember (bzw. der
+    24. Dezember selbst, wenn er auf einen Sonntag faellt). Der N-te Advent
+    liegt (4-N)*7 Tage frueher. ``index`` muss zwischen 1 und 4 liegen;
+    der Aufrufer stellt das per Regex-Match ``[1-4]`` sicher.
+    """
+    christmas_eve = datetime.date(year, 12, 24)
+    # Python-weekday(): Montag=0..Sonntag=6; Rueckversetzung bis zum
+    # letzten Sonntag am oder vor dem 24.12.
+    days_back = (christmas_eve.weekday() + 1) % 7
+    fourth_advent = christmas_eve - datetime.timedelta(days=days_back)
+    target = fourth_advent - datetime.timedelta(days=(4 - index) * 7)
+    return target.month, target.day
+
+
+def _advent_index_from_match(numeric: str | None, word: str | None) -> int | None:
+    """Vereinheitlicht Zahl-Ordinal ("1"/"2"/...) und Wort-Ordinal
+    ("erster"/"first"/...) auf 1..4; None bei unbekanntem Wort oder wenn beide
+    Gruppen leer sind.
+    """
+    if numeric:
+        return int(numeric)
+    if word:
+        return _ADVENT_ORDINAL_WORDS.get(word.lower())
+    return None
+
+
 # ISO 8601 Ordinal-Datum (Tag des Jahres): "2024-165", "2024165" (compact, 7 Ziffern),
 # "2024-001". Konvention: Tag 1..366 (366 nur in Schaltjahren). Verbreitet in
 # NASA-/wissenschaftlichen Exporten und Astro-Sammler-Notizen ("Julianischer Tag");
@@ -5498,6 +5572,33 @@ def parse_iso_date(text) -> str | None:
         month = _normalize_season_name(m.group(2))
         if month and 1800 <= year <= 2999:
             return f"{year:04d}-{month:02d}-01"
+    # Adventssonntag + Jahr ("1. Advent 2020", "Erster Advent 2020",
+    # "4. Adventssonntag 2023", "Fourth Sunday of Advent 2020"). Vor
+    # _HOLIDAY_YEAR einsortiert, weil der Advent numerische Ordinal-Praefixe
+    # (``1.``/``1st``) am String-Anfang traegt, die die _HOLIDAY_YEAR-Namen-
+    # Zeichenklasse (``[A-Za-z...]``, keine Ziffern) nicht akzeptieren wuerde
+    # - der Match ist strukturell disjunkt und wuerde sonst still auf None
+    # fallen. Wort-Ordinal-Formen (``Erster Advent``/``First Advent``) waeren
+    # zwar formal von _HOLIDAY_YEAR erfassbar, aber "erster"/"first" ist kein
+    # Schluessel in :data:`_HOLIDAY_MONTH_DAY` und der Zweig wuerde ebenfalls
+    # auf None fallen (die _HOLIDAY_MONTH_DAY-Whitelist listet nur die reinen
+    # Feiertag-Namen). Dedizierte Advent-Regex + jahresspezifische Berechnung
+    # via :func:`_advent_sunday` (Christmas-Anker-Rueckversetzung analog zur
+    # Osterzyklus-Berechnung in :func:`_variable_holiday_iso`).
+    m = _ADVENT_YEAR.match(s)
+    if m:
+        idx = _advent_index_from_match(m.group(1), m.group(2))
+        year = int(m.group(3))
+        if idx is not None and 1800 <= year <= 2999:
+            month, day = _advent_sunday(year, idx)
+            return f"{year:04d}-{month:02d}-{day:02d}"
+    m = _ADVENT_YEAR_FIRST.match(s)
+    if m:
+        year = int(m.group(1))
+        idx = _advent_index_from_match(m.group(2), m.group(3))
+        if idx is not None and 1800 <= year <= 2999:
+            month, day = _advent_sunday(year, idx)
+            return f"{year:04d}-{month:02d}-{day:02d}"
     # Fixed-Date-Feiertag + Jahr ("Weihnachten 2023", "Silvester 2020",
     # "Neujahr 2024", "Halloween 2019"). Nach den Season-Zweigen einsortiert,
     # damit "Sommer 2024" / "Herbst 1985" zuerst als Saison behandelt werden
