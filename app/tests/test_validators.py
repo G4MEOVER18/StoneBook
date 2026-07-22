@@ -6712,6 +6712,76 @@ def test_parse_iso_date_fr_it_no_data_marker():
     assert parse_iso_date("32.13.2024") is None
 
 
+def test_parse_iso_date_es_pt_no_data_marker():
+    """ES/PT-No-Data-Marker liefern None (nicht als silent-data-loss Fund).
+
+    Schliesst die ES-/PT-Sprach-Achse der No-Data-Marker: die uebrigen
+    Vollnamen-Kategorien (Monate/Saisons/Direction-Woerter) haben ES- und
+    PT-Support seit den commits 652ac1a (ES-Monate), 69e71b6 (ES-Saison),
+    f9804bd (ES-Direction), 87eb2cd (PT-Monate) und 4c3ce4f (PT-Saison),
+    aber die No-Data-Marker-Achse fuehrte bisher nur DE/EN/FR/IT (+
+    Bibliografie n.d./s.d.). ES-/PT-sprachige Auktions-/Museums-Etiketten
+    und geerbte Sammler-Notizen mit ``desconocido``/``sin fecha`` (ES)
+    oder ``desconhecido``/``sem data`` (PT) fielen bisher als "invalid
+    Datum" statt "no data" in den silent-data-loss-Report - der User
+    hatte einen expliziten Marker gesetzt, der Parser konnte ihn nur
+    nicht als Marker erkennen.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der
+    Marker-Check ist case-insensitive (parse_iso_date .lower()t den
+    Input vor dem Check).
+    """
+    # ES-Formen: mask./fem. Adjektiv-Form und Prosa-Formen
+    assert parse_iso_date("desconocido") is None
+    assert parse_iso_date("Desconocido") is None
+    assert parse_iso_date("DESCONOCIDO") is None
+    assert parse_iso_date("desconocida") is None       # feminin
+    assert parse_iso_date("sin fecha") is None
+    assert parse_iso_date("Sin Fecha") is None
+    assert parse_iso_date("fecha desconocida") is None
+    assert parse_iso_date("Fecha Desconocida") is None
+    # PT-Formen: mask./fem. Adjektiv-Form und Prosa-Formen
+    assert parse_iso_date("desconhecido") is None
+    assert parse_iso_date("Desconhecido") is None
+    assert parse_iso_date("DESCONHECIDO") is None
+    assert parse_iso_date("desconhecida") is None      # feminin
+    assert parse_iso_date("sem data") is None
+    assert parse_iso_date("Sem Data") is None
+    assert parse_iso_date("data desconhecida") is None
+    assert parse_iso_date("Data Desconhecida") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  desconocido  ") is None
+    assert parse_iso_date("  sem data  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("desconocido", "desconocida", "sin fecha",
+                   "fecha desconocida", "desconhecido", "desconhecida",
+                   "sem data", "data desconhecida"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("desconocido", "desconocida", "sin fecha",
+                   "fecha desconocida", "desconhecido", "desconhecida",
+                   "sem data", "data desconhecida"):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE/EN/FR/IT/Bibliografie-Marker
+    # bleiben in der Menge (keine Kollision durch die neuen Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die
+    # neuen ES-/PT-Marker triggern nicht auf ISO-Datums-Strings).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben
+    # None als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through
+    # zur normalen Parse-Kette).
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

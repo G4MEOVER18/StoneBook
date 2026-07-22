@@ -99,6 +99,33 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # autunno/inverno), :data:`_DIRECTION_WORD` (est/ovest) und
         # :data:`_APPROX_PREFIX` (verso/attorno) auf die No-Data-Marker-Achse.
         "sconosciuto", "sconosciuta", "ignoto", "ignota", "senza data",
+        # Spanische Aequivalente (Sammler-Region Andalusien mit Almeria/
+        # Sierra Almagrera/Rodalquilar/Riotinto sowie La Union Murcia,
+        # lateinamerikanische Fundstellen Cerro Rico Potosi/Chuquicamata/
+        # La Rinconada) sowie geerbte Etiketten von ES-sprachigen
+        # Auktions-/Museums-Anbietern (Fabre Minerals Barcelona, Museo
+        # Nacional de Ciencias Naturales Madrid). ``desconocido``/
+        # ``desconocida`` (mask./fem. Form von "unbekannt"), ``sin fecha``
+        # (Standard-Katalog-Konvention "ohne Datum"), ``fecha desconocida``
+        # (invertierte Prosa-Form). Spiegelt die ES-Erweiterungen in
+        # :data:`_MONTH_NAMES` (enero..diciembre, commit 652ac1a),
+        # :data:`_SEASON_MONTHS` (primavera/verano/otono/invierno, commit
+        # 69e71b6) und :data:`_DIRECTION_WORD` (norte/sur/este/oeste,
+        # commit f9804bd) auf die No-Data-Marker-Achse und schliesst damit
+        # die ES-Achse aller vier parse-relevanten Vollnamen-Kategorien.
+        "desconocido", "desconocida", "sin fecha", "fecha desconocida",
+        # Portugiesische Aequivalente (Panasqueira/Beira Baixa fuer
+        # Wolframit-/Quarz-Adern, brasilianische Pegmatit-Region Minas
+        # Gerais/Bahia mit Turmalin/Topas/Aquamarin/Beryll) sowie geerbte
+        # PT-BR-Sammler-/Auktions-/Museums-Notizen (Museu Nacional de
+        # Historia Natural Lissabon). ``desconhecido``/``desconhecida``
+        # (mask./fem. Form von "unbekannt"), ``sem data`` (Standard-
+        # Katalog-Konvention "ohne Datum"), ``data desconhecida``
+        # (invertierte Prosa-Form). Spiegelt die PT-Erweiterungen in
+        # :data:`_MONTH_NAMES` (janeiro..dezembro, commit 87eb2cd) und
+        # :data:`_SEASON_MONTHS` (verao/outono/primavera/inverno, commit
+        # 4c3ce4f) auf die No-Data-Marker-Achse.
+        "desconhecido", "desconhecida", "sem data", "data desconhecida",
         # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
         # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
         # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum
