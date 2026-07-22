@@ -495,6 +495,45 @@ _APPROX_PREFIX = re.compile(
     # ``verso`` matcht nicht in ``versoehnung``/``version`` (analog);
     # ``attorno`` hat keinen DE/EN-Wortstamm-Konflikt.
     r"|vers|environ|verso|attorno"
+    # ES-/PT-Annaeherungs-Marker (Sammler-Region Andalusien mit Almeria/
+    # Sierra Almagrera/Rodalquilar/Riotinto sowie La Union Murcia, latein-
+    # amerikanische Fundstellen Cerro Rico Potosi/Chuquicamata/La Rinconada;
+    # Panasqueira/Beira Baixa fuer Wolframit-/Quarz-Adern, brasilianische
+    # Pegmatit-Region Minas Gerais/Bahia mit Turmalin/Topas/Aquamarin/Beryll).
+    # ``hacia`` (ES) = "gegen"/"um" - der ES-Aequivalent zu DE ``gegen``/FR
+    # ``vers``/IT ``verso``, Standard-Vokabel fuer "ungefaehr um ein Datum
+    # herum" in Fund-Etiketten und Katalog-Eintraegen ("hacia 1985",
+    # "hacia junio 2024", "hacia el verano 2024"). ``aproximadamente`` (ES/PT
+    # geteilt) = "ungefaehr"/"circa" - der direkte Aequivalent zu DE
+    # ``ungefaehr``/``ca.``/EN ``approximately``, verbreitet in wissen-
+    # schaftlichen ES-/PT-Publikationen und formalisierten Katalog-
+    # Eintraegen ("aproximadamente 1985", "aproximadamente junio 2024"),
+    # semantisch identisch aber sprachliche Katalog-Konvention. ``talvez``
+    # (PT) = "vielleicht"/"eventuell" - der PT-Aequivalent zu DE ``evtl.``/
+    # ``eventuell``/EN ``perhaps``/``maybe``, verbreitet in PT-BR-Sammler-
+    # Notizen mit Unsicherheits-Marker ("talvez 1985 em Minas Gerais",
+    # "talvez junho 2024"). ``provavelmente`` (PT) = "wahrscheinlich" -
+    # der PT-Aequivalent zu DE ``wahrscheinlich``/EN ``probably``/
+    # ``presumably``, verbreitet in narrativen PT-BR-Sammler-Notizen und
+    # Museums-Etiketten ("provavelmente 1985 em Panasqueira"). Bisher fielen
+    # alle ES-/PT-Praefix-Formen still auf None, obwohl semantisch identisch
+    # zu ``ca.``/``circa``/DE ``ungefaehr``/FR ``vers``/IT ``verso``.
+    # Spiegelt die ES-/PT-Erweiterungen in :data:`_MONTH_NAMES` (enero..
+    # diciembre / janeiro..dezembro, commits 652ac1a und 87eb2cd),
+    # :data:`_SEASON_MONTHS` (primavera/verano/otono/invierno und verao/
+    # outono/primavera/inverno, commits 69e71b6 und 4c3ce4f),
+    # :data:`_DIRECTION_WORD` (norte/sur/este/oeste ES, commit f9804bd) und
+    # :data:`DATE_NO_DATA_MARKERS` (desconocido/sin fecha/desconhecido/sem
+    # data, commit bebce89) auf die Approx-Praefix-Achse und schliesst
+    # damit die ES-/PT-Achse aller parse-relevanten Vollnamen-Kategorien
+    # inklusive der Approx-Semantik. Kollisions-Schutz durch das
+    # ``\s+``-Suffix: ``hacia`` matcht nicht in ``haciendo``/``hacia`` als
+    # Verb-Form ohne Whitespace (nach ``hacia`` folgt hier meist Text ohne
+    # Whitespace), ``aproximadamente`` und ``provavelmente`` haben durch
+    # ihre Wort-Laenge (14/12 Zeichen) keinen ueberlappenden Wortstamm zu
+    # anderen Sprachen, ``talvez`` (PT-spezifisch, im ES ist die zwei-Wort-
+    # Form ``tal vez`` Standard und faellt nicht in das single-Wort-Pattern).
+    r"|hacia|aproximadamente|provavelmente|talvez"
     r")\s+"
     # ``∼`` (U+223C, TILDE OPERATOR, LaTeX ``\sim``) als weiterer Symbolic-
     # Marker in der Symbolic-Marker-Klasse. Semantisch identisch zu ``~``

@@ -1669,6 +1669,66 @@ def test_parse_iso_date_annaeherungs_praefix_fr_it():
     assert parse_iso_date("etwa 1985") == "1985-01-01"
 
 
+def test_parse_iso_date_annaeherungs_praefix_es_pt():
+    """ES-/PT-Annaeherungs-Marker (Sammler-Region Andalusien / lateinamerika-
+    nische Fundstellen / Panasqueira / brasilianische Pegmatite).
+
+    ``hacia`` (ES) und ``aproximadamente`` (ES/PT geteilt) sind die Standard-
+    Vokabeln fuer "gegen"/"um"/"ungefaehr" ein Datum herum; ``provavelmente``
+    (PT) fuer "wahrscheinlich"; ``talvez`` (PT) fuer "vielleicht"/"eventuell".
+    Semantisch identisch zu ``ca.``/``circa``/``etwa``/``vers``/``verso`` -
+    Praefix wird gestrippt, das ISO-Datum-Output ist identisch zur reinen
+    Form. Spiegelt die FR/IT-Erweiterungen auf die ES/PT-Sprach-Achse.
+    """
+    # ES: hacia (= gegen/um)
+    assert parse_iso_date("hacia 1985") == "1985-01-01"
+    assert parse_iso_date("hacia junio 2024") == "2024-06-01"
+    assert parse_iso_date("hacia 13 junio 2024") == "2024-06-13"
+    # ES/PT: aproximadamente (= ungefaehr)
+    assert parse_iso_date("aproximadamente 1985") == "1985-01-01"
+    assert parse_iso_date("aproximadamente junio 2024") == "2024-06-01"
+    assert parse_iso_date("aproximadamente junho 2024") == "2024-06-01"
+    # PT: provavelmente (= wahrscheinlich)
+    assert parse_iso_date("provavelmente 1985") == "1985-01-01"
+    assert parse_iso_date("provavelmente junho 2024") == "2024-06-01"
+    # PT: talvez (= vielleicht/eventuell)
+    assert parse_iso_date("talvez 1985") == "1985-01-01"
+    assert parse_iso_date("talvez junho 2024") == "2024-06-01"
+    # Case-insensitive (spiegelt DE/EN/FR/IT-Praefixe)
+    assert parse_iso_date("HACIA 1985") == "1985-01-01"
+    assert parse_iso_date("Hacia 1985") == "1985-01-01"
+    assert parse_iso_date("APROXIMADAMENTE 1985") == "1985-01-01"
+    assert parse_iso_date("PROVAVELMENTE 1985") == "1985-01-01"
+    assert parse_iso_date("Talvez 1985") == "1985-01-01"
+    # Praefix + Saison (rekursive Aufloesung via _SEASON_YEAR)
+    assert parse_iso_date("hacia verano 2024") == "2024-06-01"
+    assert parse_iso_date("aproximadamente verao 2024") == "2024-06-01"
+    assert parse_iso_date("provavelmente inverno 2024") == "2024-12-01"
+    # Verkettet mit anderen Praefixen (Rekursion loest sie sequentiell auf)
+    assert parse_iso_date("hacia ca. 1985") == "1985-01-01"
+    assert parse_iso_date("ca. hacia 1985") == "1985-01-01"
+    assert parse_iso_date("aproximadamente circa 1985") == "1985-01-01"
+    # Kein False-Positive fuer aehnlich beginnende Woerter - der Praefix
+    # muss durch \\s+ vom Rest getrennt sein (kompakte Verb-Formen und
+    # laengere Woerter ohne Whitespace-Trenner werden nicht gestrippt).
+    assert parse_iso_date("hacia1985") is None
+    assert parse_iso_date("aproximadamente1985") is None
+    # Ohne Datum-Rest oder mit ungueltigem Rest → None
+    assert parse_iso_date("hacia") is None
+    assert parse_iso_date("aproximadamente") is None
+    assert parse_iso_date("provavelmente abc") is None
+    assert parse_iso_date("talvez xyz") is None
+    assert parse_iso_date("hacia 1700") is None  # ausserhalb 1800-2999
+    # Bestehende DE/EN/FR/IT-Praefixe unveraendert (kein Regress)
+    assert parse_iso_date("ca. 1985") == "1985-01-01"
+    assert parse_iso_date("circa 2020") == "2020-01-01"
+    assert parse_iso_date("etwa 1985") == "1985-01-01"
+    assert parse_iso_date("vers 1985") == "1985-01-01"
+    assert parse_iso_date("verso 1985") == "1985-01-01"
+    assert parse_iso_date("environ 1985") == "1985-01-01"
+    assert parse_iso_date("attorno 1985") == "1985-01-01"
+
+
 def test_parse_iso_date_folgende_jahre_suffix():
     """Trailing "und folgende Jahre"-Suffix (DE-Bibliografie-/Zitat-Standard).
 
