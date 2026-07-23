@@ -168,6 +168,7 @@ class Statistik:
     wert_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_quartal: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -197,6 +198,7 @@ class Statistik:
     gewicht_pro_funddatum_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_quartal: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -1392,6 +1394,9 @@ class Statistik:
             "wert_pro_funddatum_wochentag": [
                 (t, round(w, 2)) for t, w in self.wert_pro_funddatum_wochentag
             ],
+            "wert_pro_funddatum_quartal": [
+                (q, round(w, 2)) for q, w in self.wert_pro_funddatum_quartal
+            ],
             "wert_pro_erstellt_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_erstellt_am_jahr
             ],
@@ -1478,6 +1483,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_wochentag": [
                 (t, round(g, 2)) for t, g in self.gewicht_pro_funddatum_wochentag
+            ],
+            "gewicht_pro_funddatum_quartal": [
+                (q, round(g, 2)) for q, g in self.gewicht_pro_funddatum_quartal
             ],
             "gewicht_pro_erstellt_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_erstellt_am_jahr
@@ -2826,6 +2834,51 @@ def _sum_by_funddatum_monat(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, k ASC"
     )
     return [(r["k"], float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_funddatum_quartal(conn: sqlite3.Connection, value_sql: str,
+                              extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Quartal (Q1..Q4).
+
+    Pendant zu :func:`_count_funddatum_quartal` (Anzahl), aber summiert
+    Wert/Gewicht je Quartals-Bucket. Waehrend die Anzahl-Sicht die Boersen-/
+    Kampagnen-Rhythmik zeigt ("in welchem Quartal sammle ich am meisten?"),
+    zeigt die Wert-/Gewicht-Sicht die Quartals-Ergiebigkeit ("in welchem
+    Quartal kommt der wertvollste/schwerste Ertrag"). Q1-Tucson-Show
+    (Feb/Maerz) mit wenigen, aber hochwertigen Auktions-Stuecken hebt den
+    Q1-Wert-Bucket ueberproportional an; Q3-Feld-Saison mit vielen
+    Fundstuecken schiebt das Q3-Gewicht in die Feld-Tour-Quartale.
+
+    Ergaenzt den Monats-Sum (:func:`_sum_by_funddatum_monat`) und den
+    Wochentag-Sum (:func:`_sum_by_funddatum_wochentag`) um die groebere
+    Quartals-Aggregat-Achse; spiegelt die WHERE-Konvention von
+    :func:`_sum_by_funddatum_monat` (nur strikte ISO-Formen mit gueltigem
+    Monatsteil 01-12 tragen bei, siehe :func:`_count_funddatum_quartal`).
+
+    Quartal wird aus dem Monatsteil per ``((monat - 1) / 3) + 1`` abgeleitet:
+    Q1=Jan..Maerz, Q2=Apr..Jun, Q3=Jul..Sep, Q4=Okt..Dez - Ganzzahl-Division
+    in SQLite ist per Definition truncating, konsistent zum Python-Aequivalent
+    ``(m - 1) // 3 + 1`` und zur :func:`_count_funddatum_quartal`-/
+    ``funddatum_quartal_in``-Filter-Konvention.
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach Quartals-
+    Nummer (Q1 zuerst). Ohne Limit, weil maximal vier Quartals-Buckets
+    vorkommen koennen - die Ausgabe wird nie laenger.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(substr(Funddatum, 6, 2) AS INTEGER) - 1) / 3 + 1) AS q, "
+        f"       SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY q HAVING w > 0 "
+        f"ORDER BY w DESC, q ASC"
+    )
+    return [(f"Q{r['q']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_funddatum_wochentag(conn: sqlite3.Connection, value_sql: str,
@@ -5379,6 +5432,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
     st.wert_pro_funddatum_wochentag = _sum_by_funddatum_wochentag(conn, wert_sql)
     st.gewicht_pro_funddatum_wochentag = _sum_by_funddatum_wochentag(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Quartals-Ertrag: welches Kalender-Quartal (Q1..Q4) bringt ueber alle Jahre
+    # aggregiert den meisten Wert bzw. das meiste Gewicht? Komplementaer zu
+    # by_funddatum_quartal (Anzahl - Boersen-/Kampagnen-Rhythmik) und zu
+    # wert_/gewicht_pro_funddatum_monat (Saison-Ergiebigkeit auf feinerer
+    # Monats-Achse). Q1-Tucson-Show mit wenigen, aber hochwertigen Auktions-
+    # Stuecken hebt den Q1-Wert-Bucket ueberproportional an; Q3-Feld-Saison
+    # mit vielen Fundstuecken schiebt das Q3-Gewicht in die Feld-Tour-
+    # Quartale. Ohne Limit, weil max. 4 Quartals-Buckets moeglich sind.
+    st.wert_pro_funddatum_quartal = _sum_by_funddatum_quartal(conn, wert_sql)
+    st.gewicht_pro_funddatum_quartal = _sum_by_funddatum_quartal(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Erfassungs-Wochentag-Ergiebigkeit: spiegelt wert_/gewicht_pro_funddatum_
     # wochentag auf die Erfassungs-Achse - an welchem Wochentag ueber alle

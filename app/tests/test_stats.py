@@ -2702,6 +2702,152 @@ def test_gewicht_pro_funddatum_wochentag_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_funddatum_quartal_aus_seed_db(tmp_path):
+    """Wertsumme pro Funddatum-Quartal ueber alle Jahre; absteigend nach Summe.
+
+    Spiegelt _sum_by_funddatum_monat auf die Quartals-Achse: waehrend die
+    Monats-Sicht die feingranulare Saison-Ergiebigkeit beziffert, zeigt die
+    Quartals-Sicht die Boersen-/Kampagnen-Rhythmik der Kalender-Quartale.
+    Q1-Tucson-Show mit wenigen aber hochwertigen Auktions-Stuecken kann
+    das Q1-Wert-Bucket ueberproportional heben, obwohl der Q1-Zaehler
+    (by_funddatum_quartal) niedrig bleibt - genau die Wert/Anzahl-
+    Entkopplung, die das Wert-pro-Quartal-Paar sichtbar macht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfq.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # Q1 (Jan..Maerz): 500 + 200 = 700 -- Tucson-Show hochwertig
+            ("OBJ_0001", "2024-02-15", 500.0, None),
+            ("OBJ_0002", "2023-03-20", 100.0, 100.0),
+            # Q2 (Apr..Jun): 60
+            ("OBJ_0003", "2024-05-10", 60.0, None),
+            # Q3 (Jul..Sep): 300 + 200 = 500 -- Feld-Saison, viele Kleinstuecke
+            ("OBJ_0004", "2020-07-15", 300.0, None),
+            ("OBJ_0005", "2024-09-30", 200.0, None),
+            # Q4 (Okt..Dez): 250 -- Muenchen-Show
+            ("OBJ_0006", "2023-10-31", 250.0, None),
+            # Ohne Wert -> faellt raus
+            ("OBJ_0007", "2024-08-01", None, None),
+            # Ohne gueltiges Funddatum -> ignoriert
+            ("OBJ_0008", "", 999.0, None),
+            ("OBJ_0009", "2024", 999.0, None),     # ohne Monatsteil
+            ("OBJ_0010", "2024-00-15", 999.0, None),  # Monat 0
+            ("OBJ_0011", "2024-13-01", 999.0, None),  # Monat 13
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: Q1 (700), Q3 (500), Q4 (250), Q2 (60)
+    assert st.wert_pro_funddatum_quartal == [
+        ("Q1", 700.0),
+        ("Q3", 500.0),
+        ("Q4", 250.0),
+        ("Q2", 60.0),
+    ]
+    assert st.as_dict()["wert_pro_funddatum_quartal"] == [
+        ("Q1", 700.0), ("Q3", 500.0), ("Q4", 250.0), ("Q2", 60.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_funddatum_quartal_leer(tmp_path):
+    """Ohne gueltige Wert-Traeger: leere Quartals-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfq_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_quartal == []
+    c.close()
+
+
+def test_wert_pro_funddatum_quartal_tie_break_quartals_nummer(tmp_path):
+    """Bei Gleichstand der Summe entscheidet die Quartals-Nummer aufsteigend.
+
+    Sichert die deterministische Sortierung ab: bei identischer Summe kommt
+    Q1 vor Q2 vor Q3 vor Q4 (nicht die Insertion- oder Hash-Reihenfolge),
+    damit das "bestes Quartal"-Ranking stabil bleibt und gleichwertige
+    Quartale chronologisch hintereinander stehen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfq_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?,?,?)",
+        [
+            # Alle vier Quartale mit identischer Summe 100.0
+            ("OBJ_0001", "2024-11-01", 100.0),  # Q4
+            ("OBJ_0002", "2024-08-01", 100.0),  # Q3
+            ("OBJ_0003", "2024-05-01", 100.0),  # Q2
+            ("OBJ_0004", "2024-02-01", 100.0),  # Q1
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_quartal == [
+        ("Q1", 100.0),
+        ("Q2", 100.0),
+        ("Q3", 100.0),
+        ("Q4", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_quartal_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Funddatum-Quartal; 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Quartals-Achse: waehrend die
+    Wert-Spitze auf einem hochwertigen Q1-Tucson-Auktions-Quartal liegen
+    kann, kann die Gewicht-Spitze auf dem Q3-Feld-Saison-Quartal mit vielen
+    schweren Handstuecken liegen - genau der Vergleich, den das Quartals-
+    Paar sichtbar macht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfq.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # Q3 (Jul..Sep): 800 + 400 + 200 = 1400 -- Feld-Saison
+            ("OBJ_0001", "2024-07-16", 800.0),
+            ("OBJ_0002", "2024-08-23", 400.0),
+            ("OBJ_0003", "2024-09-01", 200.0),
+            # Q1 (Jan..Maerz): 100 + 50 = 150 -- Boerse, kleine Stuecke
+            ("OBJ_0004", "2024-02-15", 100.0),
+            ("OBJ_0005", "2024-03-01", 50.0),
+            # Q4: 300 -- Muenchen-Show
+            ("OBJ_0006", "2024-10-31", 300.0),
+            # NULL/0 -> raus
+            ("OBJ_0007", "2024-05-14", None),
+            ("OBJ_0008", "2024-06-13", 0.0),
+            # Ignoriert (nicht-strikt / kaputter Monat)
+            ("OBJ_0009", "2024", 999.0),
+            ("OBJ_0010", "2024-13-01", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: Q3 (1400), Q4 (300), Q1 (150)
+    # Q2 fehlt, weil einziger Kandidat NULL/0 hat.
+    assert st.gewicht_pro_funddatum_quartal == [
+        ("Q3", 1400.0),
+        ("Q4", 300.0),
+        ("Q1", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_funddatum_quartal"] == [
+        ("Q3", 1400.0), ("Q4", 300.0), ("Q1", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_quartal_leer(tmp_path):
+    """Ohne Gewicht: leere Quartals-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfq_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_quartal == []
+    c.close()
+
+
 def test_wert_pro_erstellt_am_wochentag_aus_seed_db(tmp_path):
     """Wertsumme pro erstellt_am-Wochentag ueber alle Wochen; absteigend nach Summe.
 
