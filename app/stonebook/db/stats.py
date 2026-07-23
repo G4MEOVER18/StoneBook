@@ -73,6 +73,7 @@ class Statistik:
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     by_funddatum_wochentag: dict[str, int] = field(default_factory=dict)
     by_funddatum_quartal: dict[str, int] = field(default_factory=dict)
+    by_funddatum_halbjahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
@@ -1181,6 +1182,7 @@ class Statistik:
             "by_funddatum_monat": dict(self.by_funddatum_monat),
             "by_funddatum_wochentag": dict(self.by_funddatum_wochentag),
             "by_funddatum_quartal": dict(self.by_funddatum_quartal),
+            "by_funddatum_halbjahr": dict(self.by_funddatum_halbjahr),
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
@@ -1781,6 +1783,48 @@ def _count_funddatum_quartal(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY q ORDER BY q ASC"
     )
     return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_funddatum_halbjahr(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Halbjahr (H1/H2), ueber alle Jahre aggregiert.
+
+    Ergaenzt die Quartals-Sicht (:func:`_count_funddatum_quartal`) und die
+    Monats-Sicht (:func:`_count_funddatum_monat`) um die noch groebere
+    Zwei-Punkt-Aggregat-Achse: waehrend das Quartals-Histogramm die
+    Boersen-/Kampagnen-Rhythmik der Kalender-Quartale beziffert, zeigt das
+    Halbjahres-Histogramm die typische Sammler-Kampagnen-Zaesur H1/H2
+    ("Fruehjahrs-Kampagne H1 Jan..Jun ODER Herbst-Kampagne H2 Jul..Dez")
+    und die Excel-Halbjahres-Buchhaltungs-/Steuer-Konvention. Komplementaer
+    zum funddatum_halbjahr_in-Filter (Listen-Drill-down): hier die
+    Verteilungs-Sicht ueber die zwei Kalender-Halbjahre.
+
+    Label sind die Halbjahres-Kuerzel ``H1``/``H2``; Halbjahre ohne Treffer
+    fehlen im Dict. Reihenfolge chronologisch aufsteigend (H1 zuerst, H2
+    zuletzt) - spiegelt die uebrige Reihenfolgen-Konvention der Zeit-
+    Histogramme.
+
+    Halbjahr wird aus dem Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet:
+    H1=Jan..Jun, H2=Jul..Dez - Ganzzahl-Division in SQLite ist per Definition
+    truncating, konsistent zum Python-Aequivalent ``(m - 1) // 6 + 1`` und
+    zur funddatum_halbjahr_in-Filter-Implementierung. Akzeptiert nur
+    Funddaten in ISO-Form ``YYYY-MM-DD``/``YYYY-MM`` mit gueltigem Monatsteil
+    01-12; reine Jahresangaben (``"2024"``) haben keinen Monatsteil und werden
+    ignoriert (sonst wuerden sie als "Monat 00" auf einen Default-Bucket
+    fallen und die Halbjahres-Statistik verzerren). Spiegelt damit die
+    :func:`_count_funddatum_monat`-/:func:`_count_funddatum_quartal`-
+    Konvention (nur strikte Formen mit gueltigem Monat 01-12 zaehlen) und
+    den ``BETWEEN 1 AND 12``-Guard des :attr:`funddatum_halbjahr_in`-Filters.
+    """
+    sql = (
+        "SELECT ((CAST(substr(Funddatum, 6, 2) AS INTEGER) - 1) / 6 + 1) AS h, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY h ORDER BY h ASC"
+    )
+    return {f"H{r['h']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_funddatum_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
@@ -3233,6 +3277,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Zeit-Histogramme. Komplementaer zum funddatum_quartal_in-Filter
     # (Listen-Drill-down): hier die Verteilungs-Sicht ueber die vier Quartale.
     st.by_funddatum_quartal = _count_funddatum_quartal(conn)
+    # Funddatum-Halbjahr-Histogramm (H1/H2, ueber alle Jahre aggregiert):
+    # ergaenzt die Quartals-Sicht um die noch groebere Zwei-Punkt-Aggregat-
+    # Achse. Waehrend das Quartals-Histogramm die Boersen-/Kampagnen-Rhythmik
+    # der Kalender-Quartale beziffert, zeigt das Halbjahres-Histogramm die
+    # typische Sammler-Kampagnen-Zaesur H1/H2 ("Fruehjahrs-Kampagne H1
+    # Jan..Jun ODER Herbst-Kampagne H2 Jul..Dez") und die Excel-Halbjahres-
+    # Buchhaltungs-/Steuer-Konvention. Reihenfolge H1->H2 spiegelt die
+    # chronologische Konvention der uebrigen Zeit-Histogramme. Komplementaer
+    # zum funddatum_halbjahr_in-Filter (Listen-Drill-down): hier die
+    # Verteilungs-Sicht ueber die zwei Kalender-Halbjahre.
+    st.by_funddatum_halbjahr = _count_funddatum_halbjahr(conn)
     # Sammlungswachstum-Histogramm: Objekte pro Jahr ihres erstellt_am-Stempels.
     # Komplementaer zu by_funddatum_jahr (wann gefunden) - hier wann erfasst.
     # Beantwortet "in welchen Jahren bin ich besonders aktiv im Digitalisieren gewesen?"

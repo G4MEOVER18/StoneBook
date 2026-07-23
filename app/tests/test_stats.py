@@ -1172,6 +1172,78 @@ def test_by_funddatum_quartal_leer(tmp_path):
     c.close()
 
 
+def test_by_funddatum_halbjahr_aus_seed_db(tmp_path):
+    """Halbjahres-Histogramm aggregiert ueber alle Jahre zu H1/H2.
+
+    Halbjahr wird aus dem Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet:
+    H1=Jan..Jun, H2=Jul..Dez. Reihenfolge H1->H2 aufsteigend (chronologisch),
+    Halbjahre ohne Treffer fehlen im Dict.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "halbjahr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            # H1 (Jan..Jun): 4x - Fruehjahrs-Kampagne
+            ("OBJ_0001", "2024-01-15"),   # H1 (Jan-Rand)
+            ("OBJ_0002", "2023-03-20"),   # H1
+            ("OBJ_0003", "2024-05-15"),   # H1
+            ("OBJ_0004", "2024-06-30"),   # H1 (Jun-Rand)
+            # H2 (Jul..Dez): 3x - Herbst-Kampagne
+            ("OBJ_0005", "2020-07-01"),   # H2 (Jul-Rand)
+            ("OBJ_0006", "2021-08-10"),   # H2
+            ("OBJ_0007", "2024-12-31"),   # H2 (Dez-Rand)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0008", ""),
+            ("OBJ_0009", None),
+            ("OBJ_0010", "Fruehling"),
+            ("OBJ_0011", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Halbjahr, Halbjahre ohne Treffer fehlen
+    assert list(st.by_funddatum_halbjahr.items()) == [("H1", 4), ("H2", 3)]
+    assert st.as_dict()["by_funddatum_halbjahr"] == {"H1": 4, "H2": 3}
+    c.close()
+
+
+def test_by_funddatum_halbjahr_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Halbjahr-Histogramm.
+
+    Ohne den BETWEEN 1 AND 12-Guard wuerde Monat 00 als ``((0-1)/6)+1 = 0``
+    in einen ``H0``-Bucket fallen und Monat 13 als ``((13-1)/6)+1 = 3`` in
+    einen ``H3``-Bucket - beide semantisch sinnlose Verzerrungen der
+    Halbjahres-Statistik.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "halbjahr_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01"),   # H2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_halbjahr == {"H2": 1}
+    c.close()
+
+
+def test_by_funddatum_halbjahr_leer(tmp_path):
+    """Ohne gueltige Funddaten ist die Halbjahres-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "halbjahr_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_halbjahr == {}
+    c.close()
+
+
 def test_by_seltenheit_global_aus_seed_db(tmp_path):
     """Histogramm der globalen Seltenheit (1..10), aufsteigend nach Skalenwert."""
     from stonebook.db.database import open_db
