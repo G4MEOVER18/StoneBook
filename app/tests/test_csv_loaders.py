@@ -189,6 +189,55 @@ def test_normalize_id_inventar_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_katalog_nummer_praefix():
+    """Museums-Katalognummer ``Kat.-Nr.`` und Varianten - Standard-Praefix parallel zur Inventarnummer.
+
+    Waehrend ``Inv.-Nr.`` (323cfff) die physische Inventar-Position identifiziert,
+    referenziert ``Kat.-Nr.`` den logischen Katalog-Eintrag - beide Praefixe koexistieren
+    auf denselben DE-sprachigen Museums-Etiketten (Naturhistorisches Museum Basel/Bern,
+    Deutsches Bergbau-Museum Bochum, Bayerische Staatssammlung fuer Palaeontologie und
+    Geologie) und in publizierten Sammlungs-Katalogen (mineralogische Zeitschriften
+    mit ``Kat.-Nr.``-Referenz-Notation). Bisher fielen alle Kat.-Nr.-Formen still auf
+    None und der ``--ids-from-file``-Import wirft ``Ungueltige Objekt-ID: 'Kat.-Nr. 43'``.
+    """
+    # Standard-Formen mit unterschiedlichen Trenner-Kombinationen
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Kat. Nr. 43") == "OBJ_0043"
+    assert normalize_id("Kat Nr. 43") == "OBJ_0043"
+    assert normalize_id("Kat-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Kat-Nr 43") == "OBJ_0043"
+    assert normalize_id("KatNr 43") == "OBJ_0043"
+    assert normalize_id("KatNr43") == "OBJ_0043"
+    assert normalize_id("Kat.Nr.43") == "OBJ_0043"
+    # Ausgeschriebene Form ``Katalog`` und ``Nummer``
+    assert normalize_id("Katalog-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalog Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer43") == "OBJ_0043"
+    assert normalize_id("Kat. Nummer 43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("kat-nr 7") == "OBJ_0007"
+    assert normalize_id("KAT-NR. 001") == "OBJ_0001"
+    assert normalize_id("katalognummer 7") == "OBJ_0007"
+    # Ungueltig: ohne Nummer-Marker, mit Suffix-Ballast, oder falsches Wort
+    assert normalize_id("Kat 43") is None            # ohne Nr/Nummer nicht eindeutig
+    assert normalize_id("Katalog 43") is None        # ohne Nummer-Marker
+    assert normalize_id("Kat.-Nr. 43X") is None      # Suffix-Ballast
+    assert normalize_id("Kategorie 43") is None      # anderes Wort mit Kat-Praefix
+    assert normalize_id("Kathedrale 43") is None
+    assert normalize_id("Katalyse 43") is None
+    assert normalize_id("Katze 43") is None
+    assert normalize_id("Kat-Nr 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen (inkl. Inventarnummer-Praefix) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)

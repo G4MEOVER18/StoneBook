@@ -34,6 +34,21 @@ _PATTERNS = [
     # bare ``Inv 43`` oder andere ``Inv``-startende Woerter (``Invasion``,
     # ``Invalid``).
     re.compile(r"^Inv(?:entar)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
+    # Museums-/Sammler-Katalognummer: ``Kat.-Nr. 43`` / ``Kat. Nr. 43`` / ``KatNr 43`` /
+    # ``Kat-Nr. 43`` / ``Katalognummer 43`` / ``Katalog-Nr. 43``. Parallel-Standard zur
+    # Inventarnummer-Form, die den logischen Katalog-Eintrag (statt der physischen
+    # Inventar-Position) identifiziert - verbreitet auf DE-sprachigen Museums-Etiketten
+    # (Naturhistorisches Museum Basel/Bern, Deutsches Bergbau-Museum Bochum, Bayerische
+    # Staatssammlung fuer Palaeontologie und Geologie) und in publizierten Sammlungs-
+    # Katalogen (Mineralogische Zeitschriften mit Kat.-Nr.-Referenz-Notation). Sammler-
+    # Notizen aus Museums-Besuchen und Publikations-Referenzen uebernehmen die Notation
+    # woertlich; ohne diese Praefix-Erkennung faellt der ``--ids-from-file``-Import
+    # solcher Listen still auf None. Regex spiegelt die Inventarnummer-Regex strukturell:
+    # ``Kat(?:alog)?`` mit optionalem Punkt, beliebiger Trenner-Kombination (``-``/``.``
+    # /Whitespace), dann obligatorischer ``N(?:umme)?r``-Marker (verhindert falsche
+    # Positives fuer bare ``Kat 43`` oder andere ``Kat``-startende Woerter wie
+    # ``Kategorie``, ``Katalyse``, ``Kathedrale``, ``Katze``).
+    re.compile(r"^Kat(?:alog)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen
