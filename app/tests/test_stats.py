@@ -3490,6 +3490,132 @@ def test_gewicht_pro_geaendert_am_wochentag_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_geaendert_am_quartal_aus_seed_db(tmp_path):
+    """Wertsumme pro geaendert_am-Quartal (Q1..Q4); absteigend nach Summe.
+
+    Spiegelt _sum_by_erstellt_am_quartal auf die Pflege-Achse: waehrend die
+    Erfassungs-Quartals-Sicht die Digitalisierungs-Ergiebigkeit zeigt, zeigt
+    die Pflege-Quartals-Sicht die Ergiebigkeit der letzten Datenpflege-
+    Kampagnen-Rhythmik in Quartals-Schueben.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgq.sqlite3")
+    c.executemany(
+        "INSERT INTO objects "
+        "(obj_id, erstellt_am, geaendert_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?,?)",
+        [
+            # Q1 (Jan..Maerz): Winter-Indoor-Pflege: 500+300+200 = 1000
+            ("OBJ_0001", "2020-01-01", "2024-02-15 10:00:00", 500.0, None),
+            ("OBJ_0002", "2020-01-01", "2023-03-20 09:00:00", 300.0, None),
+            ("OBJ_0003", "2020-01-01", "2024-01-10 14:00:00", 100.0, 100.0),
+            # Q3 (Jul..Sep): Sommer-Pflege-Session: 400
+            ("OBJ_0004", "2020-01-01", "2020-07-15 11:00:00", 400.0, None),
+            # Q4 (Okt..Dez): Muenchen-Nachpflege: 250
+            ("OBJ_0005", "2020-01-01", "2023-10-31 12:00:00", 250.0, None),
+            # Ohne Wert -> raus
+            ("OBJ_0006", "2020-01-01", "2024-05-15 10:00:00", None, None),
+            # Ohne gueltiges geaendert_am / Monatsteil -> ignoriert
+            ("OBJ_0007", "2020-01-01", "", 999.0, None),
+            ("OBJ_0008", "2020-01-01", "2024", 999.0, None),
+            ("OBJ_0009", "2020-01-01", "2024-00-15 10:00:00", 999.0, None),
+            ("OBJ_0010", "2020-01-01", "2024-13-01 10:00:00", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: Q1 (1000), Q3 (400), Q4 (250)
+    assert st.wert_pro_geaendert_am_quartal == [
+        ("Q1", 1000.0),
+        ("Q3", 400.0),
+        ("Q4", 250.0),
+    ]
+    assert st.as_dict()["wert_pro_geaendert_am_quartal"] == [
+        ("Q1", 1000.0), ("Q3", 400.0), ("Q4", 250.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_geaendert_am_quartal_leer(tmp_path):
+    """Ohne CHF-Werte oder gueltiges geaendert_am: leere Quartals-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgq_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_quartal == []
+    c.close()
+
+
+def test_wert_pro_geaendert_am_quartal_tie_break_quartal_nummer(tmp_path):
+    """Bei gleicher Summe sortiert der Tie-Break aufsteigend nach Quartals-Nummer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgq_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-02-01 10:00:00", 100.0),  # Q1
+            ("OBJ_0002", "2024-05-01 10:00:00", 100.0),  # Q2
+            ("OBJ_0003", "2024-11-01 10:00:00", 100.0),  # Q4
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_quartal == [
+        ("Q1", 100.0),
+        ("Q2", 100.0),
+        ("Q4", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_quartal_aus_seed_db(tmp_path):
+    """Gewichtsumme pro geaendert_am-Quartal (Q1..Q4); 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Pflege-Quartals-Achse:
+    waehrend die Wert-Spitze auf einem Q1-Winter-Indoor-Pflege-Quartal
+    liegen kann, kann die Gewicht-Spitze auf einem Q3-Nachbereitungs-
+    Quartal mit schweren Handstuecken liegen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgq.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # Q3 (Jul..Sep): schwere Nachbereitung: 800 + 400 = 1200
+            ("OBJ_0001", "2024-07-15 10:00:00", 800.0),
+            ("OBJ_0002", "2024-08-20 09:00:00", 400.0),
+            # Q1 (Jan..Maerz): kleine Winter-Indoor-Pflege: 100 + 50 = 150
+            ("OBJ_0003", "2024-02-15 10:00:00", 100.0),
+            ("OBJ_0004", "2024-03-01 10:00:00", 50.0),
+            # NULL/0 -> raus
+            ("OBJ_0005", "2024-04-15 10:00:00", None),
+            ("OBJ_0006", "2024-05-15 10:00:00", 0.0),
+            # Ignoriert (nicht-strikt/ohne Monatsteil)
+            ("OBJ_0007", "2024", 999.0),
+            ("OBJ_0008", "2024-13-01 10:00:00", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: Q3 (1200), Q1 (150)
+    assert st.gewicht_pro_geaendert_am_quartal == [
+        ("Q3", 1200.0),
+        ("Q1", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_geaendert_am_quartal"] == [
+        ("Q3", 1200.0), ("Q1", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_quartal_leer(tmp_path):
+    """Ohne Gewicht: leere Quartals-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgq_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_geaendert_am_quartal == []
+    c.close()
+
+
 def test_funddatum_spanne_aus_seed_db(tmp_path):
     """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
     from stonebook.db.database import open_db
