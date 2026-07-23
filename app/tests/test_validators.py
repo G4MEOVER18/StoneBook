@@ -8312,6 +8312,72 @@ def test_parse_coordinates_fullwidth_cjk_interpunktion():
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_non_breaking_whitespace():
+    """Non-breaking Whitespace-Varianten (NBSP U+00A0, Narrow-NBSP U+202F,
+    Thin-Space U+2009) werden transparent auf ASCII-Space normalisiert.
+
+    NBSP ist die haeufigste "unsichtbare" Trenner-Form in Sammler-Quellen:
+    Wikipedia rendert die MediaWiki-{{coord}}-Vorlage mit &nbsp; zwischen
+    Zahl/Direction, MS-Word/LibreOffice-Autoformat ersetzt Space vor Grad/
+    Prozent/Einheiten automatisch durch NBSP, HTML-nach-Text-Konverter
+    (BeautifulSoup, pandoc) uebernehmen &nbsp; woertlich als U+00A0.
+    Narrow-NBSP (U+202F) ist DIN-5008-/franzoesische Typografie-Konvention
+    fuer den schmalen Zwischenraum vor Einheiten ("46,5\u202f°N") und in
+    LaTeX-Unicode-Exporten (``\\,`` -> U+202F). Thin-Space (U+2009) ist das
+    reine LaTeX-``\\,``-Aequivalent in publizierten Fachzeitschriften
+    (Mineralogical Record, Le Regne Mineral, Lapis).
+
+    Vor dem Fix fielen reine Non-breaking-Only-Trenner still auf None,
+    weil die _DECIMAL_PAIR-Separator-Klasse ``[ \\t,;/&~|]`` nur ASCII-Space
+    (0x20) und Tab (0x09) enthaelt und die restlichen \\s-Klassen-Zeichen
+    (U+00A0/U+202F/U+2009) nicht kennt. Gemischte ASCII-plus-NBSP-Trenner
+    matchen zwar via Backtracking der ``\\s*``-Puffer (das ASCII-Space
+    erfuellt die harte Separator-Anforderung, NBSP wird von ``\\s*``
+    mitgefressen) - der Bug betrifft ausschliesslich das reine Non-
+    breaking-Only-Szenario.
+    """
+    # NBSP (U+00A0) als reiner Trenner zwischen zwei Dezimal-Zahlen (der
+    # Wikipedia-Copy-Paste-Standardfall: MediaWiki-{{coord}} rendert
+    # "46.5&nbsp;7.5", der Browser liefert U+00A0 an die Zwischenablage)
+    assert parse_coordinates("46.5\u00a07.5") == (46.5, 7.5)
+    # Narrow-NBSP (U+202F) als reiner Trenner (DIN-5008-Typografie, LaTeX-
+    # \\,-Unicode-Export)
+    assert parse_coordinates("46.5\u202f7.5") == (46.5, 7.5)
+    # Thin-Space (U+2009) als reiner Trenner (Mineralogical-Record-Style)
+    assert parse_coordinates("46.5\u20097.5") == (46.5, 7.5)
+    # NBSP mit trailing Komma (Wiki-{{coord}}-Rendering "46.5,&nbsp;7.5"
+    # bzw. Word-Autoformat "46.5,\u00a07.5")
+    assert parse_coordinates("46.5,\u00a07.5") == (46.5, 7.5)
+    # NBSP mit DE-Komma-Dezimal (spiegelt _DECIMAL_PAIR-Komma-Dezimal-
+    # Toleranz auf den NBSP-Trenner-Fall)
+    assert parse_coordinates("46,5\u00a07,5") == (46.5, 7.5)
+    # NBSP zwischen Zahl und Grad-Zeichen (typografisch geschuetzter
+    # Zwischenraum vor der Grad-Einheit, DIN-5008-Konvention)
+    assert parse_coordinates("46.5\u00a0°N, 7.5\u00a0°E") == (46.5, 7.5)
+    assert parse_coordinates("46.5\u202f°N, 7.5\u202f°E") == (46.5, 7.5)
+    # NBSP zwischen Direction-Buchstabe und Zahl (Wiki-Prefix-Form)
+    assert parse_coordinates("N\u00a046.5, E\u00a07.5") == (46.5, 7.5)
+    # Negatives Vorzeichen mit NBSP-Trenner (Suedhalbkugel)
+    assert parse_coordinates("-46.5\u00a0-7.5") == (-46.5, -7.5)
+    # Kombination U+2212-Minus + NBSP (beide Fixes greifen unabhaengig)
+    assert parse_coordinates("\u221246.5\u00a0\u22127.5") == (-46.5, -7.5)
+    # Kombination Fullwidth-Komma + NBSP (beide Normalisierungen greifen)
+    assert parse_coordinates("46.5\uff0c\u00a07.5") == (46.5, 7.5)
+    # DMS-Notation mit NBSP zwischen Grad/Minute/Sekunde und Direction
+    # (typografisch gepflegte Wiki-Etiketten)
+    assert parse_coordinates("46°30'15\"N\u00a07°30'0\"E") == pytest.approx(
+        (46.5041666667, 7.5), rel=1e-6)
+    # Out-of-range bleibt None (Validierung greift unabhaengig)
+    assert parse_coordinates("46.5\u00a0200.0") is None
+    assert parse_coordinates("100.0\u00a07.5") is None
+    # Regress-Anker: ASCII-Space weiter gueltig
+    assert parse_coordinates("46.5 7.5") == (46.5, 7.5)
+    # Regress-Anker: Komma-Separator weiter gueltig
+    assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
+    # Regress-Anker: Fullwidth-Komma weiter gueltig
+    assert parse_coordinates("46.5\uff0c7.5") == (46.5, 7.5)
+
+
 def test_parse_coordinates_url_query_params():
     """URL-Query-Parameter-Formen (lat=/lon=/mlat=/mlon=/latitude=/longitude=).
 

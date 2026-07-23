@@ -5958,6 +5958,43 @@ def parse_coordinates(text) -> tuple[float, float] | None:
           .replace("／", "/")
           .replace("；", ";")
           .replace("、", ","))
+    # Non-breaking Whitespace-Varianten auf ASCII-Space normalisieren: NBSP
+    # (U+00A0), Narrow-NBSP (U+202F), Thin-Space (U+2009). Alle drei sind
+    # semantisch Whitespace, tauchen aber in Sammler-Quellen regelmaessig
+    # als "unsichtbare" Trenner auf, wo _DECIMAL_PAIR ASCII-Space erwartet:
+    #  - NBSP aus Wikipedia-Copy-Paste (die MediaWiki-Vorlage {{coord}}
+    #    rendert die Trenner zwischen Zahl/Direction als &nbsp;), aus MS-
+    #    Word/LibreOffice-Autoformat (die Textverarbeitung ersetzt Space
+    #    vor bestimmten Zeichen automatisch durch NBSP, damit Grad/Prozent/
+    #    Einheiten nicht am Zeilenumbruch von der Zahl getrennt werden),
+    #    und aus HTML-nach-Text-Konvertern (BeautifulSoup ``get_text()``,
+    #    pandoc ``html->plain``), die ``&nbsp;`` woertlich als U+00A0
+    #    uebernehmen;
+    #  - Narrow-NBSP als typografischer "schmaler geschuetzter Zwischenraum"
+    #    zwischen Zahl und Einheit ("46,5 °N" ist DIN-5008-/franzoesische-
+    #    Typografie-Konvention und in gepflegten Sammler-Etiketten sowie in
+    #    LaTeX-Unicode-Exporten ueblich, wo ``\,`` haeufig als U+202F
+    #    ausgegeben wird);
+    #  - Thin-Space als LaTeX-``\,``-Aequivalent in reinen Unicode-Exporten
+    #    und in typografisch bereinigten Publikationen (Mineralogical Record,
+    #    Le Regne Mineral, Lapis).
+    # Bisher fielen reine Non-breaking-Only-Trenner ("46.5 7.5", "46,5 7,5",
+    # "46.5 7.5") still auf None, weil die _DECIMAL_PAIR-Separator-Klasse
+    # ``[ \t,;/&~|]`` nur ASCII-Space/Tab (0x20/0x09) kennt und die restlichen
+    # \s-Klassen-Zeichen (U+00A0/U+202F/U+2009) nicht enthaelt; gemischte
+    # ASCII-plus-NBSP-Trenner ("   ", ASCII-Space plus NBSP plus ASCII-
+    # Space) matchen zwar durch Backtracking der ``\s*``-Puffer, weil das
+    # ASCII-Space die harte Separator-Anforderung erfuellt und NBSP von
+    # ``\s*`` mitgefressen wird - der Bug betrifft ausschliesslich das
+    # reine Non-breaking-Only-Szenario. Single-Pass-Replace vor allen
+    # Pattern-Versuchen ist symmetrisch zum U+2212-/``º``-/``%2C``-/CJK-
+    # Fullwidth-Strip auf ihren jeweiligen semantischen Achsen; die drei
+    # Zeichen haben im Koordinaten-Kontext keine andere Bedeutung als der
+    # ASCII-Space (kein Sammler notiert eine Zahl-innere Sub-Struktur mit
+    # NBSP, die einen semantischen Unterschied zum Space traegt).
+    s = (s.replace(" ", " ")
+          .replace(" ", " ")
+          .replace(" ", " "))
     # OSM-URL-Hash-Fragment "#map=<zoom>/<lat>/<lon>" vor allen Zahl-Paar-Patterns
     # extrahieren: das erste Slash-getrennte Feld ist der Zoom-Level, nicht die
     # Latitude - _DECIMAL_PAIR wuerde sonst (zoom, lat) statt (lat, lon) greifen
