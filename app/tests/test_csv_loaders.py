@@ -238,6 +238,35 @@ def test_normalize_id_katalog_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_ausgeschriebene_nummer_vollform():
+    """Standalone ``Nummer`` als ausgeschriebene DE-Vollform, spiegelt Kurzform ``Nr.``.
+
+    Waehrend die Kurzform ``Nr.``/``Nr`` bereits durch
+    :func:`test_normalize_id_kompaktform_und_alternative_praefixe` abgedeckt ist,
+    verwenden handschriftliche Katalog-Eintraege und Kaufbelege haeufig die
+    ausgeschriebene Vollform ``Nummer`` ohne Abkuerzungspunkt. Bisher fielen alle
+    Nummer-Formen still auf None, obwohl semantisch identisch zur Kurzform.
+    Regex-Erweiterung ``N(?:umme)?r`` spiegelt strukturell die
+    Inv(?:entar)?-/Kat(?:alog)?-Konvention der Museums-Praefixe.
+    """
+    assert normalize_id("Nummer 43") == "OBJ_0043"
+    assert normalize_id("Nummer 7") == "OBJ_0007"
+    assert normalize_id("Nummer43") == "OBJ_0043"
+    assert normalize_id("Nummer 001") == "OBJ_0001"
+    # Case-Insensitivitaet
+    assert normalize_id("nummer 7") == "OBJ_0007"
+    assert normalize_id("NUMMER 43") == "OBJ_0043"
+    # Regressionsschutz: bestehende Kurzform bleibt gueltig
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("Nr 43") == "OBJ_0043"
+    assert normalize_id("Nr.43") == "OBJ_0043"
+    # Ungueltig: Suffix-Ballast, Doppel-Zahl, andere Woerter mit N-Praefix
+    assert normalize_id("Nummer 43X") is None
+    assert normalize_id("Nummer 43 44") is None
+    assert normalize_id("Numerisch 43") is None
+    assert normalize_id("Numeriert 43") is None
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)

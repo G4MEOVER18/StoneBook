@@ -19,8 +19,12 @@ _PATTERNS = [
     re.compile(r"^Objekt\s+(\d+)$", re.IGNORECASE),
     # Englische Langform (Foto-Captions / EN-Notizen): ``Object 43``.
     re.compile(r"^Object\s+(\d+)$", re.IGNORECASE),
-    # DE-Nummerierungs-Praefix: ``Nr. 43`` / ``Nr 43`` / ``Nr.43`` (mit/ohne Punkt/Whitespace).
-    re.compile(r"^Nr\.?\s*(\d+)$", re.IGNORECASE),
+    # DE-Nummerierungs-Praefix: ``Nr. 43`` / ``Nr 43`` / ``Nr.43`` (Kurzform) und
+    # ``Nummer 43`` / ``Nummer43`` (ausgeschriebene Vollform, verbreitet in
+    # handschriftlichen Katalog-Eintraegen und in Kaufbelegen, in denen die
+    # Kurzform vermieden wird). ``N(?:umme)?r`` spiegelt strukturell die
+    # Inv(?:entar)?-/Kat(?:alog)?-Konvention der Museums-Praefixe unten.
+    re.compile(r"^N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # Museums-Inventar-Nummer: ``Inv.-Nr. 43`` / ``Inv. Nr. 43`` / ``InvNr 43`` /
     # ``Inv-Nr. 43`` / ``Inventarnummer 43`` / ``Inventar-Nr. 43``. Standard-Praefix
     # auf DE-sprachigen Museums-Etiketten (Naturhistorisches Museum Wien, Museum
