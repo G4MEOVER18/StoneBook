@@ -21,6 +21,19 @@ _PATTERNS = [
     re.compile(r"^Object\s+(\d+)$", re.IGNORECASE),
     # DE-Nummerierungs-Praefix: ``Nr. 43`` / ``Nr 43`` / ``Nr.43`` (mit/ohne Punkt/Whitespace).
     re.compile(r"^Nr\.?\s*(\d+)$", re.IGNORECASE),
+    # Museums-Inventar-Nummer: ``Inv.-Nr. 43`` / ``Inv. Nr. 43`` / ``InvNr 43`` /
+    # ``Inv-Nr. 43`` / ``Inventarnummer 43`` / ``Inventar-Nr. 43``. Standard-Praefix
+    # auf DE-sprachigen Museums-Etiketten (Naturhistorisches Museum Wien, Museum
+    # fuer Naturkunde Berlin, Senckenberg Frankfurt, TU Bergakademie Freiberg)
+    # und in Sammler-Notizen, die aus Museums-Katalogen abgeschrieben wurden.
+    # ``Inv(?:entar)?`` mit optionalem Punkt und beliebigem Trenner (``-``/``.``
+    # /Whitespace) zu ``N(?:umme)?r`` mit optionalem Punkt, dann Ziffer nach
+    # optionalem Whitespace. Deckt Kurz- (``Inv``, ``Nr``) und ausgeschriebene
+    # Vollform (``Inventar``, ``Nummer``) sowie alle Trenner-Kombinationen ab.
+    # Der obligatorische ``N(?:umme)?r``-Marker verhindert falsche Positives fuer
+    # bare ``Inv 43`` oder andere ``Inv``-startende Woerter (``Invasion``,
+    # ``Invalid``).
+    re.compile(r"^Inv(?:entar)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen

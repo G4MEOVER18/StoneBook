@@ -144,6 +144,51 @@ def test_normalize_id_internationale_nummer_praefixe():
     assert normalize_id("Nox 43") is None
 
 
+def test_normalize_id_inventar_nummer_praefix():
+    """Museums-Inventarnummer ``Inv.-Nr.`` und Varianten - Standard auf DE-Museums-Etiketten.
+
+    Naturhistorisches Museum Wien, Museum fuer Naturkunde Berlin, Senckenberg
+    Frankfurt, TU Bergakademie Freiberg und weitere DE-sprachige Sammlungen
+    fuehren jeden Objekt-Eintrag mit ``Inv.-Nr.`` / ``Inv. Nr.`` / ``Inventar-
+    Nr.`` / ``Inventarnummer``. Sammler-Notizen aus Museums-Katalogen und
+    Ausstellungs-Beschriftungen uebernehmen die Notation woertlich; ohne diese
+    Praefix-Erkennung faellt der ``--ids-from-file``-Import solcher Listen
+    still auf None und wirft ``Ungueltige Objekt-ID: 'Inv.-Nr. 43'``.
+    """
+    # Standard-Formen mit unterschiedlichen Trenner-Kombinationen
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inv. Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inv Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inv-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inv-Nr 43") == "OBJ_0043"
+    assert normalize_id("InvNr 43") == "OBJ_0043"
+    assert normalize_id("InvNr43") == "OBJ_0043"
+    assert normalize_id("Inv.Nr.43") == "OBJ_0043"
+    # Ausgeschriebene Form ``Inventar`` und ``Nummer``
+    assert normalize_id("Inventar-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventar Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer43") == "OBJ_0043"
+    assert normalize_id("Inv. Nummer 43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("inv-nr 7") == "OBJ_0007"
+    assert normalize_id("INV-NR. 001") == "OBJ_0001"
+    assert normalize_id("inventarnummer 7") == "OBJ_0007"
+    # Ungueltig: ohne Nummer-Marker, mit Suffix-Ballast, oder falsches Wort
+    assert normalize_id("Inv 43") is None            # ohne Nr/Nummer nicht eindeutig
+    assert normalize_id("Inventar 43") is None       # ohne Nummer-Marker
+    assert normalize_id("Inv.-Nr. 43X") is None      # Suffix-Ballast
+    assert normalize_id("Invasion 43") is None       # anderes Wort mit Inv-Praefix
+    assert normalize_id("Invalid 43") is None
+    assert normalize_id("Inv-Nr 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
