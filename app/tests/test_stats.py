@@ -1092,6 +1092,86 @@ def test_by_funddatum_wochentag_leer(tmp_path):
     c.close()
 
 
+def test_by_funddatum_quartal_aus_seed_db(tmp_path):
+    """Quartals-Histogramm aggregiert ueber alle Jahre zu Q1..Q4.
+
+    Quartal wird aus dem Monatsteil per ``((monat - 1) / 3) + 1`` abgeleitet:
+    Q1=Jan..Maerz, Q2=Apr..Jun, Q3=Jul..Sep, Q4=Okt..Dez. Reihenfolge Q1->Q4
+    aufsteigend (chronologisch), Quartale ohne Treffer fehlen im Dict.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "quartal.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            # Q1 (Jan/Feb/Maerz): 3x - Tucson-Show-Anreise + Nachbereitung
+            ("OBJ_0001", "2024-01-15"),   # Q1 (Jan)
+            ("OBJ_0002", "2023-02-20"),   # Q1 (Feb, Tucson)
+            ("OBJ_0003", "2024-03-31"),   # Q1 (Maerz-Rand)
+            # Q2 (Apr..Jun): 1x - Fruehjahrs-Uebergangs-Phase
+            ("OBJ_0004", "2024-05-15"),   # Q2 (Mai)
+            # Q3 (Jul..Sep): 4x - Berg-Sommer / Feld-Saison
+            ("OBJ_0005", "2020-07-15"),   # Q3
+            ("OBJ_0006", "2021-08-10"),   # Q3
+            ("OBJ_0007", "2022-08-20"),   # Q3
+            ("OBJ_0008", "2024-09-30"),   # Q3 (Sep-Rand)
+            # Q4 (Okt..Dez): 2x - Muenchen-Show, Boersen-Dezember
+            ("OBJ_0009", "2023-10-31"),   # Q4 (Muenchen)
+            ("OBJ_0010", "2024-12-05"),   # Q4 (Boerse)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0011", ""),
+            ("OBJ_0012", None),
+            ("OBJ_0013", "Fruehling"),
+            ("OBJ_0014", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Quartal, Quartale ohne Treffer fehlen
+    assert list(st.by_funddatum_quartal.items()) == [
+        ("Q1", 3), ("Q2", 1), ("Q3", 4), ("Q4", 2),
+    ]
+    assert st.as_dict()["by_funddatum_quartal"] == {
+        "Q1": 3, "Q2": 1, "Q3": 4, "Q4": 2,
+    }
+    c.close()
+
+
+def test_by_funddatum_quartal_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Quartal-Histogramm.
+
+    Ohne den BETWEEN 1 AND 12-Guard wuerde Monat 00 als ``((0-1)/3)+1 = 0`` in
+    einen ``Q0``-Bucket fallen und Monat 13 als ``((13-1)/3)+1 = 5`` in einen
+    ``Q5``-Bucket - beide semantisch sinnlose Verzerrungen der Quartals-Statistik.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "quartal_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01"),   # Q3
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_quartal == {"Q3": 1}
+    c.close()
+
+
+def test_by_funddatum_quartal_leer(tmp_path):
+    """Ohne gueltige Funddaten ist die Quartals-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "quartal_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_quartal == {}
+    c.close()
+
+
 def test_by_seltenheit_global_aus_seed_db(tmp_path):
     """Histogramm der globalen Seltenheit (1..10), aufsteigend nach Skalenwert."""
     from stonebook.db.database import open_db

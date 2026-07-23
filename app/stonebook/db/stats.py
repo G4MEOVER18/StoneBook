@@ -72,6 +72,7 @@ class Statistik:
     by_funddatum_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     by_funddatum_wochentag: dict[str, int] = field(default_factory=dict)
+    by_funddatum_quartal: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
@@ -1179,6 +1180,7 @@ class Statistik:
             "by_funddatum_jahrzehnt": dict(self.by_funddatum_jahrzehnt),
             "by_funddatum_monat": dict(self.by_funddatum_monat),
             "by_funddatum_wochentag": dict(self.by_funddatum_wochentag),
+            "by_funddatum_quartal": dict(self.by_funddatum_quartal),
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
@@ -1738,6 +1740,47 @@ def _count_funddatum_wochentag(conn: sqlite3.Connection) -> dict[str, int]:
     )
     return {_WOCHENTAG_LABEL[str(r["iso_dow"])]: r["n"]
             for r in conn.execute(sql).fetchall()}
+
+
+def _count_funddatum_quartal(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Quartal (Q1..Q4), ueber alle Jahre aggregiert.
+
+    Ergaenzt die Monats-Sicht (:func:`_count_funddatum_monat`) um die groebere
+    Quartals-Aggregat-Achse: waehrend das Monats-Histogramm die feingranulare
+    Saison-Verteilung eines Sammler-Lebens beziffert (Berg-Saison Juli/August,
+    Boersen-Dezember), zeigt das Quartals-Histogramm die Boersen-/Kampagnen-
+    Rhythmik in Sammler-Notation (Q1-Tucson-Show Februar/Maerz, Q4-Munich-
+    Show Oktober-Dezember, Q3-Feld-Saison Berg-Sommer, Q2-Uebergangs-Phase).
+    Komplementaer zum funddatum_quartal_in-Filter (Listen-Drill-down): hier
+    die Verteilungs-Sicht ueber die vier Kalender-Quartale.
+
+    Label sind die Quartals-Kuerzel ``Q1``..``Q4``; Quartale ohne Treffer
+    fehlen im Dict. Reihenfolge chronologisch aufsteigend (Q1 zuerst, Q4
+    zuletzt) - spiegelt die uebrige Reihenfolgen-Konvention der Zeit-
+    Histogramme.
+
+    Quartal wird aus dem Monatsteil per ``((monat - 1) / 3) + 1`` abgeleitet:
+    Q1=Jan..Maerz, Q2=Apr..Jun, Q3=Jul..Sep, Q4=Okt..Dez - Ganzzahl-Division
+    in SQLite ist per Definition truncating, das Ergebnis ist konsistent mit
+    dem Python-Aequivalent ``(m - 1) // 3 + 1``. Akzeptiert nur Funddaten in
+    ISO-Form ``YYYY-MM-DD``/``YYYY-MM`` mit gueltigem Monatsteil 01-12; reine
+    Jahresangaben (``"2024"``) haben keinen Monatsteil und werden ignoriert
+    (sonst wuerden sie als "Monat 00" auf einen Default-Bucket fallen und
+    die Quartals-Statistik verzerren). Spiegelt damit die
+    :func:`_count_funddatum_monat`-Konvention (nur strikte Formen mit
+    gueltigem Monat 01-12 zaehlen) und den ``BETWEEN 1 AND 12``-Guard des
+    :attr:`funddatum_quartal_in`-Filters.
+    """
+    sql = (
+        "SELECT ((CAST(substr(Funddatum, 6, 2) AS INTEGER) - 1) / 3 + 1) AS q, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY q ORDER BY q ASC"
+    )
+    return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_funddatum_jahrzehnt(conn: sqlite3.Connection) -> dict[str, int]:
@@ -3180,6 +3223,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Verteilung, Berufs-Sammler eine Feiertags-/Ferien-Konzentration.
     # Reihenfolge Mo->So spiegelt die DE-Wochentag-/ISO-8601-Konvention.
     st.by_funddatum_wochentag = _count_funddatum_wochentag(conn)
+    # Funddatum-Quartal-Histogramm (Q1..Q4, ueber alle Jahre aggregiert):
+    # ergaenzt die Monats-Sicht um die groebere Boersen-/Kampagnen-Rhythmik-
+    # Achse. Waehrend das Monats-Histogramm die feingranulare Saison-Verteilung
+    # beziffert, zeigt das Quartals-Histogramm die typische Sammler-Notation
+    # der Kalender-Quartale: Q1-Tucson-Show Februar/Maerz, Q4-Munich-Show
+    # Oktober-Dezember, Q3-Feld-Saison Berg-Sommer, Q2-Uebergangs-Phase.
+    # Reihenfolge Q1->Q4 spiegelt die chronologische Konvention der uebrigen
+    # Zeit-Histogramme. Komplementaer zum funddatum_quartal_in-Filter
+    # (Listen-Drill-down): hier die Verteilungs-Sicht ueber die vier Quartale.
+    st.by_funddatum_quartal = _count_funddatum_quartal(conn)
     # Sammlungswachstum-Histogramm: Objekte pro Jahr ihres erstellt_am-Stempels.
     # Komplementaer zu by_funddatum_jahr (wann gefunden) - hier wann erfasst.
     # Beantwortet "in welchen Jahren bin ich besonders aktiv im Digitalisieren gewesen?"
