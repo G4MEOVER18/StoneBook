@@ -1105,6 +1105,80 @@ def test_by_geaendert_am_wochentag_leer(tmp_path):
     c.close()
 
 
+def test_by_geaendert_am_quartal_aus_seed_db(tmp_path):
+    """Aenderungs-Quartals-Histogramm aggregiert ueber alle Jahre zu Q1..Q4.
+
+    Spiegelt by_funddatum_quartal / by_erstellt_am_quartal auf die Aenderungs-
+    Achse: Pflege-Sitzungen-Rhythmik in Quartals-Schueben parallel zur
+    Erfassungs-Achse (Q1-Boersen-Nachbereitung Tucson, Q4-Winter-Pflege
+    Muenchen/Sainte-Marie-aux-Mines). Reihenfolge Q1->Q4 aufsteigend.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_quartal.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # Q1: 2x (Tucson-Nachbereitung + Winter-Nachpflege)
+            ("OBJ_0001", "2024-01-15 09:00:00"),  # Q1
+            ("OBJ_0002", "2023-03-20 10:15:00"),  # Q1 (Tucson)
+            # Q2: 1x (Fruehjahrs-Uebergang)
+            ("OBJ_0003", "2024-05-15 11:30:00"),  # Q2
+            # Q3: 3x (Sommer-Pflege nach Feld-Saison)
+            ("OBJ_0004", "2020-07-15 12:00:00"),  # Q3
+            ("OBJ_0005", "2021-08-10 13:15:00"),  # Q3
+            ("OBJ_0006", "2022-09-30 14:00:00"),  # Q3 (Sep-Rand)
+            # Q4: 2x (Muenchen-Nachbereitung + Boersen-Dezember)
+            ("OBJ_0007", "2023-10-31 15:15:00"),  # Q4
+            ("OBJ_0008", "2024-12-05 16:00:00"),  # Q4 (Boerse)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0009", ""),
+            ("OBJ_0010", None),
+            ("OBJ_0011", "kein-stempel"),
+            ("OBJ_0012", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Quartal, Quartale ohne Treffer fehlen
+    assert list(st.by_geaendert_am_quartal.items()) == [
+        ("Q1", 2), ("Q2", 1), ("Q3", 3), ("Q4", 2),
+    ]
+    assert st.as_dict()["by_geaendert_am_quartal"] == {
+        "Q1": 2, "Q2": 1, "Q3": 3, "Q4": 2,
+    }
+    c.close()
+
+
+def test_by_geaendert_am_quartal_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Aenderungs-Quartal-Histogramm."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_quartal_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15 10:00:00"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01 11:00:00"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01 12:00:00"),   # Q3
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_quartal == {"Q3": 1}
+    c.close()
+
+
+def test_by_geaendert_am_quartal_leer(tmp_path):
+    """Ohne gueltige geaendert_am-Stempel ist die Quartals-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_quartal_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_quartal == {}
+    c.close()
+
+
 def test_by_funddatum_monat_aus_seed_db(tmp_path):
     """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
     from stonebook.db.database import open_db
