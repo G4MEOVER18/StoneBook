@@ -564,6 +564,7 @@ class ObjectRepo:
                      erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_min: str | None = None,
                      erstellt_am_max: str | None = None,
+                     erstellt_am_wochentag_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_jahr_min: int | None = None,
                      geaendert_am_jahr_max: int | None = None,
                      geaendert_am_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -1406,6 +1407,42 @@ class ObjectRepo:
             where.append("o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
                          "AND o.erstellt_am <= ?")
             params.append(str(erstellt_am_max))
+        # erstellt_am_wochentag_in: Mengen-Wochentag-Filter auf der Erfassungs-
+        # Achse (ISO 1..7: Mo=1..So=7). Spiegelt funddatum_wochentag_in auf die
+        # zweite Zeitstempel-Spalte und beantwortet die Listen-Sicht des
+        # by_erstellt_am_wochentag-Aggregats aus der Statistik ("welche Objekte
+        # habe ich Samstags digitalisiert?"). Aussenkontext-Trennung von der
+        # Fund-Achse: der Wochentag der Erfassung ist unabhaengig vom Wochentag
+        # des Fundes - ein Sonntags-Fund kann am Montag nach der Boersen-Fahrt
+        # digitalisiert worden sein, ein Werktags-Fund kann Sonntags in der
+        # Pflege-Phase nachgetragen worden sein. Round-Trip-Bedingung
+        # strftime('%Y-%m-%d', substr(...,1,10)) = substr(...,1,10) ist identisch
+        # zu _count_erstellt_am_wochentag: reine Jahres- oder Jahr+Monat-Formen
+        # und ungueltige Kalender-Tage fallen bewusst heraus, weil ihnen kein
+        # Wochentag zugeordnet werden kann; die Round-Trip-Gleichheit faengt
+        # sowohl NULL-Rueckgabe (unerkannte Formen) als auch SQLite-Kalender-
+        # Rollovers (2024-02-30 -> 2024-03-01 mit dem Wochentag des 1. Maerz) ab.
+        # Die ISO-Umrechnung ``((strftime_dow + 6) % 7) + 1`` mappt SQLite-``%w``
+        # (0=So..6=Sa) auf ISO-8601 (1=Mo..7=So) und stimmt mit der Statistik-
+        # Achse ueberein. Der ``substr(..., 1, 10)`` deckt sowohl das reine
+        # YYYY-MM-DD-Datum als auch den voll qualifizierten Stempel
+        # YYYY-MM-DD HH:MM:SS (repository._now()-Format) transparent ab.
+        if erstellt_am_wochentag_in:
+            wt = [int(w) for w in erstellt_am_wochentag_in]
+            invalid = [w for w in wt if not 1 <= w <= 7]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Erstellt-am-Wochentage: {invalid} "
+                    f"(erwartet 1..7, Mo=1..So=7)")
+            if wt:
+                placeholders = ", ".join("?" * len(wt))
+                where.append(
+                    "o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                    "AND strftime('%Y-%m-%d', substr(o.erstellt_am, 1, 10)) "
+                    "    = substr(o.erstellt_am, 1, 10) "
+                    "AND ((CAST(strftime('%w', substr(o.erstellt_am, 1, 10)) AS INTEGER) "
+                    f"     + 6) % 7) + 1 IN ({placeholders})")
+                params.extend(wt)
         # Aenderungs-Achse: filtert nach Jahr des ``geaendert_am``-Stempels (wann
         # zuletzt redaktionell angefasst). Spiegelt erstellt_am_jahr_min/_max auf
         # die zweite Zeitstempel-Spalte und beantwortet die typische Pflege-Frage

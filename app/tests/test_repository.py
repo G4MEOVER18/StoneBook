@@ -5604,6 +5604,83 @@ def test_erstellt_am_iso_range_filter(tmp_path):
     c.close()
 
 
+def test_erstellt_am_wochentag_in_filter(tmp_path):
+    """erstellt_am_wochentag_in waehlt diskrete ISO-Wochentage (1=Mo..7=So).
+
+    Spiegelt funddatum_wochentag_in auf die Erfassungs-Achse und das
+    :func:`_count_erstellt_am_wochentag`-Aggregat aus der Statistik um den
+    Listen-Drill-down ("welche Objekte habe ich Samstags digitalisiert?").
+    Erfassungs-Wochentag ist unabhaengig vom Fund-Wochentag: ein Sonntags-Fund
+    kann am Montag nach der Boersen-Fahrt digitalisiert worden sein.
+
+    Der ``substr(erstellt_am, 1, 10)`` deckt sowohl das reine YYYY-MM-DD-Datum
+    als auch den voll qualifizierten Stempel YYYY-MM-DD HH:MM:SS (repository.
+    _now()-Format) transparent ab - die Testdaten enthalten beide Formen.
+
+    Ein Kalender-Sanity-Check: 2024-07-13 ist ein Samstag, 2024-07-14 ein
+    Sonntag, 2024-07-15 ein Montag, 2024-07-16 ein Dienstag, 2024-07-17 ein
+    Mittwoch, 2024-07-18 ein Donnerstag, 2024-07-19 ein Freitag.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "e_wt_in.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-07-15 09:00:00"),  # Mo (voll qualifizierter Stempel)
+            ("OBJ_0002", "2024-07-16 10:15:00"),  # Di
+            ("OBJ_0003", "2024-07-17"),           # Mi (reines Datum)
+            ("OBJ_0004", "2024-07-18 14:30:00"),  # Do
+            ("OBJ_0005", "2024-07-19"),           # Fr
+            ("OBJ_0006", "2024-07-13 08:45:00"),  # Sa (Boersen-Nachbearbeitung)
+            ("OBJ_0007", "2024-07-14 20:20:00"),  # So (Wochenend-Pflege)
+            ("OBJ_0008", "2024-07"),               # ohne Tag -> faellt raus
+            ("OBJ_0009", "2024"),                   # nur Jahr -> faellt raus
+            ("OBJ_0010", "2024-02-30 12:00:00"),  # ungueltiger Kalender-Tag -> faellt raus
+            ("OBJ_0011", "kein-stempel"),          # Freitext -> faellt raus
+            ("OBJ_0012", None),
+            ("OBJ_0013", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Wochenende: Samstag + Sonntag (typische Freizeit-Sammler-Pflege)
+    rows = repo.list_objects(erstellt_am_wochentag_in=[6, 7])
+    assert sorted(r["obj_id"] for r in rows) == ["OBJ_0006", "OBJ_0007"]
+    # Nur Werktage (Mo..Fr)
+    rows = repo.list_objects(erstellt_am_wochentag_in=[1, 2, 3, 4, 5])
+    assert sorted(r["obj_id"] for r in rows) == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    # Einzelner Wochentag: nur Samstag
+    rows = repo.list_objects(erstellt_am_wochentag_in=[6])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0006"]
+    # Reines Datum ohne Zeitkomponente: OBJ_0003 (Mi) und OBJ_0005 (Fr)
+    rows = repo.list_objects(erstellt_am_wochentag_in=[3, 5])
+    assert sorted(r["obj_id"] for r in rows) == ["OBJ_0003", "OBJ_0005"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(erstellt_am_wochentag_in=(1,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(erstellt_am_wochentag_in=[])
+    assert len(rows) == 13
+    # Kombiniert mit Jahres-Bereich (Schnittmenge)
+    rows = repo.list_objects(erstellt_am_wochentag_in=[6, 7],
+                              erstellt_am_jahr_min=2024)
+    assert sorted(r["obj_id"] for r in rows) == ["OBJ_0006", "OBJ_0007"]
+    # Kombiniert mit Monats-Filter (Schnittmenge)
+    rows = repo.list_objects(erstellt_am_wochentag_in=[6],
+                              erstellt_am_monat=7)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0006"]
+    # Validierung: 0 und 8 sind ungueltig (nicht in ISO-Range 1..7)
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="Unbekannte Erstellt-am-Wochentage"):
+        repo.list_objects(erstellt_am_wochentag_in=[0])
+    with _pytest.raises(ValueError, match="Unbekannte Erstellt-am-Wochentage"):
+        repo.list_objects(erstellt_am_wochentag_in=[8])
+    with _pytest.raises(ValueError, match="Unbekannte Erstellt-am-Wochentage"):
+        repo.list_objects(erstellt_am_wochentag_in=[1, 9])
+    c.close()
+
+
 def test_geaendert_am_iso_range_filter(tmp_path):
     """geaendert_am_min/_max filtert tagesgenau ueber ISO-Strings (lexikographisch).
 
