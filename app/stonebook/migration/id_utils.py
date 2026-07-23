@@ -53,6 +53,32 @@ _PATTERNS = [
     # Positives fuer bare ``Kat 43`` oder andere ``Kat``-startende Woerter wie
     # ``Kategorie``, ``Katalyse``, ``Kathedrale``, ``Katze``).
     re.compile(r"^Kat(?:alog)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
+    # Mineralogische Fundnummer: ``Fund-Nr. 43`` / ``Fund. Nr. 43`` / ``FundNr 43`` /
+    # ``Fund-Nr 43`` / ``Fundnummer 43`` / ``Fund. Nummer 43``. Domaenen-spezifisches
+    # Nummerierungs-Praefix fuer Mineralien-/Gesteins-Sammlungen: die Fundnummer
+    # identifiziert einen Fund-Event (Datum + Ort + Sammler + Objekt) und ist in
+    # DE-sprachigen Sammler-Notizen aus Feldkampagnen, in Vereinszeitschriften der
+    # Mineralien-Vereine (VFMG, MVSK/Mineralien-Verein Schweiz und Kanton, Aufschluss
+    # der Mineralogischen Gesellschaft), in Gel-/Bohrkern-Protokollen der
+    # Bergakademien und in Foto-Captions von Fundstellen-Bildern (``Fund-Nr. 43,
+    # Val Bavona, 2024-07-14``) verbreitet. Waehrend ``Inv.-Nr.`` (323cfff) die
+    # Museums-physische Inventar-Position und ``Kat.-Nr.`` (be56257) den logischen
+    # Katalog-Eintrag identifiziert, referenziert ``Fund-Nr.`` das Sammel-Ereignis
+    # in einem privaten Sammlungs-Kontext; die drei Achsen koexistieren auf
+    # denselben Objekten (Museums-Uebernahmen aus Privatsammlungen tragen alle
+    # drei Nummern parallel). Bisher fielen alle Fund-Nr.-Formen still auf None,
+    # weil das Regex-Set keinen ``Fund``-startenden Praefix kannte - der Sammler-
+    # Workflow "Feld-Notiz-Nummer auf Foto uebertragen, mit --ids-from-file
+    # importieren" scheitert mit ``Ungueltige Objekt-ID: 'Fund-Nr. 43'``.
+    # Strukturell spiegelbildlich zur Inv-/Kat-Regex (``Fund\.?`` mit optionalem
+    # Punkt, beliebige Trenner-Kombination [-.\s]* zwischen Fund- und Nr-Teil,
+    # obligatorischer ``N(?:umme)?r``-Marker als Disambiguierungs-Klammer,
+    # optionaler Punkt nach Nr, optionaler Whitespace vor Ziffer). Der Nr-Marker
+    # verhindert falsche Positives fuer bare ``Fund 43`` (in Prosa mehrdeutig zu
+    # "das ist der 43. Fund") und fuer die haeufigen Fund-startenden Kompositum-
+    # Woerter des Sammler-Vokabulars (``Fundort``, ``Fundstelle``, ``Fundgebiet``,
+    # ``Fundstaette``, ``Fundament``, ``Fundamental``, ``Fundus``).
+    re.compile(r"^Fund\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen

@@ -238,6 +238,65 @@ def test_normalize_id_katalog_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_fund_nummer_praefix():
+    """Mineralogische Fundnummer ``Fund-Nr.`` und Varianten - Sammler-/Feld-Notiz-Standard.
+
+    Waehrend ``Inv.-Nr.`` (323cfff) die Museums-physische Inventar-Position und
+    ``Kat.-Nr.`` (be56257) den logischen Katalog-Eintrag identifiziert, referenziert
+    ``Fund-Nr.`` das Sammel-Ereignis in einem privaten Sammlungs-Kontext - verbreitet
+    in DE-sprachigen Sammler-Notizen aus Feldkampagnen, in Vereinszeitschriften der
+    Mineralien-Vereine (VFMG, MVSK, Der Aufschluss) und in Foto-Captions von
+    Fundstellen-Bildern (``Fund-Nr. 43, Val Bavona, 2024-07-14``). Bisher fielen
+    alle Fund-Nr.-Formen still auf None, weil das Regex-Set keinen ``Fund``-
+    startenden Praefix kannte. Regex spiegelt die Inv-/Kat-Regex strukturell:
+    ``Fund\\.?`` mit optionalem Punkt, beliebige Trenner-Kombination (``-``/``.``
+    /Whitespace), dann obligatorischer ``N(?:umme)?r``-Marker (verhindert falsche
+    Positives fuer bare ``Fund 43`` oder Fund-startende Kompositum-Woerter wie
+    ``Fundort``, ``Fundstelle``, ``Fundgebiet``, ``Fundstaette``, ``Fundament``,
+    ``Fundus``).
+    """
+    # Standard-Formen mit unterschiedlichen Trenner-Kombinationen
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund. Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr 43") == "OBJ_0043"
+    assert normalize_id("FundNr 43") == "OBJ_0043"
+    assert normalize_id("FundNr43") == "OBJ_0043"
+    assert normalize_id("Fund.Nr.43") == "OBJ_0043"
+    # Ausgeschriebene Form ``Nummer``
+    assert normalize_id("Fundnummer 43") == "OBJ_0043"
+    assert normalize_id("Fundnummer43") == "OBJ_0043"
+    assert normalize_id("Fund. Nummer 43") == "OBJ_0043"
+    assert normalize_id("Fund Nummer 43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("fund-nr 7") == "OBJ_0007"
+    assert normalize_id("FUND-NR. 001") == "OBJ_0001"
+    assert normalize_id("fundnummer 7") == "OBJ_0007"
+    assert normalize_id("FUNDNUMMER 43") == "OBJ_0043"
+    # Ungueltig: ohne Nummer-Marker, mit Suffix-Ballast, oder Fund-Kompositum
+    assert normalize_id("Fund 43") is None            # ohne Nr/Nummer nicht eindeutig
+    assert normalize_id("Fund-Nr. 43X") is None       # Suffix-Ballast
+    assert normalize_id("Fundort 43") is None         # Fund-Kompositum ohne Nr-Marker
+    assert normalize_id("Fundstelle 43") is None
+    assert normalize_id("Fundgebiet 43") is None
+    assert normalize_id("Fundstaette 43") is None
+    assert normalize_id("Fundament 43") is None
+    assert normalize_id("Fundamental 43") is None
+    assert normalize_id("Fundus 43") is None
+    assert normalize_id("Fund-Nr 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen (inkl. Inv/Kat-Nr-Praefix) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_normalize_id_ausgeschriebene_nummer_vollform():
     """Standalone ``Nummer`` als ausgeschriebene DE-Vollform, spiegelt Kurzform ``Nr.``.
 
