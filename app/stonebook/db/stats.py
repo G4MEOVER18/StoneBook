@@ -175,6 +175,7 @@ class Statistik:
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_quartal: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_erstellt_am_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -207,6 +208,7 @@ class Statistik:
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_quartal: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_erstellt_am_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -1419,6 +1421,9 @@ class Statistik:
             "wert_pro_erstellt_am_quartal": [
                 (q, round(w, 2)) for q, w in self.wert_pro_erstellt_am_quartal
             ],
+            "wert_pro_erstellt_am_halbjahr": [
+                (h, round(w, 2)) for h, w in self.wert_pro_erstellt_am_halbjahr
+            ],
             "wert_pro_geaendert_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_geaendert_am_jahr
             ],
@@ -1514,6 +1519,9 @@ class Statistik:
             ],
             "gewicht_pro_erstellt_am_quartal": [
                 (q, round(g, 2)) for q, g in self.gewicht_pro_erstellt_am_quartal
+            ],
+            "gewicht_pro_erstellt_am_halbjahr": [
+                (h, round(g, 2)) for h, g in self.gewicht_pro_erstellt_am_halbjahr
             ],
             "gewicht_pro_geaendert_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_geaendert_am_jahr
@@ -3247,6 +3255,57 @@ def _sum_by_erstellt_am_quartal(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, q ASC"
     )
     return [(f"Q{r['q']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_erstellt_am_halbjahr(conn: sqlite3.Connection, value_sql: str,
+                                 extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``erstellt_am``-Halbjahr (H1/H2).
+
+    Spiegelt :func:`_sum_by_funddatum_halbjahr` auf die Erfassungs-Achse
+    und ergaenzt :func:`_sum_by_erstellt_am_quartal` um die noch groebere
+    Zwei-Punkt-Aggregat-Achse. Zeigt die typische Sammler-Digitalisierungs-
+    Kampagnen-Zaesur H1/H2 auf der Erfassungs-Achse in Wert-/Gewicht-
+    Notation: H1-Winter-Indoor-Phase Januar-Juni mit Tucson-Nachbearbeitung
+    und Nachlass-Digitalisierung, H2-Sommer-/Herbst-Phase Juli-Dezember
+    mit Feld-Erfassungs-Rueckstand und Muenchen-Nachbereitung.
+    Komplementaer zu :func:`_count_erstellt_am_halbjahr` (Anzahl -
+    Kampagnen-Zaesur) und zu :func:`_sum_by_erstellt_am_quartal` (feinere
+    Quartals-Ergiebigkeit): eine hochwertige H1-Nachlass-Digitalisierungs-
+    Welle hebt den H1-Wert-Bucket, waehrend eine H2-Nachbereitung schwerer
+    Feld-Handstuecke den H2-Gewicht-Bucket dominiert. Spiegelt die
+    Excel-Halbjahres-Buchhaltungs-/Steuer-Konvention.
+
+    Halbjahr wird aus dem Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet:
+    H1=Jan..Jun, H2=Jul..Dez - Ganzzahl-Division in SQLite ist per Definition
+    truncating, konsistent zum Python-Aequivalent ``(m - 1) // 6 + 1`` und
+    zur :func:`_count_erstellt_am_halbjahr`-/``erstellt_am_halbjahr_in``-
+    Filter-Konvention.
+
+    ``erstellt_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(erstellt_am, 6, 2)`` extrahiert den
+    Monatsteil. Akzeptiert nur Eintraege mit vierstelligem Jahres-Praefix
+    und gueltigem Monatsteil 01..12 (defensive Behandlung historischer
+    Imports mit kaputten Stempeln; spiegelt :func:`_sum_by_erstellt_am_monat`
+    und :func:`_sum_by_erstellt_am_quartal`).
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach Halbjahres-
+    Nummer (H1 zuerst). Ohne Limit, weil maximal zwei Halbjahres-Buckets
+    vorkommen koennen.
+    """
+    where = ("erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+             "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(substr(erstellt_am, 6, 2) AS INTEGER) - 1) / 6 + 1) AS h, "
+        f"       SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY h HAVING w > 0 "
+        f"ORDER BY w DESC, h ASC"
+    )
+    return [(f"H{r['h']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_erstellt_am_jahr(conn: sqlite3.Connection, value_sql: str,
@@ -5595,6 +5654,20 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Ohne Limit, weil max. 4 Quartals-Buckets moeglich sind.
     st.wert_pro_erstellt_am_quartal = _sum_by_erstellt_am_quartal(conn, wert_sql)
     st.gewicht_pro_erstellt_am_quartal = _sum_by_erstellt_am_quartal(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Erfassungs-Halbjahres-Ergiebigkeit: spiegelt wert_/gewicht_pro_funddatum_
+    # halbjahr auf die Erfassungs-Achse - in welchem Kalender-Halbjahr (H1/H2)
+    # ueber alle Jahre aggregiert der hoechste Wert bzw. das hoechste Gewicht
+    # digitalisiert wurde. Komplementaer zu by_erstellt_am_halbjahr (Anzahl -
+    # Kampagnen-Zaesur) und zu wert_/gewicht_pro_erstellt_am_quartal (feinere
+    # Quartals-Ergiebigkeit): eine hochwertige H1-Nachlass-Digitalisierungs-
+    # Welle hebt den H1-Wert-Bucket, waehrend eine H2-Nachbereitung schwerer
+    # Feld-Handstuecke den H2-Gewicht-Bucket dominiert. Ergaenzt die
+    # Quartals-Erfassungs-Sicht um die Zwei-Punkt-Aggregat-Achse (Excel-
+    # Halbjahres-Buchhaltungs-/Steuer-Konvention). Ohne Limit, weil max. 2
+    # Halbjahres-Buckets moeglich sind.
+    st.wert_pro_erstellt_am_halbjahr = _sum_by_erstellt_am_halbjahr(conn, wert_sql)
+    st.gewicht_pro_erstellt_am_halbjahr = _sum_by_erstellt_am_halbjahr(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Aenderungs-Wochentag-Ergiebigkeit: spiegelt wert_/gewicht_pro_erstellt_am_
     # wochentag auf die Pflege-Achse und schliesst die Wochentag-Wert-Sicht auf
