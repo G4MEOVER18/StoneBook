@@ -573,6 +573,7 @@ class ObjectRepo:
                      geaendert_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_min: str | None = None,
                      geaendert_am_max: str | None = None,
+                     geaendert_am_wochentag_in: list[int] | tuple[int, ...] | None = None,
                      fundort: str = "",
                      fundort_in: list[str] | tuple[str, ...] | None = None,
                      fundort_contains: str = "",
@@ -1589,6 +1590,44 @@ class ObjectRepo:
             where.append("o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
                          "AND o.geaendert_am <= ?")
             params.append(str(geaendert_am_max))
+        # geaendert_am_wochentag_in: Mengen-Wochentag-Filter auf der Aenderungs-
+        # Achse (ISO 1..7: Mo=1..So=7). Spiegelt erstellt_am_wochentag_in und
+        # funddatum_wochentag_in auf die zweite Zeitstempel-Spalte - schliesst
+        # damit die Wochentag-Filter-Trias der drei Zeitstempel-Spalten ab und
+        # verdrahtet das bereits vorhandene by_geaendert_am_wochentag-Aggregat
+        # aus der Statistik als Listen-Drill-down ("welche Objekte habe ich
+        # Sonntags nachgepflegt?"). Aenderungs-Wochentag ist unabhaengig vom
+        # Erfassungs-Wochentag und vom Fund-Wochentag: ein Werktags-erfasstes
+        # Stueck kann Sonntags in der Wochenend-Pflege-Phase redaktionell
+        # ueberarbeitet worden sein (Foto nachgereicht, KI-Analyse uebernommen,
+        # Mineral-Zuordnung nach XRD-Termin praezisiert). Round-Trip-Bedingung
+        # strftime('%Y-%m-%d', substr(...,1,10)) = substr(...,1,10) ist
+        # identisch zu _count_geaendert_am_wochentag: reine Jahres- oder
+        # Jahr+Monat-Formen und ungueltige Kalender-Tage fallen bewusst heraus,
+        # weil ihnen kein Wochentag zugeordnet werden kann; die Round-Trip-
+        # Gleichheit faengt sowohl NULL-Rueckgabe (unerkannte Formen) als auch
+        # SQLite-Kalender-Rollovers (2024-02-30 -> 2024-03-01 mit dem Wochentag
+        # des 1. Maerz) ab. Die ISO-Umrechnung ``((strftime_dow + 6) % 7) + 1``
+        # mappt SQLite-``%w`` (0=So..6=Sa) auf ISO-8601 (1=Mo..7=So) und stimmt
+        # mit der Statistik-Achse ueberein. ``substr(..., 1, 10)`` deckt sowohl
+        # das reine YYYY-MM-DD-Datum als auch den voll qualifizierten Stempel
+        # YYYY-MM-DD HH:MM:SS (repository._now()-Format) transparent ab.
+        if geaendert_am_wochentag_in:
+            wt = [int(w) for w in geaendert_am_wochentag_in]
+            invalid = [w for w in wt if not 1 <= w <= 7]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Geaendert-am-Wochentage: {invalid} "
+                    f"(erwartet 1..7, Mo=1..So=7)")
+            if wt:
+                placeholders = ", ".join("?" * len(wt))
+                where.append(
+                    "o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                    "AND strftime('%Y-%m-%d', substr(o.geaendert_am, 1, 10)) "
+                    "    = substr(o.geaendert_am, 1, 10) "
+                    "AND ((CAST(strftime('%w', substr(o.geaendert_am, 1, 10)) AS INTEGER) "
+                    f"     + 6) % 7) + 1 IN ({placeholders})")
+                params.extend(wt)
         if fundort:
             where.append("o.Fundort = ?")
             params.append(fundort)
