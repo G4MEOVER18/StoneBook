@@ -174,6 +174,7 @@ class Statistik:
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_erstellt_am_quartal: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -205,6 +206,7 @@ class Statistik:
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_erstellt_am_quartal: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -1414,6 +1416,9 @@ class Statistik:
             "wert_pro_erstellt_am_wochentag": [
                 (t, round(w, 2)) for t, w in self.wert_pro_erstellt_am_wochentag
             ],
+            "wert_pro_erstellt_am_quartal": [
+                (q, round(w, 2)) for q, w in self.wert_pro_erstellt_am_quartal
+            ],
             "wert_pro_geaendert_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_geaendert_am_jahr
             ],
@@ -1506,6 +1511,9 @@ class Statistik:
             ],
             "gewicht_pro_erstellt_am_wochentag": [
                 (t, round(g, 2)) for t, g in self.gewicht_pro_erstellt_am_wochentag
+            ],
+            "gewicht_pro_erstellt_am_quartal": [
+                (q, round(g, 2)) for q, g in self.gewicht_pro_erstellt_am_quartal
             ],
             "gewicht_pro_geaendert_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_geaendert_am_jahr
@@ -3191,6 +3199,54 @@ def _sum_by_erstellt_am_monat(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, k ASC"
     )
     return [(r["k"], float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_erstellt_am_quartal(conn: sqlite3.Connection, value_sql: str,
+                                extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``erstellt_am``-Quartal (Q1..Q4).
+
+    Spiegelt :func:`_sum_by_funddatum_quartal` auf die Erfassungs-Achse:
+    zeigt, in welchem Kalender-Quartal ueber alle Jahre der hoechste Wert
+    bzw. das hoechste Gewicht *erfasst/digitalisiert* wurde. Komplementaer
+    zu :func:`_count_erstellt_am_quartal` (Anzahl - Erfassungs-Kampagnen-
+    Rhythmik) und :func:`_sum_by_erstellt_am_monat` (Erfassungs-Saison auf
+    feinerer Monats-Achse): eine Q1-Winter-Indoor-Phase mit wenigen, aber
+    hochwertigen Nachlass-Digitalisierungen hebt den Q1-Wert-Bucket
+    ueberproportional an; eine Q3-Nachbereitung der Sommer-Feld-Saison
+    mit vielen schweren Handstuecken schiebt das Q3-Gewicht in den Q3-
+    Bucket. Ergaenzt die Quartals-Sum-Reihe um die Erfassungs-Achse.
+
+    Quartal wird aus dem Monatsteil per ``((monat - 1) / 3) + 1`` abgeleitet:
+    Q1=Jan..Maerz, Q2=Apr..Jun, Q3=Jul..Sep, Q4=Okt..Dez - Ganzzahl-Division
+    in SQLite ist per Definition truncating, konsistent zum Python-Aequivalent
+    ``(m - 1) // 3 + 1`` und zur :func:`_count_erstellt_am_quartal`-/
+    ``erstellt_am_quartal_in``-Filter-Konvention.
+
+    ``erstellt_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(erstellt_am, 6, 2)`` extrahiert den
+    Monatsteil. Akzeptiert nur Eintraege mit vierstelligem Jahres-Praefix
+    und gueltigem Monatsteil 01..12 (defensive Behandlung historischer
+    Imports mit kaputten Stempeln; spiegelt :func:`_sum_by_erstellt_am_monat`
+    und :func:`_count_erstellt_am_quartal`).
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach Quartals-
+    Nummer (Q1 zuerst). Ohne Limit, weil maximal vier Quartals-Buckets
+    vorkommen koennen - die Ausgabe wird nie laenger.
+    """
+    where = ("erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+             "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(substr(erstellt_am, 6, 2) AS INTEGER) - 1) / 3 + 1) AS q, "
+        f"       SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY q HAVING w > 0 "
+        f"ORDER BY w DESC, q ASC"
+    )
+    return [(f"Q{r['q']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_erstellt_am_jahr(conn: sqlite3.Connection, value_sql: str,
@@ -5526,6 +5582,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Ohne Limit, weil max. 7 Wochentag-Buckets moeglich sind.
     st.wert_pro_erstellt_am_wochentag = _sum_by_erstellt_am_wochentag(conn, wert_sql)
     st.gewicht_pro_erstellt_am_wochentag = _sum_by_erstellt_am_wochentag(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Erfassungs-Quartals-Ergiebigkeit: spiegelt wert_/gewicht_pro_funddatum_
+    # quartal auf die Erfassungs-Achse - in welchem Kalender-Quartal (Q1..Q4)
+    # ueber alle Jahre aggregiert der hoechste Wert bzw. das hoechste Gewicht
+    # digitalisiert wurde. Komplementaer zu by_erstellt_am_quartal (Anzahl -
+    # Erfassungs-Kampagnen-Rhythmik) und zu wert_/gewicht_pro_erstellt_am_monat
+    # (Erfassungs-Saison auf feinerer Monats-Achse): Q1-Winter-Indoor-Phase mit
+    # wenigen, aber hochwertigen Nachlass-Digitalisierungen hebt den Q1-Wert-
+    # Bucket ueberproportional an; Q3-Nachbereitung der Sommer-Feld-Saison
+    # mit vielen schweren Handstuecken schiebt das Q3-Gewicht in den Q3-Bucket.
+    # Ohne Limit, weil max. 4 Quartals-Buckets moeglich sind.
+    st.wert_pro_erstellt_am_quartal = _sum_by_erstellt_am_quartal(conn, wert_sql)
+    st.gewicht_pro_erstellt_am_quartal = _sum_by_erstellt_am_quartal(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Aenderungs-Wochentag-Ergiebigkeit: spiegelt wert_/gewicht_pro_erstellt_am_
     # wochentag auf die Pflege-Achse und schliesst die Wochentag-Wert-Sicht auf
