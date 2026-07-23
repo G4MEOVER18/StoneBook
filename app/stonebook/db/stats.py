@@ -78,6 +78,7 @@ class Statistik:
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_wochentag: dict[str, int] = field(default_factory=dict)
+    by_erstellt_am_quartal: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahr: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_monat: dict[str, int] = field(default_factory=dict)
@@ -1187,6 +1188,7 @@ class Statistik:
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
             "by_erstellt_am_wochentag": dict(self.by_erstellt_am_wochentag),
+            "by_erstellt_am_quartal": dict(self.by_erstellt_am_quartal),
             "by_geaendert_am_jahr": dict(self.by_geaendert_am_jahr),
             "by_geaendert_am_jahrzehnt": dict(self.by_geaendert_am_jahrzehnt),
             "by_geaendert_am_monat": dict(self.by_geaendert_am_monat),
@@ -1957,6 +1959,41 @@ def _count_erstellt_am_wochentag(conn: sqlite3.Connection) -> dict[str, int]:
     )
     return {_WOCHENTAG_LABEL[str(r["iso_dow"])]: r["n"]
             for r in conn.execute(sql).fetchall()}
+
+
+def _count_erstellt_am_quartal(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``erstellt_am``-Quartal (Q1..Q4).
+
+    Spiegelt :func:`_count_funddatum_quartal` um die Erfassungs-Achse: zeigt
+    die typische Digitalisierungs-Kampagnen-Rhythmik in Quartals-Schueben
+    (Q1-Indoor-Phase Januar-Maerz mit Tucson-Nachbearbeitung, Q4-Winter-
+    Digitalisierung Oktober-Dezember mit Muenchen-Nachbereitung), waehrend
+    die klassischen Excel-Buchhaltungs-/Steuer-Quartale ebenfalls in Q1/Q4
+    kulminieren (Jahresabschluss-Erfassung, Ruecklauf-Bereinigung).
+    Komplementaer zum erstellt_am_quartal_in-Filter (Listen-Drill-down):
+    hier die Verteilungs-Sicht ueber die vier Kalender-Quartale.
+
+    Aggregiert ueber alle Jahre, Labels ``Q1``..``Q4``, Reihenfolge Q1 zuerst
+    (chronologisch aufsteigend). Quartal wird aus dem Monatsteil per
+    ``((monat - 1) / 3) + 1`` abgeleitet.
+
+    ``erstellt_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(erstellt_am, 6, 2)`` extrahiert den
+    Monatsteil. Substring-Praefix-Guards und ``BETWEEN 1 AND 12``-Guard sind
+    identisch zu :func:`_count_erstellt_am_monat` und zum
+    erstellt_am_quartal_in-Filter, damit reine Jahres-Formen ohne Monatsteil
+    und pathologische Monats-Codes 00/13..99 automatisch herausfallen.
+    """
+    sql = (
+        "SELECT ((CAST(substr(erstellt_am, 6, 2) AS INTEGER) - 1) / 3 + 1) AS q, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY q ORDER BY q ASC"
+    )
+    return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_geaendert_am_jahr(conn: sqlite3.Connection) -> dict[str, int]:
@@ -3310,6 +3347,15 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # (freizeit-nah), Werktags-Erfassung (pensioniert), Feiertags-
     # Konzentration (Berufs-Sammler).
     st.by_erstellt_am_wochentag = _count_erstellt_am_wochentag(conn)
+    # Erfassungs-Quartals-Rhythmik (Q1..Q4, ueber alle Jahre aggregiert):
+    # spiegelt by_funddatum_quartal um die Erfassungs-Achse. Zeigt die
+    # typische Digitalisierungs-Kampagnen-Rhythmik in Quartals-Schueben
+    # (Q1-Indoor-Phase Januar-Maerz mit Tucson-Nachbearbeitung, Q4-Winter-
+    # Digitalisierung Oktober-Dezember mit Muenchen-Nachbereitung), waehrend
+    # die klassischen Excel-Buchhaltungs-/Steuer-Quartale ebenfalls in Q1/Q4
+    # kulminieren. Komplementaer zum erstellt_am_quartal_in-Filter (Listen-
+    # Drill-down): hier die Verteilungs-Sicht ueber die vier Quartale.
+    st.by_erstellt_am_quartal = _count_erstellt_am_quartal(conn)
     # Rarity-Histogramm: wie verteilt sich die Sammlung auf der globalen
     # Seltenheits-Skala (1=haeufig .. 10=sehr selten)? Komplementaer zu den
     # seltenheit_global_min/max-Filtern: zeigt nicht nur "ein Stueck ist hier
