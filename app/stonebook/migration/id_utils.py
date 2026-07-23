@@ -98,6 +98,34 @@ _PATTERNS = [
     # Woerter des Sammler-Vokabulars (``Fundort``, ``Fundstelle``, ``Fundgebiet``,
     # ``Fundstaette``, ``Fundament``, ``Fundamental``, ``Fundus``).
     re.compile(r"^Fund\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
+    # Englische Katalog-Nummer: ``Cat. No. 43`` / ``Cat No 43`` / ``CatNo43`` /
+    # ``Cat-No. 43`` / ``Catalog Number 43`` / ``Catalogue No. 43``. Englisches Pendant
+    # zur DE-``Kat.-Nr.``-Regex (be56257): Standard-Praefix auf EN-sprachigen Museums-
+    # Etiketten und Sammlungs-Datenbanken der grossen anglo-amerikanischen Naturkunde-
+    # Museen (Smithsonian National Museum of Natural History NMNH mit "Cat. No."-
+    # Standard in ihrer Mineralien-Datenbank, American Museum of Natural History NYC,
+    # Natural History Museum London mit BM-Kuerzel "Cat.No.", Yale Peabody Museum,
+    # Harvard Mineralogical & Geological Museum) sowie in publizierten EN-sprachigen
+    # Sammlungs-Katalogen (Rocks & Minerals, Mineralogical Record, The Canadian
+    # Mineralogist mit "Cat. No."-Referenz-Notation in Type-Locality-Reports und in
+    # Type-Specimen-Publikationen). Sammler-Notizen aus Museums-Besuchen im anglo-
+    # amerikanischen Raum ("Case 12, Cat. No. 12345, Baryt from Cornwall") und
+    # Publikations-Referenzen ("cf. Cat. No. 8721 in Rocks & Minerals 94:3") uebernehmen
+    # die Notation woertlich; ohne diese Praefix-Erkennung faellt der ``--ids-from-file``-
+    # Import solcher Listen still auf None. Regex spiegelt die Kat.-Nr.-Regex
+    # strukturell mit EN-Vokabular: ``Cat(?:alog(?:ue)?)?`` deckt Kurz- (``Cat``),
+    # US-Vollform (``Catalog``) und UK-Vollform (``Catalogue``) ab, optionaler Punkt
+    # (``Cat.`` vs. ``Cat``), beliebige Trenner-Kombination [-.\s]*, obligatorischer
+    # ``N(?:o|umber)`` -Marker (deckt Kurzform ``No`` und Vollform ``Number`` ab),
+    # optionaler Punkt nach No, optionaler Whitespace vor Ziffer. Der obligatorische
+    # No/Number-Marker verhindert falsche Positives fuer bare ``Cat 43`` (mehrdeutig zu
+    # englischer Prosa "Cat named 43") und fuer andere ``Cat``-startende Woerter im
+    # EN-Vokabular (``Category``, ``Cathedral``, ``Catholic``, ``Catnap``, ``Catch``,
+    # ``Cattle``). Kollisionsfrei zur bestehenden Kat.-Nr.-Regex (``Cat`` != ``Kat``
+    # lexikalisch), zu OBJ/Objekt/Object (``Cat`` startet nicht mit ``O``) und zur
+    # ``No.``-Prefix-Regex (``No. 43`` matched dort, ``Cat No. 43`` matched hier -
+    # spezifischerer Praefix schlaegt generischer, gleichwertige Semantik).
+    re.compile(r"^Cat(?:alog(?:ue)?)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen
