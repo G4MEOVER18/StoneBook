@@ -551,6 +551,7 @@ class ObjectRepo:
                      funddatum_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_monat: int | None = None,
                      funddatum_monat_in: list[int] | tuple[int, ...] | None = None,
+                     funddatum_quartal_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
                      funddatum_wochentag_in: list[int] | tuple[int, ...] | None = None,
@@ -1203,6 +1204,31 @@ class ObjectRepo:
                     f"AND CAST(substr(o.Funddatum, 6, 2) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(monate)
+        # funddatum_quartal_in: diskrete Kalender-Quartale (1..4) als grobere
+        # Saison-Achse ueber funddatum_monat_in ("Fruehjahr Q1 ODER Herbst Q3"
+        # oder "Tucson-Show Q1 ODER Munich-Show Q4"). Quartal wird aus dem
+        # Monatsteil abgeleitet: Q = ((monat - 1) / 3) + 1, also
+        # Q1=1..3, Q2=4..6, Q3=7..9, Q4=10..12. Spiegelt funddatum_monat_in
+        # in der Aggregat-Achse und ergaenzt sie um die uebliche Sammler-
+        # Notation (Quartalsberichte, Boersen-Kalender pro Quartal). Erwartet
+        # jeden Eintrag in 1..4 (Tippfehler 0/5 erzeugen einen klaren Fehler).
+        if funddatum_quartal_in:
+            quartale = [int(q) for q in funddatum_quartal_in]
+            invalid = [q for q in quartale if not 1 <= q <= 4]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Funddatum-Quartale: {invalid} "
+                    f"(erwartet 1..4)")
+            if quartale:
+                placeholders = ", ".join("?" * len(quartale))
+                where.append(
+                    "o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                    "AND substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+                    "AND CAST(substr(o.Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+                    f"AND ((CAST(substr(o.Funddatum, 6, 2) AS INTEGER) - 1) / 3 + 1) "
+                    f"IN ({placeholders})")
+                params.extend(quartale)
         # Funddatum-Bereich auf Tagesgenauigkeit: ISO YYYY-MM-DD lexikographisch
         # vergleichbar. Akzeptiert auch YYYY-MM oder YYYY allein.
         if funddatum_min is not None:
