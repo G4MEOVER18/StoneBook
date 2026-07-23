@@ -2414,6 +2414,73 @@ def test_funddatum_quartal_in_filter(tmp_path):
     c.close()
 
 
+def test_funddatum_halbjahr_in_filter(tmp_path):
+    """funddatum_halbjahr_in waehlt diskrete Kalender-Halbjahre (H1/H2).
+
+    Halbjahr wird aus dem Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet:
+    H1=Jan..Jun, H2=Jul..Dez. Spiegelt funddatum_quartal_in in der noch
+    groeberen Zwei-Punkt-Achse fuer Kampagnen-Planung ("Fruehjahrs-Kampagne
+    H1 ODER Herbst-Kampagne H2") und Halbjahres-Buchhaltung.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "halbjahr_in.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-01-15"),   # H1 (Rand-Januar)
+            ("OBJ_0002", "2024-03-20"),   # H1 (Mitte)
+            ("OBJ_0003", "2024-06-30"),   # H1 (Rand-Juni)
+            ("OBJ_0004", "2023-07-01"),   # H2 (Rand-Juli)
+            ("OBJ_0005", "2023-10-15"),   # H2 (Mitte)
+            ("OBJ_0006", "2022-12-31"),   # H2 (Rand-Dezember)
+            ("OBJ_0007", "2021"),         # ohne Monatsteil
+            ("OBJ_0008", None),           # NULL
+            ("OBJ_0009", ""),             # leer
+            ("OBJ_0010", "kein-datum"),   # kaputt
+            ("OBJ_0011", "2024-00-15"),   # Monat 00 - darf NICHT als H1 zaehlen
+            ("OBJ_0012", "2024-13-15"),   # Monat 13 - darf NICHT als H3 zaehlen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # H1 allein: Jan..Jun
+    rows = repo.list_objects(funddatum_halbjahr_in=[1])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # H2 allein: Jul..Dez
+    rows = repo.list_objects(funddatum_halbjahr_in=[2])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    # Beide Halbjahre = alle Objekte mit gueltigem Monatsteil
+    rows = repo.list_objects(funddatum_halbjahr_in=[1, 2])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003",
+        "OBJ_0004", "OBJ_0005", "OBJ_0006",
+    ]
+    # Tupel akzeptiert
+    rows = repo.list_objects(funddatum_halbjahr_in=(2,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    # Leere Liste -> kein Filter (alle 12 Objekte)
+    rows = repo.list_objects(funddatum_halbjahr_in=[])
+    assert len(rows) == 12
+    # Kombiniert mit Jahresfilter (Schnittmenge H1 ∩ 2024)
+    rows = repo.list_objects(funddatum_halbjahr_in=[1], funddatum_jahr_min=2024)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kombiniert mit funddatum_quartal_in (H1 ∩ Q2 = April..Juni)
+    rows = repo.list_objects(funddatum_halbjahr_in=[1], funddatum_quartal_in=[2])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # H2 ∩ Q3 = Juli..September (nur Juli belegt)
+    rows = repo.list_objects(funddatum_halbjahr_in=[2], funddatum_quartal_in=[3])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004"]
+    # Validierung
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Halbjahre"):
+        repo.list_objects(funddatum_halbjahr_in=[1, 3])
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Halbjahre"):
+        repo.list_objects(funddatum_halbjahr_in=[0])
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Halbjahre"):
+        repo.list_objects(funddatum_halbjahr_in=[-1])
+    c.close()
+
+
 def test_funddatum_jahrzehnt_in_filter(tmp_path):
     """funddatum_jahrzehnt_in akzeptiert diskrete Dekaden ('1980er ODER 2010er').
 

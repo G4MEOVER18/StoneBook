@@ -552,6 +552,7 @@ class ObjectRepo:
                      funddatum_monat: int | None = None,
                      funddatum_monat_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_quartal_in: list[int] | tuple[int, ...] | None = None,
+                     funddatum_halbjahr_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
                      funddatum_wochentag_in: list[int] | tuple[int, ...] | None = None,
@@ -1229,6 +1230,31 @@ class ObjectRepo:
                     f"AND ((CAST(substr(o.Funddatum, 6, 2) AS INTEGER) - 1) / 3 + 1) "
                     f"IN ({placeholders})")
                 params.extend(quartale)
+        # funddatum_halbjahr_in: diskrete Kalender-Halbjahre (1..2) als noch
+        # groebere Aggregat-Achse ueber funddatum_quartal_in ("Fruehjahrs-
+        # Kampagne H1 ODER Herbst-Kampagne H2"). Halbjahr wird aus dem
+        # Monatsteil abgeleitet: H = ((monat - 1) / 6) + 1, also
+        # H1=1..6 (Jan..Jun), H2=7..12 (Jul..Dez). Spiegelt funddatum_quartal_in
+        # in der noch groeberen Zwei-Punkt-Achse (Sammler-Kampagnen-Planung,
+        # Halbjahres-Buchhaltung, Steuer-Halbjahres-Bilanzen). Erwartet jeden
+        # Eintrag in 1..2 (Tippfehler 0/3 erzeugen einen klaren Fehler).
+        if funddatum_halbjahr_in:
+            halbjahre = [int(h) for h in funddatum_halbjahr_in]
+            invalid = [h for h in halbjahre if not 1 <= h <= 2]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Funddatum-Halbjahre: {invalid} "
+                    f"(erwartet 1..2)")
+            if halbjahre:
+                placeholders = ", ".join("?" * len(halbjahre))
+                where.append(
+                    "o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                    "AND substr(o.Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+                    "AND CAST(substr(o.Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+                    f"AND ((CAST(substr(o.Funddatum, 6, 2) AS INTEGER) - 1) / 6 + 1) "
+                    f"IN ({placeholders})")
+                params.extend(halbjahre)
         # Funddatum-Bereich auf Tagesgenauigkeit: ISO YYYY-MM-DD lexikographisch
         # vergleichbar. Akzeptiert auch YYYY-MM oder YYYY allein.
         if funddatum_min is not None:
