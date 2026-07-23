@@ -563,6 +563,7 @@ class ObjectRepo:
                      erstellt_am_monat: int | None = None,
                      erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_quartal_in: list[int] | tuple[int, ...] | None = None,
+                     erstellt_am_halbjahr_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_min: str | None = None,
                      erstellt_am_max: str | None = None,
                      erstellt_am_wochentag_in: list[int] | tuple[int, ...] | None = None,
@@ -1434,6 +1435,47 @@ class ObjectRepo:
                     f"AND ((CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) - 1) / 3 + 1) "
                     f"IN ({placeholders})")
                 params.extend(quartale)
+        # erstellt_am_halbjahr_in: Mengen-Halbjahres-Filter auf der Erfassungs-
+        # Achse (H1..H2). Spiegelt funddatum_halbjahr_in (e6aeba4) auf die
+        # zweite Zeitstempel-Spalte und ergaenzt erstellt_am_quartal_in um die
+        # noch groebere Zwei-Punkt-Aggregat-Achse. Halbjahr wird aus dem
+        # Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet: H1=Jan..Jun,
+        # H2=Jul..Dez - Ganzzahl-Division in SQLite ist per Definition
+        # truncating, das Ergebnis ist konsistent mit dem Python-Aequivalent
+        # ``(m - 1) // 6 + 1``. Sammler-Kontext auf der Erfassungs-Achse:
+        # Digitalisierungs-Kampagnen laufen in Halbjahres-Bloecken (H1-
+        # Indoor-Winter-Phase Januar-Juni mit Tucson-Nachbearbeitung und
+        # Nachlass-Digitalisierung, H2-Sommer-/Herbst-Phase Juli-Dezember mit
+        # Feld-Erfassungs-Rueckstand und Muenchen-Nachbereitung), waehrend
+        # Halbjahres-Buchhaltung und Steuer-Halbjahres-Bilanzen die typische
+        # Excel-Konvention der Zwei-Punkt-Aggregate widerspiegeln. Erwartet
+        # jeden Eintrag in 1..2 (Tippfehler 0/3 erzeugen einen klaren Fehler
+        # statt eines stillen Leerergebnisses). Substring-Praefix-Guards
+        # ``substr(o.erstellt_am, 1, 4) GLOB '[0-9]{4}'`` und
+        # ``substr(o.erstellt_am, 6, 2) GLOB '[0-1][0-9]'`` sind identisch zu
+        # erstellt_am_quartal_in / erstellt_am_monat_in, damit reine Jahres-
+        # Formen ohne Monatsteil ("2024") und kaputte Stempel automatisch
+        # herausfallen. Der zusaetzliche ``BETWEEN 1 AND 12``-Guard vor der
+        # Halbjahr-Berechnung ist symmetrisch zu funddatum_halbjahr_in und
+        # erstellt_am_quartal_in und faengt die pathologischen Monats-Codes
+        # 00/13..99 ab.
+        if erstellt_am_halbjahr_in:
+            halbjahre = [int(h) for h in erstellt_am_halbjahr_in]
+            invalid = [h for h in halbjahre if not 1 <= h <= 2]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Erstellt-am-Halbjahre: {invalid} "
+                    f"(erwartet 1..2)")
+            if halbjahre:
+                placeholders = ", ".join("?" * len(halbjahre))
+                where.append(
+                    "o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                    "AND substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+                    "AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+                    f"AND ((CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) - 1) / 6 + 1) "
+                    f"IN ({placeholders})")
+                params.extend(halbjahre)
         # erstellt_am-Bereich auf Tagesgenauigkeit/Sekundengenauigkeit: ISO
         # YYYY-MM-DD[ HH:MM:SS] ist lexikographisch vergleichbar, daher reicht
         # ein direkter String-Vergleich ohne Datums-Parsing. Spiegelt funddatum_
