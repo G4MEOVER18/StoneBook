@@ -562,6 +562,7 @@ class ObjectRepo:
                      erstellt_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_monat: int | None = None,
                      erstellt_am_monat_in: list[int] | tuple[int, ...] | None = None,
+                     erstellt_am_quartal_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_min: str | None = None,
                      erstellt_am_max: str | None = None,
                      erstellt_am_wochentag_in: list[int] | tuple[int, ...] | None = None,
@@ -1390,6 +1391,48 @@ class ObjectRepo:
                     f"AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(monate)
+        # erstellt_am_quartal_in: Mengen-Quartals-Filter auf der Erfassungs-
+        # Achse (Q1..Q4). Spiegelt funddatum_quartal_in (f240464) auf die
+        # zweite Zeitstempel-Spalte und ergaenzt erstellt_am_monat_in um die
+        # groebere Quartals-Aggregat-Notation. Quartal wird aus dem Monatsteil
+        # per ``((monat - 1) / 3) + 1`` abgeleitet: Q1=1..3, Q2=4..6, Q3=7..9,
+        # Q4=10..12 - Ganzzahl-Division in SQLite ist per Definition truncating,
+        # das Ergebnis ist konsistent mit dem Python-Aequivalent
+        # ``(m - 1) // 3 + 1``. Sammler-Kontext auf der Erfassungs-Achse: die
+        # Digitalisierungs-Kampagnen laufen typischerweise in Quartals-
+        # Schueben (Q1-Indoor-Phase Januar-Maerz mit Tucson-Nachbearbeitung,
+        # Q4-Winter-Digitalisierung Oktober-Dezember mit Muenchen-Nachbereitung),
+        # waehrend die klassischen Excel-Buchhaltungs-/Steuer-Quartale
+        # ebenfalls in Q1/Q4 kulminieren (Jahresabschluss-Erfassung,
+        # Ruecklauf-Bereinigung). Erwartet jeden Eintrag in 1..4 (Tippfehler
+        # 0/5 erzeugen einen klaren Fehler statt eines stillen Leerergebnisses).
+        # Substring-Praefix-Guards ``substr(o.erstellt_am, 1, 4) GLOB '[0-9]{4}'``
+        # und ``substr(o.erstellt_am, 6, 2) GLOB '[0-1][0-9]'`` sind identisch
+        # zu erstellt_am_monat_in, damit reine Jahres-Formen ohne Monatsteil
+        # ("2024") und kaputte Stempel automatisch herausfallen. Der zusaetzliche
+        # ``BETWEEN 1 AND 12``-Guard vor der Quartal-Berechnung ist symmetrisch
+        # zu funddatum_quartal_in und faengt die pathologischen Monats-Codes
+        # 00/13..99 ab, die die GLOB-Klasse ``[0-1][0-9]`` durchlassen wuerde
+        # (00 waere per ``((0-1)/3)+1 = 0``, 13 per ``((13-1)/3)+1 = 5`` beide
+        # ausserhalb der 1..4-Range und wuerden konsistent leere Ergebnisse
+        # liefern, aber die BETWEEN-Klausel ist die semantisch saubere Grenze).
+        if erstellt_am_quartal_in:
+            quartale = [int(q) for q in erstellt_am_quartal_in]
+            invalid = [q for q in quartale if not 1 <= q <= 4]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Erstellt-am-Quartale: {invalid} "
+                    f"(erwartet 1..4)")
+            if quartale:
+                placeholders = ", ".join("?" * len(quartale))
+                where.append(
+                    "o.erstellt_am IS NOT NULL AND TRIM(o.erstellt_am) != '' "
+                    "AND substr(o.erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+                    "AND CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+                    f"AND ((CAST(substr(o.erstellt_am, 6, 2) AS INTEGER) - 1) / 3 + 1) "
+                    f"IN ({placeholders})")
+                params.extend(quartale)
         # erstellt_am-Bereich auf Tagesgenauigkeit/Sekundengenauigkeit: ISO
         # YYYY-MM-DD[ HH:MM:SS] ist lexikographisch vergleichbar, daher reicht
         # ein direkter String-Vergleich ohne Datums-Parsing. Spiegelt funddatum_
