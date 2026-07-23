@@ -1179,6 +1179,75 @@ def test_by_geaendert_am_quartal_leer(tmp_path):
     c.close()
 
 
+def test_by_geaendert_am_halbjahr_aus_seed_db(tmp_path):
+    """Aenderungs-Halbjahres-Histogramm aggregiert ueber alle Jahre zu H1/H2.
+
+    Spiegelt by_funddatum_halbjahr / by_erstellt_am_halbjahr in der noch
+    groeberen Zwei-Punkt-Achse auf der Aenderungs-Achse: H1-Winter-Nachpflege
+    Januar-Juni vs. H2-Sommer-/Herbst-Nachpflege Juli-Dezember. Als zweite
+    unabhaengige Achse - ein H2-erfasstes Stueck kann H1-nachbearbeitet
+    worden sein. Reihenfolge H1->H2 aufsteigend.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_halbjahr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # H1 (Jan..Jun): 4x - Winter-/Fruehjahrs-Nachpflege
+            ("OBJ_0001", "2024-01-15 09:00:00"),  # H1 (Jan-Rand)
+            ("OBJ_0002", "2023-03-20 10:15:00"),  # H1 (Tucson)
+            ("OBJ_0003", "2024-05-15 11:30:00"),  # H1
+            ("OBJ_0004", "2024-06-30 12:00:00"),  # H1 (Jun-Rand)
+            # H2 (Jul..Dez): 4x - Sommer-/Herbst-Nachpflege
+            ("OBJ_0005", "2020-07-01 13:00:00"),  # H2 (Jul-Rand)
+            ("OBJ_0006", "2021-09-30 14:00:00"),  # H2
+            ("OBJ_0007", "2023-10-31 15:00:00"),  # H2 (Muenchen)
+            ("OBJ_0008", "2024-12-31 16:00:00"),  # H2 (Dez-Rand)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0009", ""),
+            ("OBJ_0010", None),
+            ("OBJ_0011", "kein-stempel"),
+            ("OBJ_0012", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Halbjahr, Halbjahre ohne Treffer fehlen
+    assert list(st.by_geaendert_am_halbjahr.items()) == [("H1", 4), ("H2", 4)]
+    assert st.as_dict()["by_geaendert_am_halbjahr"] == {"H1": 4, "H2": 4}
+    c.close()
+
+
+def test_by_geaendert_am_halbjahr_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Aenderungs-Halbjahr-Histogramm."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_halbjahr_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15 10:00:00"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01 11:00:00"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01 12:00:00"),   # H2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_halbjahr == {"H2": 1}
+    c.close()
+
+
+def test_by_geaendert_am_halbjahr_leer(tmp_path):
+    """Ohne gueltige geaendert_am-Stempel ist die Halbjahres-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_halbjahr_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_halbjahr == {}
+    c.close()
+
+
 def test_by_funddatum_monat_aus_seed_db(tmp_path):
     """Monats-Histogramm aggregiert ueber alle Jahre zu Monatsziffern 01..12."""
     from stonebook.db.database import open_db

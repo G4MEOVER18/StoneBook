@@ -85,6 +85,7 @@ class Statistik:
     by_geaendert_am_monat: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_wochentag: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_quartal: dict[str, int] = field(default_factory=dict)
+    by_geaendert_am_halbjahr: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
     by_nachfrage: dict[str, int] = field(default_factory=dict)
@@ -1197,6 +1198,7 @@ class Statistik:
             "by_geaendert_am_monat": dict(self.by_geaendert_am_monat),
             "by_geaendert_am_wochentag": dict(self.by_geaendert_am_wochentag),
             "by_geaendert_am_quartal": dict(self.by_geaendert_am_quartal),
+            "by_geaendert_am_halbjahr": dict(self.by_geaendert_am_halbjahr),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
             "by_nachfrage": dict(self.by_nachfrage),
@@ -2207,6 +2209,52 @@ def _count_geaendert_am_quartal(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY q ORDER BY q ASC"
     )
     return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_geaendert_am_halbjahr(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``geaendert_am``-Halbjahr (H1/H2).
+
+    Spiegelt :func:`_count_funddatum_halbjahr` und :func:`_count_erstellt_am_halbjahr`
+    um die Aenderungs-Achse und schliesst damit die Halbjahres-Trias auf allen
+    drei Zeit-Achsen (Funddatum / erstellt_am / geaendert_am) ab. Zusammen mit
+    der Wochentag-Trias (:func:`_count_funddatum_wochentag`/erstellt/geaendert)
+    und der Quartals-Trias (:func:`_count_funddatum_quartal`/erstellt/geaendert)
+    ist damit die drei-Achsen-Symmetrie der Datums-Aggregat-Histogramme
+    (Wochentag / Quartal / Halbjahr x Fund-/Erfassungs-/Aenderungs-Achse)
+    vollstaendig.
+
+    Zeigt die typische Pflege-Wellen-Zaesur H1/H2 auf der Aenderungs-Achse
+    parallel zur Erfassungs-Achse: H1-Winter-Nachpflege Januar-Juni mit
+    Tucson- und Nachlass-Nachbereitung, H2-Sommer-/Herbst-Nachpflege
+    Juli-Dezember mit Muenchen-/Sainte-Marie-aux-Mines-Nachbereitung. Als
+    zweite unabhaengige Achse - ein H2-erfasstes Stueck kann H1-nachbearbeitet
+    worden sein (KI-Analyse-Uebernahme nach Boersen-Termin, XRD-Nachtrag nach
+    Labor-Sitzung). Komplementaer zum geaendert_am_halbjahr_in-Filter
+    (Listen-Drill-down): hier die Verteilungs-Sicht ueber die zwei Kalender-
+    Halbjahre.
+
+    Aggregiert ueber alle Jahre, Labels ``H1``/``H2``, Reihenfolge H1 zuerst
+    (chronologisch aufsteigend). Halbjahr wird aus dem Monatsteil per
+    ``((monat - 1) / 6) + 1`` abgeleitet.
+
+    ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(geaendert_am, 6, 2)`` extrahiert den
+    Monatsteil. Substring-Praefix-Guards und ``BETWEEN 1 AND 12``-Guard sind
+    identisch zu :func:`_count_geaendert_am_monat` / :func:`_count_geaendert_am_quartal`
+    und zum geaendert_am_halbjahr_in-Filter, damit reine Jahres-Formen ohne
+    Monatsteil und pathologische Monats-Codes 00/13..99 automatisch
+    herausfallen.
+    """
+    sql = (
+        "SELECT ((CAST(substr(geaendert_am, 6, 2) AS INTEGER) - 1) / 6 + 1) AS h, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(geaendert_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY h ORDER BY h ASC"
+    )
+    return {f"H{r['h']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _funddatum_spanne(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -3547,6 +3595,17 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # zweite unabhaengige Achse. Komplementaer zum geaendert_am_quartal_in-
     # Filter (Listen-Drill-down).
     st.by_geaendert_am_quartal = _count_geaendert_am_quartal(conn)
+    # Aenderungs-Halbjahres-Zaesur (H1/H2, ueber alle Jahre aggregiert):
+    # spiegelt by_funddatum_halbjahr / by_erstellt_am_halbjahr auf die
+    # Aenderungs-Achse und schliesst die Halbjahres-Trias auf allen drei
+    # Zeit-Achsen (Funddatum / erstellt_am / geaendert_am) ab. Zusammen mit
+    # der Wochentag-Trias und der Quartals-Trias ist damit die drei-Achsen-
+    # Symmetrie der Datums-Aggregat-Histogramme vollstaendig. Zeigt die
+    # typische Pflege-Wellen-Zaesur H1/H2: H1-Winter-Nachpflege Januar-Juni
+    # mit Tucson- und Nachlass-Nachbereitung, H2-Sommer-/Herbst-Nachpflege
+    # Juli-Dezember mit Muenchen-/Sainte-Marie-aux-Mines-Nachbereitung.
+    # Komplementaer zum geaendert_am_halbjahr_in-Filter (Listen-Drill-down).
+    st.by_geaendert_am_halbjahr = _count_geaendert_am_halbjahr(conn)
 
     st.bilder_by_kategorie = {
         r["kategorie"]: r["n"]
