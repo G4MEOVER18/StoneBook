@@ -5762,6 +5762,89 @@ def test_erstellt_am_wochentag_in_filter(tmp_path):
     c.close()
 
 
+def test_geaendert_am_quartal_in_filter(tmp_path):
+    """geaendert_am_quartal_in waehlt diskrete Kalender-Quartale (Q1..Q4).
+
+    Spiegelt erstellt_am_quartal_in / funddatum_quartal_in auf die Aenderungs-
+    Achse: Pflege-Sitzungen kulminieren in Quartals-Rhythmen parallel zur
+    Erfassungs-Achse (Q1-Boersen-Nachbereitung Tucson, Q4-Winter-Pflege
+    Muenchen/Sainte-Marie-aux-Mines) - als zweite unabhaengige Achse: ein
+    Q3-erfasstes Stueck kann Q1-nachbearbeitet worden sein (KI-Analyse-
+    Uebernahme nach Boersen-Termin, XRD-Nachtrag nach Labor-Sitzung).
+    Quartal wird aus dem Monatsteil per ``((monat - 1) / 3) + 1`` abgeleitet:
+    Q1=1..3, Q2=4..6, Q3=7..9, Q4=10..12.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gq.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-01-31 09:00:00"),   # Q1 (Rand)
+            ("OBJ_0002", "2024-02-14 10:15:00"),   # Q1
+            ("OBJ_0003", "2024-03-31 11:30:00"),   # Q1 (Rand)
+            ("OBJ_0004", "2023-04-01 12:00:00"),   # Q2 (Rand)
+            ("OBJ_0005", "2023-06-15 13:15:00"),   # Q2 (Rand)
+            ("OBJ_0006", "2022-07-01 14:00:00"),   # Q3 (Rand)
+            ("OBJ_0007", "2022-09-30 15:15:00"),   # Q3 (Rand)
+            ("OBJ_0008", "2021-10-01 16:00:00"),   # Q4 (Rand)
+            ("OBJ_0009", "2021-12-31 17:00:00"),   # Q4 (Rand)
+            ("OBJ_0010", "2020"),                    # ohne Monatsteil -> raus
+            ("OBJ_0011", None),                       # NULL -> raus
+            ("OBJ_0012", ""),                         # leer -> raus
+            ("OBJ_0013", "kein-stempel"),            # kaputt -> raus
+            ("OBJ_0014", "2024-00-15"),              # Monat 00 -> darf NICHT als Q1 zaehlen
+            ("OBJ_0015", "2024-13-15"),              # Monat 13 -> darf NICHT als Q5 zaehlen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Q1 allein: Jan/Feb/Maerz
+    rows = repo.list_objects(geaendert_am_quartal_in=[1])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Q2 allein
+    rows = repo.list_objects(geaendert_am_quartal_in=[2])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005"]
+    # Q3 allein
+    rows = repo.list_objects(geaendert_am_quartal_in=[3])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0006", "OBJ_0007"]
+    # Q4 allein
+    rows = repo.list_objects(geaendert_am_quartal_in=[4])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0008", "OBJ_0009"]
+    # Mengen-Auswahl: Q1 ODER Q4 (Pflege-Schuebe Boersen-Nachbereitung + Winter-Pflege)
+    rows = repo.list_objects(geaendert_am_quartal_in=[1, 4])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0008", "OBJ_0009",
+    ]
+    # Tupel akzeptiert
+    rows = repo.list_objects(geaendert_am_quartal_in=(2, 3))
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0004", "OBJ_0005", "OBJ_0006", "OBJ_0007",
+    ]
+    # Alle vier Quartale entspricht "alle Objekte mit gueltigem Monatsteil"
+    rows = repo.list_objects(geaendert_am_quartal_in=[1, 2, 3, 4])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004", "OBJ_0005",
+        "OBJ_0006", "OBJ_0007", "OBJ_0008", "OBJ_0009",
+    ]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(geaendert_am_quartal_in=[])
+    assert len(rows) == 15
+    # Kombiniert mit Jahresfilter (Schnittmenge Q1 ∩ 2024 = Jan/Feb/Maerz 2024)
+    rows = repo.list_objects(geaendert_am_quartal_in=[1, 4], geaendert_am_jahr_min=2024)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kombiniert mit geaendert_am_monat_in (Schnittmenge Q1 ∩ {Maerz} = Maerz)
+    rows = repo.list_objects(geaendert_am_quartal_in=[1], geaendert_am_monat_in=[3])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0003"]
+    # Validierung: 0/5 sind ungueltig
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Quartale"):
+        repo.list_objects(geaendert_am_quartal_in=[1, 5])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Quartale"):
+        repo.list_objects(geaendert_am_quartal_in=[0])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Quartale"):
+        repo.list_objects(geaendert_am_quartal_in=[-1])
+    c.close()
+
+
 def test_geaendert_am_iso_range_filter(tmp_path):
     """geaendert_am_min/_max filtert tagesgenau ueber ISO-Strings (lexikographisch).
 

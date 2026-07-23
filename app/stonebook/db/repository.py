@@ -572,6 +572,7 @@ class ObjectRepo:
                      geaendert_am_jahrzehnt_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_monat: int | None = None,
                      geaendert_am_monat_in: list[int] | tuple[int, ...] | None = None,
+                     geaendert_am_quartal_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_min: str | None = None,
                      geaendert_am_max: str | None = None,
                      geaendert_am_wochentag_in: list[int] | tuple[int, ...] | None = None,
@@ -1612,6 +1613,45 @@ class ObjectRepo:
                     f"AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) IN "
                     f"({placeholders})")
                 params.extend(monate)
+        # geaendert_am_quartal_in: Mengen-Quartals-Filter auf der Aenderungs-
+        # Achse (Q1..Q4) - spiegelt erstellt_am_quartal_in (2b2cbb7) und
+        # funddatum_quartal_in (f240464) auf die dritte Zeitstempel-Spalte und
+        # schliesst damit die Quartals-Filter-Trias der drei Zeitstempel-Spalten
+        # ab. Quartal wird aus dem Monatsteil per ``((monat - 1) / 3) + 1``
+        # abgeleitet: Q1=1..3, Q2=4..6, Q3=7..9, Q4=10..12 - Ganzzahl-Division
+        # in SQLite ist per Definition truncating, das Ergebnis ist konsistent
+        # mit dem Python-Aequivalent ``(m - 1) // 3 + 1``. Sammler-Kontext auf
+        # der Aenderungs-Achse: Pflege-Sitzungen kulminieren in Quartals-
+        # Rhythmen parallel zur Erfassungs-Achse (Q1-Boersen-Nachbereitung
+        # Tucson, Q4-Winter-Pflege Muenchen/Sainte-Marie-aux-Mines), aber als
+        # zweite unabhaengige Achse - ein Q3-erfasstes Stueck kann Q1-nach-
+        # bearbeitet worden sein (KI-Analyse-Uebernahme nach Boersen-Termin,
+        # XRD-Nachtrag nach Labor-Sitzung). Erwartet jeden Eintrag in 1..4
+        # (Tippfehler 0/5 erzeugen einen klaren Fehler statt eines stillen
+        # Leerergebnisses). Substring-Praefix-Guards ``substr(geaendert_am,
+        # 1, 4) GLOB '[0-9]{4}'`` und ``substr(geaendert_am, 6, 2) GLOB
+        # '[0-1][0-9]'`` sind identisch zu geaendert_am_monat_in, damit reine
+        # Jahres-Formen ohne Monatsteil ("2024") und kaputte Stempel automatisch
+        # herausfallen. Der zusaetzliche ``BETWEEN 1 AND 12``-Guard vor der
+        # Quartal-Berechnung ist symmetrisch zu erstellt_am_quartal_in und
+        # faengt die pathologischen Monats-Codes 00/13..99 ab.
+        if geaendert_am_quartal_in:
+            quartale = [int(q) for q in geaendert_am_quartal_in]
+            invalid = [q for q in quartale if not 1 <= q <= 4]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Geaendert-am-Quartale: {invalid} "
+                    f"(erwartet 1..4)")
+            if quartale:
+                placeholders = ", ".join("?" * len(quartale))
+                where.append(
+                    "o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                    "AND substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+                    "AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+                    f"AND ((CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) - 1) / 3 + 1) "
+                    f"IN ({placeholders})")
+                params.extend(quartale)
         # geaendert_am-Bereich auf Tagesgenauigkeit/Sekundengenauigkeit:
         # spiegelt erstellt_am_min/_max auf die Aenderungs-Achse und
         # funddatum_min/_max auf die Fund-Achse - schliesst die Tagesgenau-
