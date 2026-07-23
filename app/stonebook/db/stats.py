@@ -169,6 +169,7 @@ class Statistik:
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_quartal: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -199,6 +200,7 @@ class Statistik:
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_quartal: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_monat: list[tuple[str, float]] = field(default_factory=list)
@@ -1397,6 +1399,9 @@ class Statistik:
             "wert_pro_funddatum_quartal": [
                 (q, round(w, 2)) for q, w in self.wert_pro_funddatum_quartal
             ],
+            "wert_pro_funddatum_halbjahr": [
+                (h, round(w, 2)) for h, w in self.wert_pro_funddatum_halbjahr
+            ],
             "wert_pro_erstellt_am_jahr": [
                 (j, round(w, 2)) for j, w in self.wert_pro_erstellt_am_jahr
             ],
@@ -1486,6 +1491,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_quartal": [
                 (q, round(g, 2)) for q, g in self.gewicht_pro_funddatum_quartal
+            ],
+            "gewicht_pro_funddatum_halbjahr": [
+                (h, round(g, 2)) for h, g in self.gewicht_pro_funddatum_halbjahr
             ],
             "gewicht_pro_erstellt_am_jahr": [
                 (j, round(g, 2)) for j, g in self.gewicht_pro_erstellt_am_jahr
@@ -2879,6 +2887,55 @@ def _sum_by_funddatum_quartal(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, q ASC"
     )
     return [(f"Q{r['q']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_funddatum_halbjahr(conn: sqlite3.Connection, value_sql: str,
+                               extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Halbjahr (H1/H2).
+
+    Pendant zu :func:`_count_funddatum_halbjahr` (Anzahl), aber summiert
+    Wert/Gewicht je Halbjahres-Bucket. Waehrend die Anzahl-Sicht die
+    Kampagnen-Zaesur H1/H2 abbildet ("in welchem Halbjahr sammle ich
+    mehr Stuecke?"), zeigt die Wert-/Gewicht-Sicht die Halbjahres-
+    Ergiebigkeit ("in welchem Halbjahr kommt der wertvollste/schwerste
+    Ertrag"). Eine Fruehjahrs-Kampagne H1 mit wenigen, aber hochwertigen
+    Tucson-Auktions-Stuecken kann den H1-Wert-Bucket heben, waehrend eine
+    Herbst-Feld-Saison H2 mit vielen schweren Handstuecken den H2-Gewicht-
+    Bucket dominiert. Ergaenzt den Quartals-Sum
+    (:func:`_sum_by_funddatum_quartal`) um die noch groebere Zwei-Punkt-
+    Aggregat-Achse und spiegelt die Excel-Halbjahres-Buchhaltungs-/Steuer-
+    Konvention.
+
+    Halbjahr wird aus dem Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet:
+    H1=Jan..Jun, H2=Jul..Dez - Ganzzahl-Division in SQLite ist per Definition
+    truncating, konsistent zum Python-Aequivalent ``(m - 1) // 6 + 1`` und
+    zur :func:`_count_funddatum_halbjahr`-/``funddatum_halbjahr_in``-Filter-
+    Konvention. Akzeptiert nur Funddaten in ISO-Form ``YYYY-MM-DD``/
+    ``YYYY-MM`` mit gueltigem Monatsteil 01-12; reine Jahresangaben
+    (``"2024"``) haben keinen Monatsteil und werden ignoriert (sonst
+    wuerden sie als "Monat 00" auf einen Default-Bucket fallen und die
+    Halbjahres-Statistik verzerren). Spiegelt damit die
+    :func:`_sum_by_funddatum_monat`-/:func:`_sum_by_funddatum_quartal`-
+    Konvention.
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach Halbjahres-
+    Nummer (H1 zuerst). Ohne Limit, weil maximal zwei Halbjahres-Buckets
+    vorkommen koennen - die Ausgabe wird nie laenger.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(substr(Funddatum, 6, 2) AS INTEGER) - 1) / 6 + 1) AS h, "
+        f"       SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY h HAVING w > 0 "
+        f"ORDER BY w DESC, h ASC"
+    )
+    return [(f"H{r['h']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_funddatum_wochentag(conn: sqlite3.Connection, value_sql: str,
@@ -5443,6 +5500,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Quartale. Ohne Limit, weil max. 4 Quartals-Buckets moeglich sind.
     st.wert_pro_funddatum_quartal = _sum_by_funddatum_quartal(conn, wert_sql)
     st.gewicht_pro_funddatum_quartal = _sum_by_funddatum_quartal(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Halbjahres-Ertrag: welches Kalender-Halbjahr (H1/H2) bringt ueber alle Jahre
+    # aggregiert den meisten Wert bzw. das meiste Gewicht? Komplementaer zu
+    # by_funddatum_halbjahr (Anzahl - Kampagnen-Zaesur) und zu wert_/gewicht_pro_
+    # funddatum_quartal (feinere Quartals-Ergiebigkeit): eine Fruehjahrs-Kampagne
+    # H1 mit wenigen, aber hochwertigen Tucson-Auktions-Stuecken kann den
+    # H1-Wert-Bucket heben, waehrend eine Herbst-Feld-Saison H2 mit vielen
+    # schweren Handstuecken den H2-Gewicht-Bucket dominiert. Ergaenzt die
+    # Quartals-Sicht um die Zwei-Punkt-Aggregat-Achse (Excel-Halbjahres-
+    # Buchhaltungs-/Steuer-Konvention). Ohne Limit, weil max. 2 Halbjahres-
+    # Buckets moeglich sind.
+    st.wert_pro_funddatum_halbjahr = _sum_by_funddatum_halbjahr(conn, wert_sql)
+    st.gewicht_pro_funddatum_halbjahr = _sum_by_funddatum_halbjahr(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Erfassungs-Wochentag-Ergiebigkeit: spiegelt wert_/gewicht_pro_funddatum_
     # wochentag auf die Erfassungs-Achse - an welchem Wochentag ueber alle

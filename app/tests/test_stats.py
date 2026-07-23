@@ -2848,6 +2848,133 @@ def test_gewicht_pro_funddatum_quartal_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_funddatum_halbjahr_aus_seed_db(tmp_path):
+    """Wertsumme pro Funddatum-Halbjahr (H1/H2); absteigend nach Summe.
+
+    Spiegelt _sum_by_funddatum_quartal auf die noch groebere Zwei-Punkt-
+    Aggregat-Achse: waehrend die Quartals-Sicht die Boersen-/Kampagnen-
+    Rhythmik der Kalender-Quartale beziffert, zeigt die Halbjahres-Sicht
+    die Kampagnen-Zaesur H1/H2 (Fruehjahr vs. Herbst) und die Excel-
+    Halbjahres-Buchhaltungs-/Steuer-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # H1 (Jan..Jun): Fruehjahrs-Kampagne, hochwertig: 500 + 300 + 100 + 100 = 1000
+            ("OBJ_0001", "2024-02-15", 500.0, None),  # H1 (Tucson)
+            ("OBJ_0002", "2023-03-20", 300.0, None),  # H1 (Maerz)
+            ("OBJ_0003", "2024-06-10", 100.0, 100.0),  # H1 (Juni-Rand)
+            # H2 (Jul..Dez): Herbst-Kampagne: 400 + 250 = 650
+            ("OBJ_0004", "2020-07-15", 400.0, None),  # H2
+            ("OBJ_0005", "2023-10-31", 250.0, None),  # H2 (Muenchen)
+            # Ohne Wert -> raus
+            ("OBJ_0006", "2024-05-15", None, None),
+            # Ohne gueltiges Funddatum / Monatsteil -> ignoriert
+            ("OBJ_0007", "", 999.0, None),
+            ("OBJ_0008", "2024", 999.0, None),
+            ("OBJ_0009", "2024-00-15", 999.0, None),
+            ("OBJ_0010", "2024-13-01", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: H1 (1000), H2 (650)
+    assert st.wert_pro_funddatum_halbjahr == [
+        ("H1", 1000.0),
+        ("H2", 650.0),
+    ]
+    assert st.as_dict()["wert_pro_funddatum_halbjahr"] == [
+        ("H1", 1000.0), ("H2", 650.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_funddatum_halbjahr_leer(tmp_path):
+    """Ohne CHF-Werte oder gueltige Funddaten: leere Halbjahres-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfh_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_halbjahr == []
+    c.close()
+
+
+def test_wert_pro_funddatum_halbjahr_tie_break_halbjahres_nummer(tmp_path):
+    """Bei gleicher Summe sortiert der Tie-Break aufsteigend nach Halbjahres-Nr.
+
+    H1 (=1) kommt vor H2 (=2) - spiegelt die uebrige chronologische Konvention
+    der Zeit-Histogramme (H1->H2).
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpfh_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-02-01", 100.0),  # H1
+            ("OBJ_0002", "2024-11-01", 100.0),  # H2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_halbjahr == [
+        ("H1", 100.0),
+        ("H2", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_halbjahr_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Funddatum-Halbjahr (H1/H2); 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Halbjahres-Achse: waehrend die
+    Wert-Spitze auf einer Fruehjahrs-Kampagne H1 (Tucson) liegen kann, kann
+    die Gewicht-Spitze auf einer Herbst-Feld-Saison H2 mit schweren
+    Handstuecken liegen - der Vergleich, den das Halbjahres-Paar sichtbar
+    macht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # H2 (Jul..Dez): Feld-Saison, schwere Handstuecke: 800 + 400 = 1200
+            ("OBJ_0001", "2024-07-15", 800.0),  # H2
+            ("OBJ_0002", "2024-10-20", 400.0),  # H2
+            # H1 (Jan..Jun): Boerse, kleine Stuecke: 100 + 50 = 150
+            ("OBJ_0003", "2024-02-15", 100.0),  # H1
+            ("OBJ_0004", "2024-06-01", 50.0),  # H1
+            # NULL/0 -> raus
+            ("OBJ_0005", "2024-04-15", None),
+            ("OBJ_0006", "2024-05-15", 0.0),
+            # Ignoriert (nicht-strikt/ohne Monatsteil)
+            ("OBJ_0007", "2024", 999.0),
+            ("OBJ_0008", "2024-13-01", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: H2 (1200), H1 (150)
+    assert st.gewicht_pro_funddatum_halbjahr == [
+        ("H2", 1200.0),
+        ("H1", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_funddatum_halbjahr"] == [
+        ("H2", 1200.0), ("H1", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_halbjahr_leer(tmp_path):
+    """Ohne Gewicht: leere Halbjahres-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpfh_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_halbjahr == []
+    c.close()
+
+
 def test_wert_pro_erstellt_am_wochentag_aus_seed_db(tmp_path):
     """Wertsumme pro erstellt_am-Wochentag ueber alle Wochen; absteigend nach Summe.
 
