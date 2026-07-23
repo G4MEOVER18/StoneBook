@@ -823,6 +823,78 @@ def test_by_erstellt_am_quartal_leer(tmp_path):
     c.close()
 
 
+def test_by_erstellt_am_halbjahr_aus_seed_db(tmp_path):
+    """Erfassungs-Halbjahres-Histogramm aggregiert ueber alle Jahre zu H1/H2.
+
+    Spiegelt by_funddatum_halbjahr / by_erstellt_am_quartal in der noch
+    groeberen Zwei-Punkt-Achse auf der Erfassungs-Achse: H1-Winter-Indoor-
+    Phase Januar-Juni vs. H2-Sommer-/Herbst-Phase Juli-Dezember. Reihenfolge
+    H1->H2 aufsteigend.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "e_halbjahr.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            # H1 (Jan..Jun): 5x - Winter-Indoor-Phase
+            ("OBJ_0001", "2024-01-15 09:00:00"),  # H1 (Jan-Rand)
+            ("OBJ_0002", "2023-02-20 10:15:00"),  # H1 (Tucson)
+            ("OBJ_0003", "2024-03-31 11:30:00"),  # H1
+            ("OBJ_0004", "2024-05-15 12:00:00"),  # H1
+            ("OBJ_0005", "2024-06-30 13:00:00"),  # H1 (Jun-Rand)
+            # H2 (Jul..Dez): 3x - Sommer-/Herbst-Phase
+            ("OBJ_0006", "2020-07-01 14:15:00"),  # H2 (Jul-Rand)
+            ("OBJ_0007", "2021-09-30 15:00:00"),  # H2
+            ("OBJ_0008", "2024-12-05 16:00:00"),  # H2 (Muenchen)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0009", ""),
+            ("OBJ_0010", None),
+            ("OBJ_0011", "kein-stempel"),
+            ("OBJ_0012", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Halbjahr, Halbjahre ohne Treffer fehlen
+    assert list(st.by_erstellt_am_halbjahr.items()) == [("H1", 5), ("H2", 3)]
+    assert st.as_dict()["by_erstellt_am_halbjahr"] == {"H1": 5, "H2": 3}
+    c.close()
+
+
+def test_by_erstellt_am_halbjahr_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Erfassungs-Halbjahr-Histogramm.
+
+    Ohne den BETWEEN 1 AND 12-Guard wuerde Monat 00 als H0-Bucket und Monat
+    13 als H3-Bucket die Erfassungs-Halbjahres-Statistik verzerren.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "e_halbjahr_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15 10:00:00"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01 11:00:00"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01 12:00:00"),   # H2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_erstellt_am_halbjahr == {"H2": 1}
+    c.close()
+
+
+def test_by_erstellt_am_halbjahr_leer(tmp_path):
+    """Ohne gueltige erstellt_am-Stempel ist die Halbjahres-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "e_halbjahr_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_erstellt_am_halbjahr == {}
+    c.close()
+
+
 def test_by_geaendert_am_jahr_aus_seed_db(tmp_path):
     """Pflege-Aktivitaets-Histogramm zaehlt Objekte pro geaendert_am-Jahr."""
     from stonebook.db.database import open_db
