@@ -2272,6 +2272,68 @@ def test_funddatum_monat_in_filter(tmp_path):
     c.close()
 
 
+def test_funddatum_wochentag_in_filter(tmp_path):
+    """funddatum_wochentag_in waehlt diskrete ISO-Wochentage (1=Mo..7=So).
+
+    Spiegelt das :func:`_count_funddatum_wochentag`-Aggregat in der Statistik
+    um den Listen-Drill-down ("welche Objekte sind meine Samstag-Funde?").
+    Ein Kalender-Sanity-Check: 2024-07-13 ist ein Samstag, 2024-07-14 ein Sonntag,
+    2024-07-15 ein Montag, 2024-07-16 ein Dienstag, 2024-07-17 ein Mittwoch,
+    2024-07-18 ein Donnerstag, 2024-07-19 ein Freitag.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wt_in.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-07-15"),  # Mo
+            ("OBJ_0002", "2024-07-16"),  # Di
+            ("OBJ_0003", "2024-07-17"),  # Mi
+            ("OBJ_0004", "2024-07-18"),  # Do
+            ("OBJ_0005", "2024-07-19"),  # Fr
+            ("OBJ_0006", "2024-07-13"),  # Sa
+            ("OBJ_0007", "2024-07-14"),  # So
+            ("OBJ_0008", "2024-07"),      # ohne Tag -> faellt raus
+            ("OBJ_0009", "2024"),          # nur Jahr -> faellt raus
+            ("OBJ_0010", "2024-02-30"),   # ungueltiger Kalender-Tag -> faellt raus
+            ("OBJ_0011", "unbekannt"),    # Freitext -> faellt raus
+            ("OBJ_0012", None),
+            ("OBJ_0013", ""),
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # Wochenende: Samstag + Sonntag (klassische Sammler-Tour-Tage)
+    rows = repo.list_objects(funddatum_wochentag_in=[6, 7])
+    assert sorted(r["obj_id"] for r in rows) == ["OBJ_0006", "OBJ_0007"]
+    # Nur Werktage (Mo..Fr)
+    rows = repo.list_objects(funddatum_wochentag_in=[1, 2, 3, 4, 5])
+    assert sorted(r["obj_id"] for r in rows) == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003", "OBJ_0004", "OBJ_0005"]
+    # Einzelner Wochentag: nur Samstag
+    rows = repo.list_objects(funddatum_wochentag_in=[6])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0006"]
+    # Tupel akzeptiert
+    rows = repo.list_objects(funddatum_wochentag_in=(1,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(funddatum_wochentag_in=[])
+    assert len(rows) == 13
+    # Kombiniert mit Jahres-Bereich (Schnittmenge)
+    rows = repo.list_objects(funddatum_wochentag_in=[6, 7],
+                              funddatum_jahr_min=2024)
+    assert sorted(r["obj_id"] for r in rows) == ["OBJ_0006", "OBJ_0007"]
+    # Validierung: 0 und 8 sind ungueltig (nicht in ISO-Range 1..7)
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Wochentage"):
+        repo.list_objects(funddatum_wochentag_in=[0])
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Wochentage"):
+        repo.list_objects(funddatum_wochentag_in=[8])
+    with _pytest.raises(ValueError, match="Unbekannte Funddatum-Wochentage"):
+        repo.list_objects(funddatum_wochentag_in=[1, 9])
+    c.close()
+
+
 def test_funddatum_jahrzehnt_in_filter(tmp_path):
     """funddatum_jahrzehnt_in akzeptiert diskrete Dekaden ('1980er ODER 2010er').
 

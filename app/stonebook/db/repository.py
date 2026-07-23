@@ -553,6 +553,7 @@ class ObjectRepo:
                      funddatum_monat_in: list[int] | tuple[int, ...] | None = None,
                      funddatum_min: str | None = None,
                      funddatum_max: str | None = None,
+                     funddatum_wochentag_in: list[int] | tuple[int, ...] | None = None,
                      erstellt_am_jahr_min: int | None = None,
                      erstellt_am_jahr_max: int | None = None,
                      erstellt_am_jahr_in: list[int] | tuple[int, ...] | None = None,
@@ -1212,6 +1213,35 @@ class ObjectRepo:
             where.append("o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
                          "AND o.Funddatum <= ?")
             params.append(str(funddatum_max))
+        # funddatum_wochentag_in: Mengen-Wochentag-Filter (ISO 1..7: Mo=1..So=7).
+        # Spiegelt die Listen-Sicht des _count_funddatum_wochentag-Aggregats aus
+        # der Statistik ("welche Objekte sind meine Samstag-Funde?") - komplementaer
+        # zur Saison-Sicht (funddatum_monat_in) und zur Jahres-/Dekaden-Sicht.
+        # Round-Trip-Bedingung strftime('%Y-%m-%d', substr(...,1,10)) = substr(...,1,10)
+        # ist identisch zu _count_funddatum_wochentag: reine Jahres- oder Jahr+Monat-
+        # Formen (2024, 2024-07) und ungueltige Kalender-Tage (2024-02-30, 2024-13-01)
+        # fallen bewusst heraus, weil ihnen kein Wochentag zugeordnet werden kann;
+        # die Round-Trip-Gleichheit faengt sowohl NULL-Rueckgabe (unerkannte Formen)
+        # als auch SQLite-Kalender-Rollovers (2024-02-30 -> 2024-03-01 mit dem
+        # Wochentag des 1. Maerz) ab. Die ISO-Umrechnung
+        # ``((strftime_dow + 6) % 7) + 1`` mappt SQLite-``%w`` (0=So..6=Sa) auf
+        # ISO-8601 (1=Mo..7=So) und stimmt mit der Statistik-Achse ueberein.
+        if funddatum_wochentag_in:
+            wt = [int(w) for w in funddatum_wochentag_in]
+            invalid = [w for w in wt if not 1 <= w <= 7]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Funddatum-Wochentage: {invalid} "
+                    f"(erwartet 1..7, Mo=1..So=7)")
+            if wt:
+                placeholders = ", ".join("?" * len(wt))
+                where.append(
+                    "o.Funddatum IS NOT NULL AND TRIM(o.Funddatum) != '' "
+                    "AND strftime('%Y-%m-%d', substr(o.Funddatum, 1, 10)) "
+                    "    = substr(o.Funddatum, 1, 10) "
+                    "AND ((CAST(strftime('%w', substr(o.Funddatum, 1, 10)) AS INTEGER) "
+                    f"     + 6) % 7) + 1 IN ({placeholders})")
+                params.extend(wt)
         # Erfassungs-Achse: filtert nach Jahr des ``erstellt_am``-Stempels (wann
         # in die DB aufgenommen). Spiegelt funddatum_jahr_min/_max (Fund-Achse)
         # und ergaenzt das by_erstellt_am_jahr-Aggregat in der Statistik um den
