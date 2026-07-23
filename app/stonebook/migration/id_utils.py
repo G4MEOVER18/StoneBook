@@ -53,6 +53,25 @@ _PATTERNS = [
     # Positives fuer bare ``Kat 43`` oder andere ``Kat``-startende Woerter wie
     # ``Kategorie``, ``Katalyse``, ``Kathedrale``, ``Katze``).
     re.compile(r"^Kat(?:alog)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
+    # Private Sammlungsnummer: ``Slg.-Nr. 43`` / ``Slg. Nr. 43`` / ``SlgNr 43`` /
+    # ``Slg-Nr. 43`` / ``Sammlungsnummer 43`` / ``Sammlung-Nr. 43`` / ``Sammlungs-Nr. 43``.
+    # Standard-Praefix privater Sammler-Kataloge (Excel-Sammlungsverzeichnisse, Karteikarten,
+    # Vereinszeitschriften-Referenzen): ``Slg.`` ist die etablierte Kurzform von ``Sammlung`` in
+    # DE-sprachigen Sammler-Notizen (analog ``Inv.`` = Inventar, ``Kat.`` = Katalog). Waehrend
+    # ``Inv.-Nr.`` (323cfff) die Museums-physische Inventar-Position, ``Kat.-Nr.`` (be56257) den
+    # logischen Katalog-Eintrag und ``Fund-Nr.`` (aa5372d) das Sammel-Ereignis referenziert,
+    # identifiziert ``Slg.-Nr.`` den laufenden Zaehler im privaten Sammlungs-Katalog - die vier
+    # Achsen koexistieren auf Objekten, die ueber Museums-/Sammler-Grenzen wandern (Museums-
+    # Erwerbungen aus Privatsammlungen tragen alle vier Nummern parallel). Regex spiegelt die
+    # Inv-/Kat-/Fund-Regex strukturell: ``(?:Slg|Sammlungs?)`` mit optionalem Punkt (``Slg.``
+    # vs. ``Slg``), beliebige Trenner-Kombination [-.\s]*, obligatorischer ``N(?:umme)?r``-
+    # Marker (verhindert falsche Positives fuer bare ``Slg 43`` oder Sammlungs-startende
+    # Kompositum-Woerter wie ``Sammlungsstueck``, ``Sammlungsgegenstand``, ``Sammlungsobjekt``,
+    # ``Sammlungsband``, sowie fuer ``Sammler``/``Sammelband``/``Sammelklage``). Die optionale
+    # Genitiv-s-Erweiterung ``Sammlungs?`` deckt sowohl die grammatikalisch korrekte Kompositum-
+    # Form ``Sammlungsnummer`` (Fugen-s bei Feminina) als auch die verkuerzte Bindestrich-Form
+    # ``Sammlung-Nr.`` (ohne Fugen-s, verbreitet in handschriftlichen Karteikarten) ab.
+    re.compile(r"^(?:Slg|Sammlungs?)\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # Mineralogische Fundnummer: ``Fund-Nr. 43`` / ``Fund. Nr. 43`` / ``FundNr 43`` /
     # ``Fund-Nr 43`` / ``Fundnummer 43`` / ``Fund. Nummer 43``. Domaenen-spezifisches
     # Nummerierungs-Praefix fuer Mineralien-/Gesteins-Sammlungen: die Fundnummer

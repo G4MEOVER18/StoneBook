@@ -326,6 +326,70 @@ def test_normalize_id_ausgeschriebene_nummer_vollform():
     assert normalize_id("Numeriert 43") is None
 
 
+def test_normalize_id_sammlungs_nummer_praefix():
+    """Private Sammlungsnummer ``Slg.-Nr.`` / ``Sammlungsnummer`` - Sammler-Katalog-Standard.
+
+    Waehrend ``Inv.-Nr.`` (323cfff) die Museums-physische Inventar-Position,
+    ``Kat.-Nr.`` (be56257) den logischen Katalog-Eintrag und ``Fund-Nr.`` (aa5372d)
+    das Sammel-Ereignis identifiziert, referenziert ``Slg.-Nr.`` den laufenden
+    Zaehler im privaten Sammlungs-Katalog - Standard-Praefix DE-sprachiger Sammler-
+    Karteikarten, Excel-Sammlungsverzeichnisse und Vereinszeitschriften-Referenzen.
+    ``Slg.`` ist die etablierte Kurzform von ``Sammlung`` (analog ``Inv.`` = Inventar,
+    ``Kat.`` = Katalog). Bisher fielen alle Slg.-Nr.-Formen still auf None.
+    Regex ``^(?:Slg|Sammlungs?)\\.?[-.\\s]*N(?:umme)?r\\.?\\s*(\\d+)$`` spiegelt
+    strukturell die Inv-/Kat-/Fund-Regex; die optionale Genitiv-s-Erweiterung
+    ``Sammlungs?`` deckt sowohl die grammatikalisch korrekte Kompositum-Form
+    ``Sammlungsnummer`` (Fugen-s bei Feminina) als auch die verkuerzte Bindestrich-
+    Form ``Sammlung-Nr.`` (ohne Fugen-s) ab.
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg. Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg-Nr 43") == "OBJ_0043"
+    assert normalize_id("SlgNr 43") == "OBJ_0043"
+    assert normalize_id("SlgNr43") == "OBJ_0043"
+    assert normalize_id("Slg.Nr.43") == "OBJ_0043"
+    # Ausgeschriebene Formen (``Sammlung`` mit/ohne Fugen-s, ``Nummer`` ausgeschrieben)
+    assert normalize_id("Sammlungsnummer 43") == "OBJ_0043"
+    assert normalize_id("Sammlungsnummer43") == "OBJ_0043"
+    assert normalize_id("Sammlungs-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Sammlung-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Sammlung Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg. Nummer 43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("slg-nr 7") == "OBJ_0007"
+    assert normalize_id("SLG-NR. 001") == "OBJ_0001"
+    assert normalize_id("sammlungsnummer 7") == "OBJ_0007"
+    assert normalize_id("SAMMLUNGSNUMMER 43") == "OBJ_0043"
+    # Ungueltig: ohne Nummer-Marker, Suffix-Ballast, Sammlungs-Kompositum,
+    # oder aehnlich klingende Sammel-/Sammler-Woerter ohne semantische Naehe
+    assert normalize_id("Slg 43") is None
+    assert normalize_id("Sammlung 43") is None
+    assert normalize_id("Slg.-Nr. 43X") is None
+    assert normalize_id("Slg-Nr 43 44") is None
+    assert normalize_id("Sammlungsstueck 43") is None
+    assert normalize_id("Sammlungsgegenstand 43") is None
+    assert normalize_id("Sammlungsobjekt 43") is None
+    assert normalize_id("Sammlungsband 43") is None
+    assert normalize_id("Sammler 43") is None
+    assert normalize_id("Sammelband 43") is None
+    assert normalize_id("Sammelklage 43") is None
+    # Regressionsschutz: bestehende Formen (inkl. Inv-/Kat-/Fund-Nr-Praefix) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fundnummer 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
