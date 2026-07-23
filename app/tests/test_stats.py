@@ -3616,6 +3616,128 @@ def test_gewicht_pro_geaendert_am_quartal_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_geaendert_am_halbjahr_aus_seed_db(tmp_path):
+    """Wertsumme pro geaendert_am-Halbjahr (H1/H2); absteigend nach Summe.
+
+    Spiegelt _sum_by_geaendert_am_quartal auf die noch groebere Zwei-Punkt-
+    Aggregat-Achse: waehrend die Quartals-Sicht die Pflege-Kampagnen-
+    Rhythmik der Kalender-Quartale beziffert, zeigt die Halbjahres-Sicht
+    die Zaesur H1/H2 (Winter-Indoor-Pflege vs. Sommer-/Herbst-Nachpflege)
+    und die Excel-Halbjahres-Buchhaltungs-/Steuer-Konvention.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # H1 (Jan..Jun): Winter-Indoor-Pflege: 500+300+100+100 = 1000
+            ("OBJ_0001", "2024-02-15 10:00:00", 500.0, None),
+            ("OBJ_0002", "2023-03-20 09:00:00", 300.0, None),
+            ("OBJ_0003", "2024-06-10 14:00:00", 100.0, 100.0),
+            # H2 (Jul..Dez): Sommer-/Herbst-Pflege: 400 + 250 = 650
+            ("OBJ_0004", "2020-07-15 11:00:00", 400.0, None),
+            ("OBJ_0005", "2023-10-31 12:00:00", 250.0, None),
+            # Ohne Wert -> raus
+            ("OBJ_0006", "2024-05-15 10:00:00", None, None),
+            # Ohne gueltiges geaendert_am / Monatsteil -> ignoriert
+            ("OBJ_0007", "", 999.0, None),
+            ("OBJ_0008", "2024", 999.0, None),
+            ("OBJ_0009", "2024-00-15 10:00:00", 999.0, None),
+            ("OBJ_0010", "2024-13-01 10:00:00", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: H1 (1000), H2 (650)
+    assert st.wert_pro_geaendert_am_halbjahr == [
+        ("H1", 1000.0),
+        ("H2", 650.0),
+    ]
+    assert st.as_dict()["wert_pro_geaendert_am_halbjahr"] == [
+        ("H1", 1000.0), ("H2", 650.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_geaendert_am_halbjahr_leer(tmp_path):
+    """Ohne CHF-Werte oder gueltiges geaendert_am: leere Halbjahres-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgh_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_halbjahr == []
+    c.close()
+
+
+def test_wert_pro_geaendert_am_halbjahr_tie_break_halbjahres_nummer(tmp_path):
+    """Bei gleicher Summe sortiert der Tie-Break aufsteigend nach Halbjahres-Nr."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpgh_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-02-01 10:00:00", 100.0),  # H1
+            ("OBJ_0002", "2024-11-01 10:00:00", 100.0),  # H2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_geaendert_am_halbjahr == [
+        ("H1", 100.0),
+        ("H2", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_halbjahr_aus_seed_db(tmp_path):
+    """Gewichtsumme pro geaendert_am-Halbjahr (H1/H2); 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Pflege-Halbjahres-Achse:
+    waehrend die Wert-Spitze auf einem H1-Winter-Indoor-Pflege-Halbjahr
+    liegen kann, kann die Gewicht-Spitze auf einem H2-Nachbereitung
+    schwerer Feld-Handstuecke liegen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # H2 (Jul..Dez): schwere Nachbereitung: 800 + 400 = 1200
+            ("OBJ_0001", "2024-07-15 10:00:00", 800.0),
+            ("OBJ_0002", "2024-10-20 09:00:00", 400.0),
+            # H1 (Jan..Jun): kleine Winter-Indoor-Pflege: 100 + 50 = 150
+            ("OBJ_0003", "2024-02-15 10:00:00", 100.0),
+            ("OBJ_0004", "2024-06-01 10:00:00", 50.0),
+            # NULL/0 -> raus
+            ("OBJ_0005", "2024-04-15 10:00:00", None),
+            ("OBJ_0006", "2024-05-15 10:00:00", 0.0),
+            # Ignoriert (nicht-strikt/ohne Monatsteil)
+            ("OBJ_0007", "2024", 999.0),
+            ("OBJ_0008", "2024-13-01 10:00:00", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: H2 (1200), H1 (150)
+    assert st.gewicht_pro_geaendert_am_halbjahr == [
+        ("H2", 1200.0),
+        ("H1", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_geaendert_am_halbjahr"] == [
+        ("H2", 1200.0), ("H1", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_geaendert_am_halbjahr_leer(tmp_path):
+    """Ohne Gewicht: leere Halbjahres-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpgh_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_geaendert_am_halbjahr == []
+    c.close()
+
+
 def test_funddatum_spanne_aus_seed_db(tmp_path):
     """frueheste/spaeteste = MIN/MAX gueltiger Funddatum-Werte (ISO sortierbar)."""
     from stonebook.db.database import open_db
