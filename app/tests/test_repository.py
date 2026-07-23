@@ -5912,6 +5912,74 @@ def test_geaendert_am_quartal_in_filter(tmp_path):
     c.close()
 
 
+def test_geaendert_am_halbjahr_in_filter(tmp_path):
+    """geaendert_am_halbjahr_in waehlt diskrete Kalender-Halbjahre (H1/H2).
+
+    Spiegelt erstellt_am_halbjahr_in / funddatum_halbjahr_in in der noch
+    groeberen Zwei-Punkt-Achse auf der Aenderungs-Achse: Pflege-Wellen laufen
+    in Halbjahres-Bloecken parallel zur Erfassungs-Achse - aber als zweite
+    unabhaengige Achse (ein H2-erfasstes Stueck kann H1-nachbearbeitet worden
+    sein). Halbjahr wird aus dem Monatsteil per ``((monat - 1) / 6) + 1``
+    abgeleitet: H1=Jan..Jun, H2=Jul..Dez.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gh.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-01-31 09:00:00"),   # H1 (Rand)
+            ("OBJ_0002", "2024-03-15 10:00:00"),   # H1
+            ("OBJ_0003", "2024-06-30 11:30:00"),   # H1 (Rand)
+            ("OBJ_0004", "2023-07-01 12:00:00"),   # H2 (Rand)
+            ("OBJ_0005", "2023-09-15 13:15:00"),   # H2
+            ("OBJ_0006", "2022-12-31 14:00:00"),   # H2 (Rand)
+            ("OBJ_0007", "2020"),                    # ohne Monatsteil -> raus
+            ("OBJ_0008", None),                       # NULL -> raus
+            ("OBJ_0009", ""),                         # leer -> raus
+            ("OBJ_0010", "kein-stempel"),            # kaputt -> raus
+            ("OBJ_0011", "2024-00-15"),              # Monat 00 -> darf NICHT als H1 zaehlen
+            ("OBJ_0012", "2024-13-15"),              # Monat 13 -> darf NICHT als H3 zaehlen
+        ],
+    )
+    c.commit()
+    repo = ObjectRepo(c)
+    # H1 allein: Jan..Jun
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[1])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # H2 allein: Jul..Dez
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[2])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0004", "OBJ_0005", "OBJ_0006"]
+    # H1 ODER H2 = alle Objekte mit gueltigem Monatsteil
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[1, 2])
+    assert [r["obj_id"] for r in rows] == [
+        "OBJ_0001", "OBJ_0002", "OBJ_0003",
+        "OBJ_0004", "OBJ_0005", "OBJ_0006",
+    ]
+    # Tupel akzeptiert
+    rows = repo.list_objects(geaendert_am_halbjahr_in=(1,))
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Leere Liste -> kein Filter
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[])
+    assert len(rows) == 12
+    # Kombiniert mit Jahresfilter (Schnittmenge H1 ∩ 2024 = 2024er H1)
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[1], geaendert_am_jahr_min=2024)
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002", "OBJ_0003"]
+    # Kombiniert mit geaendert_am_quartal_in (Schnittmenge H1 ∩ Q1 = Q1)
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[1], geaendert_am_quartal_in=[1])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0001", "OBJ_0002"]
+    # Kombiniert mit geaendert_am_monat_in (Schnittmenge H2 ∩ {Dezember} = Dezember)
+    rows = repo.list_objects(geaendert_am_halbjahr_in=[2], geaendert_am_monat_in=[12])
+    assert [r["obj_id"] for r in rows] == ["OBJ_0006"]
+    # Validierung: 0/3 sind ungueltig
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Halbjahre"):
+        repo.list_objects(geaendert_am_halbjahr_in=[1, 3])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Halbjahre"):
+        repo.list_objects(geaendert_am_halbjahr_in=[0])
+    with pytest.raises(ValueError, match="Unbekannte Geaendert-am-Halbjahre"):
+        repo.list_objects(geaendert_am_halbjahr_in=[-1])
+    c.close()
+
+
 def test_geaendert_am_iso_range_filter(tmp_path):
     """geaendert_am_min/_max filtert tagesgenau ueber ISO-Strings (lexikographisch).
 

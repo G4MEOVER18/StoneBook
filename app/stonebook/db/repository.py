@@ -574,6 +574,7 @@ class ObjectRepo:
                      geaendert_am_monat: int | None = None,
                      geaendert_am_monat_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_quartal_in: list[int] | tuple[int, ...] | None = None,
+                     geaendert_am_halbjahr_in: list[int] | tuple[int, ...] | None = None,
                      geaendert_am_min: str | None = None,
                      geaendert_am_max: str | None = None,
                      geaendert_am_wochentag_in: list[int] | tuple[int, ...] | None = None,
@@ -1694,6 +1695,44 @@ class ObjectRepo:
                     f"AND ((CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) - 1) / 3 + 1) "
                     f"IN ({placeholders})")
                 params.extend(quartale)
+        # geaendert_am_halbjahr_in: Mengen-Halbjahres-Filter auf der Aenderungs-
+        # Achse (H1..H2) - spiegelt erstellt_am_halbjahr_in (6d5d716) und
+        # funddatum_halbjahr_in (e6aeba4) auf die dritte Zeitstempel-Spalte und
+        # schliesst damit die Halbjahres-Filter-Trias der drei Zeitstempel-
+        # Spalten (Funddatum / erstellt_am / geaendert_am) ab. Halbjahr wird
+        # aus dem Monatsteil per ``((monat - 1) / 6) + 1`` abgeleitet:
+        # H1=Jan..Jun, H2=Jul..Dez - Ganzzahl-Division in SQLite ist per
+        # Definition truncating, das Ergebnis ist konsistent mit dem Python-
+        # Aequivalent ``(m - 1) // 6 + 1``. Sammler-Kontext auf der Aenderungs-
+        # Achse: Pflege-Wellen laufen in Halbjahres-Bloecken parallel zur
+        # Erfassungs-Achse (H1-Winter-Nachpflege Januar-Juni mit Tucson- und
+        # Nachlass-Nachbereitung, H2-Sommer-/Herbst-Nachpflege Juli-Dezember
+        # mit Muenchen-/Sainte-Marie-aux-Mines-Nachbereitung), aber als zweite
+        # unabhaengige Achse - ein H2-erfasstes Stueck kann H1-nachbearbeitet
+        # worden sein (KI-Analyse-Uebernahme nach Boersen-Termin, XRD-Nachtrag
+        # nach Labor-Sitzung). Erwartet jeden Eintrag in 1..2 (Tippfehler 0/3
+        # erzeugen einen klaren Fehler statt eines stillen Leerergebnisses).
+        # Substring-Praefix-Guards und BETWEEN 1 AND 12-Guard sind identisch
+        # zu geaendert_am_quartal_in / geaendert_am_monat_in, damit reine
+        # Jahres-Formen ohne Monatsteil und pathologische Monats-Codes 00/13..99
+        # automatisch herausfallen.
+        if geaendert_am_halbjahr_in:
+            halbjahre = [int(h) for h in geaendert_am_halbjahr_in]
+            invalid = [h for h in halbjahre if not 1 <= h <= 2]
+            if invalid:
+                raise ValueError(
+                    f"Unbekannte Geaendert-am-Halbjahre: {invalid} "
+                    f"(erwartet 1..2)")
+            if halbjahre:
+                placeholders = ", ".join("?" * len(halbjahre))
+                where.append(
+                    "o.geaendert_am IS NOT NULL AND TRIM(o.geaendert_am) != '' "
+                    "AND substr(o.geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+                    "AND substr(o.geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+                    "AND CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+                    f"AND ((CAST(substr(o.geaendert_am, 6, 2) AS INTEGER) - 1) / 6 + 1) "
+                    f"IN ({placeholders})")
+                params.extend(halbjahre)
         # geaendert_am-Bereich auf Tagesgenauigkeit/Sekundengenauigkeit:
         # spiegelt erstellt_am_min/_max auf die Aenderungs-Achse und
         # funddatum_min/_max auf die Fund-Achse - schliesst die Tagesgenau-
