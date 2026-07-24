@@ -7944,6 +7944,73 @@ def test_parse_coordinates_himmelsrichtung_es_vollnamen():
     assert parse_coordinates("N46.5 E7.5") == (46.5, 7.5)
 
 
+def test_parse_coordinates_himmelsrichtung_pt_vollnamen():
+    """PT-Vollnamen der Himmelsrichtungen (lusophone Fundregionen wie
+    Panasqueira/Beira Baixa fuer Wolframit-/Quarz-Adern, brasilianische
+    Pegmatit-Regionen Minas Gerais/Bahia mit Turmalin/Topas/Aquamarin/Beryll,
+    Angola/Mosambik-Sammler-Notizen).
+
+    Nur die PT-eigenstaendigen Wortstaemme werden hier abgedeckt: ``sul`` (S)
+    und ``leste`` (E). ``norte`` (N) und ``oeste`` (W) matchen bereits ueber
+    die identischen ES-Alternativen, und die PT-EU-Ost-Form ``este`` ist
+    ebenfalls bereits ueber die ES-``este``-Alternative gemappt. Vor dieser
+    Erweiterung fielen alle PT-BR-``sul``/``leste``-Formen still auf die
+    Fallback-Route (kein Direction-Marker erkannt, generische Zahl-Paar-
+    Extraktion nimmt die Reihenfolge ohne Vorzeichen-Information), was aus
+    einem typischen Minas-Gerais-Etikett ``"Sul 20.1, Leste 43.2"`` (Sued-
+    halbkugel Brasilien) silente ``(20.1, 43.2)`` (Nordhalbkugel) statt der
+    korrekten ``(-20.1, 43.2)`` erzeugte. Spiegelt die PT-Monats-/Saison-
+    Namen-Erweiterungen auf die Direction-Wort-Achse.
+    """
+    # Prefix-Form: Minas-Gerais-/Bahia-/Panasqueira-Fundort-Notizen
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Norte 20.1, Leste 43.2") == (20.1, 43.2)
+    assert parse_coordinates("Sul 20.1, Oeste 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``20.1° Sul, 43.2° Leste``)
+    assert parse_coordinates("20.1° Sul, 43.2° Leste") == (-20.1, 43.2)
+    assert parse_coordinates("20.1° Norte, 43.2° Leste") == (20.1, 43.2)
+    # Brasilianische Sammler-Notiz (Bahia-Suedhalbkugel/West)
+    assert parse_coordinates("Sul 12.3, Oeste 41.5") == (-12.3, -41.5)
+    # Angola-/Mosambik-Sammler-Notiz (Suedhalbkugel/Ost)
+    assert parse_coordinates("Sul 8.8, Leste 13.2") == (-8.8, 13.2)
+    # Case-insensitive
+    assert parse_coordinates("SUL 20.1, LESTE 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("sul 20.1, leste 43.2") == (-20.1, 43.2)
+    # Mit trailing Punkt nach Kurzform (``Sul.``/``Leste.`` aus Katalog-Abkuerzung)
+    assert parse_coordinates("Sul. 20.1, Leste. 43.2") == (-20.1, 43.2)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Sul 20.1, Lon: Leste 43.2") == (-20.1, 43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Leste 43.2, Sul 20.1") == (-20.1, 43.2)
+    # Mixed-Sprache (PT-BR-Marker mit DE/EN/ES auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Auktions-Provenienzen vor)
+    assert parse_coordinates("Sul 20.1, East 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Sul 20.1, Ost 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Sul 20.1, Este 43.2") == (-20.1, 43.2)
+    # PT-EU-Ost-Form ``este`` bleibt korrekt (matcht via ES-Alternative)
+    assert parse_coordinates("Norte 20.1, Este 43.2") == (20.1, 43.2)
+    # Wort-Grenzen: PT-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. Fundort-Feld mit Freitext, der solche Praefixe enthaelt,
+    # darf nicht als Direction fehl-normalisiert werden.
+    # ``sul`` in ``sulfur``/``sulfat``/``sulfid``/``sulla`` (Mineral-Namen und
+    # IT-Praeposition): kein Match wegen nachfolgender Wort-Zeichen.
+    assert parse_coordinates("sulfur 20.1, sulfat 43.2") is None
+    assert parse_coordinates("sulfid 20.1, sulla 43.2") is None
+    # ``leste`` in ``lester``/``lestem``/``lestes``: kein Match.
+    assert parse_coordinates("lester 20.1, lestes 43.2") is None
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-Direction-Formen bleiben
+    # unveraendert (die neuen PT-Alternativen im Regex duerfen die
+    # existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    # Einzelbuchstaben bleiben unveraendert
+    assert parse_coordinates("S20.1 E43.2") == (-20.1, 43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace

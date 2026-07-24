@@ -4756,6 +4756,16 @@ _DIRECTION_WORD = re.compile(
     r"|nord(?:en)?|sued(?:en)?|s[uü]d(?:en)?|ost(?:en)?|west(?:en)?"
     r"|ouest|ovest|est"
     r"|norte|sur|oeste|este"
+    # PT-eigenstaendige Wortstaemme fuer Sued und Ost: ``sul`` (S) und
+    # ``leste`` (E). ``norte`` (N) und ``oeste`` (W) sind bereits ueber die
+    # ES-Alternative abgedeckt (identische Schreibweise), und ``este`` als
+    # PT-EU-Ost-Form ebenfalls (matcht via ES-``este``). Neu sind nur die
+    # PT-BR-Formen ``sul`` (Standard-Sued im brasilianischen und
+    # portugiesischen Sprachraum) und ``leste`` (PT-BR-Standard fuer Ost,
+    # neben dem PT-EU-``este``); spiegelt die PT-Erweiterungen in
+    # :data:`_MONTH_NAMES` (janeiro..dezembro) und :data:`_SEASON_MONTHS`
+    # (verao/outono/primavera/inverno) auf die Direction-Wort-Achse.
+    r"|sul|leste"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -4777,12 +4787,35 @@ _DIRECTION_LETTER: dict[str, str] = {
     # Notizen). Kein Konflikt mit anderen Sprachen: DE ``sued``, FR/IT ``sud``,
     # EN ``south`` haben abweichende Wortstaemme.
     "sur": "S",
+    # ``sul`` ist die PT-Standard-Vollform fuer Sued (Portugal/Brasilien/
+    # Sammler-Notizen aus lusophonen Fundregionen wie Panasqueira/Beira Baixa
+    # und Minas Gerais/Bahia). Kein Konflikt mit anderen Sprachen: DE
+    # ``sued``, FR/IT ``sud``, EN ``south``, ES ``sur`` haben abweichende
+    # Wortstaemme; die IT-Praeposition ``sul`` (kontrahiert ``su + il``)
+    # wird durch die Wort-Grenzen isoliert, matcht aber als Praeposition in
+    # Freitext ohne Coord-Kontext (``sul monte``) - der Coord-Parser
+    # verlangt tight direction + number couple, sodass die Praeposition
+    # ausserhalb von Koordinaten-Notation kein Falsch-Match erzeugt.
+    "sul": "S",
     "e": "E", "east": "E", "est": "E",
     # ``este`` ist die ES-Vollform fuer Ost (spiegelt die ES-``sur``-Erweiterung
     # auf die Ost-Achse). Der Lookup-Schluessel ist noetig, weil das bestehende
     # ``est``-Pattern (FR/IT) an der Wort-Grenze nach dem ``t`` scheitert und
-    # deshalb die ES-``este``-Alternative im Regex uebernimmt.
+    # deshalb die ES-``este``-Alternative im Regex uebernimmt. Die identische
+    # Schreibweise deckt auch die PT-EU-Ost-Form ``este`` ab (spiegelt die
+    # PT-``sul``-Erweiterung); die PT-BR-Alternative ``leste`` hat ihren
+    # eigenen Lookup-Eintrag unten.
     "este": "E",
+    # ``leste`` ist die PT-BR-Standard-Vollform fuer Ost (neben der PT-EU-
+    # Form ``este``, die bereits ueber die ES-``este``-Alternative gemappt
+    # ist). Sammler-Notizen aus lusophonen Regionen (Brasilien/Angola/
+    # Mosambik) und geerbte PT-BR-Auktions-Etiketten verwenden ``leste``
+    # als kanonische Ost-Bezeichnung; ohne den Lookup-Eintrag fiele die
+    # normalisierte PT-BR-``Leste``-Direction still auf das Original-Wort
+    # statt zur ``E``-Direction-Letter, was den Vorzeichen-Marker im
+    # nachfolgenden DMS/_DECIMAL_PAIR/_PREFIX_PAIR-Matching verloren gehen
+    # laesst. Spiegelt die PT-``sul``-Erweiterung auf die Ost-Achse.
+    "leste": "E",
     "o": "O", "ost": "O", "osten": "O",
     "w": "W", "west": "W", "westen": "W", "ouest": "W", "ovest": "W",
     # ``oeste`` ist die ES-Vollform fuer West (spiegelt die ES-``norte``/
