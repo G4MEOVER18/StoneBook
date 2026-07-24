@@ -275,6 +275,19 @@ _PATTERNS = [
     # Cat-Praefix bereits am zweiten Buchstaben (``a`` != ``o``), sodass die
     # Coll-Alternative uebernimmt.
     re.compile(r"^Coll(?:ection)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
+    # Englische Specimen-Nummer: ``Spec. No. 43`` / ``Spec-No. 43`` / ``SpecNo 43`` /
+    # ``Specimen No. 43`` / ``Specimen Number 43``. Sechster grosser EN-Museums-
+    # Standard neben Cat/Acc/Reg/Field/Coll: die Specimen Number identifiziert das
+    # physische Forschungs-Exemplar (Type-Specimen, Voucher, Holotype/Paratype) und
+    # ist der Standard-Praefix in mineralogisch-/palaeontologischen Type-Specimen-
+    # Publikationen (NMNH, Museum of Comparative Zoology Harvard, Field Museum,
+    # USGS Type Collection). In Provenienz-Zitaten wie "Holotype, Spec. No. 156789,
+    # NMNH" oder "voucher Specimen No. 4302". Der obligatorische ``N(?:o|umber)``-
+    # Marker verhindert falsche Positives fuer bare ``Spec 43`` und fuer die
+    # ``Spec``-startenden EN-Woerter (``Special``, ``Species``, ``Specific``,
+    # ``Spectrum``, ``Speculate``, ``Speech``). Kollisionsfrei zu Cat/Acc/Reg/Field/
+    # Coll (disjunkte Anfangs-Buchstaben) und zu allen DE-Praefixen.
+    re.compile(r"^Spec(?:imen)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen

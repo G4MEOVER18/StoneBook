@@ -728,6 +728,71 @@ def test_normalize_id_englische_collection_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_englische_specimen_nummer_praefix():
+    """Englische Specimen-Nummer ``Spec. No.`` / ``Specimen Number`` -
+    Sechster grosser EN-Museums-Standard neben Cat/Acc/Reg/Field/Coll.
+
+    Die Specimen Number identifiziert das physische Forschungs-Exemplar
+    (Type-Specimen, Voucher, Holotype/Paratype) und ist der Standard-Praefix
+    in mineralogisch-/palaeontologischen Type-Specimen-Publikationen (NMNH,
+    Museum of Comparative Zoology Harvard, Field Museum, USGS Type Collection).
+    Bisher fielen alle Spec.-No.-Formen still auf None.
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Spec. No. 43") == "OBJ_0043"
+    assert normalize_id("Spec.No. 43") == "OBJ_0043"
+    assert normalize_id("Spec No. 43") == "OBJ_0043"
+    assert normalize_id("Spec No 43") == "OBJ_0043"
+    assert normalize_id("Spec-No. 43") == "OBJ_0043"
+    assert normalize_id("Spec-No 43") == "OBJ_0043"
+    assert normalize_id("SpecNo 43") == "OBJ_0043"
+    assert normalize_id("SpecNo43") == "OBJ_0043"
+    assert normalize_id("Spec.No.43") == "OBJ_0043"
+    # Ausgeschriebene Vollform ``Specimen`` und ``Number``
+    assert normalize_id("Specimen No. 43") == "OBJ_0043"
+    assert normalize_id("Specimen Number 43") == "OBJ_0043"
+    assert normalize_id("Specimen-No. 43") == "OBJ_0043"
+    assert normalize_id("Specimen No 43") == "OBJ_0043"
+    assert normalize_id("Spec. Number 43") == "OBJ_0043"
+    assert normalize_id("SpecNumber43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("spec no 7") == "OBJ_0007"
+    assert normalize_id("SPEC-NO. 001") == "OBJ_0001"
+    assert normalize_id("specimen number 7") == "OBJ_0007"
+    assert normalize_id("SPECIMEN NO. 43") == "OBJ_0043"
+    # Ungueltig: ohne No/Number-Marker, Suffix-Ballast oder Spec-startende
+    # EN-Woerter ohne semantische Naehe (Special, Species, Specific, Spectrum,
+    # Speculate, Speech) - Disambiguierungs-Schutz durch obligatorischen
+    # No/Number-Marker.
+    assert normalize_id("Spec 43") is None
+    assert normalize_id("Specimen 43") is None
+    assert normalize_id("Spec. No. 43X") is None
+    assert normalize_id("Special 43") is None
+    assert normalize_id("Special No. 43") is None
+    assert normalize_id("Species 43") is None
+    assert normalize_id("Species No. 43") is None
+    assert normalize_id("Specific 43") is None
+    assert normalize_id("Spectrum 43") is None
+    assert normalize_id("Speculate 43") is None
+    assert normalize_id("Speech 43") is None
+    assert normalize_id("Spec No 43 44") is None
+    # Regressionsschutz: bestehende Formen bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Reg. No. 43") == "OBJ_0043"
+    assert normalize_id("Field No. 43") == "OBJ_0043"
+    assert normalize_id("Coll. No. 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
