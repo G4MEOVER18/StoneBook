@@ -1448,6 +1448,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "max_gap_days": None,
         "range_gap_days": None,
         "stddev_gap_days": None,
+        "variationskoeffizient_gap_prozent": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1469,6 +1470,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "max_gap_days": None,
         "range_gap_days": None,
         "stddev_gap_days": None,
+        "variationskoeffizient_gap_prozent": None,
     }
 
 
@@ -2765,6 +2767,118 @@ def test_backup_directory_stats_stddev_gap_days_einzelnes_backup_ist_none(tmp_pa
     info = backup_directory_stats(backups_dir)
     assert info["count"] == 1
     assert info["stddev_gap_days"] is None
+
+
+def test_backup_directory_stats_variationskoeffizient_gap_prozent_ausreisser(tmp_path):
+    """variationskoeffizient_gap_prozent > 0 bei Ausreissern in der Backup-Kadenz.
+
+    Vier Backups im ~1-Tages-Rhythmus plus einer der 10 Tage nach dem
+    letzten geschrieben wurde. Erwartung: der CV auf der Zeit-Achse ist
+    > 0 (Kadenz ist nicht uniform) und rundet auf 2 Nachkommastellen -
+    spiegelt die stddev_gap_days-Ausreisser-Konvention und die CV-
+    Rundungs-Konvention des variationskoeffizient_bytes_prozent-Paars.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    stamps = [
+        base,
+        base + datetime.timedelta(days=1),
+        base + datetime.timedelta(days=2),
+        base + datetime.timedelta(days=3),
+        base + datetime.timedelta(days=13),
+    ]
+    for s in stamps:
+        _write_sized_backup(backups_dir, s, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    cv = info["variationskoeffizient_gap_prozent"]
+    assert cv is not None and cv > 0
+    # CV muss der Identitaet sigma/mean * 100 entsprechen (auf 2 Nach-
+    # kommastellen gerundet), spiegelt die stddev_gap_days-/average_gap_days-
+    # Reuse-Konvention.
+    expected = round(info["stddev_gap_days"] / info["average_gap_days"] * 100.0, 2)
+    assert cv == expected
+
+
+def test_backup_directory_stats_variationskoeffizient_gap_prozent_uniform_ist_null(tmp_path):
+    """Uniforme Kadenz: variationskoeffizient_gap_prozent == 0.0.
+
+    Vier Backups an aufeinanderfolgenden Tagen: sigma == 0, also faellt der
+    CV natuerlich auf 0.0 (kein ZeroDivisionError, weil mean == 1.0 > 0).
+    Spiegelt die uniforme-Verteilungs-Konvention des CV-Paars auf der
+    Volume-Achse.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in range(4):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    assert info["variationskoeffizient_gap_prozent"] == 0.0
+
+
+def test_backup_directory_stats_variationskoeffizient_gap_prozent_zwei_backups_ist_null(tmp_path):
+    """Bei count == 2 kollabiert variationskoeffizient_gap_prozent auf 0.0.
+
+    Ein einziges Intervall im gaps_days-Sample: sigma == 0 (Einzel-
+    Stichprobe), mean > 0 - CV wird 0.0. Spiegelt die stddev_gap_days-
+    Konvention bei count == 2.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    _write_sized_backup(backups_dir,
+                        base + datetime.timedelta(hours=84), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["variationskoeffizient_gap_prozent"] == 0.0
+
+
+def test_backup_directory_stats_variationskoeffizient_gap_prozent_einzelnes_backup_ist_none(tmp_path):
+    """Bei count < 2 liefert variationskoeffizient_gap_prozent None.
+
+    Spiegelt die Grenzfall-Konvention der uebrigen Gap-Achsen: ohne
+    zweites Backup gibt es kein Intervall und daher weder Streuung noch
+    Kadenz zur Normierung.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["variationskoeffizient_gap_prozent"] is None
+
+
+def test_backup_directory_stats_variationskoeffizient_gap_prozent_alle_gleicher_stempel_ist_none(tmp_path, monkeypatch):
+    """Kollaps mean_gap == 0 (Batch-Import im selben Sekunden-Stempel): CV ist None.
+
+    Wenn alle Backups im selben Sekunden-Stempel landen (Batch-Import
+    innerhalb einer Sekunde, alle Backup-Stempel identisch), sind alle
+    gaps_days == 0 und average_gap_days == 0.0 - CV waere ein
+    ZeroDivisionError, daher None. Anders als sigma (das bei uniformer
+    Verteilung 0 ist), ist CV mathematisch undefined bei mean == 0 -
+    spiegelt die guardierte variationskoeffizient_bytes_prozent-Konvention
+    auf der Volume-Achse. Weil das Dateisystem denselben Filename physisch
+    nicht doppelt zulaesst und die Stempel-Extraktion strikt aus dem
+    Filename kommt, simulieren wir den Kollaps via monkeypatch auf
+    :func:`_parse_backup_stamp`, das alle Backups auf denselben datetime
+    faltet.
+    """
+    from stonebook.export import json_export as je
+    backups_dir = tmp_path / "b"
+    backups_dir.mkdir()
+    stamps = ["20240601_120000", "20240601_120001", "20240601_120002"]
+    for s in stamps:
+        (backups_dir / f"stonebook_backup_{s}.json.gz").write_bytes(b"x")
+    fixed = datetime.datetime(2024, 6, 1, 12, 0, 0)
+    monkeypatch.setattr(je, "_parse_backup_stamp", lambda p: fixed)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 3
+    assert info["days_span"] == 0.0
+    assert info["average_gap_days"] == 0.0
+    assert info["stddev_gap_days"] == 0.0
+    assert info["variationskoeffizient_gap_prozent"] is None
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

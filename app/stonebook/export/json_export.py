@@ -1186,7 +1186,8 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     "oldest_stamp": None, "newest_stamp": None, "days_span": None,
     "average_gap_days": None, "median_gap_days": None,
     "min_gap_days": None, "max_gap_days": None,
-    "range_gap_days": None, "stddev_gap_days": None}``.
+    "range_gap_days": None, "stddev_gap_days": None,
+    "variationskoeffizient_gap_prozent": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1354,6 +1355,51 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         # Mittelwert). Bei count < 2 None (spiegelt die Grenzfall-
         # Konvention der uebrigen Gap-Achsen).
         stddev_gap_days = _stddev_float(gaps_days)
+        # variationskoeffizient_gap_prozent: dimensionsloser Variations-
+        # koeffizient (CV = ``stddev_gap_days / average_gap_days * 100``)
+        # auf der Backup-Zeit-Achse. Spiegelt das
+        # ``variationskoeffizient_bytes_prozent``-Paar aus dem Volume-
+        # Bereich auf die Zeit-Achse und schliesst die Zeit-Frequenz-
+        # Sicht analog zur Volume-Sicht: waehrend ``stddev_gap_days``
+        # die Streuung in Original-Einheiten (Tage) beziffert, normiert
+        # der CV sigma auf die typische Kadenz und macht die Rotations-
+        # Homogenitaet skalen-unabhaengig vergleichbar. Eine taegliche
+        # Rotation mit Ø 1 Tag und sigma 0.1 Tag (CV 10%) hat dieselbe
+        # relative Streuung wie eine stuendliche Rotation mit Ø 1/24 Tag
+        # und sigma ~0.0042 Tag (CV 10%), obwohl die Absolutwerte um
+        # Faktor 24 auseinanderliegen - "wie einheitlich ist meine
+        # Backup-Kadenz, unabhaengig vom Rotations-Intervall?".
+        # Kombiniert mit ``range_gap_days`` und ``stddev_gap_days``
+        # liefert der CV das dritte Streuungs-Mass auf der Zeit-Achse
+        # (Spanne, absolut, relativ). Ausgabe in Prozent
+        # (``sigma/mean * 100``, auf 2 Nachkommastellen gerundet),
+        # spiegelt die CV-Achsen-Konvention aus dem Volume-Bereich und
+        # aus ``stats.py``. Guarded gegen ``mean == 0`` (Kollaps wenn
+        # alle Backups im selben Sekunden-Stempel: gaps_days sind alle
+        # 0, days_span == 0, average_gap_days == 0.0 - CV wird dann
+        # ``None`` statt ``ZeroDivisionError``, damit der Report und
+        # Downstream-Konsumenten den Undefined-Zustand transparent
+        # unterscheiden koennen - anders als sigma (``0`` bei uniformer
+        # Verteilung) ist CV mathematisch undefined bei ``mean == 0``,
+        # nicht ``0``). Bei count == 2 mit positivem Intervall kollabiert
+        # der CV auf 0.0 (Einzel-Stichprobe im gaps_days-Sample: sigma
+        # ist zwangslaeufig 0, mean ist der einzige Intervall-Wert).
+        # Bei uniformer Kadenz faellt der CV ebenfalls auf 0.0 als
+        # natuerliche Konsequenz der ``sigma == 0``-Voraussetzung. Bei
+        # count < 2 None (spiegelt die Grenzfall-Konvention der uebrigen
+        # Gap-Achsen). Reuse-Pfad: nutzt die bereits berechneten
+        # ``stddev_gap_days``- und ``average_gap_days``-Werte (kein
+        # zweiter Pass ueber die gaps_days-Liste, keine zweite mean-/
+        # sigma-Berechnung), spiegelt das single-source-of-truth-Muster
+        # der ``variationskoeffizient_bytes_prozent``-Konvention
+        # (Reuse der bereits berechneten ``sizes``-/``stddev_bytes``-
+        # Werte).
+        if average_gap_days > 0:
+            variationskoeffizient_gap_prozent = round(
+                stddev_gap_days / average_gap_days * 100.0, 2
+            )
+        else:
+            variationskoeffizient_gap_prozent = None
     else:
         average_gap_days = None
         median_gap_days = None
@@ -1361,6 +1407,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         min_gap_days = None
         range_gap_days = None
         stddev_gap_days = None
+        variationskoeffizient_gap_prozent = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1380,6 +1427,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "max_gap_days": max_gap_days,
         "range_gap_days": range_gap_days,
         "stddev_gap_days": stddev_gap_days,
+        "variationskoeffizient_gap_prozent": variationskoeffizient_gap_prozent,
     }
 
 

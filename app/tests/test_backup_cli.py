@@ -470,6 +470,7 @@ def test_stats_leerer_ordner_liefert_null_report(tmp_path, capsys):
         "max_gap_days": None,
         "range_gap_days": None,
         "stddev_gap_days": None,
+        "variationskoeffizient_gap_prozent": None,
     }
 
 
