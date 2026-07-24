@@ -1444,6 +1444,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "days_span": None,
         "average_gap_days": None,
         "median_gap_days": None,
+        "max_gap_days": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1461,6 +1462,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "days_span": None,
         "average_gap_days": None,
         "median_gap_days": None,
+        "max_gap_days": None,
     }
 
 
@@ -2446,6 +2448,91 @@ def test_backup_directory_stats_median_gap_days_einzelnes_backup_ist_none(tmp_pa
     assert info["count"] == 1
     assert info["median_gap_days"] is None
     assert info["average_gap_days"] is None
+
+
+def test_backup_directory_stats_max_gap_days_ferienluecke(tmp_path):
+    """max_gap_days beziffert den laengsten Ausfall, nicht die typische Kadenz.
+
+    Fuenf Backups: vier taegliche in Folge und ein spaeter Backup nach 40
+    Tagen Cron-Ausfall/Ferien. Intervalle: [1, 1, 1, 40] Tage - max_gap_days
+    ist 40.0 (der Ausfall), waehrend median_gap_days weiterhin 1.0 (die
+    typische Kadenz) zeigt und average_gap_days bei 10.75 liegt. Sichert die
+    Rand-Extreme-Semantik auf der Frequenz-Achse und macht den schlimmsten
+    Einzel-Ausreisser sichtbar, ohne dass der Caller die Gap-Liste selbst
+    rekonstruieren muss - klassisches Signal fuer "Cron-Server war im
+    Zeitraum X..Y down, keine Backups verfuegbar zur Wiederherstellung".
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in (0, 1, 2, 3, 43):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    assert info["max_gap_days"] == 40.0
+    # Rand-Achse liegt oberhalb der Zentraltendenz - spiegelt die
+    # rechts-schiefe Verteilung mit einem einzelnen weiten Intervall.
+    assert info["max_gap_days"] > info["median_gap_days"]
+    assert info["max_gap_days"] > info["average_gap_days"]
+
+
+def test_backup_directory_stats_max_gap_days_uniforme_kadenz(tmp_path):
+    """Uniforme Kadenz: max_gap_days == median_gap_days == average_gap_days.
+
+    Bei vier Backups an vier aufeinanderfolgenden Tagen sind alle drei
+    Intervalle 1.0 Tag lang - Rand und Zentraltendenz fallen zusammen
+    (kein Ausreisser bei uniformer Verteilung). Sichert die Rand-vs-
+    Zentraltendenz-Konvention fuer den Grenzfall Null-Schiefe und
+    spiegelt das median_gap_days == average_gap_days-Muster auf die
+    Rand-Achse.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in range(4):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    assert info["max_gap_days"] == 1.0
+    assert info["max_gap_days"] == info["median_gap_days"]
+    assert info["max_gap_days"] == info["average_gap_days"]
+
+
+def test_backup_directory_stats_max_gap_days_zwei_backups(tmp_path):
+    """Bei count == 2 faellt max_gap_days mit average_gap_days und days_span zusammen.
+
+    Zwei Backups im Abstand 3.5 Tagen ergeben genau ein Intervall im
+    gaps_days-Sample - der Max ist zwangslaeufig identisch zum
+    Durchschnitt und zur Zeit-Spanne. Sichert die Ein-Intervall-
+    Grenzfall-Konvention (nur ein Wert im Sample -> Max == Median ==
+    Average).
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    _write_sized_backup(backups_dir,
+                        base + datetime.timedelta(hours=84), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["max_gap_days"] == 3.5
+    assert info["max_gap_days"] == info["average_gap_days"]
+    assert info["max_gap_days"] == info["days_span"]
+
+
+def test_backup_directory_stats_max_gap_days_einzelnes_backup_ist_none(tmp_path):
+    """Bei count == 1 kollabiert max_gap_days auf None (keine Intervalle).
+
+    Spiegelt die average_gap_days- und median_gap_days-Grenzfall-Konvention:
+    mit einem einzigen Backup gibt es keinen Vorgaenger, gegen den ein
+    Abstand gemessen werden koennte - der Wert ist mathematisch undefined
+    und wird als None ausgeliefert statt einer irrefuehrenden 0.0.
+    """
+    backups_dir = tmp_path / "b"
+    _write_sized_backup(backups_dir, datetime.datetime(2024, 6, 13, 12, 0, 0),
+                        500)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["max_gap_days"] is None
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

@@ -1151,13 +1151,41 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     ``median_gap_days`` alle auf derselben Halden-Stamp-Menge
     beruhen (single-source-of-truth).
 
+    ``max_gap_days`` ist der laengste Abstand in Tagen zwischen zwei
+    aufeinanderfolgenden Backups - Aussen-Rand-Achse der Frequenz-
+    Verteilung. Spiegelt das ``max_bytes``-vs-``median_bytes``-Paar aus
+    dem Volume-Bereich auf die Zeit-Achse: waehrend ``median_gap_days``
+    und ``average_gap_days`` die typische Kadenz beschreiben, macht
+    ``max_gap_days`` den schlimmsten Ausfall sichtbar - eine Cron-Panne
+    oder Ferien-Luecke, die die Retention-Kette unterbrochen hat, ohne
+    dass der Caller die Gap-Liste selbst rekonstruieren muss. Nutzen
+    im Cron-Reporter: bei einer taeglichen Backup-Rotation ist
+    ``max_gap_days ~ 1.0`` unter Normalbetrieb; ein Wert deutlich >
+    ``median_gap_days`` deutet auf einen einzelnen Ausfall hin (Cron-
+    Server down, Netzwerk-Ausfall, manuelles Pause-Fenster), ein Wert
+    der die Retention-Vorgabe (z.B. 30 Tage) uebersteigt zeigt eine
+    kritische Luecke, die Backups des ausgefallenen Zeitraums fuer
+    immer verloren gemacht hat. Die Differenz ``max_gap_days -
+    median_gap_days`` beziffert den schlimmsten Einzel-Ausreisser
+    gegenueber der typischen Kadenz. Als ``float`` ausgeliefert (Zeit-
+    Achse ist kontinuierlich, spiegelt die ``days_span`` /
+    ``average_gap_days`` / ``median_gap_days``-Float-Konvention -
+    Sub-Tag-Aufloesung bleibt bei stundenweiser Rotation erhalten).
+    Bei uniformer Kadenz faellt ``max_gap_days`` mit ``median_gap_days``
+    und ``average_gap_days`` zusammen. Bei ``count == 2`` ist der Wert
+    zwangslaeufig identisch zu ``average_gap_days`` und ``days_span``
+    (nur ein Intervall im Sample). Bei ``count < 2`` liefert der Wert
+    ``None`` (keine Intervalle definierbar, spiegelt die Grenzfall-
+    Konvention von ``average_gap_days`` / ``median_gap_days``).
+
     Leerer Ordner / nur fremde Dateien liefert
     ``{"count": 0, "total_bytes": 0, "average_bytes": None,
     "median_bytes": None, "min_bytes": None, "max_bytes": None,
     "range_bytes": None, "stddev_bytes": None,
     "variationskoeffizient_bytes_prozent": None,
     "oldest_stamp": None, "newest_stamp": None, "days_span": None,
-    "average_gap_days": None, "median_gap_days": None}``.
+    "average_gap_days": None, "median_gap_days": None,
+    "max_gap_days": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1241,9 +1269,44 @@ def backup_directory_stats(backup_dir: Path) -> dict:
             for i in range(len(ordered_stamps) - 1)
         ]
         median_gap_days = _median_float(gaps_days)
+        # max_gap_days: laengster Abstand in Tagen zwischen zwei
+        # aufeinanderfolgenden Backups (Aussen-Rand-Achse der Frequenz-
+        # Verteilung). Spiegelt das max_bytes-vs-median_bytes-Paar auf die
+        # Zeit-Achse: waehrend median_gap_days und average_gap_days die
+        # typische Kadenz beschreiben, macht max_gap_days den schlimmsten
+        # Ausfall sichtbar - eine Cron-Panne oder Ferien-Luecke, die die
+        # Retention-Kette unterbrochen hat, ohne dass der Caller die
+        # gaps_days-Liste selbst rekonstruieren muss. Nutzen im Cron-
+        # Reporter: bei einer taeglichen Backup-Rotation ist
+        # max_gap_days ~ 1.0 unter Normalbetrieb; ein Wert deutlich >
+        # median_gap_days deutet auf einen einzelnen Ausfall hin
+        # (Cron-Server down, Netzwerk-Ausfall, manuelles Pause-Fenster),
+        # ein Wert der die Retention-Vorgabe (z.B. 30 Tage) uebersteigt
+        # zeigt eine kritische Luecke, die Backups des ausgefallenen
+        # Zeitraums fuer immer verloren gemacht hat. Die Differenz
+        # max_gap_days - median_gap_days beziffert den schlimmsten
+        # Einzel-Ausreisser gegenueber der typischen Kadenz und ist die
+        # Rand-Analogie zur Ausreisser-Sicht, die stddev_bytes /
+        # variationskoeffizient_bytes_prozent auf der Volume-Achse
+        # liefern. Als float ausgeliefert (Zeit-Achse ist kontinuierlich,
+        # spiegelt die days_span/average_gap_days/median_gap_days-Float-
+        # Konvention - Sub-Tag-Aufloesung bleibt bei stundenweiser
+        # Rotation erhalten). Bei uniformer Kadenz (alle Intervalle gleich
+        # lang) faellt max_gap_days mit median_gap_days und
+        # average_gap_days zusammen; bei count == 2 ist max_gap_days
+        # zwangslaeufig identisch zu average_gap_days und days_span (nur
+        # ein Intervall im gaps_days-Sample). Reuse-Pfad: nutzt die
+        # bereits berechnete gaps_days-Liste (kein zweiter Pass ueber die
+        # Stamps, keine zweite Sortierung), spiegelt das single-source-of-
+        # truth-Muster der uebrigen Gap-Achsen. Bei len(stamps) < 2
+        # liefert der Wert None (keine Intervalle definierbar, spiegelt
+        # die Grenzfall-Konvention von average_gap_days /
+        # median_gap_days).
+        max_gap_days = max(gaps_days)
     else:
         average_gap_days = None
         median_gap_days = None
+        max_gap_days = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1259,6 +1322,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "days_span": days_span,
         "average_gap_days": average_gap_days,
         "median_gap_days": median_gap_days,
+        "max_gap_days": max_gap_days,
     }
 
 
