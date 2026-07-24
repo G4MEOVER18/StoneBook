@@ -4766,6 +4766,36 @@ _DIRECTION_WORD = re.compile(
     # :data:`_MONTH_NAMES` (janeiro..dezembro) und :data:`_SEASON_MONTHS`
     # (verao/outono/primavera/inverno) auf die Direction-Wort-Achse.
     r"|sul|leste"
+    # NL/BE-Vollnamen der Himmelsrichtungen (niederlaendisch/flaemisch):
+    # ``noord`` (N), ``zuid`` (S), ``oost`` (E). Die West-Achse (``west``/
+    # ``westen``) ist bereits ueber die DE-/EN-Alternative abgedeckt
+    # (identische Schreibweise). Verbreitet in Sammler-Notizen aus dem
+    # niederlaendisch-/flaemischsprachigen Raum (Nederlandse Geologische
+    # Vereniging NGV, belgische Sammler-Notizen aus Wallonien/Flandern mit
+    # historischen Bergbau-Fundstellen wie Bleiberg/Plombieres, Musee de la
+    # Fluorine Salbris, geerbte Sammlungs-Katalogs aus dem Rheinland und
+    # dem Ruhrgebiet mit NL-Vorbesitzern) sowie aus Ost-Karibik/Suriname/
+    # Antillen-Fundregionen (frueher NL-Kolonial-Provenienzen mit NL-
+    # Sprach-Etiketten). Die -en-Vollformen ``noorden``/``zuiden``/``oosten``
+    # sind ebenfalls im Standard-Niederlaendisch ueblich (analog zu DE
+    # ``Norden``/``Sueden``/``Osten``). Bisher fielen alle NL-Formen still
+    # auf die Fallback-Route, was aus einem typischen NL-Sammler-Etikett
+    # ``"Zuid 20.1, West 43.2"`` (Suedhalbkugel/Westhalbkugel via Suriname/
+    # Antillen-Provenienz) silente ``(20.1, 43.2)`` statt der korrekten
+    # ``(-20.1, -43.2)`` erzeugte.
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``noord`` matcht nicht
+    # in ``noordafrika``/``noordamerika``/``noordelijk``/``noordse`` (der
+    # folgende Buchstabe ist Wort-Zeichen, keine Wort-Grenze); ``zuid``
+    # matcht nicht in ``zuidafrika``/``zuidamerika``/``zuidelijk`` (dito);
+    # ``oost`` matcht nicht in ``oostenrijk`` (NL fuer Oesterreich, extrem
+    # verbreitet in NL-Prosa und Sammler-Herkunfts-Angaben!), ``oostzee``
+    # (Ostsee), ``oostelijk``, ``oostwaarts`` (dito). Kollisions-Schutz zur
+    # bestehenden DE-``ost(?:en)?``-Alternative: bei Eingabe ``oost``
+    # scheitert ``ost`` bereits an Position 0 (Regex-Engine matcht ``o``
+    # gegen ``o``, dann ``s`` gegen ``o`` - fails, backtrackt), sodass die
+    # spezifischere ``oost(?:en)?``-Alternative uebernimmt.
+    r"|noord(?:en)?|zuid(?:en)?|oost(?:en)?"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -4817,10 +4847,25 @@ _DIRECTION_LETTER: dict[str, str] = {
     # laesst. Spiegelt die PT-``sul``-Erweiterung auf die Ost-Achse.
     "leste": "E",
     "o": "O", "ost": "O", "osten": "O",
+    # ``oost`` und ``oosten`` sind die NL/BE-Vollformen fuer Ost
+    # (niederlaendisch/flaemisch). Auf NL-Landkarten ist der Ein-Buchstaben-
+    # Marker traditionell ``O`` (analog zur DE-Konvention), sodass beide
+    # NL-Formen konsistent auf den bestehenden ``O``-Direction-Letter
+    # abbilden. Der Sign-Auswerter :func:`_sign` behandelt ``O`` identisch
+    # zu ``E`` (beide positiv/Ost-Halbkugel), sodass die Abbildung sowohl
+    # fuer NL-Etiketten mit alter ``E``-Konvention als auch mit ``O``-
+    # Konvention konsistente Vorzeichen erzeugt.
+    "oost": "O", "oosten": "O",
     "w": "W", "west": "W", "westen": "W", "ouest": "W", "ovest": "W",
     # ``oeste`` ist die ES-Vollform fuer West (spiegelt die ES-``norte``/
     # ``sur``/``este``-Erweiterungen auf die West-Achse).
     "oeste": "W",
+    # ``noord`` und ``noorden`` sind die NL/BE-Vollformen fuer Nord.
+    # Spiegelt die ``oost``/``oosten``-Erweiterung auf die Nord-Achse.
+    "noord": "N", "noorden": "N",
+    # ``zuid`` und ``zuiden`` sind die NL/BE-Vollformen fuer Sued.
+    # Spiegelt die ``oost``/``oosten``-Erweiterung auf die Sued-Achse.
+    "zuid": "S", "zuiden": "S",
 }
 
 

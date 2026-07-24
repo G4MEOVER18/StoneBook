@@ -8011,6 +8011,83 @@ def test_parse_coordinates_himmelsrichtung_pt_vollnamen():
     assert parse_coordinates("S20.1 E43.2") == (-20.1, 43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_nl_vollnamen():
+    """NL/BE-Vollnamen der Himmelsrichtungen (niederlaendisch/flaemisch,
+    verbreitet in Sammler-Notizen aus dem NL/BE-Sprachraum: Nederlandse
+    Geologische Vereniging NGV, belgische Sammler-Notizen aus Wallonien/
+    Flandern, geerbte Sammlungs-Etiketten aus dem Rheinland/Ruhrgebiet
+    mit NL-Vorbesitzern sowie Suriname/Antillen-Provenienzen mit NL-
+    Kolonial-Etiketten).
+
+    Neu sind die drei NL/BE-eigenstaendigen Wortstaemme ``noord`` (N),
+    ``zuid`` (S) und ``oost`` (E); ``west`` ist bereits ueber die DE-/EN-
+    Alternative abgedeckt (identische Schreibweise). Die -en-Vollformen
+    ``noorden``/``zuiden``/``oosten`` sind ebenfalls im Standard-
+    Niederlaendisch ueblich (analog zu DE ``Norden``/``Sueden``/``Osten``).
+    Vor dieser Erweiterung fielen alle NL-Formen still auf die Fallback-
+    Route (kein Direction-Marker erkannt, generische Zahl-Paar-Extraktion
+    nimmt die Reihenfolge ohne Vorzeichen-Information), was aus einem
+    typischen NL-Sammler-Etikett ``"Zuid 20.1, West 43.2"`` (Suedhalbkugel/
+    Westhalbkugel via Suriname/Antillen-Provenienz) silente ``(20.1, 43.2)``
+    (Nordhalbkugel) statt der korrekten ``(-20.1, -43.2)`` erzeugte -
+    silenter Vorzeichen-/Achsen-Verlust in geerbten NL-Bestaenden.
+    """
+    # Prefix-Form: NL-Sammler-Fundort-Notizen (Amsterdam-Region als Standard)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    # -en-Vollformen (Standard-NL: Norden/Sueden/Osten analog zu DE)
+    assert parse_coordinates("Noorden 52.3, Oosten 4.9") == (52.3, 4.9)
+    # Suedhalbkugel via Suriname-/Antillen-Kolonial-Provenienz
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    # Suedhalbkugel/Ost (Suriname/Antillen mit -en-Vollformen)
+    assert parse_coordinates("Zuiden 8.8, Oosten 13.2") == (-8.8, 13.2)
+    # Decimal-Suffix-Form (``52.3° Noord, 4.9° Oost``)
+    assert parse_coordinates("52.3° Noord, 4.9° Oost") == (52.3, 4.9)
+    assert parse_coordinates("20.1° Zuid, 43.2° West") == (-20.1, -43.2)
+    # Case-insensitive
+    assert parse_coordinates("NOORD 52.3, OOST 4.9") == (52.3, 4.9)
+    assert parse_coordinates("noord 52.3, oost 4.9") == (52.3, 4.9)
+    # Mit trailing Punkt nach Kurzform (``Noord.``/``Oost.`` aus Katalog-Abkuerzung)
+    assert parse_coordinates("Noord. 52.3, Oost. 4.9") == (52.3, 4.9)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Zuid 20.1, Lon: Oost 43.2") == (-20.1, 43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Oost 4.9, Noord 52.3") == (52.3, 4.9)
+    # Mixed-Sprache (NL-Marker mit DE/EN/ES auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Auktions-Provenienzen vor)
+    assert parse_coordinates("Zuid 20.1, East 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Zuid 20.1, Ost 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Zuid 20.1, Este 43.2") == (-20.1, 43.2)
+    # Wort-Grenzen: NL-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. Fundort-Feld mit Freitext, der solche Praefixe enthaelt,
+    # darf nicht als Direction fehl-normalisiert werden.
+    # ``oost`` in ``oostenrijk`` (NL fuer Oesterreich, extrem verbreitet in NL-
+    # Prosa und Sammler-Herkunfts-Angaben!), ``oostzee`` (Ostsee),
+    # ``oostelijk``, ``oostwaarts``: kein Match wegen nachfolgender Wort-Zeichen.
+    assert parse_coordinates("oostenrijk 20.1, oostzee 43.2") is None
+    assert parse_coordinates("oostelijk 20.1, oostwaarts 43.2") is None
+    # ``noord`` in ``noordafrika``/``noordamerika``/``noordelijk``/``noordse``:
+    # kein Match wegen nachfolgender Wort-Zeichen.
+    assert parse_coordinates("noordafrika 20.1, noordamerika 43.2") is None
+    assert parse_coordinates("noordelijk 20.1, noordse 43.2") is None
+    # ``zuid`` in ``zuidafrika``/``zuidamerika``/``zuidelijk``: kein Match.
+    assert parse_coordinates("zuidafrika 20.1, zuidamerika 43.2") is None
+    assert parse_coordinates("zuidelijk 20.1, zuidwaarts 43.2") is None
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-Direction-Formen bleiben
+    # unveraendert (die neuen NL-Alternativen im Regex duerfen die
+    # existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    # Einzelbuchstaben bleiben unveraendert
+    assert parse_coordinates("N52.3 O4.9") == (52.3, 4.9)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace
