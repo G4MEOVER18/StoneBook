@@ -166,6 +166,29 @@ _PATTERNS = [
     # ``No.``-Prefix-Regex (``No. 43`` matched dort, ``Acc No. 43`` matched
     # hier - spezifischerer Praefix schlaegt generischer, gleichwertige Semantik).
     re.compile(r"^Acc(?:ession)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
+    # Englische Registrierungs-Nummer: ``Reg. No. 43`` / ``Reg No. 43`` /
+    # ``RegNo 43`` / ``Reg-No. 43`` / ``Registration No. 43`` / ``Registration
+    # Number 43``. Dritter grosser EN-Museums-Standard neben ``Cat. No.``
+    # (Katalog-Eintrag, 4018fc3) und ``Acc. No.`` (Erwerbungs-Ereignis, 70cd155):
+    # die Registration Number ist der laufende Zaehler im offiziellen Bestands-
+    # Register und wird besonders im britischen Museums-Umfeld gefuehrt (Natural
+    # History Museum London mit ``BM.<jahr>,<nr>``-Notation im Sammlungs-Katalog,
+    # National Museum of Wales, Sedgwick Museum Cambridge, National Museums
+    # Scotland). In publizierten EN-Type-Specimen-Reports und Provenienz-
+    # Zitaten wie "Reg. No. 1976.123, NHM London" oder "registered as Reg
+    # No 4302" verbreitet. Bisher fielen alle Reg.-No.-Formen still auf None,
+    # weil das Regex-Set keinen ``Reg``-startenden Praefix kannte. Regex
+    # spiegelt die Cat.-/Acc.-No.-Regex strukturell mit Registration-Vokabular:
+    # ``Reg(?:istration)?`` deckt Kurzform und Vollform ab, obligatorischer
+    # ``N(?:o|umber)``-Marker deckt No/Number ab, beliebige Trenner-Kombination
+    # [-.\s]*. Der obligatorische No/Number-Marker verhindert falsche Positives
+    # fuer bare ``Reg 43`` (mehrdeutig zu englischer Prosa) und fuer die
+    # ``Reg``-startenden Woerter (``Region``, ``Regular``, ``Regard``,
+    # ``Register``, ``Regret``, ``Regime``) - der Marker ist die Disambiguierungs-
+    # Klammer analog zum Cat-vs-Category- und Acc-vs-Access-Schutz. Kollisions-
+    # frei zu Cat/Acc (lexikalisch disjunkte Anfangs-Buchstaben) und zu allen
+    # DE-Praefixen (Inv/Kat/Fund/Slg/Nr).
+    re.compile(r"^Reg(?:istration)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen

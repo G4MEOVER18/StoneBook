@@ -515,6 +515,73 @@ def test_normalize_id_englische_accession_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_englische_registration_nummer_praefix():
+    """Englische Registration-Nummer ``Reg. No.`` / ``Registration Number``
+    - dritter grosser EN-Museums-Standard neben ``Cat. No.`` (Katalog-Eintrag)
+    und ``Acc. No.`` (Erwerbungs-Ereignis). Standard-Praefix im britischen
+    Museums-Umfeld (Natural History Museum London mit BM-Registrations-Notation,
+    National Museum of Wales, Sedgwick Museum Cambridge, National Museums
+    Scotland) und in publizierten EN-Type-Specimen-Reports. Bisher fielen alle
+    Reg.-No.-Formen still auf None, weil das Regex-Set keinen ``Reg``-startenden
+    Praefix kannte.
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Reg. No. 43") == "OBJ_0043"
+    assert normalize_id("Reg.No. 43") == "OBJ_0043"
+    assert normalize_id("Reg No. 43") == "OBJ_0043"
+    assert normalize_id("Reg No 43") == "OBJ_0043"
+    assert normalize_id("Reg-No. 43") == "OBJ_0043"
+    assert normalize_id("Reg-No 43") == "OBJ_0043"
+    assert normalize_id("RegNo 43") == "OBJ_0043"
+    assert normalize_id("RegNo43") == "OBJ_0043"
+    assert normalize_id("Reg.No.43") == "OBJ_0043"
+    # Ausgeschriebene Vollform ``Registration`` und ``Number``
+    assert normalize_id("Registration No. 43") == "OBJ_0043"
+    assert normalize_id("Registration Number 43") == "OBJ_0043"
+    assert normalize_id("Registration-No. 43") == "OBJ_0043"
+    assert normalize_id("Registration No 43") == "OBJ_0043"
+    assert normalize_id("Reg. Number 43") == "OBJ_0043"
+    assert normalize_id("RegNumber43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("reg no 7") == "OBJ_0007"
+    assert normalize_id("REG-NO. 001") == "OBJ_0001"
+    assert normalize_id("registration number 7") == "OBJ_0007"
+    assert normalize_id("REGISTRATION NO. 43") == "OBJ_0043"
+    # Ungueltig: ohne No/Number-Marker, Suffix-Ballast oder Reg-startende
+    # EN-Woerter ohne semantische Naehe (Region, Regular, Regard, Register,
+    # Regret, Regime, Regel-DE) - Disambiguierungs-Schutz durch obligatorischen
+    # No/Number-Marker.
+    assert normalize_id("Reg 43") is None            # ohne No/Number nicht eindeutig
+    assert normalize_id("Registration 43") is None
+    assert normalize_id("Reg. No. 43X") is None      # Suffix-Ballast
+    assert normalize_id("Region 43") is None
+    assert normalize_id("Region No. 43") is None     # Region != Registration
+    assert normalize_id("Regular 43") is None
+    assert normalize_id("Regular No. 43") is None    # Regular != Registration
+    assert normalize_id("Regard 43") is None
+    assert normalize_id("Register 43") is None
+    assert normalize_id("Register No. 43") is None   # Register != Registration
+    assert normalize_id("Regret 43") is None
+    assert normalize_id("Regime 43") is None
+    assert normalize_id("Regel 43") is None          # DE-Wort ``Regel``
+    assert normalize_id("Reg No 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen (inkl. DE-/EN-Praefixe) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Catalog Number 43") == "OBJ_0043"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Accession Number 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
