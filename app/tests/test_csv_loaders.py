@@ -450,6 +450,71 @@ def test_normalize_id_englische_katalog_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_englische_accession_nummer_praefix():
+    """Englische Accession-/Erwerbungs-Nummer ``Acc. No.`` / ``Accession Number``
+    - zweiter grosser EN-Museums-Standard neben ``Cat. No.`` (Smithsonian NMNH,
+    AMNH, NHM London, Yale Peabody, Harvard Mineralogical). Distinkt von der
+    Cat.-No.-Achse (Katalog-Eintrag): Accession referenziert das Erwerbungs-
+    Ereignis (wann/wie erworben), Cat. No. den Katalog-Eintrag (wo im Katalog);
+    beide Praefixe koexistieren als eigenstaendige Nummerierungs-Systeme auf
+    denselben Objekten in den Museums-Sammlungs-Datenbanken. Bisher fielen alle
+    Acc.-No.-Formen still auf None, weil das Regex-Set keinen ``Acc``-startenden
+    Praefix kannte - der ``--ids-from-file``-Import EN-sprachiger Provenienz-
+    Recherchen und Type-Specimen-Referenzen scheiterte.
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Acc.No. 43") == "OBJ_0043"
+    assert normalize_id("Acc No. 43") == "OBJ_0043"
+    assert normalize_id("Acc No 43") == "OBJ_0043"
+    assert normalize_id("Acc-No. 43") == "OBJ_0043"
+    assert normalize_id("Acc-No 43") == "OBJ_0043"
+    assert normalize_id("AccNo 43") == "OBJ_0043"
+    assert normalize_id("AccNo43") == "OBJ_0043"
+    assert normalize_id("Acc.No.43") == "OBJ_0043"
+    # Ausgeschriebene Vollform ``Accession`` und ``Number``
+    assert normalize_id("Accession No. 43") == "OBJ_0043"
+    assert normalize_id("Accession Number 43") == "OBJ_0043"
+    assert normalize_id("Accession-No. 43") == "OBJ_0043"
+    assert normalize_id("Accession No 43") == "OBJ_0043"
+    assert normalize_id("Acc. Number 43") == "OBJ_0043"
+    assert normalize_id("AccNumber43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("acc no 7") == "OBJ_0007"
+    assert normalize_id("ACC-NO. 001") == "OBJ_0001"
+    assert normalize_id("accession number 7") == "OBJ_0007"
+    assert normalize_id("ACCESSION NO. 43") == "OBJ_0043"
+    # Ungueltig: ohne No/Number-Marker, Suffix-Ballast oder Acc-startende
+    # EN-Woerter ohne semantische Naehe (Access, Accept, Account, Accord,
+    # Accurate, Accompany) - Disambiguierungs-Schutz durch obligatorischen
+    # No/Number-Marker.
+    assert normalize_id("Acc 43") is None            # ohne No/Number nicht eindeutig
+    assert normalize_id("Accession 43") is None
+    assert normalize_id("Acc. No. 43X") is None      # Suffix-Ballast
+    assert normalize_id("Access 43") is None
+    assert normalize_id("Access No. 43") is None     # Access != Accession
+    assert normalize_id("Account 43") is None
+    assert normalize_id("Account No. 43") is None    # Account != Accession
+    assert normalize_id("Accept 43") is None
+    assert normalize_id("Accord 43") is None
+    assert normalize_id("Accurate 43") is None
+    assert normalize_id("Accompany 43") is None
+    assert normalize_id("Acc No 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen (inkl. DE-/EN-Kat-Nr) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Catalog Number 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)

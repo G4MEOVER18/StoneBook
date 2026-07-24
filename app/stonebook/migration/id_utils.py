@@ -126,6 +126,46 @@ _PATTERNS = [
     # ``No.``-Prefix-Regex (``No. 43`` matched dort, ``Cat No. 43`` matched hier -
     # spezifischerer Praefix schlaegt generischer, gleichwertige Semantik).
     re.compile(r"^Cat(?:alog(?:ue)?)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
+    # Englische Accession-/Erwerbungs-Nummer: ``Acc. No. 43`` / ``Acc No. 43`` /
+    # ``AccNo 43`` / ``Acc-No. 43`` / ``Accession No. 43`` / ``Accession Number 43``.
+    # Zweiter grosser EN-Museums-Standard neben ``Cat. No.`` (Katalog-Eintrag) - waehrend
+    # die Katalog-Nummer den Datensatz-Eintrag im Sammlungs-Katalog identifiziert
+    # ("welcher Zeile im publizierten Bestand-Katalog"), referenziert die Accession-
+    # Nummer das Erwerbungs-Ereignis der Sammlung ("wann/wie in die Sammlung gekommen":
+    # Kauf, Schenkung, Tausch, Feld-Expedition, Auktion, Nachlass). Beide Achsen
+    # koexistieren als eigenstaendige Nummerierungs-Systeme auf denselben Objekten
+    # in den Sammlungs-Datenbanken der anglo-amerikanischen Naturkunde-Museen
+    # (Smithsonian National Museum of Natural History NMNH mit ``Acc.``-Standard
+    # fuer alle Erwerbungs-Chargen parallel zur Cat.-No.-Position, American Museum
+    # of Natural History NYC, Natural History Museum London, Yale Peabody Museum,
+    # Harvard Mineralogical & Geological Museum) und in publizierten EN-Type-
+    # Specimen-Reports (Rocks & Minerals, Mineralogical Record, The Canadian
+    # Mineralogist mit Accession-Referenzen in Provenienz-Zitaten wie "Type
+    # specimen, Acc. No. 12345, NMNH" oder "acquired via Sotheby's Auktion 1998,
+    # Acc. No. 8721"). Sammler-Notizen aus Museums-Besuchen ("Case 12, Acc. No.
+    # 12345, Baryt from Cornwall") und Provenienz-Recherchen ("previously in
+    # Roebling Collection, Acc. No. 4302 at NMNH") uebernehmen die Notation
+    # woertlich; ohne diese Praefix-Erkennung faellt der ``--ids-from-file``-
+    # Import solcher Listen still auf None und der Aufrufer beendete mit
+    # ``Ungueltige Objekt-ID: 'Acc. No. 43'``, obwohl die Absicht semantisch
+    # identisch zur Cat.-No.-Form (``Praefix + Ziffer``) ist. Regex spiegelt die
+    # Cat.-No.-Regex strukturell mit Accession-Vokabular: ``Acc(?:ession)?`` deckt
+    # Kurzform (``Acc``) und ausgeschriebene Vollform (``Accession``) ab, optionaler
+    # Punkt (``Acc.`` vs. ``Acc``), beliebige Trenner-Kombination [-.\s]*,
+    # obligatorischer ``N(?:o|umber)``-Marker (spiegelt Cat.-No.-Marker: deckt
+    # Kurzform ``No`` und Vollform ``Number`` ab), optionaler Punkt nach No,
+    # optionaler Whitespace vor Ziffer. Der obligatorische No/Number-Marker
+    # verhindert falsche Positives fuer bare ``Acc 43`` (mehrdeutig zu englischer
+    # Prosa) und - kritisch fuer ``Acc``-Praefix - fuer die grosse Familie
+    # ``Acc``-startender EN-Woerter (``Access``, ``Accept``, ``Account``,
+    # ``Accord``, ``Accurate``, ``Accompany``, ``Accomplish``, ``Accuse``); der
+    # Marker ist die Disambiguierungs-Klammer analog zum ``Cat``-vs-``Category``-
+    # Schutz. Kollisionsfrei zur bestehenden Cat.-No.-Regex (``Acc`` lexikalisch
+    # disjunkt zu ``Cat``), zu OBJ/Objekt/Object (``Acc`` startet mit ``A``,
+    # nicht ``O``), zu Inv/Kat/Fund/Slg (disjunkte Anfangs-Buchstaben) und zur
+    # ``No.``-Prefix-Regex (``No. 43`` matched dort, ``Acc No. 43`` matched
+    # hier - spezifischerer Praefix schlaegt generischer, gleichwertige Semantik).
+    re.compile(r"^Acc(?:ession)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen
