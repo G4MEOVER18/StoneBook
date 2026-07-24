@@ -1446,6 +1446,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "median_gap_days": None,
         "min_gap_days": None,
         "max_gap_days": None,
+        "range_gap_days": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1465,6 +1466,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "median_gap_days": None,
         "min_gap_days": None,
         "max_gap_days": None,
+        "range_gap_days": None,
     }
 
 
@@ -2601,6 +2603,88 @@ def test_backup_directory_stats_min_gap_days_zwei_backups(tmp_path):
     assert info["min_gap_days"] == 3.5
     assert info["min_gap_days"] == info["max_gap_days"]
     assert info["min_gap_days"] == info["days_span"]
+
+
+def test_backup_directory_stats_range_gap_days_ferienluecke_und_doppel_cron(tmp_path):
+    """range_gap_days = max_gap_days - min_gap_days beziffert die Kadenz-Streuung.
+
+    Fuenf Backups: drei mit ~1 Tag Kadenz, einer 30 Minuten nach seinem
+    Vorgaenger (Cron-Ueberschneidung) und einer 10 Tage nach dem letzten
+    (Ferien-Luecke). Erwartung: range_gap_days == max_gap_days -
+    min_gap_days (10.0 - 30/1440 ~ 9.98) und deutlich groesser als 0 -
+    macht die Kadenz-Inkonsistenz direkt aus dem Aggregat sichtbar.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    stamps = [
+        base,
+        base + datetime.timedelta(days=1),
+        base + datetime.timedelta(days=1, minutes=30),
+        base + datetime.timedelta(days=2),
+        base + datetime.timedelta(days=12),
+    ]
+    for s in stamps:
+        _write_sized_backup(backups_dir, s, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    assert info["min_gap_days"] == 30 / 1440
+    assert info["max_gap_days"] == 10.0
+    assert info["range_gap_days"] == info["max_gap_days"] - info["min_gap_days"]
+    assert info["range_gap_days"] > 0
+
+
+def test_backup_directory_stats_range_gap_days_uniforme_kadenz_kollabiert_auf_null(tmp_path):
+    """Uniforme Kadenz: range_gap_days == 0 (min == max, keine Streuung).
+
+    Vier Backups an aufeinanderfolgenden Tagen ergeben drei
+    1.0-Tage-Intervalle - alle Intervalle identisch, daher
+    range_gap_days == 0. Spiegelt die 0-Konvention von range_bytes bei
+    identischen Backup-Groessen.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in range(4):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    assert info["range_gap_days"] == 0.0
+    assert info["range_gap_days"] == info["max_gap_days"] - info["min_gap_days"]
+
+
+def test_backup_directory_stats_range_gap_days_zwei_backups_kollabiert_auf_null(tmp_path):
+    """Bei count == 2 kollabiert range_gap_days auf 0 (nur ein Intervall).
+
+    Ein einziges Intervall im gaps_days-Sample: Min == Max, daher
+    Range == 0. Spiegelt die entsprechende range_bytes-Konvention bei
+    count == 1 (Min == Max, Range == 0).
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    _write_sized_backup(backups_dir,
+                        base + datetime.timedelta(hours=84), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["range_gap_days"] == 0.0
+    assert info["range_gap_days"] == info["max_gap_days"] - info["min_gap_days"]
+
+
+def test_backup_directory_stats_range_gap_days_einzelnes_backup_ist_none(tmp_path):
+    """Bei count < 2 liefert range_gap_days None (keine Intervalle definierbar).
+
+    Spiegelt die Grenzfall-Konvention von min_gap_days/max_gap_days:
+    ohne zweites Backup gibt es kein Intervall und damit keine
+    Streuungs-Weite auf der Frequenz-Achse.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["range_gap_days"] is None
+    assert info["min_gap_days"] is None
+    assert info["max_gap_days"] is None
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

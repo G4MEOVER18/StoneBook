@@ -1185,7 +1185,8 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     "variationskoeffizient_bytes_prozent": None,
     "oldest_stamp": None, "newest_stamp": None, "days_span": None,
     "average_gap_days": None, "median_gap_days": None,
-    "min_gap_days": None, "max_gap_days": None}``.
+    "min_gap_days": None, "max_gap_days": None,
+    "range_gap_days": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1313,11 +1314,34 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         # float ausgeliefert (spiegelt die uebrigen gap-Achsen); bei count
         # < 2 None.
         min_gap_days = min(gaps_days)
+        # range_gap_days: Spanweite der Intervall-Verteilung in Tagen
+        # (max_gap_days - min_gap_days). Spiegelt das
+        # range_bytes-vs-max_bytes-vs-min_bytes-Trio aus dem Volume-Bereich
+        # auf die Zeit-Achse: waehrend min_gap_days und max_gap_days die
+        # beiden Rand-Extreme einzeln ausliefern, beziffert range_gap_days
+        # die Streuungs-Weite zwischen ihnen in einer Zahl - macht die
+        # Kadenz-Konsistenz direkt aus dem Aggregat-Report ablesbar, ohne
+        # dass der Caller die Differenz selbst bilden muss. Nutzen im Cron-
+        # Reporter: bei uniformer Rotation ist range_gap_days ~ 0
+        # (Doppel-Cron und Ausfall gleichzeitig treiben den Wert hoch);
+        # ein Wert deutlich > 0 zeigt Kadenz-Ausreisser an, ein Wert der
+        # die Retention-Vorgabe (z.B. 30 Tage) uebersteigt zeigt eine
+        # kritische Luecke die parallel zu einem Doppel-Backup existiert.
+        # Als float ausgeliefert (Zeit-Achse ist kontinuierlich, spiegelt
+        # die uebrigen gap-Achsen; Sub-Tag-Aufloesung bleibt erhalten).
+        # Bei uniformer Kadenz kollabiert range_gap_days auf 0 (min ==
+        # max); bei count == 2 auf 0 (nur ein Intervall im Sample - min
+        # und max sind derselbe Wert). Bei count < 2 None (spiegelt die
+        # Grenzfall-Konvention der uebrigen Gap-Achsen). Konsistenz-
+        # Invariante: range_gap_days == max_gap_days - min_gap_days und
+        # range_gap_days >= 0 (nicht-negativ per Konstruktion).
+        range_gap_days = max_gap_days - min_gap_days
     else:
         average_gap_days = None
         median_gap_days = None
         max_gap_days = None
         min_gap_days = None
+        range_gap_days = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1335,6 +1359,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "median_gap_days": median_gap_days,
         "min_gap_days": min_gap_days,
         "max_gap_days": max_gap_days,
+        "range_gap_days": range_gap_days,
     }
 
 
