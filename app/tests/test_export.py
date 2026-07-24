@@ -1447,6 +1447,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "min_gap_days": None,
         "max_gap_days": None,
         "range_gap_days": None,
+        "stddev_gap_days": None,
     }
     info = backup_directory_stats(tmp_path / "existiert_nicht")
     assert info == {
@@ -1467,6 +1468,7 @@ def test_backup_directory_stats_leerer_und_nichtexistierender_ordner(tmp_path):
         "min_gap_days": None,
         "max_gap_days": None,
         "range_gap_days": None,
+        "stddev_gap_days": None,
     }
 
 
@@ -2685,6 +2687,84 @@ def test_backup_directory_stats_range_gap_days_einzelnes_backup_ist_none(tmp_pat
     assert info["range_gap_days"] is None
     assert info["min_gap_days"] is None
     assert info["max_gap_days"] is None
+
+
+def test_backup_directory_stats_stddev_gap_days_ausreisser_erhoeht_streuung(tmp_path):
+    """stddev_gap_days > 0 bei Ausreissern in der Backup-Kadenz.
+
+    Vier Backups mit ~1 Tag Abstand plus einer der 10 Tage nach dem
+    letzten geschrieben wurde (Ferien-Luecke). Erwartung: stddev_gap_days
+    > 0 (Kadenz ist nicht uniform) und > 0 in der range - macht die
+    Streuung um die typische Kadenz direkt messbar.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    stamps = [
+        base,
+        base + datetime.timedelta(days=1),
+        base + datetime.timedelta(days=2),
+        base + datetime.timedelta(days=3),
+        base + datetime.timedelta(days=13),
+    ]
+    for s in stamps:
+        _write_sized_backup(backups_dir, s, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 5
+    assert info["stddev_gap_days"] > 0
+    # Streuung ist eine Rand-Achse: <= range_gap_days bei nicht-negativen
+    # Werten (Population-Sigma kann die Spanweite nicht ueberschreiten).
+    assert 0 <= info["stddev_gap_days"] <= info["range_gap_days"]
+
+
+def test_backup_directory_stats_stddev_gap_days_uniforme_kadenz_kollabiert_auf_null(tmp_path):
+    """Uniforme Kadenz: stddev_gap_days == 0 (keine Streuung um Mittelwert).
+
+    Vier Backups an aufeinanderfolgenden Tagen ergeben drei identische
+    1.0-Tage-Intervalle - alle Intervalle == Mittelwert, daher Streuung
+    == 0. Spiegelt die 0-Konvention von range_gap_days bei identischen
+    Intervallen.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    for day_offset in range(4):
+        _write_sized_backup(backups_dir,
+                            base + datetime.timedelta(days=day_offset), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 4
+    assert info["stddev_gap_days"] == 0.0
+    assert info["range_gap_days"] == 0.0
+
+
+def test_backup_directory_stats_stddev_gap_days_zwei_backups_kollabiert_auf_null(tmp_path):
+    """Bei count == 2 kollabiert stddev_gap_days auf 0 (Einzel-Stichprobe).
+
+    Ein einziges Intervall im gaps_days-Sample: der einzige Wert ist
+    zugleich sein eigener Mittelwert, daher Streuung == 0. Spiegelt die
+    Single-Point-Kollaps-Konvention der uebrigen Zeit-Achsen.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    _write_sized_backup(backups_dir,
+                        base + datetime.timedelta(hours=84), 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 2
+    assert info["stddev_gap_days"] == 0.0
+
+
+def test_backup_directory_stats_stddev_gap_days_einzelnes_backup_ist_none(tmp_path):
+    """Bei count < 2 liefert stddev_gap_days None (keine Intervalle definierbar).
+
+    Spiegelt die Grenzfall-Konvention der uebrigen Gap-Achsen:
+    ohne zweites Backup gibt es kein Intervall und damit keine Streuung
+    auf der Frequenz-Achse.
+    """
+    backups_dir = tmp_path / "b"
+    base = datetime.datetime(2024, 6, 1, 0, 0, 0)
+    _write_sized_backup(backups_dir, base, 100)
+    info = backup_directory_stats(backups_dir)
+    assert info["count"] == 1
+    assert info["stddev_gap_days"] is None
 
 
 def _pseudo_backup(backup_dir: Path, stamp: datetime.datetime) -> Path:

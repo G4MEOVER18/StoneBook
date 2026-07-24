@@ -1186,7 +1186,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     "oldest_stamp": None, "newest_stamp": None, "days_span": None,
     "average_gap_days": None, "median_gap_days": None,
     "min_gap_days": None, "max_gap_days": None,
-    "range_gap_days": None}``.
+    "range_gap_days": None, "stddev_gap_days": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1336,12 +1336,31 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         # Invariante: range_gap_days == max_gap_days - min_gap_days und
         # range_gap_days >= 0 (nicht-negativ per Konstruktion).
         range_gap_days = max_gap_days - min_gap_days
+        # stddev_gap_days: Populations-Standardabweichung der Intervalle in
+        # Tagen. Spiegelt das stddev_bytes-Paar aus dem Volume-Bereich auf
+        # die Zeit-Achse: waehrend range_gap_days die reine Spanweite
+        # zwischen den beiden Rand-Extremen liefert, gewichtet
+        # stddev_gap_days alle Intervalle und macht die Streuung um die
+        # typische Kadenz (average_gap_days) direkt messbar - kleiner
+        # stddev == regelmaessige Rotation, grosser stddev == unruhige
+        # Kadenz mit vielen Ausreissern. Als Float ausgeliefert (Zeit-Achse
+        # ist kontinuierlich; spiegelt die uebrigen gap-Achsen; Sub-Tag-
+        # Aufloesung bleibt erhalten). Divisor ``n`` (Population) statt
+        # ``n-1`` (Sample) spiegelt die Backup-Halde-als-Grundgesamtheit-
+        # Konvention konsistent mit stddev_bytes. Bei uniformer Kadenz
+        # kollabiert stddev_gap_days auf 0.0 (alle Intervalle gleich, keine
+        # Streuung um den Mittelwert); bei count == 2 zwangslaeufig 0.0
+        # (Einzel-Stichprobe im gaps_days-Sample - der einzige Wert ist der
+        # Mittelwert). Bei count < 2 None (spiegelt die Grenzfall-
+        # Konvention der uebrigen Gap-Achsen).
+        stddev_gap_days = _stddev_float(gaps_days)
     else:
         average_gap_days = None
         median_gap_days = None
         max_gap_days = None
         min_gap_days = None
         range_gap_days = None
+        stddev_gap_days = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1360,6 +1379,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "min_gap_days": min_gap_days,
         "max_gap_days": max_gap_days,
         "range_gap_days": range_gap_days,
+        "stddev_gap_days": stddev_gap_days,
     }
 
 
@@ -1397,6 +1417,30 @@ def _median_float(values: list[float]) -> float:
     if n % 2:
         return float(ordered[n // 2])
     return (ordered[n // 2 - 1] + ordered[n // 2]) / 2.0
+
+
+def _stddev_float(values: list[float]) -> float:
+    """Populations-Standardabweichung einer Zeit-/Frequenz-Liste als voller Float.
+
+    Symmetrisches Pendant zu :func:`_stddev_int` auf der kontinuierlichen
+    Achse - waehrend Bytes diskret sind und auf Integer gerundet werden,
+    ist die Zeit-Achse kontinuierlich und darf keine Sub-Tag-Aufloesung
+    durch Integer-Trunkierung verlieren (spiegelt die
+    ``days_span``/``average_gap_days``/``median_gap_days``/``_median_float``-
+    Float-Konvention). Divisor ``n`` (nicht ``n-1``) spiegelt die
+    Backup-Halde-als-Grundgesamtheit-Konvention, konsistent mit
+    :func:`_stddev_int` und den ``stddev``-Berechnungen in
+    :mod:`stonebook.db.stats`. Numerisch stabile Formel via
+    ``(x - mean)^2`` statt ``E[X^2] - E[X]^2`` - spiegelt die
+    stddev-Berechnung in ``stats.py`` und in :func:`_stddev_int`. Bei
+    ``len(values) == 1`` faellt die Streuung auf ``0.0`` (kein
+    Streuungs-Grund bei Einzel-Stichprobe, spiegelt die
+    Single-Point-Kollaps-Konvention der uebrigen Zeit-Achsen).
+    """
+    n = len(values)
+    mean = sum(values) / n
+    variance = sum((v - mean) ** 2 for v in values) / n
+    return variance ** 0.5
 
 
 def _stddev_int(values: list[int]) -> int:
