@@ -231,6 +231,50 @@ _PATTERNS = [
     # (``No. 43`` matched dort, ``Field No. 43`` matched hier - spezifischerer
     # Praefix schlaegt generischer, gleichwertige Semantik).
     re.compile(r"^Field\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
+    # Englische Collection-/Sammlungs-Nummer: ``Coll. No. 43`` / ``Coll-No. 43`` /
+    # ``CollNo 43`` / ``Collection No. 43`` / ``Collection Number 43``. Englisches
+    # Pendant zur DE-``Slg.-Nr.``-Regex (4ea1bce): waehrend ``Cat. No.`` (4018fc3)
+    # den Katalog-Eintrag im publizierten Museums-Sammlungs-Katalog identifiziert,
+    # ``Acc. No.`` (70cd155) das Erwerbungs-Ereignis der Museums-Sammlung
+    # referenziert, ``Reg. No.`` (542ccc7) den offiziellen Bestands-Register-
+    # Eintrag bezeichnet und ``Field No.`` (6657881) die im Feld vergebene
+    # Sammler-Nummer markiert, identifiziert die ``Coll. No.`` den laufenden
+    # Zaehler im privaten Sammlungs-Katalog des EN-sprachigen Sammlers -
+    # direkter EN-Pendant zum DE-``Slg.-Nr.``-Konzept. Standard-Praefix in
+    # privaten Sammler-Katalogen (Excel-Sammlungsverzeichnisse, Karteikarten),
+    # in publizierten EN-Provenienz-Zitaten wie "Coll. No. 4302 (Roebling
+    # Collection)" oder "Ex. Miguel Romero Collection, Coll. No. 156" (in
+    # Rocks & Minerals, Mineralogical Record, The Canadian Mineralogist mit
+    # Coll.-No.-Referenz-Notation zur Abgrenzung von der Museums-Cat.-/Acc.-No.
+    # nach Uebernahme aus Privatsammlungen). Sammler-Notizen aus EN-sprachigen
+    # Sammler-Kreisen (US-/UK-/AU-Mineralien-Sammler-Vereine wie Mineralogical
+    # Society of America, Mineralogical Association of Canada) uebernehmen die
+    # Notation woertlich; ohne diese Praefix-Erkennung faellt der ``--ids-from-
+    # file``-Import solcher Listen still auf None. Regex spiegelt die Cat.-/Acc.-
+    # /Reg.-/Field-No.-Regex strukturell mit Collection-Vokabular:
+    # ``Coll(?:ection)?`` deckt Kurzform (``Coll``) und ausgeschriebene Vollform
+    # (``Collection``) ab, optionaler Punkt (``Coll.`` vs. ``Coll``), beliebige
+    # Trenner-Kombination [-.\s]*, obligatorischer ``N(?:o|umber)``-Marker
+    # (spiegelt Cat.-/Acc.-/Reg.-/Field-No.-Marker: deckt Kurzform ``No`` und
+    # Vollform ``Number`` ab), optionaler Punkt nach No, optionaler Whitespace
+    # vor Ziffer. Der obligatorische No/Number-Marker verhindert falsche
+    # Positives fuer bare ``Coll 43`` (mehrdeutig zu englischer Prosa) und -
+    # kritisch fuer ``Coll``-Praefix - fuer die grosse Familie ``Coll``-
+    # startender EN-Woerter (``College``, ``Collect``, ``Collar``, ``Collide``,
+    # ``Colleague``, ``Collapse``, ``Collision``, ``Collector``, ``Colloquial``).
+    # Der Marker ist die Disambiguierungs-Klammer analog zum Cat-vs-Category-,
+    # Acc-vs-Access-, Reg-vs-Region- und Field-vs-Fieldwork-Schutz. Kollisions-
+    # frei zur bestehenden Slg.-Nr.-Regex (``Coll`` lexikalisch disjunkt zu
+    # ``Slg``/``Sammlung``), zu Cat/Acc/Reg/Field (disjunkte Anfangs-Buchstaben
+    # ``C``-``o`` vs. ``C``-``a`` bzw. ``A``/``R``/``F``), zu OBJ/Objekt/Object
+    # (``Coll`` startet mit ``C``, nicht ``O``), zu Inv/Kat/Slg/Fund/Nr
+    # (disjunkte Anfangs-Buchstaben) und zur ``No.``-Prefix-Regex (``No. 43``
+    # matched dort, ``Coll No. 43`` matched hier - spezifischerer Praefix
+    # schlaegt generischer, gleichwertige Semantik). Kollisionsfrei zur
+    # Cat(?:alog(?:ue)?)?-Regex: bei Eingabe ``Coll. No. 43`` scheitert der
+    # Cat-Praefix bereits am zweiten Buchstaben (``a`` != ``o``), sodass die
+    # Coll-Alternative uebernimmt.
+    re.compile(r"^Coll(?:ection)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen

@@ -649,6 +649,85 @@ def test_normalize_id_englische_field_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_englische_collection_nummer_praefix():
+    """Englische Collection-Nummer ``Coll. No.`` / ``Collection Number`` -
+    direkter EN-Pendant zur DE-``Slg.-Nr.``-Regex (4ea1bce).
+
+    Waehrend ``Cat. No.`` (4018fc3) den Katalog-Eintrag im publizierten Museums-
+    Sammlungs-Katalog identifiziert, ``Acc. No.`` (70cd155) das Erwerbungs-
+    Ereignis der Museums-Sammlung referenziert, ``Reg. No.`` (542ccc7) den
+    offiziellen Bestands-Register-Eintrag markiert und ``Field No.`` (6657881)
+    die im Feld vergebene Sammler-Nummer bezeichnet, identifiziert die
+    ``Coll. No.`` den laufenden Zaehler im privaten Sammlungs-Katalog des
+    EN-sprachigen Sammlers - direkter EN-Pendant zum DE-``Slg.-Nr.``-Konzept.
+    Standard-Praefix in privaten Sammler-Katalogen und in publizierten EN-
+    Provenienz-Zitaten (Rocks & Minerals, Mineralogical Record, The Canadian
+    Mineralogist) zur Abgrenzung von der Museums-Cat.-/Acc.-No. Bisher fielen
+    alle Coll.-No.-Formen still auf None, weil das Regex-Set keinen
+    ``Coll``-startenden Praefix kannte.
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Coll. No. 43") == "OBJ_0043"
+    assert normalize_id("Coll.No. 43") == "OBJ_0043"
+    assert normalize_id("Coll No. 43") == "OBJ_0043"
+    assert normalize_id("Coll No 43") == "OBJ_0043"
+    assert normalize_id("Coll-No. 43") == "OBJ_0043"
+    assert normalize_id("Coll-No 43") == "OBJ_0043"
+    assert normalize_id("CollNo 43") == "OBJ_0043"
+    assert normalize_id("CollNo43") == "OBJ_0043"
+    assert normalize_id("Coll.No.43") == "OBJ_0043"
+    # Ausgeschriebene Vollform ``Collection`` und ``Number``
+    assert normalize_id("Collection No. 43") == "OBJ_0043"
+    assert normalize_id("Collection Number 43") == "OBJ_0043"
+    assert normalize_id("Collection-No. 43") == "OBJ_0043"
+    assert normalize_id("Collection No 43") == "OBJ_0043"
+    assert normalize_id("Coll. Number 43") == "OBJ_0043"
+    assert normalize_id("CollNumber43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("coll no 7") == "OBJ_0007"
+    assert normalize_id("COLL-NO. 001") == "OBJ_0001"
+    assert normalize_id("collection number 7") == "OBJ_0007"
+    assert normalize_id("COLLECTION NO. 43") == "OBJ_0043"
+    # Ungueltig: ohne No/Number-Marker, Suffix-Ballast oder Coll-startende
+    # EN-Woerter ohne semantische Naehe (College, Collect, Collar, Colleague,
+    # Collide, Collapse, Collision, Collector) - Disambiguierungs-Schutz durch
+    # obligatorischen No/Number-Marker.
+    assert normalize_id("Coll 43") is None            # ohne No/Number nicht eindeutig
+    assert normalize_id("Collection 43") is None
+    assert normalize_id("Coll. No. 43X") is None      # Suffix-Ballast
+    assert normalize_id("College 43") is None
+    assert normalize_id("College No. 43") is None     # College != Collection
+    assert normalize_id("Collect 43") is None
+    assert normalize_id("Collect No. 43") is None     # Collect != Collection
+    assert normalize_id("Collar 43") is None
+    assert normalize_id("Collar No. 43") is None
+    assert normalize_id("Colleague 43") is None
+    assert normalize_id("Collide 43") is None
+    assert normalize_id("Collapse 43") is None
+    assert normalize_id("Collision 43") is None
+    assert normalize_id("Collector 43") is None       # Coll(?:ection)? matcht nicht ``Collector``
+    assert normalize_id("Coll No 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen (inkl. DE-/EN-Praefixe) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Catalog Number 43") == "OBJ_0043"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Accession Number 43") == "OBJ_0043"
+    assert normalize_id("Reg. No. 43") == "OBJ_0043"
+    assert normalize_id("Registration Number 43") == "OBJ_0043"
+    assert normalize_id("Field No. 43") == "OBJ_0043"
+    assert normalize_id("Field Number 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
