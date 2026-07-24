@@ -1185,7 +1185,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
     "variationskoeffizient_bytes_prozent": None,
     "oldest_stamp": None, "newest_stamp": None, "days_span": None,
     "average_gap_days": None, "median_gap_days": None,
-    "max_gap_days": None}``.
+    "min_gap_days": None, "max_gap_days": None}``.
     Nicht existierender Ordner liefert dasselbe (spiegelt
     :func:`list_backups`, das bei fehlendem Ordner eine leere Liste
     zurueckgibt statt zu crashen - geeignet fuer Cron-Reporter, die den
@@ -1303,10 +1303,21 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         # die Grenzfall-Konvention von average_gap_days /
         # median_gap_days).
         max_gap_days = max(gaps_days)
+        # min_gap_days: kuerzester Abstand in Tagen zwischen zwei
+        # aufeinanderfolgenden Backups - Rand-Achse gegenueber max_gap_days,
+        # spiegelt das min_bytes-vs-max_bytes-Paar auf die Zeit-Achse. Ein
+        # Wert deutlich < median_gap_days deutet auf einen ungewollten
+        # Doppel-Backup (Cron-Ueberschneidung, manuelles Nach-Triggern) - die
+        # Retention verbraucht dann einen Slot fuer eine praktisch identische
+        # Kopie und rotiert echte aeltere Backups fruehzeitig heraus. Als
+        # float ausgeliefert (spiegelt die uebrigen gap-Achsen); bei count
+        # < 2 None.
+        min_gap_days = min(gaps_days)
     else:
         average_gap_days = None
         median_gap_days = None
         max_gap_days = None
+        min_gap_days = None
     return {
         "count": count,
         "total_bytes": total_bytes,
@@ -1322,6 +1333,7 @@ def backup_directory_stats(backup_dir: Path) -> dict:
         "days_span": days_span,
         "average_gap_days": average_gap_days,
         "median_gap_days": median_gap_days,
+        "min_gap_days": min_gap_days,
         "max_gap_days": max_gap_days,
     }
 
