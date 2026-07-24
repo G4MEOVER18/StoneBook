@@ -189,6 +189,48 @@ _PATTERNS = [
     # frei zu Cat/Acc (lexikalisch disjunkte Anfangs-Buchstaben) und zu allen
     # DE-Praefixen (Inv/Kat/Fund/Slg/Nr).
     re.compile(r"^Reg(?:istration)?\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
+    # Englische Feld-Nummer: ``Field No. 43`` / ``Field-No. 43`` / ``FieldNo 43`` /
+    # ``Field Number 43``. Englisches Pendant zur DE-``Fund-Nr.``-Regex (aa5372d):
+    # waehrend ``Cat. No.`` (4018fc3) den Katalog-Eintrag im publizierten Sammlungs-
+    # Katalog identifiziert und ``Acc. No.`` (70cd155) das Erwerbungs-Ereignis der
+    # Museums-Sammlung referenziert, bezeichnet die ``Field No.`` die im Feld
+    # vergebene Sammler-Nummer beim tatsaechlichen Sammel-Event - direkter EN-
+    # Pendant zum DE-``Fund-Nr.``-Konzept. Standard-Praefix bei USGS-Feld-
+    # Kampagnen (United States Geological Survey mit ``Field No.``-Notation auf
+    # Feld-Notizbuecher, Sample-Tuten und Foto-Captions), Smithsonian National
+    # Museum of Natural History NMNH (``Field No.``-Spalte parallel zur Cat.-No.
+    # in der Mineralien-/Petrologie-Datenbank fuer Feld-Provenienz), Harvard
+    # Mineralogical & Geological Museum, University of Arizona RRUFF Project
+    # sowie in publizierten EN-Type-Locality-Reports und Feld-Kampagnen-
+    # Publikationen (Rocks & Minerals, Mineralogical Record, Economic Geology
+    # mit ``Field No. 78-4-31``-Referenz-Notation in Provenienz-Zitaten wie
+    # "collected 1978, Field No. 78-4-31, deposited NMNH as Cat. No. 156789").
+    # Sammler-Notizen aus EN-sprachigen Feld-Kampagnen ("Val d'Anniviers
+    # 2024-07-14, Field No. 43, Baryt Cluster") und Museums-Uebernahmen
+    # (Museums-Etiketten mit paralleler Field-No.-/Cat.-No.-/Acc.-No.-Notation)
+    # uebernehmen die Notation woertlich; ohne diese Praefix-Erkennung faellt
+    # der ``--ids-from-file``-Import solcher Listen still auf None. Regex
+    # spiegelt die Fund-Nr.-/Cat.-No.-Regex strukturell mit Field-Vokabular:
+    # ``Field\.?`` mit optionalem Punkt, beliebige Trenner-Kombination [-.\s]*
+    # zwischen Field- und No-Teil, obligatorischer ``N(?:o|umber)``-Marker
+    # (spiegelt Cat.-No.-/Acc.-No.-/Reg.-No.-Marker: deckt Kurzform ``No`` und
+    # Vollform ``Number`` ab), optionaler Punkt nach No, optionaler Whitespace
+    # vor Ziffer. Der obligatorische No/Number-Marker verhindert falsche
+    # Positives fuer bare ``Field 43`` (mehrdeutig zu englischer Prosa, "the
+    # field is 43 acres") und - kritisch fuer ``Field``-Praefix - fuer die
+    # grosse Familie ``Field``-startender EN-Kompositum-Woerter (``Fieldwork``,
+    # ``Fieldworker``, ``Fieldnote``, ``Fieldnotes``, ``Fieldstone``,
+    # ``Fielding``, ``Fieldtrip``) sowie fuer den EN-Nachname ``Field`` in
+    # historischen Provenienz-Zitaten ("previously in the Field Collection").
+    # Der Marker ist die Disambiguierungs-Klammer analog zum Cat-vs-Category-,
+    # Acc-vs-Access- und Fund-vs-Fundort-Schutz. Kollisionsfrei zur bestehenden
+    # Fund-Nr.-Regex (``Field`` lexikalisch disjunkt zu ``Fund``), zu Cat/Acc/
+    # Reg (disjunkte Anfangs-Buchstaben ``F`` vs. ``C``/``A``/``R``), zu OBJ/
+    # Objekt/Object (``Field`` startet mit ``F``, nicht ``O``), zu Inv/Kat/Slg/
+    # Nr (disjunkte Anfangs-Buchstaben) und zur ``No.``-Prefix-Regex
+    # (``No. 43`` matched dort, ``Field No. 43`` matched hier - spezifischerer
+    # Praefix schlaegt generischer, gleichwertige Semantik).
+    re.compile(r"^Field\.?[-.\s]*N(?:o|umber)\.?\s*(\d+)$", re.IGNORECASE),
     # Internationale Nummerierungs-Praefixe (semantisch identisch zur DE-Form ``Nr.``):
     # ``No. 43`` / ``No 43`` / ``No.43`` als EN-Standard (auch in DE-sprachigen Sammler-Notizen
     # verbreitet aus EN-uebersetzten Etiketten und Auktionskatalogen), ``N° 43`` mit Grad-Zeichen

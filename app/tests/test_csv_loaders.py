@@ -582,6 +582,73 @@ def test_normalize_id_englische_registration_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_englische_field_nummer_praefix():
+    """Englische Feld-Nummer ``Field No.`` / ``Field Number`` - direkter EN-
+    Pendant zur DE-``Fund-Nr.``-Regex (aa5372d).
+
+    Waehrend ``Cat. No.`` (4018fc3) den Katalog-Eintrag im publizierten
+    Sammlungs-Katalog identifiziert und ``Acc. No.`` (70cd155) das Erwerbungs-
+    Ereignis der Museums-Sammlung referenziert, bezeichnet die ``Field No.``
+    die im Feld vergebene Sammler-Nummer beim tatsaechlichen Sammel-Event -
+    Standard-Praefix bei USGS-Feld-Kampagnen, Smithsonian NMNH (parallele
+    Field-No.-/Cat.-No.-Notation in Feld-Provenienz-Spalten), Harvard
+    Mineralogical & Geological Museum, RRUFF Project und in publizierten
+    EN-Type-Locality-Reports mit Feld-Kampagnen-Referenz-Notation. Bisher
+    fielen alle Field-No.-Formen still auf None, weil das Regex-Set keinen
+    ``Field``-startenden Praefix kannte.
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Field No. 43") == "OBJ_0043"
+    assert normalize_id("Field.No. 43") == "OBJ_0043"
+    assert normalize_id("Field No 43") == "OBJ_0043"
+    assert normalize_id("Field-No. 43") == "OBJ_0043"
+    assert normalize_id("Field-No 43") == "OBJ_0043"
+    assert normalize_id("FieldNo 43") == "OBJ_0043"
+    assert normalize_id("FieldNo43") == "OBJ_0043"
+    assert normalize_id("Field.No.43") == "OBJ_0043"
+    # Ausgeschriebene Vollform ``Number``
+    assert normalize_id("Field Number 43") == "OBJ_0043"
+    assert normalize_id("Field-Number 43") == "OBJ_0043"
+    assert normalize_id("Field. Number 43") == "OBJ_0043"
+    assert normalize_id("FieldNumber43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("field no 7") == "OBJ_0007"
+    assert normalize_id("FIELD-NO. 001") == "OBJ_0001"
+    assert normalize_id("field number 7") == "OBJ_0007"
+    assert normalize_id("FIELD NUMBER 43") == "OBJ_0043"
+    # Ungueltig: ohne No/Number-Marker, Suffix-Ballast oder Field-startende
+    # EN-Kompositum-Woerter (Disambiguierungs-Schutz durch obligatorischen
+    # No/Number-Marker).
+    assert normalize_id("Field 43") is None           # ohne No/Number nicht eindeutig
+    assert normalize_id("Field No. 43X") is None      # Suffix-Ballast
+    assert normalize_id("Fieldwork 43") is None       # Field-Kompositum ohne Marker
+    assert normalize_id("Fieldworker 43") is None
+    assert normalize_id("Fieldnote 43") is None
+    assert normalize_id("Fieldnotes 43") is None
+    assert normalize_id("Fieldstone 43") is None
+    assert normalize_id("Fielding 43") is None
+    assert normalize_id("Fieldtrip 43") is None
+    assert normalize_id("Fieldwork No. 43") is None   # Fieldwork != Field
+    assert normalize_id("Field No 43 44") is None     # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen (inkl. DE-/EN-Praefixe) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Catalog Number 43") == "OBJ_0043"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Accession Number 43") == "OBJ_0043"
+    assert normalize_id("Reg. No. 43") == "OBJ_0043"
+    assert normalize_id("Registration Number 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)
