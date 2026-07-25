@@ -478,11 +478,42 @@ _APPROX_VALUE_PREFIX = re.compile(
 # ``Ronald``/``Ronde``/``Rondell``. Case-Insensitiv spiegelt die uebrige
 # Vokabel-Liste (Excel-Autocorrect ``Mad``/``Ron`` und lowercase-Notation
 # ``mad``/``ron`` aus Konsolen-Tools ohne Caps-Lock).
+#
+# ``UAH`` (Ukrainian Hryvnia, ISO-4217) ergaenzt die Regional-Waehrungs-
+# Vokabel um die dritte Osteuropa-Achse neben ``PLN`` (Polen) und ``CZK``/
+# ``HUF``/``RON`` (Zentral-/Suedost-Europa). Die Ukraine ist die weltweit
+# fuehrende Sammler-Quelle fuer Gem-Qualitaets-Topaz und Morion-/Rauchquarz
+# aus dem Volyn-Pegmatit-Feld (Wolhynien, Zhytomyr-Oblast; Volodarsk-
+# Volynskyi/Kupriwka-Grube mit champagner- bis blaugrauem Topaz-
+# Einzelkristallen bis Meter-Groesse, weltweit einziges Vorkommen der
+# Groessen-Klasse), fuer Beryll-Aquamarin/Heliodor aus Wolhynien, fuer
+# die Kryvyi Rih-Eisenerz-Region (Magnetit-/Haematit-Grosskristalle) und
+# fuer die Nikopol-Manganerz-Region (Rhodochrosit-/Pyrolusit-
+# Assoziationen). Das ``₴``-Symbol (U+20B4) ist bereits in der Symbol-
+# Menge, aber die ISO-4217-Code-Form fehlte - Auktions-Kataloge des
+# Kiewer Nationalen Naturmuseums, Direkt-Verkaeufe der ukrainischen
+# Sammler-Vereine (Ukrainische Mineralogische Gesellschaft) und Boersen-
+# Belege aus Sainte-Marie-aux-Mines/Muenchener Mineralientage mit
+# ukrainischen Ausstellern uebernehmen die UAH-Preisstellung im
+# Kaufbeleg (``UAH 5000 ± 500`` als Standard-Auktions-Notation, oft mit
+# EUR-Umrechnungs-Hinweis in Klammern). Bisher fielen alle Formen mit
+# ``UAH``-Praefix UND Uncertainty-Struktur still auf die Fallback-Zahl-
+# Extraktion durch (identischer Bug-Effekt wie bei MAD/RON/PLN/CZK/HUF/
+# RUB/BRL/MXN/TRY/THB vor deren Aufnahme in die Vokabel-Liste): ``UAH
+# 5000 ± 500`` -> ``(5000, 5000)`` (Toleranz verloren); ``UAH 100(2)``
+# -> ``(100, 2)`` (semantisch falscher Range). Kollisionsfrei zu Fremd-
+# woertern: keine realen EN/DE-Woerter beginnen mit UAH-Praefix; die
+# ``\b``-Wortgrenze hinter dem Code blockt zudem hypothetische
+# Kollisionen. Case-Insensitiv spiegelt die uebrige Vokabel-Liste
+# (Excel-Autocorrect ``Uah`` und lowercase ``uah`` aus Konsolen-Tools).
+# Symmetrie zum ``₴``-Symbol-Marker: der Sammler kann jetzt beide Formen
+# (Code ``UAH 500`` und Symbol ``₴500``) verwenden, ohne Toleranz-Verlust
+# bei Uncertainty-Notation.
 _LEADING_CURRENCY_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
     r"|PLN|CZK|HUF|RUB|CNY|HKD|SGD|INR|AED|ILS|ZAR"
-    r"|BRL|MXN|TRY|THB|KRW|MAD|RON)\b"
+    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH)\b"
     r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
     r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"
     r")\s*",
