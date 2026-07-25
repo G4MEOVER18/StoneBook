@@ -512,7 +512,7 @@ _APPROX_VALUE_PREFIX = re.compile(
 _LEADING_CURRENCY_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
-    r"|PLN|CZK|HUF|RUB|CNY|HKD|SGD|INR|AED|ILS|ZAR"
+    r"|PLN|CZK|HUF|RUB|BGN|CNY|HKD|SGD|INR|AED|ILS|ZAR"
     r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR)\b"
     r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
     r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"

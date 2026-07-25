@@ -6154,6 +6154,70 @@ def test_parse_range_leading_currency_prefix_pkr_pakistanische_rupie():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_bgn():
+    """``BGN`` (Bulgarischer Lew, ISO 4217) wird als Leading-Waehrungs-Praefix
+    akzeptiert und via Strip + Rekursion aus der Uncertainty-Notation entfernt,
+    damit die publizierte Toleranz als Bereichsgrenzen erhalten bleibt.
+
+    Regional-Waehrung fuer bulgarische Mineralien-Sammler und -Auktionen: die
+    Madan-Erzregion in den Rhodopen (Madan-Lager mit Sphalerit- und Galenit-
+    Kristallen auf Bergkristall-Matrix, Mine 9-ti Septemvri fuer scharf-
+    kantige Pyrit-Wuerfel) sowie die Rila-/Pirin-Region gehoeren zu den
+    bekanntesten europaeischen Mineralien-Fundstellen. BG-sprachige
+    Sammler-Notizen und Etiketten aus dortigen Auktionen (Sofia Mineral
+    Bourse, private Sammler-Boersen im Rhodopen-Gebiet) fuehren Wert-
+    Angaben in BGN, waehrend die uebrigen EU-Osteuropa-Waehrungen (PLN,
+    CZK, HUF, RON) bereits abgedeckt sind - BGN schliesst die letzte
+    Luecke der EU-Beitritts-Waehrungen ausser dem bereits ueber die EUR-
+    Umstellung ersetzten HRK (Kroatien 2023).
+
+    Vor dem Fix fielen alle Kombinationen "``BGN`` + Uncertainty" still
+    auf die Fallback-Zahl-Extraktion durch (``"BGN 500 ± 50"`` -> ``[500,
+    50]`` -> ``(500, 500)``); die publizierte Toleranz ging als silente
+    inverted-Range-Kollaps verloren. Der Praefix ist rein syntaktische
+    Waehrungs-Kennzeichnung ohne Einfluss auf den numerischen Wert -
+    Strip + Rekursion analog zu den etablierten CHF/EUR/PLN/CZK/HUF/RUB/
+    RON-Formen.
+    """
+    assert csv_loaders.parse_range("BGN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BGN 2.65(5)") == pytest.approx((2.60, 2.70))
+    assert csv_loaders.parse_range("BGN 100(2)") == pytest.approx((98.0, 102.0))
+    # Case-Insensitivitaet: Excel-Autocorrect ("Bgn") und lowercase-Notation
+    # aus Konsolen-Tools ohne Caps-Lock ("bgn").
+    assert csv_loaders.parse_range("bgn 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Bgn 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale (verbreitet in DE-sprachigen Sammler-Kalkulationen
+    # aus Osteuropa-Auktionen) mit BGN-Praefix.
+    assert csv_loaders.parse_range("BGN 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("BGN 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Kombination mit Approx-Praefix und Vergleichs-Marker (spiegelt die
+    # etablierte Kombinatorik der uebrigen Waehrungs-Codes).
+    assert csv_loaders.parse_range("ca. BGN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BGN ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BGN > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens BGN 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("BGN 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("BGN 500-1000") == (500.0, 1000.0)
+    # BGN OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("BGN") == (None, None)
+    assert csv_loaders.parse_range("BGN ") == (None, None)
+    # Kollisionsschutz: die \\b-Wortgrenze hinter dem Code verhindert Praefix-
+    # Strip fuer Fremdwoerter, die zufaellig mit ``BGN`` beginnen. Solche
+    # Woerter sind selten (BGN ist keine haeufige Konsonanten-Sequenz im
+    # deutschen/englischen Wortschatz), aber der Test dokumentiert die
+    # etablierte Kollisions-Schutz-Konvention.
+    assert csv_loaders.parse_range("bgnew 500") == (500.0, 500.0)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PLN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RON 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PKR 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
