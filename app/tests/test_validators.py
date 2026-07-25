@@ -7453,6 +7453,85 @@ def test_parse_iso_date_de_bibliografie_ohne_jahr_marker():
     assert parse_iso_date("o.X.") is None
 
 
+def test_parse_iso_date_latein_bibliografie_sine_anno_marker():
+    """Lateinische Bibliografie-Kurzform ``s.a.`` / ``s. a.`` (sine anno) liefert None.
+
+    Direktes lateinisches Pendant zur DE-``o.J.``-Kurzform (bereits in der
+    Menge) und Schwester-Marker zur bestehenden ``s.d.`` (sine die - ohne
+    Datum): waehrend ``s.d.`` das komplette Datum als unermittelbar
+    markiert, bezeichnet ``s.a.`` speziell das Jahr als unbekannt. Standard
+    in ISBD/AACR2/RDA-Bibliothekars-Konvention (Library of Congress,
+    Deutsche Nationalbibliothek nach Uebernahme aus der ISBD-Tradition),
+    in wissenschaftlichen Bibliografie-Zitaten (Naturhistorische Museums-
+    Kataloge zitieren aeltere Publikationen mit ``Verfasser, Titel, Ort
+    s.a.`` bei nicht datierten Werken, parallel zu ``s.l.``/``s.n.``-
+    Notation fuer Ort/Verleger) und im FR-/IT-/DE-Antiquariats-/Auktions-
+    Handel (Christie's/Bonhams/Sotheby's mit ``s.a.``-Referenzen bei nicht
+    datierten historischen Mineralien-Sammlungs-Etiketten). Bisher fielen
+    die Kurzform-Varianten als "invalid Datum" statt "no data" in den
+    silent-data-loss-Report, obwohl der User semantisch bewusst "kein Jahr
+    verfuegbar" markiert hatte - nur die DE-Pendant-Form ``o.J.`` und die
+    lateinische Schwester-Form ``s.d.`` waren erkannt.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der
+    Marker-Check ist case-insensitive (parse_iso_date .lower()t den
+    Input vor dem Check).
+    """
+    # Punkt-Form ``s.a.`` / Case-Insensitivitaet
+    assert parse_iso_date("s.a.") is None
+    assert parse_iso_date("S.A.") is None
+    assert parse_iso_date("S.a.") is None
+    assert parse_iso_date("s.A.") is None
+    # Punkt-Whitespace-Form ``s. a.`` / Case-Insensitivitaet
+    assert parse_iso_date("s. a.") is None
+    assert parse_iso_date("S. A.") is None
+    assert parse_iso_date("S. a.") is None
+    assert parse_iso_date("s. A.") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  s.a.  ") is None
+    assert parse_iso_date("  s. a.  ") is None
+    # Menge-Konsistenz: die neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    assert "s.a." in DATE_NO_DATA_MARKERS
+    assert "s. a." in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("s.a.", "s. a."):
+        assert marker == marker.lower()
+    # Regress-Anker: die lateinische Schwester-Kurzform ``s.d.`` (sine die)
+    # bleibt in der Menge (die sine-anno-Form ergaenzt die sine-die-Form,
+    # ersetzt sie nicht - beide koexistieren semantisch als unterschiedliche
+    # Praezisions-Grade der Unsicherheit, parallel zum DE-Paar o.D./o.J.).
+    assert "s.d." in DATE_NO_DATA_MARKERS
+    assert "s. d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die DE-Pendant-Kurzform ``o.J.`` (ohne Jahr) bleibt in
+    # der Menge (die lateinische sine-anno-Form ergaenzt die DE-Form,
+    # ersetzt sie nicht).
+    assert "o.j." in DATE_NO_DATA_MARKERS
+    assert "o. j." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen EN/DE-Kurzformen (ohne Datum) bleiben
+    # in der Menge (der Latein-sine-anno-Zusatz darf keine bestehenden
+    # Bibliografie-Formen verdraengen).
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "n. d." in DATE_NO_DATA_MARKERS
+    assert "o.d." in DATE_NO_DATA_MARKERS
+    assert "o. d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # Kurzform-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-
+    # Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit einzelnem ``s`` bleiben None
+    # als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur
+    # Parse-Kette). Ein bares ``s`` ohne Punkt-A-Struktur ist kein Marker.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("s") is None
+    assert parse_iso_date("s.") is None
+    assert parse_iso_date("s.X.") is None
+
+
 def test_parse_iso_date_it_invertierte_datum_no_data_marker():
     """IT-invertierte Datum-spezifische No-Data-Marker liefern None (nicht als
     silent-data-loss Fund gemeldet).

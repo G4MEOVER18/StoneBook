@@ -216,6 +216,50 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # Formen: keine gueltige Datums-Kurzform beginnt mit isoliertem
         # ``o`` gefolgt von Punkt-J.
         "o.j.", "o. j.",
+        # ``s.a.`` / ``s. a.`` (lateinisch "sine anno" - ohne Jahr) ist die
+        # kontinental-europaeische Bibliothekars-/Katalog-Standard-Abkuerzung
+        # fuer "kein Jahr ermittelbar" und das direkte lateinische Pendant
+        # zur DE-``o.J.``-Kurzform (1e45ee5, bereits in der Menge).
+        # Semantisches Schwester-Marker zu ``s.d.`` (sine die - ohne Datum):
+        # waehrend ``s.d.`` das komplette Datum als unermittelbar markiert,
+        # bezeichnet ``s.a.`` speziell das Jahr als unbekannt - dieselbe
+        # Praezisions-Aufteilung wie beim DE-Paar ``o.D.``/``o.J.``. Beide
+        # lateinische Formen koexistieren in publizierten Katalogen und
+        # Bibliografie-Zitaten, weil ein Katalogisierer zwar den Fund-Monat
+        # aus dem Kontext ableiten kann ("Sommer, aber Jahr unklar") oder
+        # ein Antiquariats-Katalog den Druckort/Verlag kennt, aber nicht
+        # das Erscheinungs-Jahr ("Basileae, s.a." im humanistisch-lateini-
+        # schen Druck-Zitat).
+        #
+        # Standard in ISBD/AACR2/RDA-Bibliothekars-Konvention (Library of
+        # Congress und der Deutschen Nationalbibliothek nach Uebernahme aus
+        # der ISBD-Tradition), in wissenschaftlichen Reference-Listen und
+        # Bibliografie-Zitaten (Naturhistorische Museums-Sammlungs-Kataloge
+        # zitieren aeltere Publikationen mit ``Verfasser, Titel, Ort s.a.``
+        # bei nicht datierten Werken, spiegelt die parallele Notation
+        # ``s.l.`` sine loco / ``s.n.`` sine nomine fuer die Ort-/Verleger-
+        # Achsen). Im FR-/IT-/DE-Antiquariats-/Auktions-Handel etabliert
+        # (Christie's/Bonhams/Sotheby's-Kataloge mit ``s.a.``-Referenzen
+        # bei nicht datierten historischen Mineralien-Sammlungs-Etiketten,
+        # Auktions-Provenienzen aus geerbten Sammlungen ohne Erwerbs-Jahr)
+        # und in geerbten Sammler-/Museums-Notizen mit publiziertem
+        # Provenienz-Weg (der Sammler uebernimmt die katalogisierte Notation
+        # woertlich aus dem Referenz-Katalog: "erworben Sotheby's Genf 1998,
+        # ex Coll. Roebling s.a.").
+        #
+        # Bisher fielen die lateinischen sine-anno-Kurzform-Varianten als
+        # "invalid Datum" statt "no data" in den silent-data-loss-Report,
+        # obwohl der User semantisch bewusst "kein Jahr verfuegbar" markiert
+        # hatte - nur die DE-Pendant-Form ``o.J.`` (1e45ee5) und die
+        # Latein-sine-die-Form ``s.d.`` waren erkannt, waehrend die sine-anno-
+        # Form ``s.a.`` als eigenstaendige lateinische Kurzform fehlte.
+        # Punkt-Form (``s.a.``) und Punkt-Whitespace-Form (``s. a.``)
+        # parallel zu ``o.d.``/``o. d.`` / ``o.j.``/``o. j.`` / ``n.d.``/
+        # ``n. d.`` / ``s.d.``/``s. d.``. Kollisionsfrei zu allen bestehenden
+        # Datums-Formen: keine gueltige Datums-Kurzform beginnt mit isoliertem
+        # ``s`` gefolgt von Punkt-A; die bestehende ``s.d.``-Sister-Kurzform
+        # ist trivialerweise disjunkt, weil A und D distinkte Buchstaben sind.
+        "s.a.", "s. a.",
     }
 )
 
