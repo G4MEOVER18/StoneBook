@@ -6218,6 +6218,98 @@ def test_parse_range_leading_currency_prefix_bgn():
     assert csv_loaders.parse_range("PKR 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_tzs_tansanischer_schilling():
+    """``TZS`` (Tansanischer Schilling, ISO 4217) als Leading-Waehrungs-
+    Praefix - Regional-Waehrung fuer Tansanit-Sammler.
+
+    Tansania ist die WELTWEIT EINZIGE Fundstelle fuer Tansanit (blau-
+    violetter Gem-Zoisit), abgebaut in den Merelani Hills (Manyara-Region,
+    Blocks A-D nahe Arusha). Neben Tansanit stammen aus Tansania die
+    Longido-/Umba-Valley-Rubine, die Tunduru-Saphire, die Merelani-
+    Tsavorit-Granate (Gem-Grossular), die Mererani-Diopside und -Peridot-
+    Fundstellen sowie die Songea-Saphir- und -Spinell-Vorkommen - die
+    Ostafrika-Rift-Gemsammler-Szene ist die groesste ausserhalb
+    Sri Lankas/Madagaskars.
+
+    Die Handels-Konvention der tansanischen Haendler auf den Arusha-Gem-
+    Boersen (Tanzanite Experience, TanzaniteOne), in Direkt-Verkaeufen an
+    europaeische Sammler und in den Tucson-/Sainte-Marie-aux-Mines-
+    Auktions-Katalogen mit tansanischen Ausstellern ist die TZS-Preis-
+    stellung mit USD-/EUR-Umrechnungs-Hinweis (``TZS 1200000 (~USD 500)``
+    als Standard-Notation der Merelani-Bourse). Auktions-Kataloge des
+    Ministry of Minerals Dodoma und der Tanzania Gemstone Dealers
+    Association uebernehmen die TZS-Preisstellung im Kaufbeleg
+    unveraendert.
+
+    Bisher fielen alle Formen mit ``TZS``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei PLN/CZK/HUF/RUB/BGN/BRL/MXN/TRY/THB/MAD/RON/UAH/PKR vor deren
+    Aufnahme in die Vokabel-Liste): ``TZS 1200000 ± 50000`` -> ``(1200000,
+    1200000)`` via inverted-range-Kollaps (Toleranz verloren);
+    ``TZS 500(20)`` -> ``(500, 20)`` (semantisch falscher Range statt
+    (480, 520)). Kollisionsfrei zu Fremdwoertern: keine realen EN/DE-
+    Woerter beginnen mit ``TZS``-Praefix; die ``\\b``-Wortgrenze hinter
+    dem Code blockt zudem hypothetische Kollisionen. Case-Insensitiv
+    spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect ``Tzs`` und
+    lowercase ``tzs`` aus Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 1200000 ± 50000") == pytest.approx((1150000.0, 1250000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("TZS 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("TZS 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa TZS 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("TZS 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect ``Tzs`` und lowercase-
+    # Notation ``tzs`` aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("tzs 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Tzs 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TzS 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale (Suisse romande CSV-Excel-Konvention) mit
+    # Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("TZS 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("TZS 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("TZS 500 ± 50 pro Karat") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 1200000 ± 50000 (Merelani Block D)") == pytest.approx((1150000.0, 1250000.0))
+    assert csv_loaders.parse_range("TZS 100(2) [Longido]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit TZS-Praefix.
+    assert csv_loaders.parse_range("TZS > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens TZS 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("TZS 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("TZS 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("TZS 500 to 1000") == (500.0, 1000.0)
+    # TZS OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("TZS") == (None, None)
+    assert csv_loaders.parse_range("TZS ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BGN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PKR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("UAH 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
