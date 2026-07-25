@@ -7324,6 +7324,66 @@ def test_parse_iso_date_de_datum_spezifische_no_data_marker():
     assert parse_iso_date("32.13.2024") is None
 
 
+def test_parse_iso_date_de_bibliografie_ohne_datum_marker():
+    """DE-Bibliografie-Kurzform ``o.D.`` / ``o. D.`` (ohne Datum) liefert None.
+
+    Direktes DE-Pendant zur EN-``n.d.`` / lateinischen ``s.d.``-Kurzform
+    (bereits in der Menge). Standard-Abkuerzung der DE-Bibliothekars-/
+    Katalog-Tradition (RAK/RDA nach DNB), im DE-Antiquariats-/Auktions-
+    Handel (Neumeister, Karl & Faber, Ketterer Kunst) und in DE-Museums-
+    katalog-Zitaten neben der ausgeschriebenen Vollform ``ohne datum``
+    (bereits in der Menge). Bisher fielen die Kurzform-Varianten als
+    "invalid Datum" statt "no data" in den silent-data-loss-Report,
+    obwohl der User semantisch bewusst "kein Datum verfuegbar" markiert
+    hatte - nur die ausgeschriebene Langform wurde erkannt.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der
+    Marker-Check ist case-insensitive (parse_iso_date .lower()t den
+    Input vor dem Check).
+    """
+    # Punkt-Form ``o.D.`` / Case-Insensitivitaet
+    assert parse_iso_date("o.D.") is None
+    assert parse_iso_date("o.d.") is None
+    assert parse_iso_date("O.D.") is None
+    assert parse_iso_date("O.d.") is None
+    # Punkt-Whitespace-Form ``o. D.`` / Case-Insensitivitaet
+    assert parse_iso_date("o. D.") is None
+    assert parse_iso_date("o. d.") is None
+    assert parse_iso_date("O. D.") is None
+    assert parse_iso_date("O. d.") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  o.D.  ") is None
+    assert parse_iso_date("  o. D.  ") is None
+    # Menge-Konsistenz: die neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    assert "o.d." in DATE_NO_DATA_MARKERS
+    assert "o. d." in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("o.d.", "o. d."):
+        assert marker == marker.lower()
+    # Regress-Anker: die parallelen EN/Latein-Kurzformen bleiben in der Menge
+    # (der DE-Zusatz darf keine bestehenden Bibliografie-Formen verdraengen).
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "n. d." in DATE_NO_DATA_MARKERS
+    assert "s.d." in DATE_NO_DATA_MARKERS
+    assert "s. d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die ausgeschriebene DE-Langform bleibt in der Menge
+    # (die Kurzform ergaenzt sie, ersetzt sie nicht).
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # Kurzform-Marker triggern nicht auf ISO-Datums-Strings).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress-Anker: echte Fehl-Eingaben mit einzelnem ``o`` bleiben None als
+    # "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur Parse-
+    # Kette). Ein bares ``o`` ohne Punkt-D-Struktur ist kein Marker.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("o") is None
+    assert parse_iso_date("o.") is None
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

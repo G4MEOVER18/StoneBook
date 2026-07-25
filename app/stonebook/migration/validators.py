@@ -163,6 +163,19 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # Punkt-Whitespace-Form (``n. d.``) parallel zu ``k.a.``/``k. a.`` /
         # ``n.a.``/``n. a.``.
         "n.d.", "n. d.", "s.d.", "s. d.",
+        # ``o.D.`` / ``o. D.`` (ohne Datum) ist die DE-Bibliothekars-/
+        # Katalog-Standard-Abkuerzung fuer "kein Datum ermittelbar" und die
+        # direkte DE-Pendant-Kurzform zur EN-``n.d.``/lateinischen ``s.d.``-
+        # Notation (bereits in der Menge). Standard in der Regelwerks-Tradition
+        # von RAK/RDA (Deutsche Nationalbibliothek), im DE-Antiquariats-/
+        # Auktions-Handel (Neumeister, Karl & Faber, Ketterer Kunst) und in
+        # DE-Museumskatalog-Zitaten neben der ausgeschriebenen Vollform
+        # ``ohne datum`` (bereits in der Menge). Punkt-Form (``o.d.``) und
+        # Punkt-Whitespace-Form (``o. d.``) parallel zu ``n.d.``/``n. d.`` /
+        # ``s.d.``/``s. d.`` / ``k.a.``/``k. a.`` / ``n.a.``/``n. a.``.
+        # Kollisionsfrei zu allen bestehenden Datums-Formen: keine gueltige
+        # Kurzform beginnt mit isoliertem ``o`` gefolgt von Punkt.
+        "o.d.", "o. d.",
     }
 )
 
