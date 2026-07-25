@@ -6068,6 +6068,92 @@ def test_parse_range_leading_currency_prefix_uah_ukrainische_hryvnia():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_pkr_pakistanische_rupie():
+    """Pakistanische Rupie ``PKR`` als ISO-4217-Code-Regional-Waehrung fuer
+    Mineralien-Sammler.
+
+    Pakistan zaehlt neben Brasilien, Madagaskar und Afghanistan zu den
+    weltweit fuehrenden Pegmatit-Fundregionen und ist die Standard-Quelle
+    fuer Gem-Qualitaets-Aquamarin, Turmalin, Topas, Morganit und Granat
+    aus dem Karakorum: Skardu-/Baltistan-Distrikt mit den klassischen
+    Aquamarin-Vorkommen von Shengus/Dassu/Nyet Bruk/Chumar Bakhoor
+    (blaue Beryll-Einzelkristalle bis 30 cm), Shigar-Tal (Aquamarin- und
+    Fluorit-Kombinationen), Braldu-Tal (Rauchquarz-Grosskristalle) sowie
+    Kaghan-Tal (Rutil-in-Quarz und Zoisit); Nagar-Valley mit dem
+    Sapat-Peridot-Vorkommen (chromhaltiger olivgruener Olivin, weltweit
+    einzige Gem-Qualitaet dieser Farb-Klasse); Khyber Pakhtunkhwa mit
+    dem Swat-Smaragd-Vorkommen (Mingora-Mine, chromhaltiger dunkelgruener
+    Beryll) und Khan-Chromit-Assoziationen. Auktions-Kataloge des
+    National Museum of Pakistan Karachi und des Baltistan Culture and
+    Development Foundation Skardu, Direkt-Verkaeufe der pakistanischen
+    Gem-Aussteller auf den internationalen Mineralien-Boersen (Tucson
+    Gem & Mineral Show, Muenchener Mineralientage, Sainte-Marie-aux-
+    Mines) und Rechnungsbelege der Pakistan Gems and Jewellery
+    Development Company (PGJDC) uebernehmen die PKR-Preisstellung im
+    Kaufbeleg.
+
+    Bisher fielen alle Formen mit ``PKR``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei MAD/RON/UAH/PLN/CZK/HUF/RUB/BRL/MXN/TRY/THB vor deren
+    Aufnahme in die Vokabel-Liste): ``PKR 5000 ± 500`` -> ``(5000, 5000)``
+    (Toleranz verloren); ``PKR 100(2)`` -> ``(100, 2)`` (semantisch
+    falscher Range).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("PKR 5000 ± 500") == pytest.approx((4500.0, 5500.0))
+    assert csv_loaders.parse_range("PKR 500 ± 50") == pytest.approx((450.0, 550.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker
+    # (die publizierte Standard-Unsicherheit N(M) wird symmetrisch zur
+    # ±-Form aufgeloest).
+    assert csv_loaders.parse_range("PKR 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("PKR 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. PKR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PKR ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~PKR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa PKR 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker
+    # (via _APPROX_VALUE_SUFFIX-Strip in der Rekursion).
+    assert csv_loaders.parse_range("PKR 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PKR 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect ``Pkr`` und lowercase-
+    # Notation ``pkr`` aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("pkr 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Pkr 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PkR 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale (Suisse romande CSV-Excel-Konvention) mit
+    # Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("PKR 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("PKR 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit.
+    assert csv_loaders.parse_range("PKR 500 ± 50 pro Stueck") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PKR 100 ± 2 per kg") == pytest.approx((98.0, 102.0))
+    # Praefix + Uncertainty + Trailing-Klammer-Annotation (Fundort).
+    assert csv_loaders.parse_range("PKR 5000 ± 500 (Skardu, Baltistan)") == pytest.approx((4500.0, 5500.0))
+    assert csv_loaders.parse_range("PKR 100(2) [Shengus]") == pytest.approx((98.0, 102.0))
+    # Regress-Anker: Waehrungs-Praefix vor reiner Zahl (ohne Uncertainty)
+    # bleibt rueckwaerts-kompatibel - der Praefix wird gestrippt und die
+    # reine Zahl-Extraktion laeuft weiter mit identischem Ergebnis.
+    assert csv_loaders.parse_range("PKR 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("PKR 5000") == (5000.0, 5000.0)
+    # Regress-Anker: Waehrungs-Praefix vor Range-Notation.
+    assert csv_loaders.parse_range("PKR 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("PKR 500 to 1000") == (500.0, 1000.0)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("UAH 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RON 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PLN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("INR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
