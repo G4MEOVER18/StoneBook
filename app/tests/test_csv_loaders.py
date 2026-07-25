@@ -5876,6 +5876,113 @@ def test_parse_range_leading_currency_prefix_mit_uncertainty():
     assert csv_loaders.parse_range("500-1000") == (500.0, 1000.0)
 
 
+def test_parse_range_leading_currency_prefix_mad_ron_regional_waehrungen():
+    """Marokkanischer Dirham ``MAD`` und Rumaenischer Leu ``RON`` als
+    Regional-Waehrungen fuer Mineralien-Sammler.
+
+    Marokko ist eine der wichtigsten Quellen fuer Sammler-Stuecke:
+    Vanadinit aus Mibladen/Middle Atlas, Erythrit aus Bou Azzer/Anti-Atlas,
+    Cerussit aus Touissit/Boubker, Azurit-/Malachit-Aggregate aus
+    Kerrouchen, Fluorapatit aus El Hamman. Die Handels-Konvention der
+    marokkanischen Haendler auf lokalen Mineralien-Boersen (Marrakesch,
+    Tafraout, Erfoud) und in Direkt-Verkaeufen an europaeische Sammler
+    ist die MAD-Preisstellung mit Umrechnungs-Hinweis; Auktions-Kataloge
+    und Boersen-Belege aus Sainte-Marie-aux-Mines mit marokkanischen
+    Ausstellern uebernehmen die MAD-Preise unveraendert im Kaufbeleg.
+
+    Rumaenien ist die klassische Sammler-Quelle fuer die Baia Mare /
+    Cavnic / Herja / Sacaramb-Region (Tetraedrit, Bournonit, Chalkopyrit,
+    Pyrit, Quarz, Calcit, Realgar-Auripigment-Assoziation), fuer die
+    Muzeul de Mineralogie Baia Mare-Referenz-Zitate in Vereinszeitschriften
+    und fuer Direkt-Verkaeufe der rumaenischen Bergbau-Sammler-Vereine
+    (Asociatia Mineralogica Romana) in RON-Preisstellung.
+
+    Bisher fielen alle Formen mit ``MAD``-/``RON``-Praefix UND
+    Uncertainty-Struktur still auf die Fallback-Zahl-Extraktion durch
+    (identischer Bug-Effekt wie bei den uebrigen Regional-Waehrungen
+    PLN/CZK/HUF/RUB/BRL/MXN/TRY/THB vor deren Aufnahme in die Vokabel-
+    Liste): ``MAD 500 ± 50`` -> (500, 500) via inverted-range-Kollaps
+    (Toleranz verloren); ``RON 500(20)`` -> (500, 20) (semantisch
+    falscher Range).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("MAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RON 500 ± 50") == pytest.approx((450.0, 550.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker
+    # (die publizierte Standard-Unsicherheit N(M) wird symmetrisch zur
+    # ±-Form aufgeloest).
+    assert csv_loaders.parse_range("MAD 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("RON 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent
+    # auf, spiegelt die uebrigen Waehrungen).
+    assert csv_loaders.parse_range("ca. MAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MAD ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~RON 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa RON 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker
+    # (via _APPROX_VALUE_SUFFIX-Strip in der Rekursion).
+    assert csv_loaders.parse_range("MAD 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RON 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect ``Mad``/``Ron`` und
+    # lowercase-Notation ``mad``/``ron`` aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("mad 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Mad 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ron 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Ron 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale (Suisse romande CSV-Excel-Konvention) mit
+    # Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("MAD 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("RON 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit.
+    assert csv_loaders.parse_range("MAD 500 ± 50 pro Stueck") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RON 100 ± 2 per kg") == pytest.approx((98.0, 102.0))
+    # Praefix + Uncertainty + Trailing-Klammer-Annotation.
+    assert csv_loaders.parse_range("MAD 500 ± 50 (Mibladen)") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("RON 100(2) [Cavnic]") == pytest.approx((98.0, 102.0))
+    # Kollisionsschutz: Fremdwoerter, die zufaellig mit ``MAD``/``RON``
+    # beginnen (``Madagascar`` als Mineral-Herkunftsland, ``Madame``/
+    # ``madly`` als EN/FR-Fremdwoerter, ``Ronald``/``Ronde``/``Rondell``
+    # als Namen/Fremdwoerter), duerfen den Wert nicht vor der Uncertainty-
+    # Notation strippen - der ``\\b``-Wortgrenze hinter dem Code blockt
+    # Kollision, weil zwischen Code-Endung und Fremdwort-Fortsetzung
+    # keine Wortgrenze liegt. Ohne Uncertainty bleibt das Verhalten
+    # unveraendert (Fallback-Zahl-Extraktion findet den Wert weiterhin,
+    # aber die Waehrungs-Semantik geht verloren - was semantisch korrekt
+    # ist, weil ``Madagascar 500`` keine Waehrungs-Zeile ist).
+    assert csv_loaders.parse_range("Madagascar 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("madagascar 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("Madame 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("madly 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("Ronald 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("Ronde 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("Rondell 500") == (500.0, 500.0)
+    # Regress-Anker: Waehrungs-Praefix vor reiner Zahl (ohne Uncertainty)
+    # bleibt rueckwaerts-kompatibel - der Praefix wird gestrippt und die
+    # reine Zahl-Extraktion laeuft weiter mit identischem Ergebnis.
+    assert csv_loaders.parse_range("MAD 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("RON 500") == (500.0, 500.0)
+    # Regress-Anker: Waehrungs-Praefix vor Range-Notation.
+    assert csv_loaders.parse_range("MAD 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("RON 500 to 1000") == (500.0, 1000.0)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (die neuen Codes ergaenzen die Vokabel-Liste, ersetzen sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EUR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("USD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PLN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("€500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 

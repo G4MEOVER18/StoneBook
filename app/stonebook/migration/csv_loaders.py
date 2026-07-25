@@ -447,11 +447,42 @@ _APPROX_VALUE_PREFIX = re.compile(
 # Match; "CHF ca. 500 ± 50" -> Approx-Strip blockt (Anker), Waehrungs-
 # Strip -> "ca. 500 ± 50" -> Rekursion -> Approx-Strip -> "500 ± 50" ->
 # Uncertainty-Match.
+# ``MAD`` (Moroccan Dirham, ISO-4217) und ``RON`` (Romanian Leu, ISO-4217)
+# ergaenzen die G10/G20-Vokabel-Liste um zwei fuer Mineralien-Sammler
+# hochrelevante Regional-Waehrungen. Marokko ist eine der wichtigsten
+# Quellen fuer Sammler-Stuecke (Vanadinit aus Mibladen/Middle Atlas,
+# Erythrit aus Bou Azzer/Anti-Atlas, Cerussit aus Touissit/Boubker,
+# Azurit-/Malachit-Aggregate aus Kerrouchen, Fluorapatit aus El Hamman)
+# und die Handels-Konvention der marokkanischen Haendler auf lokalen
+# Mineralien-Boersen (Marrakesch/Tafraout/Erfoud) sowie in Direkt-
+# Verkaeufen an europaeische Sammler ist die MAD-Preisstellung mit
+# Umrechnungs-Hinweis (``MAD 500 (~EUR 46)``); Auktions-Kataloge und
+# Boersen-Belege aus Sainte-Marie-aux-Mines mit marokkanischen Ausstellern
+# uebernehmen die MAD-Preise unveraendert im Kaufbeleg. Rumaenien ist die
+# klassische Sammler-Quelle fuer die Baia Mare / Cavnic / Herja /
+# Sacaramb-Region (Tetraedrit, Bournonit, Chalkopyrit, Pyrit, Quarz,
+# Calcit, Realgar-Auripigment-Assoziation), fuer die Muzeul de Mineralogie
+# Baia Mare-Referenz-Zitate in Vereinszeitschriften und fuer Direkt-
+# Verkaeufe der rumaenischen Bergbau-Sammler-Vereine (Asociatia
+# Mineralogica Romana) in RON-Preisstellung. Bisher fielen alle Formen
+# mit ``MAD``-/``RON``-Praefix UND Uncertainty-Struktur still auf die
+# Fallback-Zahl-Extraktion durch, weil sowohl :data:`_PLUS_MINUS_UNCERTAINTY`
+# als auch :data:`_PARENTHESIS_UNCERTAINTY` per ``^\s*(-?\d ...)``-Anker
+# eine Zahl (oder Vorzeichen) am String-Anfang verlangen - identischer
+# Bug-Effekt wie bei den uebrigen Regional-Waehrungen (PLN/CZK/HUF/RUB/
+# BRL/MXN/TRY/THB) vor deren Aufnahme in die Vokabel-Liste. Beispiele:
+# ``"MAD 500 ± 50"`` -> ``(500, 500)`` (Toleranz verloren); ``"RON 500(20)"``
+# -> ``(500, 20)`` (semantisch falscher Range). Kollisionsfrei zu Fremd-
+# woertern durch die bestehende ``\b``-Wortgrenzen-Konvention: ``MAD``
+# matcht nicht in ``Madagascar``/``madly``/``Madame``, ``RON`` nicht in
+# ``Ronald``/``Ronde``/``Rondell``. Case-Insensitiv spiegelt die uebrige
+# Vokabel-Liste (Excel-Autocorrect ``Mad``/``Ron`` und lowercase-Notation
+# ``mad``/``ron`` aus Konsolen-Tools ohne Caps-Lock).
 _LEADING_CURRENCY_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
     r"|PLN|CZK|HUF|RUB|CNY|HKD|SGD|INR|AED|ILS|ZAR"
-    r"|BRL|MXN|TRY|THB|KRW)\b"
+    r"|BRL|MXN|TRY|THB|KRW|MAD|RON)\b"
     r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
     r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"
     r")\s*",
