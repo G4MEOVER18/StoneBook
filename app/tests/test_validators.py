@@ -7453,6 +7453,71 @@ def test_parse_iso_date_de_bibliografie_ohne_jahr_marker():
     assert parse_iso_date("o.X.") is None
 
 
+def test_parse_iso_date_it_invertierte_datum_no_data_marker():
+    """IT-invertierte Datum-spezifische No-Data-Marker liefern None (nicht als
+    silent-data-loss Fund gemeldet).
+
+    Schliesst die IT-Achse der invertierten Datum-Prosa-Marker, die in den
+    uebrigen Sprachen bereits abgedeckt ist (DE: ``datum unbekannt``, FR:
+    ``date inconnue``, ES: ``fecha desconocida``, PT: ``data desconhecida``).
+    Bisher fuehrte die IT-Seite nur die freistehenden Adjektiv-Formen
+    ``sconosciuto``/``sconosciuta``/``ignoto``/``ignota`` und die Katalog-
+    Konvention ``senza data``; die invertierte ``data + Adjektiv``-Form
+    (grammatikalisch bindende Prosa-Form mit femininer Endung, weil ``data``
+    Genus feminin ist) fehlte und fiel als "invalid Datum" in den silent-
+    data-loss-Report, obwohl der User semantisch bewusst "kein Datum
+    verfuegbar" markiert hatte.
+
+    ``data sconosciuta`` ist die natuerlich-sprachige Sammler-/Museum-
+    Prosa-Form, ``data ignota`` die scientific-/bibliografic-Notation der
+    IT-Museums-/Auktions-Kataloge (Museo civico di storia naturale Milano,
+    Museo di storia naturale Firenze, Sotheby's-Italia). Alle Varianten
+    liefern None, und der Marker-Check ist case-insensitive (parse_iso_date
+    .lower()t den Input vor dem Check).
+    """
+    # Natuerlich-sprachige Prosa-Form (Sammler-/Museums-Notizen)
+    assert parse_iso_date("data sconosciuta") is None
+    assert parse_iso_date("Data Sconosciuta") is None
+    assert parse_iso_date("DATA SCONOSCIUTA") is None
+    # Scientific-/bibliografic-Notation (Museums-/Auktions-Katalog-Standard)
+    assert parse_iso_date("data ignota") is None
+    assert parse_iso_date("Data Ignota") is None
+    assert parse_iso_date("DATA IGNOTA") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  data sconosciuta  ") is None
+    assert parse_iso_date("  data ignota  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("data sconosciuta", "data ignota"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("data sconosciuta", "data ignota"):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene IT-Marker bleiben in der Menge
+    # (keine Kollision durch die neuen invertierten Formen).
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "sconosciuta" in DATE_NO_DATA_MARKERS
+    assert "ignoto" in DATE_NO_DATA_MARKERS
+    assert "ignota" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen DE/FR/ES/PT-invertierten Datum-Marker
+    # bleiben in der Menge (der IT-Zusatz darf keine bestehenden Sprach-
+    # Achsen verdraengen und schliesst gemeinsam mit ihnen die vier
+    # invertierten Datum-Prosa-Achsen).
+    assert "datum unbekannt" in DATE_NO_DATA_MARKERS
+    assert "date inconnue" in DATE_NO_DATA_MARKERS
+    assert "fecha desconocida" in DATE_NO_DATA_MARKERS
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # IT-Marker triggern nicht auf ISO-Datums-Strings).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    # Regress-Anker: freistehendes ``data`` bleibt weiterhin invalid (kein
+    # Marker fuer sich, nur die kompletten Zwei-Wort-Formen sind Marker).
+    assert parse_iso_date("data") is None  # aber als "invalid", nicht "no data"
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

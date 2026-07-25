@@ -115,11 +115,26 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # "unbekannt"), ``ignoto``/``ignota`` (mask./fem. Form von "unbekannt/
         # nicht identifiziert", in wissenschaftlichen IT-Publikationen die
         # praeferierte Form), ``senza data`` (Standard-Katalog-Konvention fuer
-        # "ohne Datum"). Spiegelt die IT-Erweiterungen in :data:`_MONTH_NAMES`
-        # (gennaio..dicembre), :data:`_SEASON_MONTHS` (primavera/estate/
-        # autunno/inverno), :data:`_DIRECTION_WORD` (est/ovest) und
-        # :data:`_APPROX_PREFIX` (verso/attorno) auf die No-Data-Marker-Achse.
+        # "ohne Datum"), ``data sconosciuta``/``data ignota`` (invertierte
+        # Prosa-Form, parallel zur FR ``date inconnue`` / ES ``fecha
+        # desconocida`` / PT ``data desconhecida``: das feminine Substantiv
+        # ``data`` (Genus des IT-Datums-Wortes) verlangt die feminine Adjektiv-
+        # Endung ``-a``, wodurch die invertierte Form ``data sconosciuta``/
+        # ``data ignota`` grammatikalisch bindet, waehrend die freistehende
+        # Adjektiv-Form auch maskulin auftritt ``sconosciuto``/``ignoto``).
+        # ``data sconosciuta`` ist die natuerlich-sprachige Sammler-/Museum-
+        # Prosa-Form, ``data ignota`` die scientific-/bibliografic-Notation
+        # der IT-Museums-/Auktions-Kataloge (Museo civico di storia naturale
+        # Milano, Museo di storia naturale Firenze, Sotheby's-Italia). Spiegelt
+        # die IT-Erweiterungen in :data:`_MONTH_NAMES` (gennaio..dicembre),
+        # :data:`_SEASON_MONTHS` (primavera/estate/autunno/inverno),
+        # :data:`_DIRECTION_WORD` (est/ovest) und :data:`_APPROX_PREFIX`
+        # (verso/attorno) auf die No-Data-Marker-Achse und schliesst die IT-
+        # Achse der invertierten Datum-spezifischen Prosa-Marker (bisher nur
+        # DE/FR/ES/PT abgedeckt: ``datum unbekannt`` / ``date inconnue`` /
+        # ``fecha desconocida`` / ``data desconhecida``).
         "sconosciuto", "sconosciuta", "ignoto", "ignota", "senza data",
+        "data sconosciuta", "data ignota",
         # Spanische Aequivalente (Sammler-Region Andalusien mit Almeria/
         # Sierra Almagrera/Rodalquilar/Riotinto sowie La Union Murcia,
         # lateinamerikanische Fundstellen Cerro Rico Potosi/Chuquicamata/
