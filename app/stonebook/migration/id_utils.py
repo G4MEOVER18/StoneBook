@@ -19,6 +19,67 @@ _PATTERNS = [
     re.compile(r"^Objekt\s+(\d+)$", re.IGNORECASE),
     # Englische Langform (Foto-Captions / EN-Notizen): ``Object 43``.
     re.compile(r"^Object\s+(\d+)$", re.IGNORECASE),
+    # DE-Objekt-Nummer-Kompositum: ``Objekt-Nr. 43`` / ``Objekt Nr. 43`` /
+    # ``ObjektNr 43`` / ``Objekt-Nr 43`` / ``Objektnummer 43`` /
+    # ``Objekt. Nr. 43`` / ``Objekt Nummer 43``. Direktes Kompositum der bereits
+    # abgedeckten Achsen ``Objekt`` (Zeile 19 in dieser Datei, ``^Objekt\s+(\d+)$``
+    # fuer bare ``Objekt 43``) und ``Nr.`` (Zeile 27, ``^N(?:umme)?r\.?\s*(\d+)$``
+    # fuer bare ``Nr. 43``); in DE-sprachigen Sammler-Datenbanken sehr verbreitet
+    # als Spalten-Bezeichnung (Excel-Sammlungsverzeichnisse mit Spalten-Header
+    # ``Objekt-Nr.`` als laufende ID-Nummer der Sammlung, Karteikarten mit
+    # handschriftlichem Feld-Etikett ``Objekt-Nr.:``, Vereinszeitschriften-
+    # Referenzen im Aufschluss / Der Aufschluss / Lapis / Mineralien-Welt mit
+    # ``Objekt-Nr.``-Notation zur Abgrenzung von der Museums-``Inv.-Nr.``-Achse),
+    # in Kaufbelegen (Auktions-Rechnungen von Neumeister / Karl & Faber /
+    # Ketterer Kunst mit ``Objekt-Nr. 43`` als Los-Referenz auf dem Rechnungs-
+    # Beleg) und in geerbten Sammler-Notizen aus DE-sprachigen Bestaenden
+    # (der Vorbesitzer notierte in seinem privaten Katalog ``Objekt-Nr.``
+    # neben der Museums-``Inv.-Nr.`` und der eigenen ``Slg.-Nr.``). Bisher
+    # fielen alle Objekt-Nr.-/Objektnummer-Kompositum-Formen still auf None,
+    # weil die bestehende ``^Objekt\s+(\d+)$``-Regex nur bare ``Objekt`` +
+    # Whitespace + Ziffer matched und die bestehende ``^N(?:umme)?r\.?``-
+    # Regex nur bare ``Nr.``/``Nummer`` + Ziffer matched - der Kompositum-
+    # Praefix ``Objekt-Nr.`` blieb ungedeckt, obwohl semantisch identisch
+    # zur Summe beider Komponenten.
+    #
+    # Regex ``^Objekt\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$`` (case-insensitive)
+    # spiegelt strukturell die Inv-/Kat-/Fund-/Slg-Kompositum-Konvention
+    # (``^Inv(?:entar)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$`` fuer ``Inv.-Nr.``
+    # und ``^Kat(?:alog)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$`` fuer ``Kat.-Nr.``),
+    # was Konsistenz der Trenner-Semantik ueber alle DE-Kompositum-Achsen
+    # sicherstellt: ``Objekt`` (Vollform, keine Kurzform wie ``Inv``/``Kat``/
+    # ``Slg`` - ``Obj`` waere mehrdeutig zu OBJ-Praefix-Kurzform), optionaler
+    # Punkt (``Objekt.`` selten aber tolerant analog zu ``Inv.``), beliebige
+    # Trenner-Kombination [-.\s]* zwischen Objekt- und Nr-Teil (``Objekt-Nr``,
+    # ``Objekt.Nr``, ``Objekt Nr``, ``ObjektNr``, ``Objekt-Nr.``), obligatorischer
+    # ``N(?:umme)?r``-Marker (deckt ``Nr``/``Nummer`` ab, symmetrisch zur bare
+    # ``Nr.``-Regex), optionaler Punkt nach Nr (``Nr.`` vs. ``Nr``), optionaler
+    # Whitespace vor Ziffer (``Nr43`` vs. ``Nr 43``).
+    #
+    # Der obligatorische ``N(?:umme)?r``-Marker verhindert falsche Positives
+    # fuer bare ``Objekt 43`` (bereits durch ``^Objekt\s+(\d+)$`` gedeckt,
+    # kollisions-frei weil dieser Praefix kein N-Suffix hat) und fuer
+    # Objekt-startende Kompositum-Woerter (``Objektiv`` als Foto-Objektiv-
+    # Kurzform in Fotograf-Notizen wie ``Objektiv 43mm``, ``Objektivitaet``
+    # in wissenschaftlichen Bewertungs-Prosa-Kontexten wie ``Objektivitaet
+    # 43%``, ``Objektion`` in rhetorischen Diskurs-Notizen) - der Marker
+    # ist die Disambiguierungs-Klammer analog zum Inv-vs-Invasion- und
+    # Kat-vs-Kategorie-Schutz.
+    #
+    # Positionierung direkt nach ``^Object\s+(\d+)$`` (Zeile 21) haelt alle
+    # Objekt/Object-Praefixe zusammen (Reihenfolge: bare DE-Vollform,
+    # bare EN-Vollform, DE-Kompositum). Kollisionsfrei zur bestehenden
+    # ``^Objekt\s+(\d+)$``-Regex (die matched bare ``Objekt 43`` ohne
+    # Nr-Marker, der neue Praefix verlangt Nr-Marker), zur bare
+    # ``^N(?:umme)?r\.?``-Regex (die matched bare ``Nr. 43`` ohne
+    # Objekt-Vorlauf, der neue Praefix verlangt Objekt-Vorlauf), zu Inv/
+    # Kat/Slg/Fund/Cat/Acc/Reg/Field/Coll/Spec (disjunkte Anfangs-
+    # Buchstaben) und zur OBJ[-_.\s]+-Regex (die matched OBJ-Kurzform,
+    # nicht Objekt-Vollform - lexikalisch disjunkt weil OBJ mit drei
+    # Grossbuchstaben endet, ``Objekt`` ist ein Wort mit acht Buchstaben).
+    # Der $-Anker verhindert Suffix-Ballast (``Objekt-Nr. 43X``,
+    # ``Objekt-Nr 43 44`` bleiben None).
+    re.compile(r"^Objekt\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # DE-Nummerierungs-Praefix: ``Nr. 43`` / ``Nr 43`` / ``Nr.43`` (Kurzform) und
     # ``Nummer 43`` / ``Nummer43`` (ausgeschriebene Vollform, verbreitet in
     # handschriftlichen Katalog-Eintraegen und in Kaufbelegen, in denen die

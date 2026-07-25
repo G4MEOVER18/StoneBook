@@ -326,6 +326,95 @@ def test_normalize_id_ausgeschriebene_nummer_vollform():
     assert normalize_id("Numeriert 43") is None
 
 
+def test_normalize_id_objekt_nummer_kompositum_praefix():
+    """DE-Objekt-Nummer-Kompositum ``Objekt-Nr.`` / ``Objektnummer`` als direktes
+    Kompositum der bereits abgedeckten Achsen ``Objekt`` (bare Vollform,
+    ``^Objekt\\s+(\\d+)$``) und ``Nr.`` (bare Kurzform,
+    ``^N(?:umme)?r\\.?\\s*(\\d+)$``).
+
+    In DE-sprachigen Sammler-Datenbanken sehr verbreitet als Spalten-
+    Bezeichnung (Excel-Sammlungsverzeichnisse mit Spalten-Header
+    ``Objekt-Nr.`` als laufende ID-Nummer der Sammlung, Karteikarten mit
+    handschriftlichem Feld-Etikett ``Objekt-Nr.:``, Vereinszeitschriften-
+    Referenzen in Aufschluss / Der Aufschluss / Lapis / Mineralien-Welt),
+    in Kaufbelegen (Auktions-Rechnungen von Neumeister / Karl & Faber /
+    Ketterer Kunst mit ``Objekt-Nr. 43`` als Los-Referenz) und in geerbten
+    Sammler-Notizen. Bisher fielen alle Objekt-Nr.-/Objektnummer-Kompositum-
+    Formen still auf None, weil weder die bare ``^Objekt\\s+(\\d+)$``-Regex
+    noch die bare ``^N(?:umme)?r\\.?``-Regex das Kompositum abdeckte,
+    obwohl semantisch identisch zur Summe beider Komponenten.
+
+    Regex ``^Objekt\\.?[-.\\s]*N(?:umme)?r\\.?\\s*(\\d+)$`` (case-insensitive)
+    spiegelt strukturell die Inv-/Kat-/Fund-/Slg-Kompositum-Konvention;
+    der obligatorische ``N(?:umme)?r``-Marker verhindert falsche Positives
+    fuer Objekt-startende Kompositum-Woerter (``Objektiv``,
+    ``Objektivitaet``, ``Objektion``).
+    """
+    # Standard-Kurzform-Trenner-Kombinationen
+    assert normalize_id("Objekt-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt Nr. 43") == "OBJ_0043"
+    assert normalize_id("Objekt-Nr 43") == "OBJ_0043"
+    assert normalize_id("Objekt-Nr. 7") == "OBJ_0007"
+    assert normalize_id("ObjektNr 43") == "OBJ_0043"
+    assert normalize_id("ObjektNr43") == "OBJ_0043"
+    assert normalize_id("Objekt.Nr.43") == "OBJ_0043"
+    assert normalize_id("Objekt. Nr. 43") == "OBJ_0043"
+    # Ausgeschriebene Vollformen (``Nummer`` statt ``Nr.``, ``-Nummer`` mit
+    # Bindestrich, ``Objektnummer`` als Kompositum ohne Trenner)
+    assert normalize_id("Objektnummer 43") == "OBJ_0043"
+    assert normalize_id("Objektnummer43") == "OBJ_0043"
+    assert normalize_id("Objekt-Nummer 43") == "OBJ_0043"
+    assert normalize_id("Objekt Nummer 43") == "OBJ_0043"
+    assert normalize_id("Objekt. Nummer 43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("objekt-nr 7") == "OBJ_0007"
+    assert normalize_id("OBJEKT-NR. 001") == "OBJ_0001"
+    assert normalize_id("objektnummer 7") == "OBJ_0007"
+    assert normalize_id("OBJEKTNUMMER 43") == "OBJ_0043"
+    # Ungueltig: ohne Nummer-Marker (bereits durch bare ``Objekt``-Regex
+    # gedeckt), Suffix-Ballast, Doppel-Zahl, oder Objekt-startende
+    # Kompositum-Woerter ohne semantische Naehe
+    assert normalize_id("Objekt-Nr. 43X") is None
+    assert normalize_id("Objekt-Nr 43 44") is None
+    assert normalize_id("Objekt-Nr.") is None
+    assert normalize_id("Objekt") is None
+    assert normalize_id("Objektiv 43") is None
+    assert normalize_id("Objektiv-Nr 43") is None
+    assert normalize_id("Objektivitaet 43") is None
+    assert normalize_id("Objektion 43") is None
+    # Regressionsschutz: bare ``Objekt``-Vollform (bereits durch
+    # ``^Objekt\\s+(\\d+)$`` gedeckt) und bare ``Nr.``-Kurzform bleiben
+    # gueltig; das Kompositum darf keine Komponente verdraengen.
+    assert normalize_id("Objekt 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("Object 43") == "OBJ_0043"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("Nr 43") == "OBJ_0043"
+    assert normalize_id("Nummer 43") == "OBJ_0043"
+    # Regressionsschutz: bestehende Museums-/Sammler-Kompositum-Formen
+    # (Inv-/Kat-/Fund-/Slg-Nr) bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fundnummer 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Sammlungsnummer 43") == "OBJ_0043"
+    # Regressionsschutz: englische Museums-Praefixe bleiben gueltig
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Reg. No. 43") == "OBJ_0043"
+    assert normalize_id("Field No. 43") == "OBJ_0043"
+    assert normalize_id("Coll. No. 43") == "OBJ_0043"
+    assert normalize_id("Spec. No. 43") == "OBJ_0043"
+    # Regressionsschutz: internationale und Hash-Praefixe bleiben gueltig
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("N° 43") == "OBJ_0043"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_normalize_id_sammlungs_nummer_praefix():
     """Private Sammlungsnummer ``Slg.-Nr.`` / ``Sammlungsnummer`` - Sammler-Katalog-Standard.
 
