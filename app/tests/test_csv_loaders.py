@@ -6310,6 +6310,96 @@ def test_parse_range_leading_currency_prefix_tzs_tansanischer_schilling():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_pen_peruvian_sol():
+    """``PEN`` (Peruvian Sol, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer peruanische Mineralien-Sammler.
+
+    Peru ist die klassische Sammler-Quelle fuer die Cerro-de-Pasco-Silber-
+    Blei-Zink-Distrikt-Assoziationen (Pyrit-/Sphalerit-/Galenit-/Enargit-
+    Kristallgruppen), fuer die Huancavelica-Cinnabar-Region, fuer die
+    Huanuco-Distrikt-Pyrit-Wuerfel (Quiruvilca, Huanzala, Racracancha), die
+    Julcani-/Yauricocha-/Uchucchacua-Silber-Baryt-Rhodochrosit- und die
+    Casapalca-/Morococha-Polymetall-Assoziationen. Die Handels-Konvention
+    auf der Feria Mineralogica de Lima, in Direkt-Verkaeufen von Cerro-de-
+    Pasco-Bergarbeiter-Familien und in Tucson-/Muenchen-/Sainte-Marie-aux-
+    Mines-Auktions-Katalogen mit peruanischen Ausstellern ist die PEN-
+    Preisstellung mit USD-Umrechnungs-Hinweis (``PEN 1500 (~USD 400)``).
+
+    Bisher fielen alle Formen mit ``PEN``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS vor deren Aufnahme
+    in die Vokabel-Liste): ``PEN 1500 ± 100`` -> ``(1500, 1500)`` via
+    inverted-range-Kollaps (Toleranz verloren); ``PEN 500(20)`` ->
+    ``(500, 20)`` (semantisch falscher Range statt (480, 520)). Kollisions-
+    frei zu Fremdwoertern: die ``\\b``-Wortgrenze hinter dem Code blockt
+    ``pen``/``pending``/``penalty``/``pencil``/``pension``. Case-Insensitiv
+    spiegelt die uebrige Vokabel-Liste.
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 1500 ± 100") == pytest.approx((1400.0, 1600.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("PEN 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("PEN 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa PEN 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("PEN 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("pen 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Pen 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PeN 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale (Suisse romande CSV-Excel-Konvention) mit
+    # Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("PEN 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("PEN 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("PEN 500 ± 50 pro Stueck") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 1500 ± 100 (Cerro de Pasco)") == pytest.approx((1400.0, 1600.0))
+    assert csv_loaders.parse_range("PEN 100(2) [Huanzala]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit PEN-Praefix.
+    assert csv_loaders.parse_range("PEN > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens PEN 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("PEN 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("PEN 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("PEN 500 to 1000") == (500.0, 1000.0)
+    # PEN OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("PEN") == (None, None)
+    assert csv_loaders.parse_range("PEN ") == (None, None)
+    # Kollisionsschutz: die \\b-Wortgrenze hinter dem Code verhindert
+    # Praefix-Strip fuer Fremdwoerter, die zufaellig mit ``PEN`` beginnen.
+    # ``pending``/``penalty``/``pencil``/``pension`` scheitern an der
+    # Wortgrenze, weil ``\b`` einen Buchstaben nach ``PEN`` nicht als
+    # Wortende erkennt - die Zahl-Extraktion nach dem Wort greift dann
+    # aber die reine Ziffer aus dem restlichen Text.
+    assert csv_loaders.parse_range("pending 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("pencil 500") == (500.0, 500.0)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MXN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 

@@ -509,11 +509,50 @@ _APPROX_VALUE_PREFIX = re.compile(
 # Symmetrie zum ``₴``-Symbol-Marker: der Sammler kann jetzt beide Formen
 # (Code ``UAH 500`` und Symbol ``₴500``) verwenden, ohne Toleranz-Verlust
 # bei Uncertainty-Notation.
+#
+# ``PEN`` (Peruvian Sol, ISO-4217) ergaenzt die Regional-Waehrungs-Vokabel
+# um die zweite Andes-Region-Achse neben ``BRL`` (Brasilien) und ``MXN``
+# (Mexiko) und um eine der wichtigsten Mineralien-Sammler-Herkunftslaender
+# ueberhaupt. Peru ist die klassische Sammler-Quelle fuer die Cerro-de-
+# Pasco-Silber-Blei-Zink-Distrikt-Assoziationen (Pyrit-/Sphalerit-/Galenit-
+# /Enargit-Kristallgruppen weltweit fuehrender Qualitaet), fuer die
+# Huancavelica-Cinnabar-/Quecksilber-Region (Santa-Barbara-Grube, historisch
+# groesste Cinnabar-Fundstelle der Neuen Welt), fuer die Huanuco-Distrikt-
+# Pyrit-Wuerfel-Kristalle (Quiruvilca, Huanzala, Racracancha - weltweit
+# bekannt fuer Sammler-Pyrit-Kuben bis 30cm Kantenlaenge), fuer die
+# Julcani-/Yauricocha-/Uchucchacua-Silber-Baryt-Rhodochrosit-Assoziationen
+# (Uchucchacua-Manganocalcit-/Manganocalcit-Kristalle als weltweit
+# einzigartige Sammler-Klasse), fuer die Casapalca-/Morococha-Polymetall-
+# Distrikt-Sphalerit-Galenit-Chalkopyrit-Assoziationen und fuer die
+# Pasto-Bueno-Fluorit-Cassiterit-Wolframit-Assoziationen. Die Handels-
+# Konvention der peruanischen Haendler auf der Feria Mineralogica de Lima,
+# in Direkt-Verkaeufen von Cerro-de-Pasco-/Casapalca-Bergarbeiter-
+# Familien an Sammler-Delegationen und in den Tucson-/Muenchen-/Sainte-
+# Marie-aux-Mines-Auktions-Katalogen mit peruanischen Ausstellern
+# (Minerales-de-Peru, Peruvian-Fine-Minerals-Haendler) ist die PEN-
+# Preisstellung mit USD-Umrechnungs-Hinweis (``PEN 1500 (~USD 400)`` als
+# Standard-Notation der Feria-Mineralogica-Lima-Kataloge). Auktions-
+# Kataloge des Museo de Minerales Andres del Castillo (MADC Lima) und der
+# Sociedad Geologica del Peru uebernehmen die PEN-Preisstellung im
+# Kaufbeleg unveraendert. Bisher fielen alle Formen mit ``PEN``-Praefix
+# UND Uncertainty-Struktur still auf die Fallback-Zahl-Extraktion durch
+# (identischer Bug-Effekt wie bei allen uebrigen Regional-Waehrungen vor
+# deren Aufnahme in die Vokabel-Liste): ``PEN 1500 ± 100`` -> ``(1500,
+# 1500)`` via inverted-range-Kollaps (Toleranz verloren); ``PEN 500(20)``
+# -> ``(500, 20)`` (semantisch falscher Range statt (480, 520)). Kollisions-
+# frei zu Fremdwoertern: ``PEN`` matcht als isolierte ISO-Code-Sequenz mit
+# ``\b``-Wortgrenze hinter dem Code - EN-Woerter wie ``pen``/``pending``/
+# ``penalty``/``pencil``/``pension`` scheitern an der Wortgrenze oder am
+# nachfolgenden Zahlen-Kontext (der Praefix-Strip laeuft nur wenn eine
+# Zahl folgt, siehe :data:`_APPROX_VALUE_PREFIX`-Rekursion). Case-Insensitiv
+# spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect ``Pen`` mit
+# Capitalize-First-Word und lowercase ``pen`` aus Konsolen-Tools ohne
+# Caps-Lock).
 _LEADING_CURRENCY_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
     r"|PLN|CZK|HUF|RUB|BGN|CNY|HKD|SGD|INR|AED|ILS|ZAR"
-    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR|TZS)\b"
+    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR|TZS|PEN)\b"
     r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
     r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"
     r")\s*",
