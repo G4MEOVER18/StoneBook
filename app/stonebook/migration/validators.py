@@ -176,6 +176,31 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # Kollisionsfrei zu allen bestehenden Datums-Formen: keine gueltige
         # Kurzform beginnt mit isoliertem ``o`` gefolgt von Punkt.
         "o.d.", "o. d.",
+        # ``o.J.`` / ``o. J.`` (ohne Jahr) ist die DE-Bibliothekars-/Katalog-
+        # Standard-Abkuerzung fuer "kein Jahr ermittelbar" und die direkte
+        # DE-Pendant-Kurzform zur lateinischen ``s.a.``-Notation (sine anno).
+        # Semantisches Schwester-Marker zu ``o.D.`` (ohne Datum): waehrend
+        # ``o.D.`` das komplette Datum als unermittelbar markiert, bezeichnet
+        # ``o.J.`` speziell das Jahr als unbekannt - in Sammler-/Museums-Notizen
+        # koexistieren beide, weil ein Sammler zwar den Fund-Monat/Saison
+        # aus dem Kontext ableiten kann ("Sommer, aber Jahr unklar") oder
+        # ein Antiquariats-Katalog den Druckort/Verlag kennt aber nicht das
+        # Erscheinungs-Jahr ("Basel, o.J."). Standard in der Regelwerks-
+        # Tradition von RAK/RDA (Deutsche Nationalbibliothek), im DE-
+        # Antiquariats-Handel (Zentrales Verzeichnis Antiquarischer Buecher
+        # ZVAB, Antiquariat Reiss & Sohn, Buchhandel-Katalog-Konvention:
+        # "Ort, o.J." oder "Ort: Verlag, o.J." bei nicht datierten Drucken)
+        # und in DE-Museumskatalog-Zitaten (Naturhistorisches Museum,
+        # Senckenberg, Deutsches Bergbau-Museum Bochum: geerbte Objekte
+        # ohne Erwerbs-Jahr). Bisher fielen die Kurzform-Varianten als
+        # "invalid Datum" statt "no data" in den silent-data-loss-Report,
+        # obwohl der User semantisch bewusst "kein Jahr verfuegbar"
+        # markiert hatte. Punkt-Form (``o.j.``) und Punkt-Whitespace-Form
+        # (``o. j.``) parallel zu ``o.d.``/``o. d.`` / ``n.d.``/``n. d.`` /
+        # ``s.d.``/``s. d.``. Kollisionsfrei zu allen bestehenden Datums-
+        # Formen: keine gueltige Datums-Kurzform beginnt mit isoliertem
+        # ``o`` gefolgt von Punkt-J.
+        "o.j.", "o. j.",
     }
 )
 

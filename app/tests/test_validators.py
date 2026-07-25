@@ -7384,6 +7384,75 @@ def test_parse_iso_date_de_bibliografie_ohne_datum_marker():
     assert parse_iso_date("o.") is None
 
 
+def test_parse_iso_date_de_bibliografie_ohne_jahr_marker():
+    """DE-Bibliografie-Kurzform ``o.J.`` / ``o. J.`` (ohne Jahr) liefert None.
+
+    Semantisches Schwester-Marker zu ``o.D.`` (ohne Datum): waehrend
+    ``o.D.`` das komplette Datum als unermittelbar markiert, bezeichnet
+    ``o.J.`` speziell das Jahr als unbekannt. Direktes DE-Pendant zur
+    lateinischen ``s.a.``-Kurzform (sine anno). Standard-Abkuerzung der
+    DE-Bibliothekars-/Katalog-Tradition (RAK/RDA nach DNB), im DE-
+    Antiquariats-/Auktions-Handel (ZVAB, Antiquariat Reiss & Sohn,
+    Buchhandel-Katalog-Konvention: "Ort, o.J." bei nicht datierten
+    Drucken) und in DE-Museumskatalog-Zitaten (Naturhistorisches Museum,
+    Senckenberg, Deutsches Bergbau-Museum: geerbte Objekte ohne Erwerbs-
+    Jahr). Bisher fielen die Kurzform-Varianten als "invalid Datum"
+    statt "no data" in den silent-data-loss-Report, obwohl der User
+    semantisch bewusst "kein Jahr verfuegbar" markiert hatte.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der
+    Marker-Check ist case-insensitive (parse_iso_date .lower()t den
+    Input vor dem Check).
+    """
+    # Punkt-Form ``o.J.`` / Case-Insensitivitaet
+    assert parse_iso_date("o.J.") is None
+    assert parse_iso_date("o.j.") is None
+    assert parse_iso_date("O.J.") is None
+    assert parse_iso_date("O.j.") is None
+    # Punkt-Whitespace-Form ``o. J.`` / Case-Insensitivitaet
+    assert parse_iso_date("o. J.") is None
+    assert parse_iso_date("o. j.") is None
+    assert parse_iso_date("O. J.") is None
+    assert parse_iso_date("O. j.") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  o.J.  ") is None
+    assert parse_iso_date("  o. J.  ") is None
+    # Menge-Konsistenz: die neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    assert "o.j." in DATE_NO_DATA_MARKERS
+    assert "o. j." in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("o.j.", "o. j."):
+        assert marker == marker.lower()
+    # Regress-Anker: das parallele DE-Schwester-Marker ``o.D.`` (ohne
+    # Datum) bleibt in der Menge (die Jahr-Kurzform ergaenzt die Datum-
+    # Kurzform, ersetzt sie nicht - beide koexistieren semantisch als
+    # unterschiedliche Praezisions-Grade der Unsicherheit).
+    assert "o.d." in DATE_NO_DATA_MARKERS
+    assert "o. d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen EN/Latein-Kurzformen bleiben in der Menge
+    # (der DE-Zusatz darf keine bestehenden Bibliografie-Formen verdraengen).
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "n. d." in DATE_NO_DATA_MARKERS
+    assert "s.d." in DATE_NO_DATA_MARKERS
+    assert "s. d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # Kurzform-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-
+    # Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit einzelnem ``o`` bleiben None als
+    # "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur Parse-
+    # Kette). Ein bares ``o`` ohne Punkt-J-Struktur ist kein Marker.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("o") is None
+    assert parse_iso_date("o.") is None
+    assert parse_iso_date("o.X.") is None
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
