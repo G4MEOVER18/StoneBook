@@ -4614,6 +4614,82 @@ def test_parse_iso_date_numerisches_monat_jahr():
     assert parse_iso_date("2024/06") == "2024-06-01"
 
 
+def test_parse_iso_date_year_month_whitespace_underscore_separator():
+    """Numerisches YYYY-MM mit Whitespace-/Underscore-Separator (``2024 06`` /
+    ``2024_06``) parst wie die Bindestrich-/Slash-/Punkt-Form.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[-/.]`` von :data:`_YEAR_MONTH`
+    um Whitespace und Underscore. Whitespace-Form entsteht bei der Text-
+    Extraktion aus PDF-Tabellen und aus Excel-Cell-Copy-Kombinationen, in
+    denen der Original-Bindestrich durch die Zwischenlage auf Whitespace
+    normalisiert wird (typischer Fall bei aus Auktions-/Katalog-PDFs
+    kopierten Fund-Jahr-Monat-Angaben). Underscore-Form entsteht in Foto-
+    Software-Auto-Rename und in Cross-Plattform-Filename-Konventionen
+    (Underscore als Reserved-Char-freier Separator statt Bindestrich - der
+    Sammler tippt ``2024_06.jpg`` fuer den Foto-Batch aus Juni 2024). Bisher
+    fielen alle diese Formen als "invalid Funddatum" in den silent-data-
+    loss-Report, obwohl die Semantik ("Fund-Monat + Jahr") identisch zur
+    Bindestrich-Form ist. Spiegelt die identische Whitespace-/Underscore-
+    Erweiterung der Ein-Zeichen-Separator-Klasse in :data:`_YEAR_MONTH_NAME`
+    (``[,./ _\\-]``) auf die numerische Achse.
+    """
+    # Whitespace-Separator, einstellige und zweistellige Monatswerte
+    assert parse_iso_date("2024 06") == "2024-06-01"
+    assert parse_iso_date("2024 6") == "2024-06-01"
+    assert parse_iso_date("2024 1") == "2024-01-01"
+    assert parse_iso_date("2024 12") == "2024-12-01"
+    assert parse_iso_date("1985 06") == "1985-06-01"
+    assert parse_iso_date("1999 12") == "1999-12-01"
+    # Underscore-Separator
+    assert parse_iso_date("2024_06") == "2024-06-01"
+    assert parse_iso_date("2024_6") == "2024-06-01"
+    assert parse_iso_date("2024_1") == "2024-01-01"
+    assert parse_iso_date("2024_12") == "2024-12-01"
+    assert parse_iso_date("1985_06") == "1985-06-01"
+    # Whitespace-Toleranz aussen (parse_iso_date strippt vor dem Regex)
+    assert parse_iso_date("  2024 06  ") == "2024-06-01"
+    assert parse_iso_date("  2024_06  ") == "2024-06-01"
+    # Kombiniert mit Klammer-Strip
+    assert parse_iso_date("[2024 06]") == "2024-06-01"
+    assert parse_iso_date("(2024_06)") == "2024-06-01"
+    # Kombiniert mit Annaeherungspraefix
+    assert parse_iso_date("ca. 2024 06") == "2024-06-01"
+    assert parse_iso_date("ca. 2024_06") == "2024-06-01"
+    # Ungueltige Monatswerte → None (spiegelt die Bindestrich-Form)
+    assert parse_iso_date("2024 13") is None
+    assert parse_iso_date("2024_13") is None
+    assert parse_iso_date("2024 0") is None
+    assert parse_iso_date("2024_00") is None
+    # Jahr ausserhalb [1800, 2999] → None
+    assert parse_iso_date("1700 06") is None
+    assert parse_iso_date("1799_06") is None
+    assert parse_iso_date("3000 06") is None
+    # Kollisionsschutz: mehrere Trennzeichen in Folge matchen nicht als
+    # YYYY-MM (der Regex-Slot ist ein Einzel-Zeichen, keine Range)
+    assert parse_iso_date("2024  06") is None      # doppeltes Leerzeichen
+    assert parse_iso_date("2024__06") is None      # doppelter Underscore
+    # Kollisionsschutz: mehr als 2 Ziffern im Monat-Slot fallen auf None
+    assert parse_iso_date("2024 060") is None
+    assert parse_iso_date("2024_006") is None
+    # Kollisionsschutz: Range-Formen (4-Ziffer beidseitig) matchen nicht
+    # als YYYY-MM, weil der zweite Slot ``\\d{1,2}`` verlangt - "2020 2024"
+    # (Whitespace-Range ohne Bindestrich) bleibt None (kein YYYY-MM mit
+    # Monat=2024), waehrend die etablierte Bindestrich-Range-Form
+    # "2020-2024" ueber :data:`_YEAR_RANGE` weiter Jahr-1 liefert.
+    assert parse_iso_date("2020 2024") is None
+    assert parse_iso_date("2020_2024") is None
+    assert parse_iso_date("2020-2024") == "2020-01-01"
+    # Regress-Anker: bereits vorhandene Separatoren bleiben unveraendert
+    assert parse_iso_date("2024-06") == "2024-06-01"
+    assert parse_iso_date("2024/06") == "2024-06-01"
+    assert parse_iso_date("2024.06") == "2024-06-01"
+    # Regress-Anker: numerische MM/YYYY-Form (_MONTH_NUMERIC_YEAR)
+    # bleibt unveraendert (parallele Achse, hier nicht modifiziert)
+    assert parse_iso_date("06/2024") == "2024-06-01"
+    assert parse_iso_date("06.2024") == "2024-06-01"
+    assert parse_iso_date("06-2024") == "2024-06-01"
+
+
 def test_parse_iso_date_wochentag_praefix():
     """Wochentag-Praefixe (DE/EN, lang/kurz) werden gestrippt, Rest re-parst."""
     # DE Vollform + Komma

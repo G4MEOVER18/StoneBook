@@ -760,7 +760,26 @@ _BETWEEN_AND_WRAPPER = re.compile(
     r"^\s*(?:zwischen|between)\s+(.+?)\s+(?:und|and)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
-_YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/.](\d{1,2})\s*$")
+# Numerisches Jahr-Monat "2024-06", "2024/06", "2024.06", plus Whitespace-
+# und Underscore-Trenner ("2024 06", "2024_06"). Whitespace-Form entsteht bei
+# der Text-Extraktion aus PDF-Tabellen und aus Excel-Cell-Copy-Kombinationen,
+# in denen der Original-Bindestrich durch die Zwischenlage (PDF-Renderer,
+# Zwischenablage-Encoding) auf Whitespace normalisiert wird - typischer Fall
+# bei aus Auktions-/Katalog-PDFs kopierten Fund-Jahr-Monat-Angaben. Underscore-
+# Form entsteht in Foto-Software-Auto-Rename und in Cross-Plattform-Filename-
+# Konventionen (Underscore als Reserved-Char-freier Separator statt Bindestrich)
+# - der Sammler tippt "2024_06.jpg" fuer den Foto-Batch aus Juni 2024 und die
+# aus dem Filename extrahierte Datums-Angabe fiel bisher als "invalid Funddatum"
+# in den silent-data-loss-Report. Spiegelt die identische Whitespace-/Underscore-
+# Erweiterung der Ein-Zeichen-Separator-Klasse in :data:`_YEAR_MONTH_NAME`
+# ([,./ _\-]) auf die numerische Achse - dieselbe Filename-/PDF-Extraktions-
+# Konvention erzeugt bei ausgeschriebenem Monatsnamen (``Juni_2024``,
+# ``June 2024``) denselben Trenner wie bei numerischer Monatszahl.
+# Kollisionsfrei zur Whitespace-getrennten Range-Form (``2020 - 2024``):
+# _YEAR_MONTH verlangt Monat 1-12, der 4-Ziffer-Range-Wert (``2020 2024``)
+# faellt ueber die Monat-Wertgrenze auf None und wird an _YEAR_RANGE/
+# _YEAR_RANGE_BETWEEN durchgereicht.
+_YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/. _](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
 # fallen auf None (sind dann i.d.R. ein anderes Format, das nicht hierher gehoert).
