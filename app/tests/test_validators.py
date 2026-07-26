@@ -7706,6 +7706,132 @@ def test_parse_iso_date_nl_be_no_data_marker():
     assert "o.j." in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_pl_no_data_marker():
+    """Polnische (PL) No-Data-Marker liefern None (nicht als silent-data-loss
+    Fund gemeldet).
+
+    Schliesst die PL-Sprach-Achse der No-Data-Marker parallel zur bereits
+    etablierten NL/BE-Achse und den DE/EN/FR/IT/ES/PT-Achsen. Sammler-Region
+    der PL-Sprach-Achse umfasst Niederschlesien mit den Sudeten (Sowie-,
+    Riesen-, Eulengebirge - Bergkristall/Amethyst/Achat/Chalzedon/Chrysopras
+    und Silber-/Blei-/Zink-Erze aus dem Kupfer-Revier Lubin/Glogow/Polkowice),
+    Kleinpolen (Malopolska mit den UNESCO-Salzminen Wieliczka und Bochnia),
+    Oberschlesien (Bytom/Chorzow mit historischen Zink-/Blei-Bergwerken und
+    Galmei-Fundstellen), Heilig-Kreuz-Gebirge (Baryt/Fluorit/Kalzit-Adern);
+    geerbte Sammlungs-Kataloge aus historischen Grenzregionen mit gemischter
+    DE-/PL-Sprach-Provenienz (Oberschlesien, Ostpreussen, Pommern) sowie
+    Museum-Etiketten aus Muzeum Geologiczne PAN Krakow, Muzeum Ziemi PAN
+    Warschau und Muzeum Mineralogiczne Uniwersytetu Wroclawskiego.
+
+    Marker: ``nieznany`` (mask. Adjektiv-Form fuer "unbekannt"), ``nieznana``
+    (fem. Adjektiv-Form - PL hat grammatisches Geschlecht wie ES/PT/FR/IT mit
+    -y/-a-Endung fuer mask./fem., spiegelt die mask./fem.-Trennung der uebrigen
+    Romanischen Sprachen), ``brak daty`` (natuerlich-sprachliche "kein Datum"-
+    Form, wortwoertlich "Mangel Datum"; PL-Praeposition-plus-Genitiv-Konstruk-
+    tion), ``bez daty`` (Standard-Katalog-Konvention "ohne Datum", direktes
+    PL-Pendant zur DE-``ohne datum`` / FR-``sans date`` / IT-``senza data`` /
+    ES-``sin fecha`` / PT-``sem data`` / NL-``zonder datum``-Reihe), ``data
+    nieznana`` (invertierte PL-Prosa-Form, parallel zur DE-``datum unbekannt`` /
+    FR-``date inconnue`` / IT-``data sconosciuta``/``data ignota`` / ES-``fecha
+    desconocida`` / PT-``data desconhecida`` / NL-``datum onbekend``-Reihe).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # PL mask. Adjektiv-Form fuer "unbekannt"
+    assert parse_iso_date("nieznany") is None
+    assert parse_iso_date("Nieznany") is None
+    assert parse_iso_date("NIEZNANY") is None
+    # PL fem. Adjektiv-Form fuer "unbekannt"
+    assert parse_iso_date("nieznana") is None
+    assert parse_iso_date("Nieznana") is None
+    assert parse_iso_date("NIEZNANA") is None
+    # Natuerlich-sprachliche "kein Datum"-Form (PL Praeposition brak + Genitiv)
+    assert parse_iso_date("brak daty") is None
+    assert parse_iso_date("Brak Daty") is None
+    assert parse_iso_date("BRAK DATY") is None
+    # Standard-Katalog-Konvention "ohne Datum" (PL Praeposition bez + Genitiv,
+    # PL-Pendant zur DE ohne datum / FR sans date / IT senza data / ES sin
+    # fecha / PT sem data / NL zonder datum-Reihe)
+    assert parse_iso_date("bez daty") is None
+    assert parse_iso_date("Bez Daty") is None
+    assert parse_iso_date("BEZ DATY") is None
+    # Invertierte PL-Prosa-Form (PL-Pendant zur DE datum unbekannt / FR date
+    # inconnue / IT data sconosciuta,ignota / ES fecha desconocida / PT data
+    # desconhecida / NL datum onbekend-Reihe der invertierten Datum-Adjektiv-
+    # Prosa-Form; feminine Endung -a folgt dem Genus des Substantivs data)
+    assert parse_iso_date("data nieznana") is None
+    assert parse_iso_date("Data Nieznana") is None
+    assert parse_iso_date("DATA NIEZNANA") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  nieznany  ") is None
+    assert parse_iso_date("  nieznana  ") is None
+    assert parse_iso_date("  brak daty  ") is None
+    assert parse_iso_date("  bez daty  ") is None
+    assert parse_iso_date("  data nieznana  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("nieznany", "nieznana", "brak daty", "bez daty", "data nieznana"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("nieznany", "nieznana", "brak daty", "bez daty", "data nieznana"):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE/EN/FR/IT/ES/PT/NL/Bibliografie-
+    # Marker bleiben in der Menge (keine Kollision durch die neuen PL-Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen "ohne Datum"-Konventions-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der PL-Zusatz ``bez daty``
+    # schliesst gemeinsam mit ihnen die sieben Sprach-Achsen ab).
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    assert "sans date" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    assert "sin fecha" in DATE_NO_DATA_MARKERS
+    assert "sem data" in DATE_NO_DATA_MARKERS
+    assert "zonder datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen invertierten Datum-Prosa-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der PL-Zusatz ``data nieznana``
+    # schliesst gemeinsam mit ihnen die sieben invertierten Prosa-Achsen ab).
+    assert "datum unbekannt" in DATE_NO_DATA_MARKERS
+    assert "date inconnue" in DATE_NO_DATA_MARKERS
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS
+    assert "data ignota" in DATE_NO_DATA_MARKERS
+    assert "fecha desconocida" in DATE_NO_DATA_MARKERS
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS
+    assert "datum onbekend" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # PL-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben None
+    # als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur
+    # normalen Parse-Kette). Freistehendes ``data`` (ohne ``nieznana``-Nach-
+    # lauf), freistehendes ``brak`` (ohne ``daty``-Nachlauf), freistehendes
+    # ``bez`` (ohne ``daty``-Nachlauf) sind keine Marker fuer sich; und die
+    # PL-Wort-Fragmente werden nicht faelschlich als DE-``o.d.``/``o.j.``-
+    # Kurzform verwechselt.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("data") is None
+    assert parse_iso_date("brak") is None
+    assert parse_iso_date("bez") is None
+    # Regress-Anker: die PL-Formen sind kollisionsfrei zur DE-``o.D.``/
+    # ``o.J.``-Kurzform (die PL-Adjektive beginnen mit ``n`` bzw. die
+    # Praeposition-Formen mit ``b``, ohne Kollision zur o-Punkt-Struktur
+    # der DE-Bibliografie-Kurzformen).
+    assert "o.d." in DATE_NO_DATA_MARKERS
+    assert "o.j." in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

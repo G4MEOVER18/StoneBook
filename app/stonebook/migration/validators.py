@@ -214,6 +214,79 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # lowercase (Consumer .lower()t den Input vor dem Check, wie im
         # Bestand konventionalisiert).
         "onbekend", "geen datum", "zonder datum", "datum onbekend",
+        # Polnisch (PL) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL. Sammler-Region
+        # der PL-Sprach-Achse umfasst Niederschlesien mit den Sudeten (Sowie-
+        # gebirge, Riesengebirge, Eulengebirge - historische Fundstellen fuer
+        # Bergkristall, Amethyst, Achat, Chalzedon, Chrysopras und Silber-/
+        # Blei-/Zink-Erze aus dem Kupfer-Revier Lubin/Glogow/Polkowice),
+        # Kleinpolen (Malopolska mit den UNESCO-Salzminen Wieliczka und
+        # Bochnia, historische Fundstellen fuer Halit-Kristalle und Silbe-
+        # rung des Salzgesteins), Oberschlesien (Bytom/Chorzow mit histori-
+        # schen Zink-/Blei-Bergwerken und Galmei-Fundstellen), Heilig-Kreuz-
+        # Gebirge (Gory Swietokrzyskie mit Baryt/Fluorit/Kalzit-Adern),
+        # Karpaten-Vorland (mineralische Solequellen und Gips-/Anhydrit-
+        # Fundstellen); geerbte Sammlungs-Kataloge aus historischen Grenz-
+        # regionen mit gemischter DE-/PL-Sprach-Provenienz (Oberschlesien,
+        # Ostpreussen, Pommern - polnisch-sprachige Etiketten auf urspruenglich
+        # deutschen Bestaenden aus Vorkriegs-Sammlungen); Museum-Etiketten
+        # aus Muzeum Geologiczne Polskiej Akademii Nauk Krakow, Muzeum
+        # Ziemi PAN Warschau, Muzeum Mineralogiczne Uniwersytetu Wroclawskiego
+        # (Wroclaw), Muzeum Ziemi Krakowskiej und aus Auktions-/Sammler-
+        # Provenienzen aus Warschau/Krakau/Danzig-Bestand.
+        #
+        # ``nieznany`` (mask. Adjektiv-Form fuer "unbekannt"), ``nieznana``
+        # (fem. Adjektiv-Form - PL hat grammatisches Geschlecht wie ES/PT/FR/IT
+        # mit -y/-a-Endung fuer mask./fem., spiegelt die mask./fem.-Trennung
+        # von ES ``desconocido``/``desconocida``, PT ``desconhecido``/
+        # ``desconhecida``, IT ``sconosciuto``/``sconosciuta``, FR ``inconnu``/
+        # ``inconnue``), ``brak daty`` (natuerlich-sprachliche "kein Datum"-
+        # Form, wortwoertlich "Mangel Datum" - direkte Uebersetzung von DE
+        # ``kein datum``, EN ``no date`` mit PL-typischer Nomen-Konstruktion
+        # via ``brak`` = "Mangel"/"Fehlen"; der Genitiv-Kasus ``daty`` folgt
+        # der PL-Grammatik-Regel Mangel + Genitiv), ``bez daty`` (Standard-
+        # Katalog-Konvention "ohne Datum", direktes PL-Pendant zur DE-``ohne
+        # datum``, FR-``sans date``, IT-``senza data``, ES-``sin fecha``, PT-
+        # ``sem data``, NL-``zonder datum``-Reihe der Museums-/Bibliothekars-
+        # Konventions-Form; die PL-Praeposition ``bez`` = "ohne" verlangt
+        # ebenfalls Genitiv-Kasus ``daty``, spiegelt die Grammatik-Struktur
+        # der uebrigen Praepositionalen No-Data-Formen), ``data nieznana``
+        # (invertierte PL-Prosa-Form, parallel zur DE ``datum unbekannt``,
+        # FR ``date inconnue``, IT ``data sconosciuta``/``data ignota``, ES
+        # ``fecha desconocida``, PT ``data desconhecida``, NL ``datum
+        # onbekend``-Reihe der invertierten Datum-Adjektiv-Prosa-Form; das
+        # feminine Substantiv ``data`` (Genus des PL-Datums-Wortes) verlangt
+        # die feminine Adjektiv-Endung ``-a``, wodurch die invertierte Form
+        # ``data nieznana`` grammatikalisch bindet, waehrend die freistehende
+        # Adjektiv-Form auch maskulin auftritt ``nieznany``).
+        #
+        # Bisher fielen alle PL-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der --ids-from-file-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus polnisch-sprachigen Quellen
+        # (Bestaende aus Muzeum Ziemi PAN, geerbte Sudeten-Katalog-
+        # Sammlungen, Danziger Kaufmann-Provenienzen mit PL-Etiketten)
+        # scheiterten mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``nieznany``/``nieznana`` sind reine
+        # PL-Wort-Formen ohne Ziffer-Kollision zu Datums-Strings; die
+        # Marker-Menge kennt bereits die parallelen DE/EN/FR/IT/ES/PT/NL-
+        # Adjektiv-Formen und die neuen PL-Formen sind lexikalisch disjunkt
+        # zu allen anderen Sprach-Reihen (PL ``nieznany``/``nieznana`` !=
+        # DE ``unbekannt`` != EN ``unknown`` != FR ``inconnu``/``inconnue``
+        # != IT ``sconosciuto``/``ignoto`` != ES ``desconocido`` != PT
+        # ``desconhecido`` != NL ``onbekend``; PL ``brak daty`` != DE
+        # ``kein datum`` != EN ``no date`` != FR ``pas de date`` != NL
+        # ``geen datum``; PL ``bez daty`` != DE ``ohne datum`` != FR ``sans
+        # date`` != IT ``senza data`` != ES ``sin fecha`` != PT ``sem data``
+        # != NL ``zonder datum``; PL ``data nieznana`` != DE ``datum
+        # unbekannt`` != FR ``date inconnue`` != IT ``data sconosciuta``/
+        # ``data ignota`` != ES ``fecha desconocida`` != PT ``data
+        # desconhecida`` != NL ``datum onbekend``). Alle Marker sind
+        # lowercase (Consumer .lower()t den Input vor dem Check, wie im
+        # Bestand konventionalisiert).
+        "nieznany", "nieznana", "brak daty", "bez daty", "data nieznana",
         # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
         # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
         # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum
