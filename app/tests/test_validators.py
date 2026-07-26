@@ -7597,6 +7597,115 @@ def test_parse_iso_date_it_invertierte_datum_no_data_marker():
     assert parse_iso_date("data") is None  # aber als "invalid", nicht "no data"
 
 
+def test_parse_iso_date_nl_be_no_data_marker():
+    """NL/BE (Niederlaendisch/Flaemisch) No-Data-Marker liefern None (nicht
+    als silent-data-loss Fund gemeldet).
+
+    Schliesst die NL/BE-Sprach-Achse der No-Data-Marker parallel zur bereits
+    im :data:`_DIRECTION_WORD`-Pattern etablierten NL/BE-Direction-Wort-
+    Erweiterung (ff1a050 noord/zuid/oost). Sammler-Region der NL/BE-Achse
+    umfasst die Nederlandse Geologische Vereniging (NGV), belgische Sammler-
+    Notizen aus Wallonien/Flandern mit historischen Bergbau-Fundstellen
+    (Bleiberg/Plombieres Zink-/Bleiglanz-Distrikt, Musee de la Fluorine
+    Salbris), geerbte Sammlungs-Kataloge aus Rheinland/Ruhrgebiet mit
+    NL-Vorbesitzern und Museum-Etiketten aus Naturalis Biodiversity Center
+    Leiden, Koninklijk Belgisch Instituut voor Natuurwetenschappen Brussel
+    sowie Teylers Museum Haarlem.
+
+    Marker: ``onbekend`` (Standard-Adjektiv-Form fuer "unbekannt", NL/BE
+    unflektiert), ``geen datum`` (natuerlich-sprachliche "kein Datum"-Form),
+    ``zonder datum`` (Standard-Katalog-Konvention "ohne Datum", direktes
+    NL-Pendant zur DE-``ohne datum`` / FR-``sans date`` / IT-``senza data`` /
+    ES-``sin fecha`` / PT-``sem data``-Reihe), ``datum onbekend`` (invertierte
+    NL-Prosa-Form, parallel zur DE-``datum unbekannt`` / FR-``date inconnue`` /
+    IT-``data sconosciuta``/``data ignota`` / ES-``fecha desconocida`` /
+    PT-``data desconhecida``-Reihe).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # NL/BE Standard-Adjektiv-Form fuer "unbekannt"
+    assert parse_iso_date("onbekend") is None
+    assert parse_iso_date("Onbekend") is None
+    assert parse_iso_date("ONBEKEND") is None
+    # Natuerlich-sprachliche "kein Datum"-Form
+    assert parse_iso_date("geen datum") is None
+    assert parse_iso_date("Geen Datum") is None
+    assert parse_iso_date("GEEN DATUM") is None
+    # Standard-Katalog-Konvention "ohne Datum" (NL-Pendant zur DE ohne datum /
+    # FR sans date / IT senza data / ES sin fecha / PT sem data-Reihe)
+    assert parse_iso_date("zonder datum") is None
+    assert parse_iso_date("Zonder Datum") is None
+    assert parse_iso_date("ZONDER DATUM") is None
+    # Invertierte NL-Prosa-Form (NL-Pendant zur DE datum unbekannt / FR date
+    # inconnue / IT data sconosciuta,ignota / ES fecha desconocida / PT data
+    # desconhecida-Reihe der invertierten Datum-Adjektiv-Prosa-Form)
+    assert parse_iso_date("datum onbekend") is None
+    assert parse_iso_date("Datum Onbekend") is None
+    assert parse_iso_date("DATUM ONBEKEND") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  onbekend  ") is None
+    assert parse_iso_date("  geen datum  ") is None
+    assert parse_iso_date("  zonder datum  ") is None
+    assert parse_iso_date("  datum onbekend  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("onbekend", "geen datum", "zonder datum", "datum onbekend"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("onbekend", "geen datum", "zonder datum", "datum onbekend"):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE/EN/FR/IT/ES/PT/Bibliografie-Marker
+    # bleiben in der Menge (keine Kollision durch die neuen NL/BE-Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen "ohne Datum"-Konventions-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der NL-Zusatz ``zonder datum``
+    # schliesst gemeinsam mit ihnen die sechs Sprach-Achsen ab).
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    assert "sans date" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    assert "sin fecha" in DATE_NO_DATA_MARKERS
+    assert "sem data" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen invertierten Datum-Prosa-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der NL-Zusatz ``datum onbekend``
+    # schliesst gemeinsam mit ihnen die sechs invertierten Prosa-Achsen ab).
+    assert "datum unbekannt" in DATE_NO_DATA_MARKERS
+    assert "date inconnue" in DATE_NO_DATA_MARKERS
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS
+    assert "data ignota" in DATE_NO_DATA_MARKERS
+    assert "fecha desconocida" in DATE_NO_DATA_MARKERS
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # NL/BE-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben None
+    # als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur
+    # normalen Parse-Kette). Freistehendes ``datum`` (ohne ``onbekend``-
+    # Nachlauf), freistehendes ``geen`` (ohne ``datum``-Nachlauf), freistehendes
+    # ``zonder`` (ohne ``datum``-Nachlauf) sind keine Marker fuer sich.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("datum") is None
+    assert parse_iso_date("geen") is None
+    assert parse_iso_date("zonder") is None
+    # Regress-Anker: die NL-Formen sind kollisionsfrei zur DE-``o.D.``/
+    # ``o.J.``-Kurzform (``onbekend`` beginnt zwar mit ``o``, ist aber die
+    # vollstaendige Adjektiv-Form ohne Punkt-D/J-Struktur - die DE-Kurzform
+    # verlangt explizit ``.d.``/``.j.``-Suffix).
+    assert "o.d." in DATE_NO_DATA_MARKERS
+    assert "o.j." in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

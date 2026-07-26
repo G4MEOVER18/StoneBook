@@ -162,6 +162,58 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # :data:`_SEASON_MONTHS` (verao/outono/primavera/inverno, commit
         # 4c3ce4f) auf die No-Data-Marker-Achse.
         "desconhecido", "desconhecida", "sem data", "data desconhecida",
+        # Niederlaendisch/Flaemisch (NL/BE) - Aequivalente zu DE/EN/FR/IT/ES/PT.
+        # Sammler-Region der NL/BE-Sprach-Achse umfasst die Nederlandse
+        # Geologische Vereniging (NGV), belgische Sammler-Notizen aus Wallonien/
+        # Flandern mit historischen Bergbau-Fundstellen (Bleiberg/Plombieres
+        # Zink-/Bleiglanz-Distrikt, Musee de la Fluorine Salbris, Musee du
+        # Cristal Val St. Lambert), geerbte Sammlungs-Kataloge aus Rheinland/
+        # Ruhrgebiet mit NL-Vorbesitzern (Grenzregion mit gemischter Sprach-
+        # Provenienz), Ost-Karibik/Suriname/Antillen-Fundregionen (frueher
+        # NL-Kolonial-Provenienzen mit NL-Sprach-Etiketten) sowie Museum-
+        # Etiketten aus Naturalis Biodiversity Center Leiden, Koninklijk
+        # Belgisch Instituut voor Natuurwetenschappen Brussel und Teylers
+        # Museum Haarlem.
+        #
+        # ``onbekend`` (Standard-Adjektiv-Form fuer "unbekannt"; im NL/BE
+        # unflektiert und geschlechts-neutral, spiegelt EN ``unknown`` und
+        # nicht die mask./fem.-Trennung von ES/PT/FR/IT), ``geen datum``
+        # (natuerlich-sprachliche "kein Datum"-Form, parallel zu DE ``kein
+        # datum`` und EN ``no date``), ``zonder datum`` (Standard-Katalog-
+        # Konvention "ohne Datum", direktes NL-Pendant zur DE-``ohne datum``,
+        # FR-``sans date``, IT-``senza data``, ES-``sin fecha``, PT-``sem
+        # data``-Reihe der Museums-/Bibliothekars-Konventions-Form),
+        # ``datum onbekend`` (invertierte NL-Prosa-Form, parallel zur DE
+        # ``datum unbekannt``, FR ``date inconnue``, IT ``data sconosciuta``/
+        # ``data ignota``, ES ``fecha desconocida``, PT ``data desconhecida``-
+        # Reihe der invertierten Datum-Adjektiv-Prosa-Form).
+        #
+        # Spiegelt die NL/BE-Erweiterungen in :data:`_DIRECTION_WORD` (ff1a050
+        # noord/zuid/oost) auf die No-Data-Marker-Achse und schliesst die
+        # NL/BE-Sprach-Achse fuer alle Consumer der DATE_NO_DATA_MARKERS-
+        # Menge (parse_iso_date, csv_loaders.find_rows_with_invalid_funddatum,
+        # find_rows_with_invalid_erstellt_am, integrity-Checks). Bisher fielen
+        # alle NL/BE-Bestaende mit diesen expliziten Markern in den silent-
+        # data-loss-Report als "invalid Datum, bitte pruefen", obwohl der
+        # User semantisch bewusst "kein Datum verfuegbar" markiert hatte.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``onbekend`` startet mit ``o``, ist
+        # aber die vollstaendige NL-Adjektiv-Form (nicht der DE-``o.D.``-/
+        # ``o.J.``-Abkuerzungs-Praefix mit obligatorischem Punkt-D/J).
+        # ``geen datum``/``zonder datum``/``datum onbekend`` sind reine
+        # Wort-Kombinationen ohne Ziffer-Kollision zu gueltigen Datums-
+        # Formen; die Marker-Menge kennt bereits die parallelen DE/FR/IT/
+        # ES/PT-Wort-Kombinationen und die neuen NL-Formen sind lexikalisch
+        # disjunkt zu allen anderen Sprach-Reihen (NL ``geen`` != DE
+        # ``kein`` != EN ``no`` != FR ``pas de`` != ES ``sin`` != PT ``sem``,
+        # NL ``zonder`` != DE ``ohne`` != FR ``sans`` != IT ``senza`` != ES
+        # ``sin`` != PT ``sem``, NL ``onbekend`` != DE ``unbekannt`` != EN
+        # ``unknown`` != FR ``inconnu`` != IT ``sconosciuto``/``ignoto`` !=
+        # ES ``desconocido`` != PT ``desconhecido``). Alle Marker sind
+        # lowercase (Consumer .lower()t den Input vor dem Check, wie im
+        # Bestand konventionalisiert).
+        "onbekend", "geen datum", "zonder datum", "datum onbekend",
         # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
         # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
         # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum
