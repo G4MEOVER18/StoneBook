@@ -510,6 +510,53 @@ _APPROX_VALUE_PREFIX = re.compile(
 # (Code ``UAH 500`` und Symbol ``₴500``) verwenden, ohne Toleranz-Verlust
 # bei Uncertainty-Notation.
 #
+# ``COP`` (Colombian Peso, ISO-4217) ergaenzt die Regional-Waehrungs-Vokabel
+# um die Nord-Andes-Achse neben ``PEN`` (Peru, Zentral-Andes) und ``BRL``/
+# ``MXN`` (Brasilien/Mexiko der Amerikas-Reihe) und um eine der weltweit
+# wichtigsten Edelstein-Sammler-Herkunftslaender. Kolumbien ist die
+# klassische Sammler-Quelle fuer die Muzo-Cosquez-Coscuez-Chivor-La-Pita-
+# Smaragd-Region (Boyaca-Provinz mit den historisch und aktuell weltweit
+# fuehrenden Smaragd-Fundstellen - Muzo als Type-Locality fuer Trapiche-
+# Smaragd mit dem einzigartigen radialen Kohlenstoff-Muster, Chivor-
+# Smaragde als die klassisch besten Sammler-Stufen mit Pyrit-/Calcit-
+# Assoziation, Coscuez fuer die feinsten historischen Fund-Stufen des
+# 16. Jahrhunderts, La Pita als moderne Sammler-Quelle mit Rio-Minero-
+# Fluss-Provenienz), fuer die Boyaca-Baryt-/Fluorit-/Calcit-Assoziationen
+# in den Smaragd-Bergwerken (typische Begleitmineralien in publizierten
+# Sammler-Stufen), fuer die Antioquia-Gold-Distrikt-Sulfid-Assoziationen
+# (Segovia-Remedios-Marmato-Ariari-Vetas-Reviere mit Pyrit-/Arsenopyrit-/
+# Sphalerit-/Galenit-Kristallgruppen), fuer die Guaviare-Gold-Placer-
+# Kristall-Assoziationen und fuer die Cauca-Cauca-Valle-Sulfid-/Sulfat-
+# Reviere. Die Handels-Konvention der kolumbianischen Smaragd-Haendler
+# in der Bogota-Muzo-Straße (Avenida Jimenez de Quesada mit den historischen
+# Smaragd-Boersen des Kolonial-Viertels La Candelaria), in den Direkt-
+# Verkaeufen von Muzo-/Chivor-Bergarbeiter-Genossenschaften an internatio-
+# nale Sammler-Delegationen, in den Tucson-/Muenchen-/Sainte-Marie-aux-
+# Mines-Auktions-Katalogen mit kolumbianischen Ausstellern (Muzo Colombia
+# Emeralds, Cosquez Emerald Mining, Chivor Emerald Company als etablierte
+# Haendler-Namen) und in den Auktions-Katalogen des Museo del Oro Bogota
+# und der Ecopetrol-Mineraliensammlung Bucaramanga ist die COP-
+# Preisstellung mit USD-Umrechnungs-Hinweis (``COP 4500000 (~USD 1100)`` als
+# Standard-Notation der Bogota-Smaragd-Boersen; auch als Klartext
+# ``4.5 Mio COP`` mit deutschem-/spanischem Thousand-Marker-Punkt bzw.
+# ``$4,500,000 COP`` mit dem lateinamerikanischen Peso-Symbol-Praefix
+# ``$`` und Thousand-Komma). Bisher fielen alle Formen mit ``COP``-Praefix
+# UND Uncertainty-Struktur still auf die Fallback-Zahl-Extraktion durch
+# (identischer Bug-Effekt wie bei allen uebrigen Regional-Waehrungen vor
+# deren Aufnahme in die Vokabel-Liste): ``COP 5000000 ± 500000`` ->
+# ``(5000000, 5000000)`` via inverted-range-Kollaps (Toleranz verloren);
+# ``COP 2000000(50000)`` -> ``(2000000, 50000)`` (semantisch falscher
+# Range statt (1950000, 2050000)). Kollisionsfrei zu Fremdwoertern:
+# ``COP`` matcht als isolierte ISO-Code-Sequenz mit ``\b``-Wortgrenze
+# hinter dem Code - EN-Woerter wie ``cop``/``copy``/``copper``/``coping``/
+# ``coprolite`` scheitern an der Wortgrenze oder am nachfolgenden Zahlen-
+# Kontext (der Praefix-Strip laeuft nur wenn eine Zahl folgt, siehe
+# :data:`_APPROX_VALUE_PREFIX`-Rekursion; ``copper 500g`` triggert nicht,
+# weil ``copper`` mehr als drei Zeichen hat und ``COP`` als exakte Drei-
+# Zeichen-Sequenz mit Wortgrenze matcht). Case-Insensitiv spiegelt die
+# uebrige Vokabel-Liste (Excel-Autocorrect ``Cop`` mit Capitalize-First-
+# Word und lowercase ``cop`` aus Konsolen-Tools).
+#
 # ``PEN`` (Peruvian Sol, ISO-4217) ergaenzt die Regional-Waehrungs-Vokabel
 # um die zweite Andes-Region-Achse neben ``BRL`` (Brasilien) und ``MXN``
 # (Mexiko) und um eine der wichtigsten Mineralien-Sammler-Herkunftslaender
@@ -552,7 +599,7 @@ _LEADING_CURRENCY_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
     r"|PLN|CZK|HUF|RUB|BGN|CNY|HKD|SGD|INR|AED|ILS|ZAR"
-    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR|TZS|PEN)\b"
+    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR|TZS|PEN|COP)\b"
     r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
     r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"
     r")\s*",

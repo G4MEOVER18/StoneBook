@@ -6400,6 +6400,103 @@ def test_parse_range_leading_currency_prefix_pen_peruvian_sol():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_cop_colombian_peso():
+    """``COP`` (Colombian Peso, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer kolumbianische Smaragd-Sammler.
+
+    Kolumbien ist die weltweit fuehrende Smaragd-Sammler-Quelle mit der
+    Muzo-Cosquez-Coscuez-Chivor-La-Pita-Smaragd-Region der Boyaca-Provinz
+    (Muzo als Type-Locality fuer Trapiche-Smaragd, Chivor als klassisch
+    beste Sammler-Stufen mit Pyrit-/Calcit-Assoziation, Coscuez fuer die
+    feinsten historischen Fund-Stufen des 16. Jahrhunderts) sowie fuer die
+    Boyaca-Baryt-/Fluorit-/Calcit-Begleitmineralien, die Antioquia-Gold-
+    Distrikt-Sulfid-Assoziationen (Segovia-Remedios-Marmato) und die
+    Cauca-Cauca-Valle-Sulfid-/Sulfat-Reviere. Die Handels-Konvention der
+    kolumbianischen Smaragd-Haendler in der Bogota-Muzo-Strasse (Avenida
+    Jimenez de Quesada), in Direkt-Verkaeufen von Muzo-/Chivor-Bergarbeiter-
+    Genossenschaften an internationale Sammler-Delegationen und in Tucson-/
+    Muenchen-/Sainte-Marie-aux-Mines-Auktions-Katalogen mit kolumbianischen
+    Ausstellern (Muzo Colombia Emeralds, Cosquez Emerald Mining, Chivor
+    Emerald Company) ist die COP-Preisstellung mit USD-Umrechnungs-Hinweis
+    (``COP 4500000 (~USD 1100)`` als Standard-Notation der Bogota-Smaragd-
+    Boersen).
+
+    Bisher fielen alle Formen mit ``COP``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN vor deren
+    Aufnahme in die Vokabel-Liste): ``COP 5000000 ± 500000`` -> ``(5000000,
+    5000000)`` via inverted-range-Kollaps (Toleranz verloren); ``COP
+    2000000(50000)`` -> ``(2000000, 50000)`` (semantisch falscher Range
+    statt (1950000, 2050000)). Kollisionsfrei zu Fremdwoertern: die
+    ``\\b``-Wortgrenze hinter dem Code blockt ``cop``/``copy``/``copper``/
+    ``coping``/``coprolite``. Case-Insensitiv spiegelt die uebrige
+    Vokabel-Liste.
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("COP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP 5000000 ± 500000") == pytest.approx((4500000.0, 5500000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("COP 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("COP 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. COP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~COP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa COP 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("COP 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("cop 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Cop 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CoP 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("COP 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("COP 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("COP 500 ± 50 pro Karat") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP 4500000 ± 500000 (Muzo)") == pytest.approx((4000000.0, 5000000.0))
+    assert csv_loaders.parse_range("COP 100(2) [Chivor]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit COP-Praefix.
+    assert csv_loaders.parse_range("COP > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens COP 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("COP 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("COP 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("COP 500 to 1000") == (500.0, 1000.0)
+    # COP OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("COP") == (None, None)
+    assert csv_loaders.parse_range("COP ") == (None, None)
+    # Kollisionsschutz: die \\b-Wortgrenze hinter dem Code verhindert
+    # Praefix-Strip fuer Fremdwoerter, die zufaellig mit ``COP`` beginnen.
+    # ``copy``/``copper``/``coping``/``coprolite`` scheitern an der Wort-
+    # grenze, weil ``\b`` einen Buchstaben nach ``COP`` nicht als Wortende
+    # erkennt - die Zahl-Extraktion nach dem Wort greift dann aber die
+    # reine Ziffer aus dem restlichen Text.
+    assert csv_loaders.parse_range("copy 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("copper 500g") == (500.0, 500.0)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MXN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
