@@ -379,6 +379,91 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # Check, wie im Bestand konventionalisiert).
         "neznamy", "neznama", "nezname", "bez data", "neuvedeno",
         "datum nezname",
+        # Slowenisch (SL) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ. Sammler-
+        # Region der SL-Sprach-Achse umfasst die weltweit bedeutende Quecksilber-
+        # Fundstelle Idrija (UNESCO-Weltkulturerbe, zweitgroesste historische
+        # Quecksilber-Mine der Welt nach Almaden mit Cinnabarit-/Quecksilber-
+        # Type-Locality-Materiel), die Karawanken-Berg-Region und Julische Alpen
+        # (Kaernten/Slowenien-Grenzregion mit Blei-/Zink-Vererzungen), Litija
+        # (historisches Blei-/Zink-Revier mit Galenit-/Sphalerit-Stufen),
+        # Mezica (Petzen-Blei-Zink-Revier mit Wulfenit-Fundstellen), Sostanj/
+        # Velenje (Braunkohle-Revier mit Amber-/Bernstein-Vorkommen); geerbte
+        # Sammlungs-Kataloge aus der KuK-Monarchie-Provenienz (SL-Bestaende
+        # mit gemischt DE-/SL-Sprach-Etiketten aus der Vorkriegs-Zeit als Teil
+        # der Krain-Provinz Oesterreich-Ungarns), Museum-Etiketten aus dem
+        # Prirodoslovni muzej Slovenije (Naturkunde-Museum Ljubljana) und dem
+        # Muzej za rudarstvo in metalurgijo Slovenije (Bergbau-Museum Idrija)
+        # sowie aus Auktions-/Sammler-Provenienzen der Ljubljaner Mineralien-
+        # Boersen.
+        #
+        # ``neznan`` (mask. Adjektiv-Form fuer "unbekannt" - SL hat grammati-
+        # sches Geschlecht mit -/-a/-o-Endungen fuer mask./fem./neutr., wobei
+        # die undeterminierte mask. Kurzform ohne Endung ``neznan`` als
+        # kanonische Adjektiv-Nennform gilt; das SL-Substantiv ``datum`` ist
+        # mask., daher ist ``neznan`` die kongruente Form fuer den Standard-
+        # Ausdruck ``datum neznan``), ``neznana`` (fem. Adjektiv-Form -
+        # spiegelt die -/-a-Trennung von PL ``nieznany``/``nieznana``, CZ
+        # ``neznamy``/``neznama`` und die mask./fem.-Trennung der Romani-
+        # schen Sprachen ES/PT/FR/IT), ``brez datuma`` (Standard-Katalog-
+        # Konvention "ohne Datum" - direktes SL-Pendant zur DE-``ohne datum``/
+        # FR-``sans date``/IT-``senza data``/ES-``sin fecha``/PT-``sem data``/
+        # NL-``zonder datum``/PL-``bez daty``/CZ-``bez data``-Reihe der
+        # Museums-/Bibliothekars-Konventions-Form; die SL-Praeposition ``brez``
+        # = "ohne" verlangt Genitiv-Kasus, und die genitivische Singular-Form
+        # des maskulinen Substantivs ``datum`` ist ``datuma``, spiegelt die
+        # identische Praeposition-plus-Genitiv-Struktur der PL-``bez daty``/
+        # CZ-``bez data``-Form mit sprach-spezifischer Genitiv-Endung),
+        # ``datum neznan`` (invertierte SL-Prosa-Form - SL-Pendant zur DE-
+        # ``datum unbekannt``/FR-``date inconnue``/IT-``data sconosciuta``/
+        # ES-``fecha desconocida``/PT-``data desconhecida``/NL-``datum
+        # onbekend``/PL-``data nieznana``/CZ-``datum nezname``-Reihe mit
+        # sprach-spezifischer Kongruenz-Endung: SL ``datum`` ist maskulin,
+        # daher endungslose Adjektiv-Form ``neznan`` in der invertierten
+        # Prosa, spiegelt die grammatikalische Struktur der DE- und CZ-Reihe
+        # mit sprach-spezifischem Datum-Genus [DE neutrum ``datum``, CZ
+        # neutrum ``datum``, SL maskulin ``datum``]), ``ni datuma`` (natuer-
+        # lich-sprachliche SL-Existenz-Negations-Form - wortwoertlich "ist
+        # nicht Datum", das SL-Verb ``biti`` = "sein" in der 3. Sg. Praesens
+        # negiert als ``ni`` mit Genitiv-Objekt, spiegelt die semantische
+        # Struktur von DE ``keine daten`` / EN ``no data`` / PL ``brak daty``
+        # als generische "Datum existiert nicht"-Aussage; die Praedikats-
+        # Genitiv-Ergaenzung ``datuma`` folgt der SL-Grammatik-Regel
+        # Existenz-Negation + Genitiv).
+        #
+        # Bisher fielen alle SL-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der --ids-from-file-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus slowenisch-sprachigen Quellen
+        # (Idrija-Cinnabarit-Provenienzen, Karawanken-Blei-Zink-Kataloge,
+        # geerbte Krain-Vorkriegs-Sammlungen mit SL-Etiketten) scheiterten
+        # mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``neznan``/``neznana`` sind reine
+        # SL-Wort-Formen ohne Ziffer-Kollision zu Datums-Strings; die
+        # Marker-Menge kennt bereits die parallelen DE/EN/FR/IT/ES/PT/NL/
+        # PL/CZ-Adjektiv-Formen und die neuen SL-Formen sind lexikalisch
+        # disjunkt zu allen anderen Sprach-Reihen (SL ``neznan``/``neznana``
+        # != DE ``unbekannt`` != EN ``unknown`` != FR ``inconnu``/``inconnue``
+        # != IT ``sconosciuto``/``ignoto`` != ES ``desconocido`` != PT
+        # ``desconhecido`` != NL ``onbekend`` != PL ``nieznany``/``nieznana``
+        # != CZ ``neznamy``/``neznama``/``nezname``; SL ``brez datuma`` != DE
+        # ``ohne datum`` != FR ``sans date`` != IT ``senza data`` != ES ``sin
+        # fecha`` != PT ``sem data`` != NL ``zonder datum`` != PL ``bez daty``
+        # != CZ ``bez data``; SL ``datum neznan`` != DE ``datum unbekannt``
+        # != FR ``date inconnue`` != IT ``data sconosciuta``/``data ignota``
+        # != ES ``fecha desconocida`` != PT ``data desconhecida`` != NL
+        # ``datum onbekend`` != PL ``data nieznana`` != CZ ``datum nezname``;
+        # SL ``ni datuma`` ist lexikalisch einzigartig - keine andere Sprach-
+        # Reihe hat eine Existenz-Negations-Prosa-Form mit dem SL-``ni``-
+        # Konstrukt). Alle Marker sind lowercase (Consumer .lower()t den
+        # Input vor dem Check, wie im Bestand konventionalisiert). Diakritika-
+        # Notation entfaellt (SL hat mit c/s/z auch diakritische Varianten
+        # ``č``/``š``/``ž``, aber keiner der ausgewaehlten Marker enthaelt
+        # diese Zeichen - die SL-Ortho ist damit direkt ASCII-tauglich, ohne
+        # den CZ-Fallback-Konventions-Kommentar zu benoetigen).
+        "neznan", "neznana", "brez datuma", "datum neznan", "ni datuma",
         # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
         # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
         # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum

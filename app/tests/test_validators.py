@@ -7990,6 +7990,150 @@ def test_parse_iso_date_cz_no_data_marker():
     assert "bez daty" in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_sl_no_data_marker():
+    """Slowenische (SL) No-Data-Marker liefern None (nicht als silent-data-
+    loss Fund gemeldet).
+
+    Schliesst die SL-Sprach-Achse der No-Data-Marker parallel zur bereits
+    etablierten CZ/PL/NL/BE-Achse und den DE/EN/FR/IT/ES/PT-Achsen. Sammler-
+    Region der SL-Sprach-Achse umfasst die weltweit bedeutende Quecksilber-
+    Fundstelle Idrija (UNESCO-Weltkulturerbe, zweitgroesste historische
+    Quecksilber-Mine der Welt nach Almaden mit Cinnabarit-/Quecksilber-
+    Type-Locality-Materiel), die Karawanken-Berg-Region und Julische Alpen
+    (Kaernten/Slowenien-Grenzregion mit Blei-/Zink-Vererzungen), Litija
+    (historisches Blei-/Zink-Revier mit Galenit-/Sphalerit-Stufen), Mezica
+    (Petzen-Blei-Zink-Revier mit Wulfenit-Fundstellen); geerbte Sammlungs-
+    Kataloge aus der KuK-Monarchie-Provenienz (SL-Bestaende mit gemischt
+    DE-/SL-Sprach-Etiketten aus der Vorkriegs-Zeit als Teil der Krain-
+    Provinz Oesterreich-Ungarns) sowie Museum-Etiketten aus dem
+    Prirodoslovni muzej Slovenije und dem Muzej za rudarstvo in metalurgijo
+    Slovenije (Bergbau-Museum Idrija).
+
+    Marker: ``neznan`` (mask. Adjektiv-Form fuer "unbekannt" - SL-Substantiv
+    ``datum`` ist mask., daher endungslose Kongruenz-Form), ``neznana`` (fem.
+    Adjektiv-Form - spiegelt die -/-a-Trennung von PL ``nieznany``/``nieznana``
+    und CZ ``neznamy``/``neznama``), ``brez datuma`` (Standard-Katalog-
+    Konvention "ohne Datum" - direktes SL-Pendant zur DE-``ohne datum``/
+    FR-``sans date``/IT-``senza data``/ES-``sin fecha``/PT-``sem data``/
+    NL-``zonder datum``/PL-``bez daty``/CZ-``bez data``-Reihe; die SL-
+    Praeposition ``brez`` verlangt Genitiv-Kasus, die genitivische Singular-
+    Form des maskulinen ``datum`` ist ``datuma``), ``datum neznan`` (in-
+    vertierte SL-Prosa-Form mit endungsloser mask. Adjektiv-Form fuer
+    kongruentes ``datum``), ``ni datuma`` (SL-Existenz-Negations-Form
+    wortwoertlich "ist nicht Datum" mit ``ni`` als 3. Sg. Praesens
+    Negation von ``biti`` und Genitiv-Ergaenzung ``datuma``, spiegelt
+    die Semantik von DE ``keine daten`` / EN ``no data``).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # SL mask. Adjektiv-Form fuer "unbekannt" (endungslose Kongruenz-Form
+    # zu maskulinem datum)
+    assert parse_iso_date("neznan") is None
+    assert parse_iso_date("Neznan") is None
+    assert parse_iso_date("NEZNAN") is None
+    # SL fem. Adjektiv-Form fuer "unbekannt"
+    assert parse_iso_date("neznana") is None
+    assert parse_iso_date("Neznana") is None
+    assert parse_iso_date("NEZNANA") is None
+    # Standard-Katalog-Konvention "ohne Datum" (SL Praeposition brez +
+    # Genitiv, SL-Pendant zur DE ohne datum / FR sans date / IT senza data /
+    # ES sin fecha / PT sem data / NL zonder datum / PL bez daty / CZ bez
+    # data-Reihe mit sprach-spezifischer Genitiv-Endung ``-a`` fuer
+    # maskulines SL-Datum)
+    assert parse_iso_date("brez datuma") is None
+    assert parse_iso_date("Brez Datuma") is None
+    assert parse_iso_date("BREZ DATUMA") is None
+    # Invertierte SL-Prosa-Form (SL-Pendant zur DE datum unbekannt-Reihe;
+    # endungslose mask. Adjektiv-Form fuer kongruentes maskulines datum)
+    assert parse_iso_date("datum neznan") is None
+    assert parse_iso_date("Datum Neznan") is None
+    assert parse_iso_date("DATUM NEZNAN") is None
+    # SL-Existenz-Negations-Form ("ist nicht Datum" - Semantik parallel zu
+    # DE keine daten / EN no data)
+    assert parse_iso_date("ni datuma") is None
+    assert parse_iso_date("Ni Datuma") is None
+    assert parse_iso_date("NI DATUMA") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  neznan  ") is None
+    assert parse_iso_date("  neznana  ") is None
+    assert parse_iso_date("  brez datuma  ") is None
+    assert parse_iso_date("  datum neznan  ") is None
+    assert parse_iso_date("  ni datuma  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in (
+        "neznan", "neznana", "brez datuma", "datum neznan", "ni datuma",
+    ):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in (
+        "neznan", "neznana", "brez datuma", "datum neznan", "ni datuma",
+    ):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE/EN/FR/IT/ES/PT/NL/PL/CZ-/Bibliografie-
+    # Marker bleiben in der Menge (keine Kollision durch die neuen SL-Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen "ohne Datum"-Konventions-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der SL-Zusatz ``brez datuma``
+    # schliesst gemeinsam mit ihnen die neun Sprach-Achsen ab).
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    assert "sans date" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    assert "sin fecha" in DATE_NO_DATA_MARKERS
+    assert "sem data" in DATE_NO_DATA_MARKERS
+    assert "zonder datum" in DATE_NO_DATA_MARKERS
+    assert "bez daty" in DATE_NO_DATA_MARKERS
+    assert "bez data" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen invertierten Datum-Prosa-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der SL-Zusatz ``datum neznan``
+    # schliesst gemeinsam mit ihnen die neun invertierten Prosa-Achsen ab).
+    assert "datum unbekannt" in DATE_NO_DATA_MARKERS
+    assert "date inconnue" in DATE_NO_DATA_MARKERS
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS
+    assert "data ignota" in DATE_NO_DATA_MARKERS
+    assert "fecha desconocida" in DATE_NO_DATA_MARKERS
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS
+    assert "datum onbekend" in DATE_NO_DATA_MARKERS
+    assert "data nieznana" in DATE_NO_DATA_MARKERS
+    assert "datum nezname" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # SL-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben None
+    # als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur
+    # normalen Parse-Kette). Freistehendes ``datum`` (ohne ``neznan``-Nach-
+    # lauf), freistehendes ``brez`` (ohne ``datuma``-Nachlauf), freistehendes
+    # ``datuma`` (ohne ``brez``-/``ni``-Vorlauf) sind keine Marker fuer sich.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("brez") is None
+    assert parse_iso_date("ni") is None
+    assert parse_iso_date("datuma") is None
+    # Regress-Anker: die SL-``brez datuma``-Form ist lexikalisch disjunkt zur
+    # PL-``bez daty``- und CZ-``bez data``-Form (unterschiedliche Praeposition
+    # ``brez`` vs. ``bez`` und unterschiedliche Genitiv-Endung wegen unter-
+    # schiedlichem Datum-Genus: PL fem. -y, CZ neutr. -a, SL mask. -a mit
+    # anderem Stamm) - alle drei Marker koexistieren als eigenstaendige
+    # Sprach-Achsen.
+    assert "brez datuma" in DATE_NO_DATA_MARKERS
+    assert "bez daty" in DATE_NO_DATA_MARKERS
+    assert "bez data" in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
