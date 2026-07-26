@@ -287,6 +287,98 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # lowercase (Consumer .lower()t den Input vor dem Check, wie im
         # Bestand konventionalisiert).
         "nieznany", "nieznana", "brak daty", "bez daty", "data nieznana",
+        # Tschechisch (CZ) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL. Sammler-
+        # Region der CZ-Sprach-Achse umfasst die weltweit bedeutenden Fundstellen
+        # der Boehmischen Masse: Jachymov (Joachimsthal - Type-Locality fuer
+        # zahlreiche Uran-/Sekundaer-Uran-Mineralien, historisch das namens-
+        # gebende Silber-Bergbau-Revier fuer den Taler/Dollar), Pribram (histori-
+        # sches Silber-/Blei-/Zink-Revier mit weltbekannten Kristall-Stufen von
+        # Galenit/Pyrargyrit/Proustit/Silber und Uran-Fundstellen im Zusatz-
+        # Revier), Krusne hory (Erzgebirge-Suedseite mit Krupka/Zinnwald-Cinovec
+        # fuer Zinnwaldit/Kassiterit/Fluorit/Topas), Krkonose (Riesengebirge-
+        # Suedseite), Ceskomoravska vrchovina (Boehmisch-Maehrische Hoehen mit
+        # Turmalin-/Beryll-Pegmatiten Dolni Bory, Rozna, Vlastejovice), Slavkovsky
+        # les (Kaiserwald mit Horni Slavkov/Schlaggenwald Sn-W-Revier); geerbte
+        # Sammlungs-Kataloge aus historischen Grenzregionen mit gemischter DE-/
+        # CZ-Sprach-Provenienz (Sudetenland-Bestaende mit tschechisch-sprachigen
+        # Etiketten auf urspruenglich deutschen Sammlungen aus Vorkriegs-Zeit
+        # und Nachkriegs-Umbenennung); Museum-Etiketten aus Narodni muzeum Praha
+        # (Nationalmuseum Prag mit einer der weltweit groessten Mineraliensamm-
+        # lungen), Ceska geologicka sluzba (Tschechischer Geologischer Dienst),
+        # Moravske zemske muzeum Brno (Maehrisches Landesmuseum Bruenn),
+        # Muzeum ceskeho krasu Beroun sowie aus Auktions-/Sammler-Provenienzen
+        # der Prager/Bruenner Mineralien-Boersen und aus tschechisch-sprachigen
+        # Sammlungs-Datenbanken wie mindat.cz.
+        #
+        # ``neznamy`` (mask. Adjektiv-Form fuer "unbekannt"; ohne Diakritika-
+        # Notation im Katalog-ASCII-Fallback), ``neznama`` (fem. Adjektiv-Form
+        # - CZ hat grammatisches Geschlecht mit -y/-a/-e-Endungen fuer mask./
+        # fem./neutr., spiegelt die -y/-a-Trennung von PL ``nieznany``/
+        # ``nieznana`` und die mask./fem.-Trennung der Romanischen Sprachen ES
+        # ``desconocido``/``desconocida``, PT ``desconhecido``/``desconhecida``,
+        # IT ``sconosciuto``/``sconosciuta``, FR ``inconnu``/``inconnue``),
+        # ``nezname`` (neutr. Adjektiv-Form - CZ-Substantiv ``datum`` ist
+        # grammatisch neutrum, wodurch die neutr.-Endung ``-e`` obligatorisch
+        # wird fuer den Kongruenz-korrekten Ausdruck ``nezname datum`` und die
+        # invertierte Form ``datum nezname``), ``bez data`` (Standard-Katalog-
+        # Konvention "ohne Datum", direktes CZ-Pendant zur DE-``ohne datum`` /
+        # FR-``sans date`` / IT-``senza data`` / ES-``sin fecha`` / PT-``sem
+        # data`` / NL-``zonder datum`` / PL-``bez daty``-Reihe der Museums-/
+        # Bibliothekars-Konventions-Form; die CZ-Praeposition ``bez`` = "ohne"
+        # verlangt Genitiv-Kasus, und die genitivische Singular-Form des
+        # neutralen Substantivs ``datum`` ist ``data`` - spiegelt die identische
+        # Praeposition-plus-Genitiv-Struktur der PL-``bez daty``-Form, wobei
+        # PL den femininen Genitiv ``daty`` bildet und CZ den neutralen
+        # Genitiv ``data``), ``neuvedeno`` (natuerlich-sprachliche CZ-Katalog-
+        # Marker-Form fuer "nicht angegeben"; wortwoertlich "nicht angefuehrt",
+        # Passiv-Partizip des Verbs ``uvest`` = "anfuehren/angeben". Standard-
+        # Marker in tschechisch-sprachigen Sammlungs-Datenbanken und Museums-
+        # Etiketten fuer nicht ausgefuellte Datums-Felder - semantisch parallel
+        # zu DE ``keine angabe`` / EN ``no data`` / FR ``pas de date`` als
+        # generischer "kein Wert vorhanden"-Marker), ``datum nezname``
+        # (invertierte CZ-Prosa-Form mit grammatisch obligatorischer neutraler
+        # Adjektiv-Endung ``-e`` - CZ-Substantiv ``datum`` ist neutrum wie im
+        # DE, wodurch die Kongruenz-Struktur der invertierten Form dem
+        # DE-``datum unbekannt`` folgt und nicht den femininen Formen der
+        # Romanischen/Slawischen Sprachen mit femininem Datum-Genus [FR ``date
+        # inconnue``, IT ``data sconosciuta``/``data ignota``, ES ``fecha
+        # desconocida``, PT ``data desconhecida``, PL ``data nieznana``]).
+        #
+        # Bisher fielen alle CZ-Bestaende mit diesen expliziten Markern in den
+        # silent-data-loss-Report als "invalid Datum, bitte pruefen", obwohl der
+        # User semantisch bewusst "kein Datum verfuegbar" markiert hatte. Der
+        # --ids-from-file-Import und die Migrations-Kette fuer Sammler-Notizen
+        # aus tschechisch-sprachigen Quellen (Bestaende aus Narodni muzeum
+        # Praha, geerbte Sudeten-Katalog-Sammlungen mit CZ-Etiketten nach
+        # Nachkriegs-Umschrift, Prager Kaufmann-/Auktions-Provenienzen)
+        # scheiterten mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den uebrigen
+        # Marker-Varianten: ``neznamy``/``neznama``/``nezname`` sind reine
+        # CZ-Wort-Formen ohne Ziffer-Kollision zu Datums-Strings; die Marker-
+        # Menge kennt bereits die parallelen DE/EN/FR/IT/ES/PT/NL/PL-Adjektiv-
+        # Formen und die neuen CZ-Formen sind lexikalisch disjunkt zu allen
+        # anderen Sprach-Reihen (CZ ``neznamy``/``neznama``/``nezname`` !=
+        # DE ``unbekannt`` != EN ``unknown`` != FR ``inconnu``/``inconnue``
+        # != IT ``sconosciuto``/``ignoto`` != ES ``desconocido`` != PT
+        # ``desconhecido`` != NL ``onbekend`` != PL ``nieznany``/``nieznana``;
+        # CZ ``bez data`` != PL ``bez daty`` (unterschiedliche Genitiv-Endung
+        # wegen unterschiedlichem Datum-Genus) != DE ``ohne datum`` != FR
+        # ``sans date`` != IT ``senza data`` != ES ``sin fecha`` != PT ``sem
+        # data`` != NL ``zonder datum``; CZ ``neuvedeno`` ist CZ-spezifische
+        # Passiv-Partizip-Form ohne lexikalische Parallele in den uebrigen
+        # Marker-Reihen; CZ ``datum nezname`` != DE ``datum unbekannt`` != FR
+        # ``date inconnue`` != IT ``data sconosciuta``/``data ignota`` != ES
+        # ``fecha desconocida`` != PT ``data desconhecida`` != NL ``datum
+        # onbekend`` != PL ``data nieznana``). Alle Marker sind lowercase und
+        # ohne Diakritika notiert (CZ-Diakritika ě/á/í werden im Sammler-
+        # Katalog-ASCII-Fallback der Windows-CP1250-/UTF-8-Notiz-Ketten
+        # regelmaessig weggelassen; die Marker-Menge ist damit bewusst auf die
+        # ASCII-Grundform beschraenkt, analog zur PL-Achse mit ``brak daty``
+        # ohne PL-eigene Diakritika. Consumer .lower()t den Input vor dem
+        # Check, wie im Bestand konventionalisiert).
+        "neznamy", "neznama", "nezname", "bez data", "neuvedeno",
+        "datum nezname",
         # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
         # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
         # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum

@@ -7832,6 +7832,164 @@ def test_parse_iso_date_pl_no_data_marker():
     assert "o.j." in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_cz_no_data_marker():
+    """Tschechische (CZ) No-Data-Marker liefern None (nicht als silent-data-
+    loss Fund gemeldet).
+
+    Schliesst die CZ-Sprach-Achse der No-Data-Marker parallel zur bereits
+    etablierten PL/NL/BE-Achse und den DE/EN/FR/IT/ES/PT-Achsen. Sammler-
+    Region der CZ-Sprach-Achse umfasst die weltweit bedeutenden Fundstellen
+    der Boehmischen Masse: Jachymov (Joachimsthal Type-Locality fuer Uran-
+    Mineralien), Pribram (Silber-/Blei-/Zink-Revier), Krusne hory (Erz-
+    gebirge-Suedseite mit Krupka/Cinovec Sn-W-Revier), Krkonose (Riesen-
+    gebirge), Ceskomoravska vrchovina (Turmalin-/Beryll-Pegmatite Dolni
+    Bory/Rozna/Vlastejovice), Slavkovsky les (Kaiserwald mit Horni Slavkov);
+    geerbte Sammlungs-Kataloge aus historischen Grenzregionen mit gemischter
+    DE-/CZ-Sprach-Provenienz (Sudetenland-Bestaende) sowie Museum-Etiketten
+    aus Narodni muzeum Praha (Nationalmuseum Prag), Moravske zemske muzeum
+    Brno, Ceska geologicka sluzba und aus Auktions-/Sammler-Provenienzen
+    der Prager/Bruenner Mineralien-Boersen.
+
+    Marker: ``neznamy`` (mask. Adjektiv-Form fuer "unbekannt"), ``neznama``
+    (fem. Adjektiv-Form - CZ hat grammatisches Geschlecht mit -y/-a/-e-
+    Endungen fuer mask./fem./neutr., spiegelt die -y/-a-Trennung von PL
+    ``nieznany``/``nieznana``), ``nezname`` (neutr. Adjektiv-Form - CZ-
+    Substantiv ``datum`` ist grammatisch neutrum, wodurch die neutr.-Endung
+    ``-e`` obligatorisch wird), ``bez data`` (Standard-Katalog-Konvention
+    "ohne Datum", direktes CZ-Pendant zur DE-``ohne datum`` / FR-``sans
+    date`` / IT-``senza data`` / ES-``sin fecha`` / PT-``sem data`` / NL-
+    ``zonder datum`` / PL-``bez daty``-Reihe; die CZ-Praeposition ``bez`` =
+    "ohne" verlangt Genitiv-Kasus, und die genitivische Singular-Form des
+    neutralen Substantivs ``datum`` ist ``data``, spiegelt die identische
+    Praeposition-plus-Genitiv-Struktur der PL-``bez daty``-Form), ``neuvedeno``
+    (natuerlich-sprachliche CZ-Katalog-Marker-Form fuer "nicht angegeben";
+    Passiv-Partizip des Verbs ``uvest`` = "anfuehren/angeben", parallel zu
+    DE ``keine angabe`` / EN ``no data``), ``datum nezname`` (invertierte
+    CZ-Prosa-Form mit grammatisch obligatorischer neutraler Adjektiv-Endung
+    ``-e`` - parallel zur DE-``datum unbekannt`` und nicht zu den femininen
+    Formen der Romanischen/Slawischen Sprachen mit femininem Datum-Genus).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # CZ mask. Adjektiv-Form fuer "unbekannt"
+    assert parse_iso_date("neznamy") is None
+    assert parse_iso_date("Neznamy") is None
+    assert parse_iso_date("NEZNAMY") is None
+    # CZ fem. Adjektiv-Form fuer "unbekannt"
+    assert parse_iso_date("neznama") is None
+    assert parse_iso_date("Neznama") is None
+    assert parse_iso_date("NEZNAMA") is None
+    # CZ neutr. Adjektiv-Form fuer "unbekannt" (Kongruenz-Form mit neutralem
+    # Datum-Substantiv)
+    assert parse_iso_date("nezname") is None
+    assert parse_iso_date("Nezname") is None
+    assert parse_iso_date("NEZNAME") is None
+    # Standard-Katalog-Konvention "ohne Datum" (CZ Praeposition bez + Genitiv,
+    # CZ-Pendant zur DE ohne datum / FR sans date / IT senza data / ES sin
+    # fecha / PT sem data / NL zonder datum / PL bez daty-Reihe)
+    assert parse_iso_date("bez data") is None
+    assert parse_iso_date("Bez Data") is None
+    assert parse_iso_date("BEZ DATA") is None
+    # Natuerlich-sprachliche CZ-Katalog-Marker-Form fuer "nicht angegeben"
+    # (Passiv-Partizip des Verbs uvest, parallel zu DE keine angabe /
+    # EN no data)
+    assert parse_iso_date("neuvedeno") is None
+    assert parse_iso_date("Neuvedeno") is None
+    assert parse_iso_date("NEUVEDENO") is None
+    # Invertierte CZ-Prosa-Form (CZ-Pendant zur DE datum unbekannt-Reihe;
+    # neutr. Endung -e folgt dem neutralen Genus des Substantivs datum wie im
+    # Deutschen, anders als die femininen Formen der Romanischen/Slawischen
+    # Sprachen mit femininem Datum)
+    assert parse_iso_date("datum nezname") is None
+    assert parse_iso_date("Datum Nezname") is None
+    assert parse_iso_date("DATUM NEZNAME") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  neznamy  ") is None
+    assert parse_iso_date("  neznama  ") is None
+    assert parse_iso_date("  nezname  ") is None
+    assert parse_iso_date("  bez data  ") is None
+    assert parse_iso_date("  neuvedeno  ") is None
+    assert parse_iso_date("  datum nezname  ") is None
+    # Menge-Konsistenz: alle neuen Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in (
+        "neznamy", "neznama", "nezname", "bez data", "neuvedeno",
+        "datum nezname",
+    ):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in (
+        "neznamy", "neznama", "nezname", "bez data", "neuvedeno",
+        "datum nezname",
+    ):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE/EN/FR/IT/ES/PT/NL/PL/Bibliografie-
+    # Marker bleiben in der Menge (keine Kollision durch die neuen CZ-Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen "ohne Datum"-Konventions-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der CZ-Zusatz ``bez data``
+    # schliesst gemeinsam mit ihnen die acht Sprach-Achsen ab).
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    assert "sans date" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    assert "sin fecha" in DATE_NO_DATA_MARKERS
+    assert "sem data" in DATE_NO_DATA_MARKERS
+    assert "zonder datum" in DATE_NO_DATA_MARKERS
+    assert "bez daty" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen invertierten Datum-Prosa-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der CZ-Zusatz ``datum nezname``
+    # schliesst gemeinsam mit ihnen die acht invertierten Prosa-Achsen ab).
+    assert "datum unbekannt" in DATE_NO_DATA_MARKERS
+    assert "date inconnue" in DATE_NO_DATA_MARKERS
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS
+    assert "data ignota" in DATE_NO_DATA_MARKERS
+    assert "fecha desconocida" in DATE_NO_DATA_MARKERS
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS
+    assert "datum onbekend" in DATE_NO_DATA_MARKERS
+    assert "data nieznana" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # CZ-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben None
+    # als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through zur
+    # normalen Parse-Kette). Freistehendes ``datum`` (ohne ``nezname``-Nach-
+    # lauf), freistehendes ``bez`` (ohne ``data``-Nachlauf), freistehendes
+    # ``data`` (ohne ``bez``-Vorlauf) sind keine Marker fuer sich.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("datum") is None
+    assert parse_iso_date("bez") is None
+    # ``data`` alleine ist im PL-Test bereits als Nicht-Marker verankert;
+    # hier ebenfalls: das CZ-Genitiv-Singular ``data`` ohne Praeposition-
+    # Vorlauf bleibt None (kein eigenstaendiger Marker).
+    assert parse_iso_date("data") is None
+    # Regress-Anker: die CZ-Formen sind kollisionsfrei zur DE-``o.D.``/
+    # ``o.J.``-Kurzform (die CZ-Adjektive beginnen mit ``n`` bzw. die
+    # Praeposition-Formen mit ``b``, ohne Kollision zur o-Punkt-Struktur
+    # der DE-Bibliografie-Kurzformen).
+    assert "o.d." in DATE_NO_DATA_MARKERS
+    assert "o.j." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die CZ-``bez data``-Form ist lexikalisch disjunkt zur
+    # PL-``bez daty``-Form (unterschiedliche Genitiv-Endung wegen unter-
+    # schiedlichem Datum-Genus: PL fem. -y, CZ neutr. -a) - beide Marker
+    # koexistieren als eigenstaendige Sprach-Achsen.
+    assert "bez data" in DATE_NO_DATA_MARKERS
+    assert "bez daty" in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
