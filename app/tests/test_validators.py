@@ -4614,6 +4614,71 @@ def test_parse_iso_date_numerisches_monat_jahr():
     assert parse_iso_date("2024/06") == "2024-06-01"
 
 
+def test_parse_iso_date_numerisches_monat_jahr_whitespace_underscore_separator():
+    """Numerisches MM/YYYY mit Whitespace-/Underscore-Separator (``06 2024`` /
+    ``06_2024``) parst wie die Slash-/Punkt-/Bindestrich-Form.
+
+    Ergaenzt die Ein-Zeichen-Separator-Klasse ``[/.\\-]`` von
+    :data:`_MONTH_NUMERIC_YEAR` um Whitespace und Underscore, symmetrisch zur
+    Year-First-Erweiterung in :data:`_YEAR_MONTH`. Beide Trenner entstehen in
+    denselben Quellen: PDF-Text-Extraktion mit Bindestrich-zu-Whitespace-
+    Normalisierung durch die Zwischenlage (Sammler kopiert ``06 2024`` aus einer
+    Auktions-PDF-Tabelle) und Foto-Software-Auto-Rename mit Underscore als
+    Reserved-Char-freiem Filename-Separator (``06_2024_batch.jpg`` fuer den
+    Foto-Batch aus Juni 2024). Ohne die Erweiterung war die MM/YYYY-Achse
+    strenger als die parallele YYYY-MM-Achse - dieselbe Filename-Konvention
+    parste nur je nach Reihenfolge des Sammlers, statt konsistent auf beiden
+    Achsen.
+    """
+    # Whitespace-Separator, einstellige und zweistellige Monatswerte
+    assert parse_iso_date("06 2024") == "2024-06-01"
+    assert parse_iso_date("6 2024") == "2024-06-01"
+    assert parse_iso_date("1 2024") == "2024-01-01"
+    assert parse_iso_date("12 2024") == "2024-12-01"
+    assert parse_iso_date("06 1985") == "1985-06-01"
+    assert parse_iso_date("12 1999") == "1999-12-01"
+    # Underscore-Separator
+    assert parse_iso_date("06_2024") == "2024-06-01"
+    assert parse_iso_date("6_2024") == "2024-06-01"
+    assert parse_iso_date("1_2024") == "2024-01-01"
+    assert parse_iso_date("12_2024") == "2024-12-01"
+    assert parse_iso_date("06_1985") == "1985-06-01"
+    # Whitespace-Toleranz aussen (parse_iso_date strippt vor dem Regex)
+    assert parse_iso_date("  06 2024  ") == "2024-06-01"
+    assert parse_iso_date("  06_2024  ") == "2024-06-01"
+    # Kombiniert mit Klammer-Strip
+    assert parse_iso_date("[06 2024]") == "2024-06-01"
+    assert parse_iso_date("(06_2024)") == "2024-06-01"
+    # Kombiniert mit Annaeherungspraefix
+    assert parse_iso_date("ca. 06 2024") == "2024-06-01"
+    assert parse_iso_date("ca. 06_2024") == "2024-06-01"
+    # Ungueltige Monatswerte → None (spiegelt die Slash-Form)
+    assert parse_iso_date("13 2024") is None
+    assert parse_iso_date("13_2024") is None
+    assert parse_iso_date("0 2024") is None
+    assert parse_iso_date("00_2024") is None
+    # Jahr ausserhalb [1800, 2999] → None
+    assert parse_iso_date("06 1700") is None
+    assert parse_iso_date("06_1799") is None
+    assert parse_iso_date("06 3000") is None
+    # 2-stelliges Jahr ist nicht erfasst (zu mehrdeutig - siehe
+    # test_parse_iso_date_numerisches_monat_jahr)
+    assert parse_iso_date("06 24") is None
+    assert parse_iso_date("06_24") is None
+    # Kollisionsschutz: mehrere Trennzeichen in Folge matchen nicht als
+    # MM/YYYY (der Regex-Slot ist ein Einzel-Zeichen, keine Range)
+    assert parse_iso_date("06  2024") is None      # doppeltes Leerzeichen
+    assert parse_iso_date("06__2024") is None      # doppelter Underscore
+    # Regress-Anker: bereits vorhandene Separatoren bleiben unveraendert
+    assert parse_iso_date("06/2024") == "2024-06-01"
+    assert parse_iso_date("06.2024") == "2024-06-01"
+    assert parse_iso_date("06-2024") == "2024-06-01"
+    # Regress-Anker: parallele YYYY-MM-Achse mit denselben Separatoren
+    # bleibt unveraendert
+    assert parse_iso_date("2024 06") == "2024-06-01"
+    assert parse_iso_date("2024_06") == "2024-06-01"
+
+
 def test_parse_iso_date_year_month_whitespace_underscore_separator():
     """Numerisches YYYY-MM mit Whitespace-/Underscore-Separator (``2024 06`` /
     ``2024_06``) parst wie die Bindestrich-/Slash-/Punkt-Form.

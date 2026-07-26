@@ -783,7 +783,16 @@ _YEAR_MONTH = re.compile(r"^\s*(\d{4})[-/. _](\d{1,2})\s*$")
 # Numerisches Monat-Jahr "06/2024", "6-2024", "06.2024" - in Exports oft fuer
 # Monatsangaben verwendet. Tag wird auf den 1. gesetzt; Monate ausserhalb 1-12
 # fallen auf None (sind dann i.d.R. ein anderes Format, das nicht hierher gehoert).
-_MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\-](\d{4})\s*$")
+# Whitespace- und Underscore-Trenner ("06 2024", "06_2024") ergaenzen die Basis-
+# Separator-Klasse symmetrisch zur Year-First-Variante :data:`_YEAR_MONTH`. Beide
+# Trenner entstehen in denselben Quellen wie dort: PDF-Text-Extraktion mit
+# Bindestrich-zu-Whitespace-Normalisierung durch die Zwischenlage (Sammler kopiert
+# "06 2024" aus einer Auktions-PDF-Tabelle) und Foto-Software-Auto-Rename mit
+# Underscore als Reserved-Char-freiem Filename-Separator ("06_2024_batch.jpg" fuer
+# den Foto-Batch aus Juni 2024). Ohne die Erweiterung war die MM/YYYY-Achse
+# strenger als die parallele YYYY-MM-Achse - dieselbe Filename-Konvention parste
+# nur je nach Reihenfolge des Sammlers, statt konsistent auf beiden Achsen.
+_MONTH_NUMERIC_YEAR = re.compile(r"^\s*(\d{1,2})[/.\- _](\d{4})\s*$")
 # Annaeherungspraefixe (DE/EN), wie sie in geerbten Sammlungs-Notizen typisch sind:
 # "ca. 1985", "circa 2020", "um 1980", "approx. 2024", "around 1995".
 # Werden gestrippt, dann wird der Rest re-parst - die Datumsbedeutung selbst bleibt
