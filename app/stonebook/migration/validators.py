@@ -668,6 +668,88 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # ``s`` gefolgt von Punkt-A; die bestehende ``s.d.``-Sister-Kurzform
         # ist trivialerweise disjunkt, weil A und D distinkte Buchstaben sind.
         "s.a.", "s. a.",
+        # Ungarisch (HU) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK.
+        # Sammler-Region Rudabanya (Siderit/Baryt/Fluorit), Recsk (Enargit/
+        # Kupfer-Pyrit), Nagybanya/Baia Mare (Sulfid-Erz), Kremnica-Grenzregion
+        # sowie geerbte KuK-Monarchie-Provenienzen (HU-Bestaende als Teil des
+        # Koenigreichs Ungarn mit gemischt HU-/DE-/SK-Sprach-Provenienz vor
+        # 1918/1920), Museum-Etiketten aus Magyar Termeszettudomanyi Muzeum
+        # Budapest (Ungarisches Naturhistorisches Museum), Magyar Nemzeti
+        # Muzeum, Herman Otto Muzeum Miskolc, Magyar Banyaszati es Foldtani
+        # Szolgalat (Ungarischer Bergbau- und Geologischer Dienst) sowie aus
+        # Auktions-/Sammler-Provenienzen der Budapester Mineralien-Boersen
+        # und aus ungarisch-sprachigen Sammlungs-Datenbanken.
+        #
+        # Ungarisch ist finno-ugrisch, keine indoeuropaeische Sprache -
+        # damit sind alle Marker lexikalisch vollstaendig disjunkt von
+        # allen bisherigen Slawischen/Germanischen/Romanischen Marker-
+        # Reihen; keine ASCII-Fallback-Kollision wie zwischen CZ/SK
+        # (``neznamy``/``neznama``) oder PL/SL. Adjektiv-/Substantiv-Formen
+        # kennen keine Geschlechts-Deklination (HU ist genusfrei), sodass
+        # die mask./fem./neut.-Trippel-Aufteilung der Slawischen Sprachen
+        # entfaellt.
+        #
+        # ``ismeretlen`` (Adjektiv/Substantiv fuer "unbekannt" - HU
+        # Standard-Marker, entspricht DE ``unbekannt``, EN ``unknown``,
+        # FR ``inconnu``, IT ``sconosciuto``, ES ``desconocido``, PT
+        # ``desconhecido``, NL ``onbekend``, PL ``nieznany``, CZ
+        # ``neznamy``, SL ``neznan``, SK ``neznamy``). Kanonische Katalog-
+        # /Museums-Konvention in HU-sprachigen Sammlungs-Etiketten und
+        # Bibliothekars-Zitaten. ``datum ismeretlen`` (invertierte HU-
+        # Prosa-Form, spiegelt DE ``datum unbekannt``/FR ``date inconnue``/
+        # IT ``data sconosciuta``/ES ``fecha desconocida``/PT ``data
+        # desconhecida``/NL ``datum onbekend``/PL ``data nieznana``/CZ
+        # ``datum nezname``/SL ``datum neznan``/SK ``datum neznamy`` -
+        # Substantiv ``datum`` vor Adjektiv, entspricht der HU-Wortstellung
+        # der Praedikat-Konstruktion "das Datum ist unbekannt"; ohne HU-
+        # spezifisches Kopulaverb sein/haben laesst die Katalog-Notation
+        # das Verb weg und beschreibt nur das Subjekt-Praedikat-Verhaeltnis).
+        # ``keltezetlen`` (kompakte Adjektiv-Form fuer "undatiert", entspricht
+        # DE ``undatiert`` als Museums-Etiketten-Standard fuer "ohne Datum-
+        # Angabe" - abgeleitet von HU ``keltez`` "datieren" mit der
+        # privativen Ableitungs-Endung ``-tlen``, die semantisch DE
+        # ``un-...-iert`` entspricht; kompakter als die postpositional-
+        # phrase ``datum nelkul``). ``datum nelkul`` (postpositional-phrase
+        # "ohne Datum" - direktes HU-Pendant zur DE-``ohne datum``/FR-``sans
+        # date``/IT-``senza data``/ES-``sin fecha``/PT-``sem data``/NL-
+        # ``zonder datum``/PL-``bez daty``/CZ-``bez data``/SL-``brez
+        # datuma``/SK-``bez datumu``-Reihe. Die HU-Postposition ``nelkul`` =
+        # "ohne" steht nachgestellt (HU ist Postposition-Sprache) und
+        # verlangt keine Kasus-Deklination am Substantiv, sodass ``datum
+        # nelkul`` die einzige korrekte Form ist - keine Genitiv-Variation
+        # wie im Slawischen). ``nincs datum`` (Existenz-Verneinung "es gibt
+        # kein Datum" - HU-Existentialsatz-Konvention analog zum DE ``kein
+        # Datum`` oder EN ``no date``, wobei ``nincs`` das negierte
+        # Existenz-Verb ist; steht als 3. Person Singular Indikativ und
+        # deckt sowohl "kein einzelnes Datum" als auch generell "keine
+        # Datumsangabe" ab). ``nincs adat`` (Existenz-Verneinung "es gibt
+        # keine Daten" - HU-Pendant zur DE-``keine daten``/EN-``no data``-
+        # Reihe; unterscheidet sich semantisch von ``nincs datum``
+        # dadurch, dass ``adat`` allgemein "Datenwert" bedeutet - ein
+        # Sammler notiert ``nincs adat`` in einer Etikettenspalte wenn
+        # keine Information vorliegt, und ``nincs datum`` speziell wenn
+        # das Datums-Feld leer bleibt).
+        #
+        # Bisher fielen alle HU-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der --ids-from-file-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus ungarisch-sprachigen Quellen
+        # (Rudabanya-Siderit-Provenienzen, Recsk-Kupfer-Katalog-Sammlungen,
+        # Nagybanya-Sulfid-Bestaende, geerbte KuK-Vorkriegs-/Zwischen-
+        # kriegs-Sammlungen mit HU-Etiketten) scheiterten mit stiller
+        # Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu allen
+        # uebrigen Sprach-Marker-Reihen. Alle Marker sind lowercase und
+        # ohne Diakritika notiert (HU-Diakritika á/é/í/ó/ö/ő/ú/ü/ű werden
+        # im Sammler-Katalog-ASCII-Fallback der Windows-CP1250-/UTF-8-
+        # Notiz-Ketten regelmaessig weggelassen; die Marker-Menge ist
+        # damit bewusst auf die ASCII-Grundform beschraenkt, analog zur
+        # CZ-/SK-/PL-Achse. Consumer .lower()t den Input vor dem Check,
+        # wie im Bestand konventionalisiert).
+        "ismeretlen", "datum ismeretlen", "keltezetlen",
+        "datum nelkul", "nincs datum", "nincs adat",
     }
 )
 

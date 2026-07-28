@@ -8413,6 +8413,95 @@ def test_parse_iso_date_sk_no_data_marker():
     assert "brez datuma" in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_hu_no_data_marker():
+    """HU-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/Bibliografie-
+    Achsen um Ungarisch (HU) - relevant fuer Sammler-Region Rudabanya
+    (Siderit/Baryt/Fluorit), Recsk (Enargit/Kupfer-Pyrit), Nagybanya/Baia
+    Mare (Sulfid-Erz) und geerbte KuK-Monarchie-Provenienzen mit HU-
+    Etiketten. Ungarisch ist finno-ugrisch (nicht indoeuropaeisch), damit
+    sind alle Marker lexikalisch vollstaendig disjunkt zu allen bisher
+    abgedeckten Sprach-Achsen. HU-Diakritika werden im ASCII-Fallback der
+    Windows-CP1250-/UTF-8-Sammler-Notiz-Ketten regelmaessig weggelassen;
+    die Marker-Menge fuehrt bewusst die ASCII-Grundform ohne
+    á/é/í/ó/ö/ő/ú/ü/ű.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-
+    Check ist case-insensitive (parse_iso_date .lower()t den Input vor
+    dem Check).
+    """
+    # Grundform (Adjektiv/Substantiv fuer "unbekannt")
+    assert parse_iso_date("ismeretlen") is None
+    assert parse_iso_date("Ismeretlen") is None
+    assert parse_iso_date("ISMERETLEN") is None
+    # Invertierte HU-Prosa-Form "Datum unbekannt"
+    assert parse_iso_date("datum ismeretlen") is None
+    assert parse_iso_date("Datum Ismeretlen") is None
+    assert parse_iso_date("DATUM ISMERETLEN") is None
+    # Kompakte Adjektiv-Form "undatiert"
+    assert parse_iso_date("keltezetlen") is None
+    assert parse_iso_date("Keltezetlen") is None
+    assert parse_iso_date("KELTEZETLEN") is None
+    # Postposition-Phrase "ohne Datum" (HU ``nelkul`` nachgestellt)
+    assert parse_iso_date("datum nelkul") is None
+    assert parse_iso_date("Datum Nelkul") is None
+    assert parse_iso_date("DATUM NELKUL") is None
+    # Existenz-Verneinung "es gibt kein Datum"
+    assert parse_iso_date("nincs datum") is None
+    assert parse_iso_date("Nincs Datum") is None
+    assert parse_iso_date("NINCS DATUM") is None
+    # Existenz-Verneinung "es gibt keine Daten"
+    assert parse_iso_date("nincs adat") is None
+    assert parse_iso_date("Nincs Adat") is None
+    assert parse_iso_date("NINCS ADAT") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  ismeretlen  ") is None
+    assert parse_iso_date("  datum nelkul  ") is None
+    assert parse_iso_date("  nincs adat  ") is None
+    # Menge-Konsistenz: alle neuen HU-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("ismeretlen", "datum ismeretlen", "keltezetlen",
+                   "datum nelkul", "nincs datum", "nincs adat"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("ismeretlen", "datum ismeretlen", "keltezetlen",
+                   "datum nelkul", "nincs datum", "nincs adat"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die
+    # HU-Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "bez datumu" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # HU-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid"
+    # (kein Trigger auf die Marker-Menge, Fall-Through zur Parse-Kette).
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: HU-aehnliche Fehl-Formen matchen nicht (nur die
+    # exakten Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt
+    # normal auf None als invalid).
+    assert parse_iso_date("ismeretlen datum") is None  # invertierte Wortfolge
+    assert parse_iso_date("nincs") is None             # bare, ohne Objekt
+    assert parse_iso_date("adat") is None              # bare Substantiv
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
