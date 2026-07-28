@@ -8275,6 +8275,144 @@ def test_parse_iso_date_sl_no_data_marker():
     assert "bez data" in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_sk_no_data_marker():
+    """Slowakische (SK) No-Data-Marker liefern None (nicht als silent-data-
+    loss Fund gemeldet).
+
+    Schliesst die SK-Sprach-Achse der No-Data-Marker parallel zur bereits
+    etablierten SL/CZ/PL/NL/BE-Achse und den DE/EN/FR/IT/ES/PT-Achsen.
+    Sammler-Region der SK-Sprach-Achse umfasst die Slowakischen Erzgebirge
+    (Slovenske rudohorie) mit den historisch weltbedeutenden Fundstellen
+    Banska Stiavnica (UNESCO-Weltkulturerbe, Silber-/Blei-/Zink-Revier),
+    Kremnica (historisches Gold-/Silber-Revier), Rozvana (Rosenau -
+    Siderit-/Antimonit-Fundstellen), Spisska Nova Ves/Rudnany (Cu-/Ag-
+    Vererzungen), Vysoke Tatry (Hohe Tatra mit alpinen Kluft-Mineralien);
+    geerbte Sammlungs-Kataloge aus der frueheren Tschechoslowakei
+    (1918-1992) mit gemischt SK-/CZ-Sprach-Etiketten sowie Museum-Etiketten
+    aus Slovenske narodne muzeum Bratislava und Slovenske banske muzeum
+    Banska Stiavnica.
+
+    SK-distinkte Marker: ``bez datumu`` (Standard-Katalog-Konvention
+    "ohne Datum" - SK Praep. ``bez`` + Genitiv des maskulinen ``dátum``
+    mit -u-Endung; direktes SK-Pendant zur DE-``ohne datum``/FR-``sans
+    date``/IT-``senza data``/CZ-``bez data``-Reihe mit sprach-spezifi-
+    scher Genitiv-Endung -u fuer maskulines SK-Datum), ``datum neznamy``
+    (invertierte SK-Prosa-Form mit mask.-Adjektiv-Endung ``-y`` fuer
+    kongruentes maskulines ``dátum`` - SK-Pendant zur CZ-``datum
+    nezname``/SL-``datum neznan``-Reihe mit sprach-spezifischer Endung),
+    ``neuvedeny`` (SK Passiv-Partizip von ``uviest`` = "anfuehren",
+    mask. Form mit -y; parallel zu CZ-``neuvedeno`` [neut. -o]).
+
+    SK-Adjektiv-Grundformen ``neznamy``/``neznama``/``nezname`` teilen
+    ihre ASCII-Fallback-Form mit den CZ-Formen (SK ``neznámy``/``neznáma``/
+    ``neznáme`` ohne Diakritika = CZ ``neznamy``/``neznama``/``nezname``
+    ohne Diakritika) - die Marker-Menge ist ein ``frozenset``, das
+    identische Strings automatisch dedupliziert, sodass die SK-Achse
+    nur die semantisch distinkten Formen ergaenzt.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-
+    Check ist case-insensitive (parse_iso_date .lower()t den Input vor
+    dem Check).
+    """
+    # SK Standard-Katalog-Konvention "ohne Datum" (Praep. bez + mask.
+    # Genitiv -u fuer masculines SK-Datum)
+    assert parse_iso_date("bez datumu") is None
+    assert parse_iso_date("Bez Datumu") is None
+    assert parse_iso_date("BEZ DATUMU") is None
+    # SK invertierte Prosa-Form (mask. Adjektiv-Endung -y fuer masculines
+    # SK-Datum, differenziert von CZ nezname-Neutrum und SL neznan-Kurzform)
+    assert parse_iso_date("datum neznamy") is None
+    assert parse_iso_date("Datum Neznamy") is None
+    assert parse_iso_date("DATUM NEZNAMY") is None
+    # SK Passiv-Partizip (mask. -y-Endung, differenziert von CZ neuvedeno
+    # mit -o-Endung)
+    assert parse_iso_date("neuvedeny") is None
+    assert parse_iso_date("Neuvedeny") is None
+    assert parse_iso_date("NEUVEDENY") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  bez datumu  ") is None
+    assert parse_iso_date("  datum neznamy  ") is None
+    assert parse_iso_date("  neuvedeny  ") is None
+    # SK-Adjektiv-Grundformen teilen ihre ASCII-Fallback mit CZ - die
+    # Menge dedupliziert, aber die Marker bleiben fuer SK-Consumer sichtbar
+    assert parse_iso_date("neznamy") is None
+    assert parse_iso_date("neznama") is None
+    assert parse_iso_date("nezname") is None
+    # Menge-Konsistenz: alle neuen SK-distinkten Marker sind sichtbar fuer
+    # Consumer wie csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("bez datumu", "datum neznamy", "neuvedeny"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("bez datumu", "datum neznamy", "neuvedeny"):
+        assert marker == marker.lower()
+    # Regress-Anker: bereits vorhandene DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL-/
+    # Bibliografie-Marker bleiben in der Menge (keine Kollision durch die
+    # neuen SK-Marker).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen "ohne Datum"-Konventions-Marker der
+    # uebrigen Sprachen bleiben in der Menge (der SK-Zusatz ``bez datumu``
+    # schliesst gemeinsam mit ihnen die zehn Sprach-Achsen ab).
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    assert "sans date" in DATE_NO_DATA_MARKERS
+    assert "senza data" in DATE_NO_DATA_MARKERS
+    assert "sin fecha" in DATE_NO_DATA_MARKERS
+    assert "sem data" in DATE_NO_DATA_MARKERS
+    assert "zonder datum" in DATE_NO_DATA_MARKERS
+    assert "bez daty" in DATE_NO_DATA_MARKERS
+    assert "bez data" in DATE_NO_DATA_MARKERS
+    assert "brez datuma" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: die parallelen invertierten Datum-Prosa-Marker der
+    # uebrigen Sprachen bleiben in der Menge.
+    assert "datum unbekannt" in DATE_NO_DATA_MARKERS
+    assert "date inconnue" in DATE_NO_DATA_MARKERS
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS
+    assert "data ignota" in DATE_NO_DATA_MARKERS
+    assert "fecha desconocida" in DATE_NO_DATA_MARKERS
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS
+    assert "datum onbekend" in DATE_NO_DATA_MARKERS
+    assert "data nieznana" in DATE_NO_DATA_MARKERS
+    assert "datum nezname" in DATE_NO_DATA_MARKERS
+    assert "datum neznan" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: der CZ-``neuvedeno`` (neut. -o) bleibt in der Menge
+    # neben dem neuen SK-``neuvedeny`` (mask. -y) - beide koexistieren
+    # als eigenstaendige Sprach-Achsen.
+    assert "neuvedeno" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # SK-Marker triggern nicht auf ISO-Datums-Strings oder Jahres-Angaben).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben mit aehnlichem Wortlaut bleiben
+    # None als "invalid" (kein Trigger auf die Marker-Menge, Fall-Through
+    # zur normalen Parse-Kette). Freistehendes ``datum``, ``bez``, ``datumu``
+    # sind keine Marker fuer sich.
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    assert parse_iso_date("bez") is None
+    assert parse_iso_date("datum") is None
+    assert parse_iso_date("datumu") is None
+    # Regress-Anker: die SK-``bez datumu``-Form ist lexikalisch disjunkt zur
+    # CZ-``bez data`` (neutr. -a), PL-``bez daty`` (fem. -y) und SL-``brez
+    # datuma`` (mask. -a mit brez-Praep.) - alle vier koexistieren als
+    # eigenstaendige Sprach-Achsen.
+    assert "bez datumu" in DATE_NO_DATA_MARKERS
+    assert "bez data" in DATE_NO_DATA_MARKERS
+    assert "bez daty" in DATE_NO_DATA_MARKERS
+    assert "brez datuma" in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

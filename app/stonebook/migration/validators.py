@@ -464,6 +464,112 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # diese Zeichen - die SL-Ortho ist damit direkt ASCII-tauglich, ohne
         # den CZ-Fallback-Konventions-Kommentar zu benoetigen).
         "neznan", "neznana", "brez datuma", "datum neznan", "ni datuma",
+        # Slowakisch (SK) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL.
+        # Sammler-Region der SK-Sprach-Achse umfasst die Slowakischen Erzgebirge
+        # (Slovenske rudohorie) mit den historisch weltbedeutenden Fundstellen
+        # Banska Stiavnica (UNESCO-Weltkulturerbe, Silber-/Blei-/Zink-Revier
+        # mit Type-Locality-Materiel fuer zahlreiche Sulfid-Mineralien und
+        # Kolonisation seit dem 13. Jh.), Kremnica (Kremnitz - historisches
+        # Gold-/Silber-Revier mit Elektrum-Vorkommen), Rozvana/Roznava
+        # (Rosenau - Siderit-/Antimonit-Fundstellen des Slowakischen Karsts),
+        # Spisska Nova Ves/Rudnany (Rudnau - Cu-/Ag-Vererzungen), Nova Bana
+        # (Neusohl-Region mit Pyrit-/Kupfer-Adern), Marianka bei Bratislava
+        # (Pressburg-Umland), Vysoke Tatry (Hohe Tatra mit alpinen Kluft-
+        # Mineralien und Bergkristall-Fundstellen); geerbte Sammlungs-Kataloge
+        # aus der frueheren Tschechoslowakei (1918-1992) mit gemischt SK-/CZ-
+        # Sprach-Etiketten, aus der KuK-Monarchie-Provenienz (SK-Bestaende
+        # als Teil des Konigreichs Ungarn mit gemischt SK-/HU-/DE-Sprach-
+        # Provenienz vor 1918), Museum-Etiketten aus Slovenske narodne muzeum
+        # Bratislava (Slowakisches Nationalmuseum), Slovenske banske muzeum
+        # Banska Stiavnica (Slowakisches Bergbau-Museum), Prirodovedne muzeum
+        # Bratislava und Vychodoslovenske muzeum Kosice sowie aus Auktions-/
+        # Sammler-Provenienzen der Bratislavaer/Kosicer Mineralien-Boersen
+        # und aus slowakisch-sprachigen Sammlungs-Datenbanken.
+        #
+        # SK und CZ teilen historisch bedingt (gemeinsame Tschechoslowakei
+        # 1918-1992, hohe gegenseitige Verstaendlichkeit auch heute) einen
+        # grossen Teil des Katalog-/Museums-Fachwortschatzes, wodurch die SK-
+        # Adjektiv-Grundformen ``neznamy``/``neznama``/``nezname`` (mask./
+        # fem./neut.) in ihrer ASCII-Fallback-Form mit den CZ-Formen aus
+        # der vorangehenden CZ-Achse zusammenfallen (SK ``neznámy``/
+        # ``neznáma``/``neznáme`` ohne Diakritika = CZ ``neznamy``/
+        # ``neznama``/``nezname`` ohne Diakritika, siehe CZ-Kommentar zur
+        # ASCII-Fallback-Konvention). Die Marker-Menge ist ein
+        # ``frozenset``, das identische Strings automatisch dedupliziert,
+        # sodass die SK-Achse hier nur die von CZ semantisch distinkten
+        # SK-Formen ergaenzt statt die geteilten Adjektive redundant
+        # aufzufuehren.
+        #
+        # Die SK-distinkten Marker sind: ``bez datumu`` (Standard-Katalog-
+        # Konvention "ohne Datum" - direktes SK-Pendant zur DE-``ohne datum``/
+        # FR-``sans date``/IT-``senza data``/ES-``sin fecha``/PT-``sem data``/
+        # NL-``zonder datum``/PL-``bez daty``/CZ-``bez data``/SL-``brez
+        # datuma``-Reihe. Die SK-Praeposition ``bez`` = "ohne" verlangt
+        # Genitiv-Kasus, und die genitivische Singular-Form des maskulinen
+        # Substantivs ``dátum`` ist ``dátumu`` mit -u-Endung; SK ``dátum``
+        # ist masculine wie SL ``datum`` und HU ``dátum``, aber im Kontrast
+        # zum CZ neutralen ``datum`` mit -a-Genitiv-Endung. Die -u-Endung
+        # differenziert die SK-Form damit lexikalisch klar von der CZ-``bez
+        # data``- und der PL-``bez daty``-Form: SK hat identische
+        # Praeposition wie CZ, aber unterschiedliches Datum-Genus mit
+        # anderer Genitiv-Endung; SL hat unterschiedliche Praeposition
+        # ``brez`` und dieselbe -a-Genitiv-Endung wie in ``datuma``. Die
+        # SK-Form ``bez datumu`` ist die kanonische Katalog-Konvention der
+        # slowakisch-sprachigen Museums-/Bibliothekars-Tradition), ``datum
+        # neznamy`` (invertierte SK-Prosa-Form - SK-Pendant zur DE-``datum
+        # unbekannt``/FR-``date inconnue``/IT-``data sconosciuta``/``data
+        # ignota``/ES-``fecha desconocida``/PT-``data desconhecida``/NL-
+        # ``datum onbekend``/PL-``data nieznana``/CZ-``datum nezname``/SL-
+        # ``datum neznan``-Reihe mit sprach-spezifischer Kongruenz-Endung:
+        # SK ``dátum`` ist maskulin (wie SL), daher mask.-Adjektiv-Endung
+        # ``-y`` in der invertierten Prosa; die -y-Endung differenziert
+        # die SK-Form lexikalisch von der CZ-``datum nezname``-Form
+        # [neutrale Endung -e wegen neutraler CZ-Datum-Genus] und von der
+        # SL-``datum neznan``-Form [SL nutzt die endungslose mask. Kurzform,
+        # SK die -y-Vollform]), ``neuvedeny`` (natuerlich-sprachliche SK-
+        # Katalog-Marker-Form fuer "nicht angegeben"; Passiv-Partizip des
+        # Verbs ``uviest`` = "anfuehren/angeben" mit mask. -y-Endung.
+        # Standard-Marker in slowakisch-sprachigen Sammlungs-Datenbanken
+        # und Museums-Etiketten fuer nicht ausgefuellte Datums-Felder -
+        # semantisch parallel zu CZ ``neuvedeno`` [neut. -o-Endung] und
+        # zu DE ``keine angabe`` / EN ``no data`` / FR ``pas de date`` als
+        # generischer "kein Wert vorhanden"-Marker; die -y-Endung
+        # differenziert die SK-Form lexikalisch von der CZ-``neuvedeno``-
+        # Form).
+        #
+        # Bisher fielen alle SK-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der --ids-from-file-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus slowakisch-sprachigen Quellen
+        # (Banska-Stiavnica-Silber-Provenienzen, Kremnica-Gold-Katalog-
+        # Sammlungen, Rozvana-Siderit-Bestaende, geerbte Tschechoslowakei-
+        # Vorkriegs-/Zwischenkriegs-Sammlungen mit SK-Etiketten) scheiterten
+        # mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``bez datumu`` unterscheidet sich
+        # durch die -u-Genitiv-Endung von der CZ-``bez data`` (neutr. -a),
+        # PL-``bez daty`` (fem. -y) und SL-``brez datuma`` (mask. -a mit
+        # anderem Praep-Wort brez) - alle vier koexistieren als eigen-
+        # staendige Sprach-Achsen. ``datum neznamy`` unterscheidet sich
+        # durch die -y-Endung von CZ ``datum nezname`` (neutr. -e), SL
+        # ``datum neznan`` (endungslose mask. Kurzform), PL ``data
+        # nieznana`` (invertierte Wortfolge datum-nachgestellt statt
+        # datum-vorangestellt, fem. Adjektiv) - alle vier koexistieren
+        # als eigenstaendige invertierte Prosa-Formen. ``neuvedeny``
+        # unterscheidet sich durch die -y-Endung von CZ ``neuvedeno``
+        # (neutr. -o). Die Marker sind lexikalisch disjunkt zu allen
+        # anderen Sprach-Reihen und zu allen Datums-Formen (keine Ziffern-
+        # Kollision, keine Datums-Trenner-Kollision). Alle Marker sind
+        # lowercase und ohne Diakritika notiert (SK-Diakritika á/é/í/ó/ú
+        # sowie ä/ĺ/ŕ/ô/ň/ď/ť/ľ/š/č/ž werden im Sammler-Katalog-ASCII-
+        # Fallback der Windows-CP1250-/UTF-8-Notiz-Ketten regelmaessig
+        # weggelassen; die Marker-Menge ist damit bewusst auf die ASCII-
+        # Grundform beschraenkt, analog zur CZ- und PL-Achse. Consumer
+        # .lower()t den Input vor dem Check, wie im Bestand konventionali-
+        # siert).
+        "bez datumu", "datum neznamy", "neuvedeny",
         # Wissenschaftliche Bibliografie-/Katalogisierungs-Konventionen:
         # ``n.d.`` (englisch "no date" / lateinisch "non datum") ist die
         # ISBD/AACR2/RDA-Bibliothekars-Standard-Abkuerzung fuer "kein Datum
