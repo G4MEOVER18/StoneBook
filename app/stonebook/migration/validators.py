@@ -750,6 +750,72 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # wie im Bestand konventionalisiert).
         "ismeretlen", "datum ismeretlen", "keltezetlen",
         "datum nelkul", "nincs datum", "nincs adat",
+        # Rumaenisch (RO) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU.
+        # Sammler-Region Baia Mare / Cavnic / Herja / Nistru (Sulfid-Erz-Region
+        # der Ost-Karpaten mit Vivianit/Pyrit/Galenit/Sphalerit/Realgar-Auripigment-
+        # Assoziationen), Ocna de Fier (Skarn-Mineralien), Balan (Kupfer-Pyrit),
+        # Ilba/Turt (Baryt/Fluorit-Adern) sowie Museums-Etiketten aus dem Muzeul
+        # National de Geologie Bukarest, Muzeul Judetean de Mineralogie "Victor
+        # Gorduza" Baia Mare (grosse Sammlung der lokalen Sulfid-Bestaende) und
+        # geerbte Sammler-Notizen aus Rumanien-Provenienzen mit RO-Etiketten.
+        # Die RON-Waehrung ist bereits im Currency-Prefix-Set (:data:`_LEADING_
+        # CURRENCY_PREFIX` in csv_loaders.py) abgedeckt - RO ist damit eine
+        # bereits etablierte Provenienz-Achse ohne parallele Datums-Marker-
+        # Unterstuetzung; diese Ergaenzung schliesst die letzte semantische
+        # Luecke auf der RO-Achse.
+        #
+        # Rumaenisch ist romanisch (Latin-basiert wie FR/IT/ES/PT), teilt aber
+        # keine Marker-Wortstaemme mit den bereits abgedeckten Romance-Sprachen:
+        # ``necunoscut`` ist eigenstaendige RO-Ableitung (aus lateinisch
+        # ``cognoscere`` mit RO-Prafix ``ne-`` und RO-Ableitungs-Endung), waehrend
+        # FR ``inconnu``/IT ``sconosciuto``/ES ``desconocido``/PT ``desconhecido``
+        # verschiedene Ableitungs-Pfade nehmen; keine ASCII-Kollision. Substantiv
+        # ``data`` teilt zwar die lateinische Basis mit IT ``data``/PT ``data``,
+        # aber die Kombination mit dem RO-eigenen Adjektiv (``data necunoscuta``)
+        # ist lexikalisch disjunkt zur IT-Form (``data sconosciuta``) und zur PT-
+        # Form (``data desconhecida``). Das Wort ``fara`` (aus lateinisch ``foras``
+        # "draussen", RO-Bedeutungs-Verschiebung zu "ohne") ist eigenstaendig
+        # gegenueber FR ``sans``/IT ``senza``/ES ``sin``/PT ``sem``. RO-
+        # Geschlechts-Deklination der Adjektive analog zu den uebrigen Romance-
+        # Sprachen (mask./fem.-Formen ``necunoscut``/``necunoscuta`` und
+        # ``nedatat``/``nedatata``).
+        #
+        # ``necunoscut`` / ``necunoscuta`` (mask./fem. Form von "unbekannt" -
+        # entspricht DE ``unbekannt``, EN ``unknown``, FR ``inconnu/inconnue``,
+        # IT ``sconosciuto/sconosciuta``, ES ``desconocido/desconocida``, PT
+        # ``desconhecido/desconhecida``). Kanonische RO-Katalog-Konvention in
+        # Museums-Etiketten und Sammler-Notizen. ``data necunoscuta`` (invertierte
+        # RO-Prosa-Form, spiegelt DE ``datum unbekannt``/FR ``date inconnue``/IT
+        # ``data sconosciuta``/ES ``fecha desconocida``/PT ``data desconhecida``/
+        # NL ``datum onbekend``/HU ``datum ismeretlen``). ``nedatat`` / ``nedatata``
+        # (mask./fem. Adjektiv fuer "undatiert" - entspricht DE ``undatiert``, HU
+        # ``keltezetlen``; abgeleitet aus RO ``data`` "Datum" mit privativem RO-
+        # Praefix ``ne-`` "un-" und der Verb-Ableitungs-Endung ``-at``, das
+        # semantisch der DE ``un-...-iert``-Konstruktion entspricht). ``fara data``
+        # (Praeposition-Phrase "ohne Datum" - direktes RO-Pendant zur DE-``ohne
+        # datum``/FR-``sans date``/IT-``senza data``/ES-``sin fecha``/PT-``sem
+        # data``/NL-``zonder datum``/PL-``bez daty``/CZ-``bez data``/SL-``brez
+        # datuma``/SK-``bez datumu``/HU-``datum nelkul``-Reihe; RO-Praeposition
+        # ``fara`` "ohne" steht vorangestellt wie in den uebrigen Romance-Sprachen).
+        #
+        # Bisher fielen alle RO-Bestaende mit diesen expliziten Markern in den
+        # silent-data-loss-Report als "invalid Datum, bitte pruefen", obwohl der
+        # User semantisch bewusst "kein Datum verfuegbar" markiert hatte - der
+        # Migration-Pfad fuer geerbte Baia-Mare-Provenienzen und Museum-Uebernahmen
+        # aus dem Muzeul Judetean Baia Mare scheiterte mit stiller Datenverlust
+        # auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu allen uebrigen
+        # Sprach-Marker-Reihen. Alle Marker sind lowercase und ohne Diakritika
+        # notiert (RO-Diakritika ă/â/î/ș/ț werden im Sammler-Katalog-ASCII-
+        # Fallback der Windows-CP1250-/UTF-8-Notiz-Ketten regelmaessig weggelassen
+        # bzw. auf ASCII-Basisbuchstaben abgebildet - ``fără`` -> ``fara``,
+        # ``dată`` -> ``data``, ``necunoscută`` -> ``necunoscuta``; die Marker-
+        # Menge folgt der ASCII-Grundform, analog zur HU-/CZ-/SK-/PL-Achse.
+        # Consumer .lower()t den Input vor dem Check, wie im Bestand
+        # konventionalisiert).
+        "necunoscut", "necunoscuta", "data necunoscuta",
+        "nedatat", "nedatata", "fara data",
     }
 )
 

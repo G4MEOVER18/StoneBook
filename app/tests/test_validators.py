@@ -8502,6 +8502,97 @@ def test_parse_iso_date_hu_no_data_marker():
     assert parse_iso_date("adat") is None              # bare Substantiv
 
 
+def test_parse_iso_date_ro_no_data_marker():
+    """RO-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/Bibliografie-
+    Achsen um Rumaenisch (RO) - relevant fuer Sammler-Region Baia Mare / Cavnic
+    / Herja / Nistru (Sulfid-Erz-Region der Ost-Karpaten mit weltberuehmten
+    Vivianit/Pyrit/Galenit/Sphalerit-Assoziationen), Ocna de Fier (Skarn),
+    Balan (Kupfer-Pyrit) sowie Museum-Etiketten aus Muzeul Judetean Baia Mare
+    und Muzeul National de Geologie Bukarest. RO ist romanisch (Latin-basiert),
+    aber die Marker teilen keine Wortstaemme mit den bereits abgedeckten
+    FR/IT/ES/PT-Reihen (``necunoscut`` eigenstaendig, ``fara`` vs. FR ``sans``
+    /IT ``senza``/ES ``sin``/PT ``sem``). RO-Diakritika ă/â/î/ș/ț werden im
+    ASCII-Fallback der Windows-CP1250-/UTF-8-Sammler-Notiz-Ketten regelmaessig
+    weggelassen; die Marker-Menge fuehrt bewusst die ASCII-Grundform.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Grundform (Adjektiv fuer "unbekannt"), mask./fem.
+    assert parse_iso_date("necunoscut") is None
+    assert parse_iso_date("Necunoscut") is None
+    assert parse_iso_date("NECUNOSCUT") is None
+    assert parse_iso_date("necunoscuta") is None
+    assert parse_iso_date("Necunoscuta") is None
+    assert parse_iso_date("NECUNOSCUTA") is None
+    # Invertierte RO-Prosa-Form "Datum unbekannt"
+    assert parse_iso_date("data necunoscuta") is None
+    assert parse_iso_date("Data Necunoscuta") is None
+    assert parse_iso_date("DATA NECUNOSCUTA") is None
+    # Adjektiv-Form "undatiert" (mask./fem.)
+    assert parse_iso_date("nedatat") is None
+    assert parse_iso_date("Nedatat") is None
+    assert parse_iso_date("NEDATAT") is None
+    assert parse_iso_date("nedatata") is None
+    assert parse_iso_date("Nedatata") is None
+    assert parse_iso_date("NEDATATA") is None
+    # Praeposition-Phrase "ohne Datum"
+    assert parse_iso_date("fara data") is None
+    assert parse_iso_date("Fara Data") is None
+    assert parse_iso_date("FARA DATA") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  necunoscut  ") is None
+    assert parse_iso_date("  fara data  ") is None
+    assert parse_iso_date("  data necunoscuta  ") is None
+    # Menge-Konsistenz: alle neuen RO-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("necunoscut", "necunoscuta", "data necunoscuta",
+                   "nedatat", "nedatata", "fara data"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("necunoscut", "necunoscuta", "data necunoscuta",
+                   "nedatat", "nedatata", "fara data"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die RO-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: RO-nahe Marker anderer Sprachen bleiben distinkt und
+    # kollidieren nicht mit den neuen RO-Formen (Substantiv ``data`` teilt
+    # sich mit IT/PT, aber die vollstaendigen String-Formen sind disjunkt).
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS   # IT (nicht data necunoscuta)
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS  # PT (nicht data necunoscuta)
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # RO-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: RO-aehnliche Fehl-Formen matchen nicht (nur die exakten
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("necunoscuta data") is None  # invertierte Wortfolge
+    assert parse_iso_date("fara") is None              # bare Praeposition
+    assert parse_iso_date("data") is None              # bare Substantiv
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
