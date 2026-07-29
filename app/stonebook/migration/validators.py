@@ -6397,6 +6397,78 @@ _DIRECTION_WORD = re.compile(
     # "westlich", ``zachodzic`` "eintreten/passieren/untergehen"); keine
     # Kollision zu CZ ``zapad`` (unterschiedliches Wort-Ende chod vs pad).
     r"|polnoc|poludnie|wschod|zachod"
+    # Slowenisch (SL) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/CZ/LV/LT/PL.
+    # Sammler-Region der SL-Sprach-Achse umfasst die weltweit bedeutende
+    # Quecksilber-Fundstelle Idrija (UNESCO-Weltkulturerbe, zweitgroesste
+    # historische Quecksilber-Mine der Welt nach Almaden mit Cinnabarit-/
+    # Quecksilber-Type-Locality-Material), die Karawanken-Berg-Region und
+    # Julische Alpen (Kaernten/Slowenien-Grenzregion mit Blei-/Zink-Ver-
+    # erzungen), Litija (historisches Blei-/Zink-Revier mit Galenit-/
+    # Sphalerit-Stufen), Mezica (Petzen-Blei-Zink-Revier mit Wulfenit-
+    # Fundstellen), Sostanj/Velenje (Braunkohle-Revier mit Amber-/
+    # Bernstein-Vorkommen); geerbte Sammlungs-Kataloge aus der KuK-
+    # Monarchie-Provenienz (SL-Bestaende mit gemischt DE-/SL-Sprach-
+    # Etiketten aus der Vorkriegs-Zeit als Teil der Krain-Provinz
+    # Oesterreich-Ungarns), Museum-Etiketten aus dem Prirodoslovni muzej
+    # Slovenije Ljubljana, dem Muzej za rudarstvo in metalurgijo Slovenije
+    # Idrija sowie aus Ljubljaner Mineralien-Boersen.
+    #
+    # Drei SL-eigenstaendige Wortstaemme: ``jug`` (S, urslav.``*jugъ``
+    # "warm/Sued"), ``vzhod`` (E, urslav.``*vъxodъ`` "Sonnenaufgang") und
+    # ``zahod`` (W, urslav.``*zapadъ`` "Sonnenuntergang"). Die SL-N-Achse
+    # nutzt ``sever`` (aus urslav.``*severъ`` "kalt/Nordwind"), das bereits
+    # via CZ-Alternative gedeckt ist (identische ASCII-Form) - keine
+    # doppelte Auffuehrung im Regex, weil die frozenset-artige Regex-
+    # Alternative-Auswertung identische Alternativen automatisch dedupliziert.
+    # ASCII-tauglich ohne Diakritika (SL-Standard-Ortho enthaelt fuer
+    # diese Wortstaemme keine diakritischen Zeichen; SL hat ``č``/``š``/``ž``
+    # nur in anderen Positionen). Bisher fielen alle SL-Direction-Formen
+    # still auf die Fallback-Route, was aus einem typischen Idrija-Cinnabarit-
+    # Sammler-Etikett ``"Sever 46.0, Vzhod 14.0"`` (Idrija liegt bei
+    # 46.0N/14.0E) silente ``(46.0, 14.0)`` als bare-Zahl-Paar liefert -
+    # semantisch identisch, aber ohne Vorzeichen-Sicherung fuer Sued-/West-
+    # Halbkugel-Varianten. Kritisch bei Etiketten mit ``"Jug 20.1, Zahod
+    # 43.2"``: ohne Direction-Marker haette der bare Zahl-Wert positive
+    # Vorzeichen bekommen, obwohl der Sammler explizit die Sued-/West-
+    # Halbkugel kodiert hat. Spiegelt die SL-Erweiterung in
+    # :data:`DATE_NO_DATA_MARKERS` (neznan/neznana/brez datuma/datum neznan/
+    # ni datuma, 66837ba) auf die Direction-Wort-Achse und schliesst damit
+    # die Sued-Slawische-Sprach-Achse (SL) analog zur West-Slawischen-
+    # Sprach-Achse (PL+CZ) und zur Baltisch-Sprach-Achse (LV+LT).
+    #
+    # SL/CZ Direction-Formen sind trotz gemeinsamer Slawischer IE-Wurzel
+    # lexikalisch komplett unterscheidbar: SL ``jug`` (aus urslav.``*jugъ``
+    # "warm/Sued", direkte Erhaltung der Wurzel ohne Suffix) vs CZ ``jih``
+    # (aus urslav.``*jugъ`` mit CZ-Ortho-Wandel ``g`` -> ``h`` in
+    # tschechischer Palatalisierung) - naheste Verwandtschaft, aber ortho-
+    # lexikalisch klar disjunkt durch den Konsonanten-Wandel. SL ``vzhod``
+    # vs CZ ``vychod``/PL ``wschod`` (alle aus urslav.``*vъxodъ`` "Aufgang"):
+    # SL-Praefix ``vz-`` mit Z-Laut vs CZ-Praefix ``vy-`` mit Y-Laut vs
+    # PL-Praefix ``wsch-`` mit W-Laut und SCH-Cluster - drei distinkte
+    # ortho-lexikalische Reflexe derselben Wurzel. SL ``zahod`` vs CZ
+    # ``zapad``/PL ``zachod`` (alle aus urslav.``*zapadъ`` "Untergang"): SL
+    # mit H-Laut, CZ mit P-Laut, PL mit CH-Cluster - drei distinkte
+    # Reflexe. Diese ortho-lexikalische Divergenz ist typisch fuer die
+    # spaete Slawische Trennung in Sued/West/Ost-Zweige (~1000 n. Chr.) und
+    # macht die SL/CZ/PL-Direction-Marker trotz semantisch identischer
+    # Etymologie lexikalisch komplett unterscheidbar.
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``jug`` matcht nicht
+    # innerhalb laengerer Woerter (EN ``jug``+``gle`` = ``juggle``,
+    # ``juggler``, ``juggernaut``, ES/PT ``jugo`` = "Saft", ``jugoslavo``
+    # - der folgende Buchstabe ist Wort-Zeichen, keine Wort-Grenze;
+    # bare EN ``jug`` = "Krug" ohne Coord-Kontext bleibt unrealistisch
+    # in einem Coordinate-Feld, und der Coord-Parser verlangt tight
+    # direction + number couple, sodass die Freitext-"Krug"-Bedeutung
+    # ausserhalb von Koordinaten-Notation kein Falsch-Match erzeugt).
+    # ``vzhod`` matcht nicht innerhalb laengerer Woerter (SL ``vzhodni``
+    # "oestlich" - der folgende Buchstabe ist Wort-Zeichen, keine Wort-
+    # Grenze); keine Kollision zu CZ ``vychod``/PL ``wschod`` (unterschied-
+    # liche Praefixe vz-/vy-/wsch-). ``zahod`` matcht nicht innerhalb
+    # laengerer Woerter (SL ``zahodni`` "westlich" - der folgende
+    # Buchstabe ist Wort-Zeichen, keine Wort-Grenze); keine Kollision zu
+    # CZ ``zapad``/PL ``zachod`` (unterschiedliche Konsonanten -h-/-p-/-ch-).
+    r"|jug|vzhod|zahod"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6537,6 +6609,27 @@ _DIRECTION_LETTER: dict[str, str] = {
     # Achse und schliesst die vollstaendige West-Slawische-Sprach-Achse
     # (PL+CZ) analog zur bereits abgeschlossenen Baltisch-Sprach-Achse (LV+LT).
     "polnoc": "N", "poludnie": "S", "wschod": "E", "zachod": "W",
+    # SL-Vollformen der Himmelsrichtungen (slowenisch, sued-slawisch/indo-
+    # europaeisch) in ASCII-Fallback-Form ohne Diakritika: ``jug`` (S, aus
+    # urslav.``*jugъ`` "warm/Sued" - direkte Wurzel-Erhaltung ohne den
+    # CZ-Konsonanten-Wandel g->h in ``jih``), ``vzhod`` (E, aus urslav.
+    # ``*vъxodъ`` "Sonnenaufgang" - SL-Praefix vz- vs CZ vy-/PL wsch-),
+    # ``zahod`` (W, aus urslav.``*zapadъ`` "Sonnenuntergang" - SL-Konso-
+    # nant -h- vs CZ -p-/PL -ch-). Die SL-N-Achse ``sever`` ist bereits
+    # ueber den CZ-Lookup-Eintrag ``"sever": "N"`` gedeckt (identische
+    # ASCII-Form), keine doppelte Auffuehrung noetig. Sammler-Notizen aus
+    # Idrija-Cinnabarit-Provenienzen, Karawanken-Berg-Region, Julischen
+    # Alpen, Litija-/Mezica-Blei-Zink-Revieren und geerbten Krain-Vor-
+    # kriegs-Sammlungen der KuK-Monarchie-Provenienz sowie Museum-Etiketten
+    # aus Prirodoslovni muzej Slovenije Ljubljana und Muzej za rudarstvo
+    # in metalurgijo Slovenije Idrija. Auf SL-Landkarten ist der Ein-
+    # Buchstaben-Marker traditionell ``S``/``J``/``V``/``Z`` (slawisch-
+    # native Konvention analog zu CZ) - der Lookup mappt aber auf die
+    # kanonischen ``N``/``S``/``E``/``W``-Letter (analog zur CZ/PL/LV/LT-
+    # Achse). Spiegelt die SL-Erweiterung in :data:`DATE_NO_DATA_MARKERS`
+    # (neznan/neznana/brez datuma/datum neznan/ni datuma, 66837ba) auf die
+    # Direction-Wort-Achse und schliesst die Sued-Slawische-Sprach-Achse.
+    "jug": "S", "vzhod": "E", "zahod": "W",
 }
 
 

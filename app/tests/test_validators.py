@@ -10534,6 +10534,123 @@ def test_parse_coordinates_himmelsrichtung_pl_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_sl_vollnamen():
+    """SL-Vollnamen der Himmelsrichtungen (slowenisch, sued-slawisch/indo-europaeisch).
+
+    Sammler-Region der SL-Sprach-Achse umfasst die weltweit bedeutende
+    Quecksilber-Fundstelle Idrija (UNESCO-Weltkulturerbe, zweitgroesste
+    historische Quecksilber-Mine der Welt nach Almaden mit Cinnabarit-/
+    Quecksilber-Type-Locality-Material), die Karawanken-Berg-Region und
+    Julische Alpen (Kaernten/Slowenien-Grenzregion mit Blei-/Zink-Vererzungen),
+    Litija (historisches Blei-/Zink-Revier mit Galenit-/Sphalerit-Stufen),
+    Mezica (Petzen-Blei-Zink-Revier mit Wulfenit-Fundstellen), Sostanj/Velenje
+    (Braunkohle-Revier mit Amber-/Bernstein-Vorkommen); geerbte Sammlungs-
+    Kataloge aus der KuK-Monarchie-Provenienz (SL-Bestaende mit gemischt
+    DE-/SL-Sprach-Etiketten aus der Vorkriegs-Zeit als Teil der Krain-Provinz
+    Oesterreich-Ungarns), Museum-Etiketten aus dem Prirodoslovni muzej
+    Slovenije Ljubljana und Muzej za rudarstvo in metalurgijo Slovenije
+    Idrija sowie aus Ljubljaner Mineralien-Boersen.
+
+    Neu sind drei SL-eigenstaendige Wortstaemme ``jug`` (S, aus urslav.
+    ``*jugъ`` "warm/Sued"), ``vzhod`` (E, aus urslav.``*vъxodъ`` "Sonnen-
+    aufgang"), ``zahod`` (W, aus urslav.``*zapadъ`` "Sonnenuntergang") in
+    ASCII-Fallback-Form ohne Diakritika. Die SL-N-Achse ``sever`` (aus
+    urslav.``*severъ`` "kalt/Nordwind") ist bereits ueber die CZ-Alternative
+    gedeckt (identische ASCII-Form) - keine doppelte Auffuehrung im Regex,
+    weil die Regex-Alternative-Auswertung identische Alternativen automatisch
+    dedupliziert.
+
+    Vor dieser Erweiterung fielen alle SL-Direction-Formen still auf die
+    Fallback-Route, was aus einem typischen Idrija-Cinnabarit-Sammler-Etikett
+    ``"Sever 46.0, Vzhod 14.0"`` (Idrija-Region) silente ``(46.0, 14.0)`` als
+    bare-Zahl-Paar liefert. Kritisch bei Etiketten mit ``"Jug 20.1, Zahod
+    43.2"``: ohne Direction-Marker haette der bare Zahl-Wert positive
+    Vorzeichen bekommen, obwohl der Sammler explizit die Sued-/West-Halb-
+    kugel kodiert hat.
+
+    SL/CZ/PL Direction-Formen sind trotz gemeinsamer Slawischer IE-Wurzel
+    lexikalisch KOMPLETT unterscheidbar: SL ``jug`` (aus urslav.``*jugъ``)
+    vs CZ ``jih`` (CZ-Konsonanten-Wandel g->h), SL ``vzhod`` vs CZ
+    ``vychod``/PL ``wschod`` (SL-Praefix vz- vs CZ vy-/PL wsch-), SL
+    ``zahod`` vs CZ ``zapad``/PL ``zachod`` (SL -h-/CZ -p-/PL -ch-). Diese
+    ortho-lexikalische Divergenz ist typisch fuer die spaete Slawische
+    Trennung in Sued/West/Ost-Zweige (~1000 n. Chr.).
+    """
+    # Prefix-Form: Idrija-Cinnabarit-Sammler-Fundort-Notizen (Slowenien)
+    assert parse_coordinates("Sever 46.0, Vzhod 14.0") == (46.0, 14.0)
+    # Karawanken/Julische Alpen (nord-westliche Grenzregion zu Oesterreich)
+    assert parse_coordinates("Sever 46.4, Vzhod 14.6") == (46.4, 14.6)
+    # Litija-Blei-Zink-Revier (Zentralslowenien)
+    assert parse_coordinates("Sever 46.1, Vzhod 14.8") == (46.1, 14.8)
+    # West-Halbkugel-Provenienz (hypothetisch, spiegelt CZ/PL/LV-Test-Struktur)
+    assert parse_coordinates("Sever 46.0, Zahod 14.0") == (46.0, -14.0)
+    # Sued-Halbkugel/West-Halbkugel (hypothetisch, spiegelt CZ/PL/LV-Struktur)
+    assert parse_coordinates("Jug 20.1, Zahod 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``46.0° Sever, 14.0° Vzhod``)
+    assert parse_coordinates("46.0° Sever, 14.0° Vzhod") == (46.0, 14.0)
+    assert parse_coordinates("20.1° Jug, 43.2° Zahod") == (-20.1, -43.2)
+    # Case-insensitive
+    assert parse_coordinates("SEVER 46.0, VZHOD 14.0") == (46.0, 14.0)
+    assert parse_coordinates("sever 46.0, vzhod 14.0") == (46.0, 14.0)
+    assert parse_coordinates("JUG 20.1, ZAHOD 43.2") == (-20.1, -43.2)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Sever. 46.0, Vzhod. 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Jug. 20.1, Zahod. 43.2") == (-20.1, -43.2)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Jug 20.1, Lon: Zahod 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Vzhod 14.0, Sever 46.0") == (46.0, 14.0)
+    # Mixed-Sprache (SL-Marker mit DE/EN/CZ/PL auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Provenienzen vor,
+    # besonders bei KuK-Monarchie-Bestaenden mit DE-Marker und SL-Marker
+    # gemischt aus Krain-Provinz-Etiketten)
+    assert parse_coordinates("Sever 46.0, East 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Sever 46.0, Ost 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Sever 46.0, Est 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Sever 46.0, Vychod 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Sever 46.0, Wschod 14.0") == (46.0, 14.0)
+    # Wort-Grenzen: SL-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. ``jug`` in EN ``juggle``/``juggler``/``juggernaut``,
+    # ES/PT ``jugo``/``jugoslavo``: kein Match wegen nachfolgender Wort-
+    # Zeichen. ``vzhod``/``zahod`` in SL ``vzhodni``/``zahodni``: dito.
+    assert parse_coordinates("juggle 46.0, juggler 14.0") is None
+    assert parse_coordinates("juggernaut 46.0, jugular 14.0") is None
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-/LV-/LT-/PL-
+    # Direction-Formen bleiben unveraendert (die neuen SL-Alternativen im
+    # Regex duerfen die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Jih 20.1, Zapad 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Siaure 55.7, Rytai 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Polnoc 50.8, Wschod 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Poludnie 20.1, Zachod 43.2") == (-20.1, -43.2)
+    # SL vs CZ vs PL: trotz gemeinsamer Slawischer IE-Wurzel sind alle
+    # Direction-Wortstaemme komplett unterscheidbar (SL ``jug``/``vzhod``/
+    # ``zahod`` vs CZ ``jih``/``vychod``/``zapad`` vs PL ``poludnie``/
+    # ``wschod``/``zachod``: alle drei aus derselben urslav. Wurzel-Reihe,
+    # aber durch die spaete Slawische Trennung in Sued/West/Ost-Zweige
+    # ~1000 n. Chr. ortho-lexikalisch komplett distinkt).
+    assert "jug" != "jih" != "poludnie"
+    assert "vzhod" != "vychod" != "wschod"
+    assert "zahod" != "zapad" != "zachod"
+    # Einzelbuchstaben bleiben unveraendert (SL-native Ein-Buchstaben-Marker
+    # S/J/V/Z werden bewusst NICHT unterstuetzt, da _is_lat_direction und
+    # _sign nur N/S/E/W/O kennen und SL-native Konvention mit V=Vzhod und
+    # Z=Zahod ohnehin mit dem EN/DE-W=West bzw. N/S kollidieren wuerde)
+    assert parse_coordinates("N46.0 E14.0") == (46.0, 14.0)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace
