@@ -890,6 +890,69 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # data``). Alle Marker sind lowercase (Consumer .lower()t den Input
         # vor dem Check, wie im Bestand konventionalisiert).
         "ukendt", "ingen dato", "uden dato", "dato ukendt",
+        # Norwegisch (NO/nb + nn) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/
+        # CZ/SK/SL/HU/RO/DA. Sammler-Region der NO-Sprach-Achse umfasst
+        # Kongsberg (Sub-Silber-Erz-Type-Locality mit weltberuehmten Native-
+        # Silber-Drahtstufen aus der historischen Kongelige Solvberkverk-
+        # Aera 1623-1958, Norwegian Mining Museum-Standort), Langesundfjord/
+        # Larvik (Nepheline-Syenit-Pegmatit-Provinz mit den weltweit einzigen
+        # Fundstellen fuer Catapleiit, Mosandrit, Aegirin-Kristalle und
+        # Larvikite als Type-Locality-Gestein), Snarum/Modum (Phlogopit-
+        # Blaufluorit-Vorkommen, Modumit-Type-Locality), Iveland/Evje (Amazonit-
+        # Spessartin-Pegmatite der Setesdal-Provinz), Arendal-Distrikt
+        # (Magnetit-Skarn und Vesuvianit-Grossular-Assoziationen), Bamble
+        # (Enstatit-/Anthophyllit-Vorkommen, Sausit-Type-Locality) sowie
+        # Museum-Etiketten aus Norsk Bergverksmuseum Kongsberg, Naturhistorisk
+        # museum Oslo (Geologisk museum mit weltweit fuehrender Langesundfjord-
+        # /Kongsberg-Sammlung) und Bergen Universitetsmuseum, und geerbte
+        # Sammlungs-Kataloge norwegischer Auktions-/Handel-Provenienzen.
+        #
+        # NO umfasst zwei offizielle Schriftsprachen: Bokmaal (~85% der Bevoel-
+        # kerung, historisch aus dem daenisch-norwegischen Schriftstandard
+        # abgeleitet, teilt viele Wortformen mit DA) und Nynorsk (~15%,
+        # rekonstruiert aus westnorwegischen Dialekten). Die Marker-Menge
+        # deckt beide Varianten ab: ``ukjent`` (Bokmaal-Standard-Adjektiv
+        # fuer "unbekannt"; im Bokmaal unflektiert und geschlechts-neutral,
+        # spiegelt DA ``ukendt`` mit norwegischem Ortho-Standard ``kj-`` statt
+        # dansk ``k-``); ``ukjend`` (Nynorsk-Standard-Adjektiv fuer "unbe-
+        # kannt"; Nynorsk-Ortho unterscheidet sich mit ``-nd``-Endung von
+        # Bokmaal ``-nt``); ``ingen dato`` ist orthografisch identisch zu
+        # DA und wird bereits durch den DA-Eintrag abgedeckt (die frozenset-
+        # Struktur dedupliziert automatisch); ``uten dato`` (Bokmaal-Standard
+        # "ohne Datum", direktes NO-Bokmaal-Pendant zur DA-``uden dato``,
+        # DE-``ohne datum``, FR-``sans date``-Reihe der Museums-Konventions-
+        # Form; die Bokmaal-Praeposition ``uten`` unterscheidet sich mit ``t``
+        # statt dansk ``d`` von der DA-Form ``uden``); ``utan dato`` (Nynorsk-
+        # Standard "ohne Datum", Nynorsk-Ortho ``utan`` statt Bokmaal ``uten``);
+        # ``dato ukjent`` (invertierte Bokmaal-Prosa-Form, parallel zur DA
+        # ``dato ukendt``); ``dato ukjend`` (invertierte Nynorsk-Prosa-Form).
+        #
+        # Bisher fielen alle NO-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der --ids-from-file-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus norwegisch-sprachigen Quellen
+        # (Kongsberg-Silber-Bergwerks-Provenienzen mit NO-Etiketten aus der
+        # Kongelige Solvberkverk-Aera, Langesundfjord-Museums-Etiketten aus
+        # Norsk Bergverksmuseum, Larvik-Pegmatit-Sammler-Notizen) scheiterten
+        # mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``ukjent``/``ukjend`` sind lexikalisch
+        # disjunkt zu DA ``ukendt`` (unterschiedliche Konsonanten-Cluster
+        # ``kj``/``kj`` vs ``k``), zu DE ``unbekannt``, EN ``unknown``, NL
+        # ``onbekend``, FR ``inconnu``, IT ``sconosciuto``/``ignoto``, ES
+        # ``desconocido``, PT ``desconhecido``, PL ``nieznany``, CZ
+        # ``neznamy``, HU ``ismeretlen``, RO ``necunoscut``. ``uten``/``utan``
+        # unterscheiden sich mit ``t`` von DA ``uden`` mit ``d``.
+        # ``uten dato``/``utan dato``/``dato ukjent``/``dato ukjend`` sind
+        # reine NO-Wort-Kombinationen; das Substantiv ``dato`` teilt lateini-
+        # sche Basis mit IT/PT/RO ``data`` und DA ``dato``, aber die vollstaen-
+        # digen String-Formen sind disjunkt. Alle Marker sind lowercase
+        # (Consumer .lower()t den Input vor dem Check, wie im Bestand
+        # konventionalisiert).
+        "ukjent", "ukjend", "uten dato", "utan dato",
+        "dato ukjent", "dato ukjend",
     }
 )
 

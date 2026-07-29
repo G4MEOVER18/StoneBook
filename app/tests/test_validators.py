@@ -8686,6 +8686,95 @@ def test_parse_iso_date_da_no_data_marker():
     assert parse_iso_date("ingen") is None             # bare Determinante
 
 
+def test_parse_iso_date_no_no_data_marker():
+    """NO-No-Data-Marker (Bokmaal + Nynorsk) liefern None (nicht als silent-
+    data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/DA/
+    Bibliografie-Achsen um Norwegisch (NO). Sammler-Region: Kongsberg-Silber-
+    Bergwerks-Provinz (Native-Silber-Type-Locality), Langesundfjord/Larvik-
+    Nepheline-Syenit-Pegmatit-Provinz (Catapleiit/Mosandrit/Aegirin/Larvikite-
+    Type-Locality), Snarum/Modum, Iveland/Evje (Amazonit/Spessartin), Arendal
+    (Magnetit-Skarn) sowie Museum-Etiketten aus Norsk Bergverksmuseum
+    Kongsberg und Naturhistorisk museum Oslo. NO umfasst zwei offizielle
+    Schriftsprachen (Bokmaal ~85% und Nynorsk ~15%), beide werden abgedeckt:
+    Bokmaal ``ukjent``/``uten dato``/``dato ukjent`` und Nynorsk-Aequivalente
+    ``ukjend``/``utan dato``/``dato ukjend``.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Bokmaal-Grundform (Adjektiv fuer "unbekannt")
+    assert parse_iso_date("ukjent") is None
+    assert parse_iso_date("Ukjent") is None
+    assert parse_iso_date("UKJENT") is None
+    # Nynorsk-Grundform
+    assert parse_iso_date("ukjend") is None
+    assert parse_iso_date("Ukjend") is None
+    assert parse_iso_date("UKJEND") is None
+    # Bokmaal-Praeposition-Phrase "ohne Datum"
+    assert parse_iso_date("uten dato") is None
+    assert parse_iso_date("Uten Dato") is None
+    assert parse_iso_date("UTEN DATO") is None
+    # Nynorsk-Praeposition-Phrase "ohne Datum"
+    assert parse_iso_date("utan dato") is None
+    assert parse_iso_date("Utan Dato") is None
+    assert parse_iso_date("UTAN DATO") is None
+    # Bokmaal-invertierte Prosa-Form
+    assert parse_iso_date("dato ukjent") is None
+    assert parse_iso_date("Dato Ukjent") is None
+    assert parse_iso_date("DATO UKJENT") is None
+    # Nynorsk-invertierte Prosa-Form
+    assert parse_iso_date("dato ukjend") is None
+    assert parse_iso_date("Dato Ukjend") is None
+    assert parse_iso_date("DATO UKJEND") is None
+    # ``ingen dato`` ist orthografisch identisch zu DA und bereits abgedeckt
+    # (frozenset-Deduplication) - Regress-Anker fuer NO-Consumer:
+    assert parse_iso_date("ingen dato") is None
+    # Whitespace-Toleranz
+    assert parse_iso_date("  ukjent  ") is None
+    assert parse_iso_date("  uten dato  ") is None
+    assert parse_iso_date("  utan dato  ") is None
+    assert parse_iso_date("  dato ukjent  ") is None
+    # Menge-Konsistenz
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("ukjent", "ukjend", "uten dato", "utan dato",
+                   "dato ukjent", "dato ukjend"):
+        assert marker in DATE_NO_DATA_MARKERS
+    for marker in ("ukjent", "ukjend", "uten dato", "utan dato",
+                   "dato ukjent", "dato ukjend"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "ukendt" in DATE_NO_DATA_MARKERS       # DA (nachbar-Sprache)
+    assert "uden dato" in DATE_NO_DATA_MARKERS    # DA (unterschieden von NO uten/utan)
+    assert "dato ukendt" in DATE_NO_DATA_MARKERS  # DA (unterschieden von NO ukjent/ukjend)
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: DA/NO-Formen sind lexikalisch disjunkt (unterschiedliche
+    # Konsonanten trotz Sprach-Verwandtschaft)
+    assert "ukjent" != "ukendt"
+    assert "uten dato" != "uden dato"
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid"
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: NO-aehnliche Fehl-Formen matchen nicht (nur exakte
+    # Marker-Formen sind No-Data-Marker)
+    assert parse_iso_date("ukjent dato") is None   # invertierte Wortfolge (Bokmaal)
+    assert parse_iso_date("ukjend dato") is None   # invertierte Wortfolge (Nynorsk)
+    assert parse_iso_date("uten") is None          # bare Praeposition (Bokmaal)
+    assert parse_iso_date("utan") is None          # bare Praeposition (Nynorsk)
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
