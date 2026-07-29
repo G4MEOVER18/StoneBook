@@ -1284,6 +1284,113 @@ def test_by_geaendert_am_quartal_leer(tmp_path):
     c.close()
 
 
+def test_by_geaendert_am_tertial_aus_seed_db(tmp_path):
+    """Aenderungs-Tertial-Histogramm aggregiert ueber alle Jahre zu T1..T3.
+
+    Spiegelt by_funddatum_tertial / by_erstellt_am_tertial auf die Aenderungs-
+    Achse und schliesst die Tertial-Trias auf allen drei Zeit-Achsen. Sitzt
+    granular zwischen Quartal (3-Monats-Bloecke) und Halbjahr (6-Monats-Bloecke)
+    und teilt das Kalenderjahr in drei gleiche 4-Monats-Bloecke (T1=Jan..Apr,
+    T2=Mai..Aug, T3=Sep..Dez). Reihenfolge T1->T3 chronologisch aufsteigend,
+    Tertiale ohne Treffer fehlen im Dict.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_tertial.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            # T1 (Jan..Apr): 2x - Winter-/Fruehjahrs-Nachpflege, Tucson-Nachbereitung
+            ("OBJ_0001", "2024-01-15 09:00:00"),  # T1 (Jan-Rand)
+            ("OBJ_0002", "2023-04-30 10:15:00"),  # T1 (Apr-Rand)
+            # T2 (Mai..Aug): 3x - Uebergangs-/Sommer-Nachpflege
+            ("OBJ_0003", "2024-05-01 11:30:00"),  # T2 (Mai-Rand)
+            ("OBJ_0004", "2021-07-10 12:00:00"),  # T2
+            ("OBJ_0005", "2020-08-31 13:15:00"),  # T2 (Aug-Rand)
+            # T3 (Sep..Dez): 4x - Herbst-/Winter-Nachpflege, Muenchen-Nachbereitung
+            ("OBJ_0006", "2020-09-01 14:00:00"),  # T3 (Sep-Rand)
+            ("OBJ_0007", "2023-10-05 15:15:00"),  # T3
+            ("OBJ_0008", "2023-11-20 16:00:00"),  # T3 (Muenchen)
+            ("OBJ_0009", "2024-12-25 17:00:00"),  # T3 (Boerse)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0010", ""),
+            ("OBJ_0011", None),
+            ("OBJ_0012", "kein-stempel"),
+            ("OBJ_0013", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Tertial, Tertiale ohne Treffer fehlen
+    assert list(st.by_geaendert_am_tertial.items()) == [
+        ("T1", 2), ("T2", 3), ("T3", 4),
+    ]
+    assert st.as_dict()["by_geaendert_am_tertial"] == {
+        "T1": 2, "T2": 3, "T3": 4,
+    }
+    c.close()
+
+
+def test_by_geaendert_am_tertial_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Aenderungs-Tertial-Histogramm.
+
+    Ohne den BETWEEN 1 AND 12-Guard wuerde Monat 00 als ``((0-1)/4)+1 = 0`` in
+    einen ``T0``-Bucket fallen und Monat 13 als ``((13-1)/4)+1 = 4`` in einen
+    ``T4``-Bucket - beide semantisch sinnlose Verzerrungen der Aenderungs-
+    Tertial-Statistik.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_tertial_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15 10:00:00"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01 11:00:00"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01 12:00:00"),   # T2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_tertial == {"T2": 1}
+    c.close()
+
+
+def test_by_geaendert_am_tertial_leer(tmp_path):
+    """Ohne gueltige geaendert_am-Stempel ist die Tertial-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_tertial_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_tertial == {}
+    c.close()
+
+
+def test_by_geaendert_am_tertial_grenz_monate(tmp_path):
+    """Grenz-Monate Apr/Mai und Aug/Sep landen in den erwarteten Tertialen.
+
+    Bestaetigt die Tertial-Formel ``((monat - 1) / 4) + 1`` an den beiden
+    kritischen Grenzen: Monat 04 (Apr, letzter Monat T1), Monat 05 (Mai, erster
+    Monat T2), Monat 08 (Aug, letzter Monat T2), Monat 09 (Sep, erster Monat T3).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "g_tertial_grenzen.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, geaendert_am) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-04-30 09:00:00"),   # T1 (Apr-Rand)
+            ("OBJ_0002", "2024-05-01 10:00:00"),   # T2 (Mai-Rand)
+            ("OBJ_0003", "2024-08-31 11:00:00"),   # T2 (Aug-Rand)
+            ("OBJ_0004", "2024-09-01 12:00:00"),   # T3 (Sep-Rand)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_geaendert_am_tertial == {"T1": 1, "T2": 2, "T3": 1}
+    c.close()
+
+
 def test_by_geaendert_am_halbjahr_aus_seed_db(tmp_path):
     """Aenderungs-Halbjahres-Histogramm aggregiert ueber alle Jahre zu H1/H2.
 

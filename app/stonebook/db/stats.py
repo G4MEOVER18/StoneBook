@@ -87,6 +87,7 @@ class Statistik:
     by_geaendert_am_monat: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_wochentag: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_quartal: dict[str, int] = field(default_factory=dict)
+    by_geaendert_am_tertial: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_halbjahr: dict[str, int] = field(default_factory=dict)
     by_seltenheit_global: dict[str, int] = field(default_factory=dict)
     by_seltenheit_fundort: dict[str, int] = field(default_factory=dict)
@@ -1214,6 +1215,7 @@ class Statistik:
             "by_geaendert_am_monat": dict(self.by_geaendert_am_monat),
             "by_geaendert_am_wochentag": dict(self.by_geaendert_am_wochentag),
             "by_geaendert_am_quartal": dict(self.by_geaendert_am_quartal),
+            "by_geaendert_am_tertial": dict(self.by_geaendert_am_tertial),
             "by_geaendert_am_halbjahr": dict(self.by_geaendert_am_halbjahr),
             "by_seltenheit_global": dict(self.by_seltenheit_global),
             "by_seltenheit_fundort": dict(self.by_seltenheit_fundort),
@@ -2339,6 +2341,49 @@ def _count_geaendert_am_quartal(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY q ORDER BY q ASC"
     )
     return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_geaendert_am_tertial(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``geaendert_am``-Tertial (T1..T3), ueber alle Jahre aggregiert.
+
+    Spiegelt :func:`_count_funddatum_tertial` und :func:`_count_erstellt_am_tertial`
+    um die Aenderungs-Achse und schliesst damit die Tertial-Trias auf allen drei
+    Zeit-Achsen (Funddatum / erstellt_am / geaendert_am) ab. Sitzt granular
+    zwischen :func:`_count_geaendert_am_quartal` (3-Monats-Bloecke) und
+    :func:`_count_geaendert_am_halbjahr` (6-Monats-Bloecke): teilt das
+    Kalenderjahr in drei gleiche 4-Monats-Bloecke T1=Jan..Apr, T2=Mai..Aug,
+    T3=Sep..Dez. Zeigt die typische Pflege-Sitzungen-Dreiteilung auf der
+    Aenderungs-Achse parallel zur Erfassungs-Achse: T1-Winter-/Fruehjahrs-
+    Nachpflege mit Tucson-Nachbereitung, T2-Uebergangs-/Sommer-Nachpflege
+    mit reduzierter Aktivitaet waehrend der Feld-Saison, T3-Herbst-/Winter-
+    Nachpflege mit Muenchen-/Sainte-Marie-Nachbereitung. Als zweite
+    unabhaengige Achse - ein T2-erfasstes Stueck kann T1-nachbearbeitet
+    worden sein (KI-Analyse-Uebernahme nach Boersen-Termin, XRD-Nachtrag
+    nach Labor-Sitzung).
+
+    Labels ``T1``..``T3``, Reihenfolge chronologisch aufsteigend (T1 zuerst),
+    Tertiale ohne Treffer fehlen im Dict. Tertial wird aus dem Monatsteil per
+    ``((monat - 1) / 4) + 1`` abgeleitet, identisch zur Funddatum-/erstellt_am-
+    Tertial-Formel.
+
+    ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(geaendert_am, 6, 2)`` extrahiert den
+    Monatsteil. Substring-Praefix-Guards und ``BETWEEN 1 AND 12``-Guard sind
+    identisch zu :func:`_count_geaendert_am_monat` / :func:`_count_geaendert_am_quartal`
+    / :func:`_count_geaendert_am_halbjahr`, damit reine Jahres-Formen ohne
+    Monatsteil und pathologische Monats-Codes 00/13..99 automatisch
+    herausfallen.
+    """
+    sql = (
+        "SELECT ((CAST(substr(geaendert_am, 6, 2) AS INTEGER) - 1) / 4 + 1) AS t, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+        "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(geaendert_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY t ORDER BY t ASC"
+    )
+    return {f"T{r['t']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_geaendert_am_halbjahr(conn: sqlite3.Connection) -> dict[str, int]:
@@ -4037,6 +4082,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # zweite unabhaengige Achse. Komplementaer zum geaendert_am_quartal_in-
     # Filter (Listen-Drill-down).
     st.by_geaendert_am_quartal = _count_geaendert_am_quartal(conn)
+    # Aenderungs-Tertial-Histogramm (T1..T3, ueber alle Jahre aggregiert):
+    # spiegelt by_funddatum_tertial / by_erstellt_am_tertial auf die Aenderungs-
+    # Achse und schliesst die Tertial-Trias auf allen drei Zeit-Achsen
+    # (Funddatum / erstellt_am / geaendert_am) ab. Sitzt granular zwischen
+    # by_geaendert_am_quartal (3-Monats-Bloecke) und by_geaendert_am_halbjahr
+    # (6-Monats-Bloecke). Teilt das Kalenderjahr in drei gleiche 4-Monats-
+    # Bloecke (T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez) und zeigt die typische
+    # Pflege-Sitzungen-Dreiteilung: T1=Winter-/Fruehjahrs-Nachpflege mit
+    # Tucson-Nachbereitung, T2=Uebergangs-/Sommer-Nachpflege mit reduzierter
+    # Aktivitaet waehrend der Feld-Saison, T3=Herbst-/Winter-Nachpflege mit
+    # Muenchen-/Sainte-Marie-Nachbereitung. Als zweite unabhaengige Achse -
+    # ein T2-erfasstes Stueck kann T1-nachbearbeitet worden sein.
+    st.by_geaendert_am_tertial = _count_geaendert_am_tertial(conn)
     # Aenderungs-Halbjahres-Zaesur (H1/H2, ueber alle Jahre aggregiert):
     # spiegelt by_funddatum_halbjahr / by_erstellt_am_halbjahr auf die
     # Aenderungs-Achse und schliesst die Halbjahres-Trias auf allen drei
