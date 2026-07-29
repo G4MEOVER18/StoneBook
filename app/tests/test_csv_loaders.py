@@ -6574,6 +6574,102 @@ def test_parse_range_leading_currency_prefix_cop_colombian_peso():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_mmk_myanmar_kyat():
+    """``MMK`` (Myanmar Kyat, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer birmanische Edelsteinsammler.
+
+    Myanmar (Burma) ist eine der weltweit fuehrenden Sammler-Quellen fuer
+    Rubin, Spinell, Saphir und Jade: die Mogok-Stone-Tract-Region
+    (Mandalay-Division, klassische Type-Locality fuer Taubenblut-Rubin,
+    rosa/blaue/rote Spinelle und Saphir, weltweit fuehrend fuer Sammler-
+    Kristalle in Muttergestein-Marmor-Kalksilikat-Matrix), die Mong-Hsu-
+    Region (Shan-State, jueng entdeckte Rubin-Quelle der 1990er Jahre),
+    die Hpakant-Jade-Region (Kachin-State, weltweit dominante Sammler-
+    Quelle fuer Jadeit-Rohsteine und -Stufen), die Namya-Rubin-Kies-
+    Ablagerungen (Kachin-State) sowie die Kyaukpahto-/Mineya-Gold-
+    Distrikt-Sulfid-Assoziationen und die Bawdwin-Bergbau-Region
+    (historisches Blei-/Silber-/Zink-Revier). Die Handels-Konvention
+    der birmanischen Edelstein-Haendler auf dem Bogyoke-Aung-San-Markt
+    in Yangon, in Direkt-Verkaeufen auf der jaehrlichen Myanmar-Gems-
+    Emporium-Auktion (Naypyidaw, staatlich organisiert), in Mogok-
+    Township-Haendler-Verkaufsstellen und in Tucson-/Muenchen-/Bangkok-
+    Auktions-Katalogen mit birmanischen Ausstellern ist die MMK-
+    Preisstellung mit USD-Umrechnungs-Hinweis (``MMK 2100000 (~USD 1000)``
+    als Standard-Notation der Yangon-Edelstein-Boersen).
+
+    Bisher fielen alle Formen mit ``MMK``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/
+    COP vor deren Aufnahme in die Vokabel-Liste): ``MMK 2000000 ± 200000``
+    -> ``(2000000, 2000000)`` via inverted-range-Kollaps (Toleranz
+    verloren); ``MMK 500000(20000)`` -> ``(500000, 20000)`` (semantisch
+    falscher Range statt (480000, 520000)). Kollisionsfrei zu Fremd-
+    woertern: ``MMK`` ist keine EN-/DE-Wort-Sequenz (der Buchstaben-
+    Cluster ``MMK`` existiert in keinem gaengigen Vokabular als
+    Wort-Anfang), sodass die ``\\b``-Wortgrenze hinter dem Code
+    ausschliesslich den ISO-Code-Praefix matcht. Case-Insensitiv
+    spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect ``Mmk`` mit
+    Capitalize-First-Word und lowercase ``mmk`` aus Konsolen-Tools ohne
+    Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 2000000 ± 200000") == pytest.approx((1800000.0, 2200000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("MMK 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("MMK 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa MMK 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("MMK 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("mmk 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Mmk 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MmK 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("MMK 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("MMK 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("MMK 500 ± 50 pro Karat") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 2100000 ± 200000 (Mogok)") == pytest.approx((1900000.0, 2300000.0))
+    assert csv_loaders.parse_range("MMK 100(2) [Hpakant]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit MMK-Praefix.
+    assert csv_loaders.parse_range("MMK > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens MMK 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("MMK 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("MMK 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("MMK 500 to 1000") == (500.0, 1000.0)
+    # MMK OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("MMK") == (None, None)
+    assert csv_loaders.parse_range("MMK ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MXN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
