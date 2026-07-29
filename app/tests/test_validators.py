@@ -8593,6 +8593,99 @@ def test_parse_iso_date_ro_no_data_marker():
     assert parse_iso_date("data") is None              # bare Substantiv
 
 
+def test_parse_iso_date_da_no_data_marker():
+    """DA-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/Bibliografie-
+    Achsen um Daenisch (DA) - relevant fuer Sammler-Region Bornholm (dansk
+    Granit-Steinbrueche mit Feldspat-/Muskovit-/Beryll-Pegmatiten), Faeroeer
+    Inseln (Zeolith-Provinz Nolsoy/Nordoyggjar), Groenland-Provenienzen mit
+    daenischer Verwaltung (Ivigtut Kryolith-Type-Locality 1854-1987 mit
+    weltweit einzigartigen Kryolith-Kristallen, Ilimaussaq-Alkalikomplex mit
+    Sodalith/Tugtupit/Ussingit/Steenstrupin, Ikaite Ikka-Fjord als Type-
+    Locality) sowie Museum-Etiketten aus Statens Naturhistoriske Museum
+    Kobenhavn (Universitetets Geologiske Museum mit weltweit fuehrender
+    Groenland-Sammlung) und Geologisk Museum Aarhus. DA ist skandinavisch
+    (germanisch, nordische Untergruppe), teilt aber keine Marker-Wortstaemme
+    mit den bereits abgedeckten Germanisch-Sprachen (DE ``unbekannt``, EN
+    ``unknown``, NL ``onbekend`` sind lexikalisch disjunkt zu DA ``ukendt``
+    mit dansk ``kende``-Wortstamm und privativer ``u-``-Praefigierung).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Grundform (Adjektiv fuer "unbekannt")
+    assert parse_iso_date("ukendt") is None
+    assert parse_iso_date("Ukendt") is None
+    assert parse_iso_date("UKENDT") is None
+    # Invertierte DA-Prosa-Form "Datum unbekannt"
+    assert parse_iso_date("dato ukendt") is None
+    assert parse_iso_date("Dato Ukendt") is None
+    assert parse_iso_date("DATO UKENDT") is None
+    # Determinante-Phrase "kein Datum"
+    assert parse_iso_date("ingen dato") is None
+    assert parse_iso_date("Ingen Dato") is None
+    assert parse_iso_date("INGEN DATO") is None
+    # Praeposition-Phrase "ohne Datum"
+    assert parse_iso_date("uden dato") is None
+    assert parse_iso_date("Uden Dato") is None
+    assert parse_iso_date("UDEN DATO") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  ukendt  ") is None
+    assert parse_iso_date("  ingen dato  ") is None
+    assert parse_iso_date("  uden dato  ") is None
+    assert parse_iso_date("  dato ukendt  ") is None
+    # Menge-Konsistenz: alle neuen DA-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("ukendt", "ingen dato", "uden dato", "dato ukendt"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("ukendt", "ingen dato", "uden dato", "dato ukendt"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die DA-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: DA-nahe Marker anderer Sprachen bleiben distinkt und
+    # kollidieren nicht mit den neuen DA-Formen (Substantiv ``data``/``dato``
+    # teilt lateinische Basis mit IT/PT/RO, aber die vollstaendigen String-
+    # Formen sind disjunkt).
+    assert "data sconosciuta" in DATE_NO_DATA_MARKERS   # IT (nicht dato ukendt)
+    assert "data desconhecida" in DATE_NO_DATA_MARKERS  # PT (nicht dato ukendt)
+    assert "data necunoscuta" in DATE_NO_DATA_MARKERS   # RO (nicht dato ukendt)
+    assert "senza data" in DATE_NO_DATA_MARKERS         # IT (nicht uden dato)
+    assert "sem data" in DATE_NO_DATA_MARKERS           # PT (nicht uden dato)
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # DA-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: DA-aehnliche Fehl-Formen matchen nicht (nur die exakten
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("ukendt dato") is None       # invertierte Wortfolge
+    assert parse_iso_date("uden") is None              # bare Praeposition
+    assert parse_iso_date("dato") is None              # bare Substantiv
+    assert parse_iso_date("ingen") is None             # bare Determinante
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

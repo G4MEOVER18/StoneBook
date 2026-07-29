@@ -816,6 +816,80 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # konventionalisiert).
         "necunoscut", "necunoscuta", "data necunoscuta",
         "nedatat", "nedatata", "fara data",
+        # Daenisch (DA) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/RO.
+        # Sammler-Region der DA-Sprach-Achse umfasst Bornholm (dansk granit-
+        # Steinbrueche mit Feldspat-/Muskovit-/Beryll-Pegmatiten und historischen
+        # Kaolin-Adern), Faeroeer Inseln (Nolsoy/Nordoyggjar Zeolith-Fundstellen
+        # mit Heulandit/Stilbit/Analcim in den basaltischen Deckschichten der
+        # Faeroeer Insel-Provinz), Groenland-Fundregionen mit historischer
+        # DA-Provenienz (Ivigtut Kryolith-Type-Locality unter daenischer
+        # Verwaltung 1854-1987 mit den bis heute weltweit einzigartigen
+        # Kryolith-Kristallen sowie Sekundaer-Mineralien Chiolith, Weberit,
+        # Thomsenolith, Ralstonit, Elpasolith und den zugehoerigen Aluminium-
+        # Fluorid-Assoziationen; Ilimaussaq-Alkalikomplex mit Sodalith/Tugtupit/
+        # Ussingit/Steenstrupin und den weltweit einzigen Fundorten fuer
+        # sechzig Type-Locality-Mineralien; Ikaite Ikka-Fjord als Type-
+        # Locality des seltenen Calcium-Karbonat-Hexahydrats; Uummannaq/
+        # Disko-Insel mit Basaltisch-Eisen Josephinite-Analoga) und aus
+        # Museums-Etiketten des Statens Naturhistoriske Museum Kobenhavn
+        # (Universitetets Geologiske Museum mit weltweit fuehrender Groenland-
+        # Sammlung), Geologisk Museum Aarhus und Geus (De Nationale
+        # Geologiske Undersogelser for Danmark og Gronland) sowie geerbte
+        # Sammlungs-Kataloge dansker Auktions-/Handel-Provenienzen (Sotheby's
+        # Kopenhagen, Bruun Rasmussen Auktioner mit Mineralien-Losen).
+        #
+        # ``ukendt`` (Standard-DA-Adjektiv fuer "unbekannt"; im Daenischen
+        # unflektiert und geschlechts-neutral, spiegelt EN ``unknown`` und
+        # NL ``onbekend`` statt der mask./fem.-Trennung von ES/PT/FR/IT/PL/
+        # RO); ``ingen dato`` (natuerlich-sprachliche "kein Datum"-Form,
+        # parallel zu DE ``kein datum`` und EN ``no date`` und NL ``geen
+        # datum`` - die DA-Negativ-Determinante ``ingen`` spiegelt die
+        # skandinavische Konvention und ist lexikalisch disjunkt zu den
+        # bereits abgedeckten Negativ-Formen anderer Sprachen); ``uden
+        # dato`` (Standard-Katalog-Konvention "ohne Datum", direktes DA-
+        # Pendant zur DE-``ohne datum``, FR-``sans date``, IT-``senza
+        # data``, ES-``sin fecha``, PT-``sem data``, NL-``zonder datum``,
+        # PL-``bez daty``, CZ-``bez data``, SK-``bez datumu``, SL-``brez
+        # datuma``, HU-``datum nelkul``, RO-``fara data``-Reihe der
+        # Museums-/Bibliothekars-Konventions-Form); ``dato ukendt``
+        # (invertierte DA-Prosa-Form, parallel zur DE ``datum unbekannt``,
+        # FR ``date inconnue``, IT ``data sconosciuta``/``data ignota``,
+        # ES ``fecha desconocida``, PT ``data desconhecida``, NL ``datum
+        # onbekend``, PL ``data nieznana``, CZ ``datum nezname``, RO
+        # ``data necunoscuta``-Reihe der invertierten Datum-Adjektiv-
+        # Prosa-Form).
+        #
+        # Bisher fielen alle DA-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der ``--ids-from-file``-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus daenisch-sprachigen Quellen
+        # (Bornholm-Katalog-Bestaende, Ivigtut-Kryolith-Provenienzen mit
+        # DA-Etiketten aus der Kryolitselskabet-Aera 1859-1987, Ilimaussaq-
+        # Museums-Etiketten aus Statens Naturhistoriske Museum) scheiterten
+        # mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``ukendt`` ist lexikalisch disjunkt
+        # zu DE ``unbekannt``, EN ``unknown``, FR ``inconnu``/``inconnue``,
+        # IT ``sconosciuto``/``ignoto``, ES ``desconocido``, PT
+        # ``desconhecido``, NL ``onbekend``, PL ``nieznany``/``nieznana``,
+        # CZ ``neznamy``/``neznama``/``nezname``, HU ``ismeretlen``, RO
+        # ``necunoscut``/``necunoscuta``, SK ``neznamy``/``neznama``,
+        # SL ``neznan``/``neznana``; die DA-Wortstamm-Basis (dansk ``kende``
+        # "kennen" mit privativer ``u-``-Praefigierung analog zur DE-``un-``-
+        # Praefigierung, aber mit dansk statt DE Wortstamm) ist eigenstaendig
+        # gegenueber allen bereits abgedeckten Sprach-Reihen. ``ingen dato``/
+        # ``uden dato``/``dato ukendt`` sind reine dansk Wort-Kombinationen
+        # ohne Ziffer-Kollision zu gueltigen Datums-Formen; das Substantiv
+        # ``dato`` teilt die lateinische Basis mit IT/PT/RO ``data``, aber
+        # die vollstaendigen String-Formen (``ingen dato``/``uden dato``/
+        # ``dato ukendt``) sind lexikalisch disjunkt zu den IT-/PT-/RO-
+        # Formen (``data sconosciuta``/``data ignota``/``senza data``/
+        # ``data desconhecida``/``sem data``/``data necunoscuta``/``fara
+        # data``). Alle Marker sind lowercase (Consumer .lower()t den Input
+        # vor dem Check, wie im Bestand konventionalisiert).
+        "ukendt", "ingen dato", "uden dato", "dato ukendt",
     }
 )
 
