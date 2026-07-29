@@ -6239,6 +6239,73 @@ _DIRECTION_WORD = re.compile(
     # Wurzeln, die gemeinsame IE-Grosswurzel ist zu tief fuer lexikalische
     # Kollision.
     r"|ziemeli|dienvidi|austrumi|rietumi"
+    # Litauisch (LT) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/CZ/LV. Sammler-
+    # Region der LT-Sprach-Achse umfasst die baltische Amber-/Bernstein-
+    # Provinz mit der westlitauischen Palanga-/Klaipeda-Kueste (historischer
+    # Bernstein-Umschlagplatz der Hanse-Zeit mit Verarbeitung von Rohbernstein
+    # zu Perlen/Schmuck der Kurlandischen-/Preussischen-Werkstaetten), die
+    # Devon-Sandstein-Formationen des noerdlichen Litauens (Salduva-/Ventos-
+    # Formation mit Fisch-Fossilien der Placodermi-Type-Localities), das
+    # Kambrium-Ordovizium der oestlichen Baltischen Klint-Kueste, die
+    # karbonatischen Silur-Vorkommen im Zentrallitauen mit historischen
+    # Baustein-/Kalk-Bruechen und geerbte Preussisch-Litauische/litauisch
+    # gemischt-sprachige Bestand-Etiketten aus Kaunas/Vilnius/Klaipeda-
+    # Vorkriegs-Sammlungen sowie Museum-Etiketten aus dem Lietuvos gamtos
+    # muziejus, Vilniaus universiteto geologijos muziejus und Kauno Tado
+    # Ivanausko zoologijos muziejus.
+    #
+    # Alle vier Achsen mit LT-eigenstaendigen Wortstaemmen: ``siaure`` (N,
+    # aus ``siaurus`` "eng/schmal" - die "enge/schmale" Nord-Richtung im
+    # baltischen Weltbild), ``pietus`` (S, semantisch parallel zu LV
+    # ``dienvidi`` als "Mittags-Sonne"-Richtung mit vollkommen anderer
+    # Wortbildung), ``rytai`` (E, aus ``rytas`` "Morgen" - die "Morgen-
+    # Sonne"-Richtung parallel zur LV ``austrumi``-Etymologie aber mit
+    # anderem baltischen Wortstamm), ``vakarai`` (W, aus ``vakaras`` "Abend"
+    # - die "Abend-Sonne"-Richtung parallel zur LV ``rietumi``-Etymologie
+    # aber mit anderem baltischen Wortstamm). ASCII-Fallback-Form ohne
+    # Diakritika (LT-Standard-Ortho ``šiaurė``/``pietūs`` reduziert sich in
+    # Sammler-Katalog-ASCII-Notation der Windows-CP1257-/UTF-8-Notiz-Ketten
+    # regelmaessig zu ``siaure``/``pietus``, analog zur ASCII-Fallback-
+    # Konvention der LT-Date-Marker-Achse mit ``nezinomas``/``nezinoma`` und
+    # zur LV-Achse mit ``ziemeli``/``rietumi``). Bisher fielen alle LT-
+    # Direction-Formen still auf die Fallback-Route, was aus einem typischen
+    # Klaipeda-/Palanga-Bernstein-Sammler-Etikett ``"Siaure 55.7, Rytai
+    # 21.1"`` (Litauische Bernstein-Kueste) silente ``(55.7, 21.1)`` als
+    # bare-Zahl-Paar liefert.
+    #
+    # Spiegelt die LT-Erweiterung in :data:`DATE_NO_DATA_MARKERS`
+    # (nezinomas/nezinoma/be datos/data nezinoma/nera duomenu) auf die
+    # Direction-Wort-Achse und schliesst die vollstaendige Baltisch-Sprach-
+    # Achse (LV + LT) analog zur bereits abgeschlossenen NL/CZ-Direction-
+    # Achse. LT/LV Direction-Formen sind trotz gemeinsamer Ostbaltischer
+    # IE-Wurzel lexikalisch KOMPLETT disjunkt: LV ``ziemeli`` (aus
+    # ``ziema`` "Winter") vs LT ``siaure`` (aus ``siaurus`` "eng"), LV
+    # ``dienvidi`` (aus ``diena+vidus`` "Tag-Mitte") vs LT ``pietus``
+    # (semantisch parallel aber morphologisch unabhaengig), LV ``austrumi``
+    # (aus ``austrs`` "Sonnenaufgang") vs LT ``rytai`` (aus ``rytas``
+    # "Morgen"), LV ``rietumi`` (aus ``rieta`` "Sonnenuntergang") vs LT
+    # ``vakarai`` (aus ``vakaras`` "Abend"). Diese komplette Wortstamm-
+    # Divergenz ist typisch fuer die spaete Ostbaltische Trennung (~800
+    # n. Chr.) und macht die Marker LT/LV auf der Direction-Wort-Achse
+    # trotz semantischer Parallelitaet lexikalisch komplett unterscheidbar.
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``siaure`` matcht
+    # nicht innerhalb laengerer Woerter; keine Kollision zu DE/EN/FR/IT/
+    # ES/PT/NL/CZ/LV-Vokabular (der Wortstamm ``siaur-`` ist LT-baltisch-
+    # spezifisch). ``pietus`` matcht nicht innerhalb laengerer Woerter;
+    # ``pietus`` als eigenstaendiges LT-Wort ist auch die Bezeichnung fuer
+    # "Mittagessen"/"Mittag" (Wortfeld ``pietus`` "Mittag/Sued" ist LT-
+    # nativ mehrdeutig, aber der Coord-Parser verlangt tight direction +
+    # number couple, sodass die Freitext-Mittag-Bedeutung ausserhalb von
+    # Koordinaten-Notation kein Falsch-Match erzeugt). ``rytai`` teilt
+    # Prefix mit dem LT-Wort ``rytas`` "Morgen" - kein direkter Kollisions-
+    # kandidat da bare ``rytas`` an der Wort-Grenze nach ``s`` bricht,
+    # aber ``rytai`` ist die Plural-Form die als Compass-Marker steht.
+    # ``vakarai`` ist LT-spezifisch ohne Kollision zu anderen Reihen
+    # (Wortstamm ``vakar-`` ist LT-baltisch, keine Kollision zu DE/EN/
+    # FR/IT/ES/PT/NL/CZ/LV-West-Wortstaemmen ``west``/``ouest``/``ovest``/
+    # ``oeste``/``zapad``/``rietumi``).
+    r"|siaure|pietus|rytai|vakarai"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6344,6 +6411,22 @@ _DIRECTION_LETTER: dict[str, str] = {
     # anderen Sprach-Reihen im Lookup. Spiegelt die LV-Erweiterung in
     # :data:`DATE_NO_DATA_MARKERS` auf die Direction-Wort-Achse.
     "ziemeli": "N", "dienvidi": "S", "austrumi": "E", "rietumi": "W",
+    # LT-Vollformen der Himmelsrichtungen (litauisch, baltisch/indo-europaeisch)
+    # in ASCII-Fallback-Form ohne Diakritika: ``siaure`` (N, aus ``siaurus``
+    # "eng/schmal"), ``pietus`` (S, "Mittags-Sonne"-Richtung), ``rytai`` (E,
+    # aus ``rytas`` "Morgen"), ``vakarai`` (W, aus ``vakaras`` "Abend").
+    # Sammler-Notizen aus westlitauischer Palanga-/Klaipeda-Kueste (Amber-/
+    # Bernstein-Provinz), Devon-Sandstein Nordlitauens (Salduva-/Ventos-
+    # Formation), Kambrium-Ordovizium der oestlichen Klint-Kueste und Silur-
+    # Karbonate Zentrallitauens sowie Museums-Etiketten aus Lietuvos gamtos
+    # muziejus (Vilnius), Vilniaus universiteto geologijos muziejus und
+    # Kauno Tado Ivanausko zoologijos muziejus. Auf LT-Landkarten sind die
+    # Ein-Buchstaben-Marker traditionell ``Š``/``P``/``R``/``V`` (baltisch-
+    # native Konvention) - der Lookup mappt aber auf die kanonischen
+    # ``N``/``S``/``E``/``W``-Letter (analog zur LV-Achse). Spiegelt die
+    # LT-Erweiterung in :data:`DATE_NO_DATA_MARKERS` auf die Direction-Wort-
+    # Achse und schliesst die vollstaendige Baltisch-Sprach-Achse (LV+LT).
+    "siaure": "N", "pietus": "S", "rytai": "E", "vakarai": "W",
 }
 
 

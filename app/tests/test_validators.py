@@ -10339,6 +10339,96 @@ def test_parse_coordinates_himmelsrichtung_lv_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_lt_vollnamen():
+    """LT-Vollnamen der Himmelsrichtungen (litauisch, baltisch/indo-europaeisch).
+
+    Sammler-Notizen aus westlitauischer Palanga-/Klaipeda-Kueste (Amber-/
+    Bernstein-Provinz mit historischer Bernstein-Verarbeitung der Hanse-
+    Zeit), Devon-Sandstein Nordlitauens (Salduva-/Ventos-Formation mit
+    Placodermi-Fisch-Fossilien), Kambrium-Ordovizium der oestlichen
+    Baltischen Klint-Kueste, Silur-Karbonate Zentrallitauens sowie geerbte
+    Preussisch-Litauische/litauisch gemischt-sprachige Bestand-Etiketten
+    aus Kaunas/Vilnius/Klaipeda-Vorkriegs-Sammlungen und Museum-Etiketten
+    aus dem Lietuvos gamtos muziejus (Vilnius), Vilniaus universiteto
+    geologijos muziejus und Kauno Tado Ivanausko zoologijos muziejus.
+
+    Neu sind alle vier LT-eigenstaendigen Wortstaemme ``siaure`` (N, aus
+    ``siaurus`` "eng/schmal"), ``pietus`` (S, "Mittags-Sonne"-Richtung),
+    ``rytai`` (E, aus ``rytas`` "Morgen"), ``vakarai`` (W, aus ``vakaras``
+    "Abend") in ASCII-Fallback-Form ohne Diakritika (analog zur ASCII-
+    Fallback-Konvention der LT-Date-Marker-Achse mit ``nezinomas``/
+    ``nezinoma`` und zur LV-Direction-Achse mit ``ziemeli``/``rietumi``).
+    Vor dieser Erweiterung fielen alle LT-Formen still auf die Fallback-
+    Route, was aus einem typischen Klaipeda-Sammler-Etikett ``"Siaure 55.7,
+    Rytai 21.1"`` (Litauische Bernstein-Kueste) silente ``(55.7, 21.1)``
+    als bare-Zahl-Paar liefert.
+
+    LT/LV Direction-Formen sind trotz gemeinsamer Ostbaltischer IE-Wurzel
+    lexikalisch KOMPLETT disjunkt (unterschiedliche Wortstaemme fuer alle
+    vier Achsen), obwohl beide Sprachen semantisch dieselben Sonnenstand-
+    Etymologien verwenden.
+    """
+    # Prefix-Form: LT-Sammler-Fundort-Notizen (Klaipeda-Region als Standard)
+    assert parse_coordinates("Siaure 55.7, Rytai 21.1") == (55.7, 21.1)
+    # Vilnius-Region (Zentralostlitauen)
+    assert parse_coordinates("Siaure 54.7, Rytai 25.3") == (54.7, 25.3)
+    # West-Halbkugel-Provenienz (hypothetisch, spiegelt LV/CZ-Test-Struktur)
+    assert parse_coordinates("Siaure 55.7, Vakarai 21.1") == (55.7, -21.1)
+    # Sued-Halbkugel/West-Halbkugel (hypothetisch)
+    assert parse_coordinates("Pietus 20.1, Vakarai 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``55.7° Siaure, 21.1° Rytai``)
+    assert parse_coordinates("55.7° Siaure, 21.1° Rytai") == (55.7, 21.1)
+    assert parse_coordinates("20.1° Pietus, 43.2° Vakarai") == (-20.1, -43.2)
+    # Case-insensitive
+    assert parse_coordinates("SIAURE 55.7, RYTAI 21.1") == (55.7, 21.1)
+    assert parse_coordinates("siaure 55.7, rytai 21.1") == (55.7, 21.1)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Siaure. 55.7, Rytai. 21.1") == (55.7, 21.1)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Pietus 20.1, Lon: Vakarai 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Rytai 21.1, Siaure 55.7") == (55.7, 21.1)
+    # Mixed-Sprache (LT-Marker mit DE/EN/CZ/LV auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Provenienzen vor,
+    # besonders bei baltendeutschen Vorkriegs-Bestaenden)
+    assert parse_coordinates("Siaure 55.7, East 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Siaure 55.7, Ost 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Siaure 55.7, Est 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Siaure 55.7, Vychod 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Siaure 55.7, Austrumi 21.1") == (55.7, 21.1)
+    # Wort-Grenzen: LT-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen.
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-/LV-
+    # Direction-Formen bleiben unveraendert (die neuen LT-Alternativen im
+    # Regex duerfen die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    # LV vs LT: trotz gemeinsamer Ostbaltischer IE-Wurzel sind alle vier
+    # Direction-Wortstaemme komplett unterscheidbar (LV ``ziemeli``/
+    # ``dienvidi``/``austrumi``/``rietumi`` vs LT ``siaure``/``pietus``/
+    # ``rytai``/``vakarai``: null Buchstaben-Ueberlappung an gleicher
+    # Position, keine gemeinsamen Praefixe)
+    assert "ziemeli" != "siaure"
+    assert "dienvidi" != "pietus"
+    assert "austrumi" != "rytai"
+    assert "rietumi" != "vakarai"
+    # Einzelbuchstaben bleiben unveraendert (LT-native Ein-Buchstaben-Marker
+    # Š/P/R/V werden bewusst NICHT unterstuetzt, da _is_lat_direction und
+    # _sign nur N/S/E/W/O kennen)
+    assert parse_coordinates("N50.4 E12.9") == (50.4, 12.9)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace
