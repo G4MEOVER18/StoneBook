@@ -1383,6 +1383,114 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # a/e/i/u/s/z/c/k/g/l/n reduziert, analog zur ET/FI/SV/CZ/SK/PL/HU/
         # RO-Diakritika-Fallback-Konvention).
         "nezinams", "nezinama", "bez datuma", "datums nezinams", "nav datu",
+        # Litauisch (LT) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/
+        # RO/DA/NO/SV/FI/ET/LV. Sammler-Region der LT-Sprach-Achse umfasst die
+        # baltische Amber-/Bernstein-Provinz mit der westlitauischen Palanga-/
+        # Klaipeda-Kueste (historisch bedeutender Bernstein-Umschlagplatz der
+        # Hanse-Zeit mit Verarbeitung von Rohbernstein zu Perlen/Schmuck der
+        # Kurlandischen-/Preussischen-Werkstaetten), die Devon-Sandstein-
+        # Formationen des noerdlichen Litauens (Salduva-/Ventos-Formation
+        # mit Fisch-Fossilien der Placodermi-Type-Localities), das Kambrium-
+        # Ordovizium der oestlichen Baltischen Klint-Kueste, die karbonatischen
+        # Silur-Vorkommen im Zentrallitauen mit historischen Baustein-/Kalk-
+        # Bruechen sowie geerbte Preussisch-Litauische/litauisch gemischt-
+        # sprachige Bestand-Etiketten aus Kaunas/Vilnius/Klaipeda-Vorkriegs-
+        # Sammlungen. Museum-Etiketten aus dem Lietuvos gamtos muziejus
+        # (Litauisches Naturkunde-Museum Vilnius), aus dem Vilniaus universiteto
+        # geologijos muziejus (Universitaet Vilnius), aus dem Kauno Tado
+        # Ivanausko zoologijos muziejus mit Mineralogie-Abteilung und aus den
+        # geerbten Litauisch-/Deutschbaltischen Vorkriegs-Katalogen der
+        # Litauischen Geologischen Landesanstalt.
+        #
+        # LT ist Baltisch (Indo-Europaeisch, direkt verwandt mit LV Lettisch
+        # ueber die gemeinsame Ostbaltische Untergruppe), lexikalisch DEUTLICH
+        # distinkt zur benachbarten ET-Sprach-Achse (uralisch/finno-ugrisch,
+        # siehe teadmata/kuupaev-Bemerkungen oben) und NAH verwandt zur LV-
+        # Sprach-Achse mit ostbaltisch-typischer Divergenz: LT ``nezinomas``
+        # (indo-europaeisch aus Negations-Praefix ``ne-`` + Verb-Stamm ``zin-``
+        # "wissen" + mask.-Passiv-Partizip-Endung ``-omas`` von ``zinoti``
+        # "wissen") teilt die Wurzel ``zin-`` und das Negations-Praefix ``ne-``
+        # mit LV ``nezinams``, unterscheidet sich aber in der Adjektiv-
+        # Bildung: LV verwendet ``-ams`` (mask.-Nominativ des einfachen Adjektivs
+        # aus dem Verb-Stamm), LT verwendet ``-omas`` (die klassische Passiv-
+        # Partizip-Praesens-Bildung mit dem Vokal-Umlaut o -> a in der fem.-
+        # Form ``nezinoma``). Diese Divergenz ist typisch fuer die spaete
+        # Ostbaltische Trennung (~800 n. Chr.) und macht die Marker LT/LV trotz
+        # gemeinsamer Wurzel lexikalisch disjunkt (``nezinomas`` vs
+        # ``nezinams``, ``nezinoma`` vs ``nezinama``: die 4 Buchstaben ``omas``/
+        # ``oma`` gegen ``ams``/``ama`` sind eindeutig unterscheidbar).
+        #
+        # ``nezinomas`` (mask. Passiv-Partizip-Praesens fuer "unbekannt"; ASCII-
+        # Fallback von ``nežinomas`` mit LT-Diakritika-Reduktion ž/š/č/ę/ų/ū/ė/į
+        # -> z/s/c/e/u/u/e/i, analog zur ET/FI/SV/CZ/SK/PL/HU/RO/LV-Diakritika-
+        # Fallback-Konvention der Sammler-Katalog-ASCII-Notation aus Windows-
+        # CP1257-/UTF-8-Notiz-Ketten). ``nezinoma`` (fem. Passiv-Partizip-
+        # Praesens; LT hat grammatisches Geschlecht mit -as/-a-Endung fuer
+        # mask./fem. bei den Passiv-Partizipien der -oti-Verben; ASCII-Fallback
+        # von ``nežinoma``). ``be datos`` (Standard-LT-Katalog-Konvention
+        # "ohne Datum", direktes LT-Pendant zur DE-``ohne datum``, FR-``sans
+        # date``, IT-``senza data``, ES-``sin fecha``, PT-``sem data``, NL-
+        # ``zonder datum``, PL-``bez daty``, CZ-``bez data``, SK-``bez datumu``,
+        # SL-``brez datuma``, RO-``fara data``, DA-``uden dato``, NO-``uten
+        # dato``, SV-``utan datum``, FI-``ilman paivamaaraa``, ET-``ilma
+        # kuupaevata``, LV-``bez datuma``-Reihe der Museums-/Bibliothekars-
+        # Konventions-Form. Die LT-Praeposition ``be`` = "ohne" verlangt
+        # Genitiv-Kasus ``datos`` (LT-Genitiv-Singular des fem.-Nominativs
+        # ``data`` mit ``-a`` -> ``-os``-Deklination der -a-Stamm-Substantive),
+        # grammatikalisch parallel zur LV ``bez datuma`` (dort mask.-Nominativ
+        # ``datums`` -> Genitiv ``datuma`` mit unterschiedlicher LV-/LT-Genus-
+        # Zuweisung des Datums-Wortes: LV mask., LT fem., analog zur IT ``data``
+        # fem. vs DE/PL/CZ mask.). Die Praeposition ``be`` ohne finales ``z``
+        # ist LT-typisch (LV hat ``bez`` mit finalem ``z``, sudbaltisches
+        # Merkmal). ``data nezinoma`` (invertierte LT-Prosa-Form; ASCII-Fallback
+        # von ``data nežinoma``: fem.-Nominativ-Substantiv ``data`` + fem.-
+        # Adjektiv-Praedikat ``nezinoma``. LT-Aequivalent zur DE ``datum
+        # unbekannt``, FR ``date inconnue``, IT ``data sconosciuta``/``data
+        # ignota``, ES ``fecha desconocida``, PT ``data desconhecida``, NL
+        # ``datum onbekend``, PL ``data nieznana``, CZ ``datum nezname``, SK
+        # ``datum neznamy``, SL ``datum neznan``, HU ``datum ismeretlen``, RO
+        # ``data necunoscuta``, DA ``dato ukendt``, NO ``dato ukjent``, SV
+        # ``datum okant``, FI ``paivamaara tuntematon``, ET ``kuupaev
+        # teadmata``, LV ``datums nezinams``-Reihe der invertierten Datum-
+        # Adjektiv-Prosa-Form. Die fem.-Form ``nezinoma`` bindet grammatikalisch
+        # an das fem.-Substantiv ``data`` (das LT-Wort fuer Datum ist feminin
+        # analog zur IT-``data`` und im Kontrast zur LV-``datums`` mask./DE-
+        # ``Datum`` neutrum/PL-``data`` fem./CZ-``datum`` mask.-Konvention).
+        # ``nera duomenu`` (natuerlich-sprachliche LT-Katalog-Marker-Form:
+        # ``nera`` ASCII-Fallback von ``nėra`` "es gibt nicht", die kontrahierte
+        # negierte Existenz-Form aus ``ne + yra`` "nicht ist" + ``duomenu``
+        # Genitiv Plural aus ``duomenys`` "Daten". LT-Aequivalent zur HU
+        # ``nincs adat``/EN ``no data``/DE ``keine daten``/NL ``geen
+        # gegevens``/ET ``andmed puuduvad``/LV ``nav datu``-Reihe der
+        # generischen "Daten existieren nicht"-Aussage. Die LT-Konstruktion
+        # ``nera`` + Genitiv ist die kanonische Existenz-Negation ohne Kopula,
+        # parallel zur LV ``nav`` + Genitiv (beide ostbaltisch abgeleitet) und
+        # zur RU ``net`` + Genitiv, und ist grammatikalisch nicht ableitbar
+        # aus einer anderen Sprach-Reihe (LT-spezifisch).
+        #
+        # Kollisionsfrei zu allen bestehenden Formen: ``nezinomas`` startet
+        # mit ``n``, teilt kein vollstaendiges Prefix mit den anderen n-
+        # startenden Markern (``no data``, ``no date``, ``none``, ``na``,
+        # ``n.a.``, ``nav datu``, ``nera duomenu``, ``nieznany``, ``neznamy``,
+        # ``neznan``, ``necunoscut``, ``ne``, ``nezinams``); die spezifische
+        # ``nezinom``-Sequenz ist LT-eindeutig und die 4-Buchstaben-Divergenz
+        # ``omas`` vs LV ``ams`` verhindert Fehl-Matches gegen die LV-Achse.
+        # ``nezinoma`` teilt Prefix ``nezinom`` mit ``nezinomas``, ist aber die
+        # eigenstaendige fem.-Form. ``be datos`` startet mit ``be``, teilt
+        # kein vollstaendiges Prefix mit LV/CZ/PL ``bez datuma``/``bez data``/
+        # ``bez daty`` (LT ``be`` ohne finales ``z`` ist sudbaltisch abgeleitet,
+        # die Sequenz ``be datos`` ist LT-eindeutig). ``data nezinoma`` und
+        # ``nera duomenu`` sind LT-spezifisch ohne Kollision zu anderen
+        # Reihen (``data`` als bare Substantiv-Form fehlt bewusst in der
+        # Marker-Menge, siehe LV-``datums``/CZ-``datum``-Konvention der bare-
+        # Grundformen). ``nera duomenu`` startet mit ``nera``, teilt keinen
+        # Marker-Prefix mit anderen Reihen (LT-spezifische ostbaltische
+        # Kontraktions-Form). Alle Marker sind lowercase und ohne Diakritika
+        # notiert (LT-Diakritika ž/š/č/ą/ę/ų/ū/ė/į werden im Sammler-Katalog-
+        # ASCII-Fallback der Windows-CP1257-/UTF-8-Notiz-Ketten regelmaessig
+        # zu z/s/c/a/e/u/u/e/i reduziert, analog zur ET/FI/SV/CZ/SK/PL/HU/
+        # RO/LV-Diakritika-Fallback-Konvention).
+        "nezinomas", "nezinoma", "be datos", "data nezinoma", "nera duomenu",
     }
 )
 

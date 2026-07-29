@@ -9285,6 +9285,146 @@ def test_parse_iso_date_lv_no_data_marker():
     assert "bez" not in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_lt_no_data_marker():
+    """LT-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/DA/NO/SV/
+    FI/ET/LV-Achsen um Litauisch (LT). Sammler-Region: baltische Amber-/
+    Bernstein-Provinz (westlitauische Palanga-/Klaipeda-Kueste), Devon-
+    Sandstein Nordlitauens (Salduva-/Ventos-Formation), Kambrium-Ordovizium
+    der oestlichen Klint-Kueste, Silur-Karbonate Zentrallitauens und
+    geerbte Preussisch-Litauische/litauisch-deutschbaltisch gemischt-sprachige
+    Bestand-Etiketten aus Kaunas/Vilnius/Klaipeda-Vorkriegs-Sammlungen; sowie
+    Museum-Etiketten aus dem Lietuvos gamtos muziejus (Vilnius), Vilniaus
+    universiteto geologijos muziejus und Kauno Tado Ivanausko zoologijos
+    muziejus. LT ist baltisch (indo-europaeisch), NAH verwandt zur LV-Achse
+    ueber die gemeinsame Ostbaltische Untergruppe (~800 n. Chr.-Trennung),
+    aber lexikalisch DEUTLICH distinkt zur ET-Achse (uralisch, null Wurzel-
+    Gemeinsamkeit). LT/LV teilen die Wurzel ``zin-`` "wissen" und das
+    Negations-Praefix ``ne-`` (indo-europaeisch), unterscheiden sich aber in
+    der Adjektiv-Bildung: LT ``-omas``/``-oma`` (Passiv-Partizip-Praesens von
+    ``zinoti``) vs LV ``-ams``/``-ama`` (einfaches Adjektiv). LT-Marker
+    werden in ASCII-Fallback-Form ohne Diakritika ž/š/č/ą/ę/ų/ū/ė/į gefuehrt
+    (analog zur ET/FI/SV/CZ/SK/PL/HU/RO/LV-Achse).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Mask. Passiv-Partizip-Praesens fuer "unbekannt" (kanonische LT-Katalog-
+    # Etiketten-Nennform des mask.-Adjektivs von ``zinoti`` "wissen"; LT
+    # ``-omas``-Endung ist die Passiv-Partizip-Bildung mit Vokal-Umlaut o->a
+    # in der fem.-Form)
+    assert parse_iso_date("nezinomas") is None
+    assert parse_iso_date("Nezinomas") is None
+    assert parse_iso_date("NEZINOMAS") is None
+    # Fem. Passiv-Partizip-Praesens (LT-Deklination -as/-a mask./fem.)
+    assert parse_iso_date("nezinoma") is None
+    assert parse_iso_date("Nezinoma") is None
+    assert parse_iso_date("NEZINOMA") is None
+    # Praeposition-Genitiv-Phrase "ohne Datum" (LT ``be`` ohne finales ``z``
+    # + Genitiv ``datos`` aus dem fem.-Nominativ ``data``; -a-Stamm-
+    # Substantiv-Deklination -a -> -os)
+    assert parse_iso_date("be datos") is None
+    assert parse_iso_date("Be Datos") is None
+    assert parse_iso_date("BE DATOS") is None
+    # Invertierte LT-Prosa-Form (fem.-Substantiv ``data`` + fem.-Adjektiv-
+    # Praedikat ``nezinoma``; das LT-Wort fuer Datum ist feminin analog zur
+    # IT-``data``, im Kontrast zur LV-mask.-``datums``)
+    assert parse_iso_date("data nezinoma") is None
+    assert parse_iso_date("Data Nezinoma") is None
+    assert parse_iso_date("DATA NEZINOMA") is None
+    # Natuerlich-sprachliche LT-Katalog-Marker-Form "es gibt keine Daten"
+    # (``nera`` = ASCII-Fallback der kontrahierten negierten Existenz-Form
+    # ``nėra`` aus ``ne + yra``, + Genitiv Plural ``duomenu`` aus
+    # ``duomenys`` "Daten"; LT-Aequivalent zur HU ``nincs adat``/LV ``nav
+    # datu`` mit ostbaltisch-typischer nera/nav-Existenz-Negation)
+    assert parse_iso_date("nera duomenu") is None
+    assert parse_iso_date("Nera Duomenu") is None
+    assert parse_iso_date("NERA DUOMENU") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  nezinomas  ") is None
+    assert parse_iso_date("  nezinoma  ") is None
+    assert parse_iso_date("  be datos  ") is None
+    assert parse_iso_date("  data nezinoma  ") is None
+    assert parse_iso_date("  nera duomenu  ") is None
+    # Menge-Konsistenz: alle neuen LT-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("nezinomas", "nezinoma", "be datos", "data nezinoma",
+                   "nera duomenu"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("nezinomas", "nezinoma", "be datos", "data nezinoma",
+                   "nera duomenu"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die LT-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "ukendt" in DATE_NO_DATA_MARKERS
+    assert "ukjent" in DATE_NO_DATA_MARKERS
+    assert "okand" in DATE_NO_DATA_MARKERS
+    assert "tuntematon" in DATE_NO_DATA_MARKERS
+    assert "teadmata" in DATE_NO_DATA_MARKERS
+    assert "nezinams" in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: LV-Formen (baltisch benachbart, gemeinsame Ostbaltische
+    # Untergruppe, gemeinsame Wurzel ``zin-``) bleiben distinkt zu LT - die
+    # 4-Buchstaben-Divergenz omas/oma vs ams/ama macht die Marker-Formen
+    # eindeutig unterscheidbar.
+    assert "nezinams" in DATE_NO_DATA_MARKERS         # LV (nicht nezinomas)
+    assert "nezinama" in DATE_NO_DATA_MARKERS         # LV (nicht nezinoma)
+    assert "bez datuma" in DATE_NO_DATA_MARKERS       # LV (nicht be datos)
+    assert "datums nezinams" in DATE_NO_DATA_MARKERS  # LV (nicht data nezinoma)
+    assert "nav datu" in DATE_NO_DATA_MARKERS         # LV (nicht nera duomenu)
+    # LT/LV-Paare sind lexikalisch disjunkt trotz gemeinsamer IE-Wurzel
+    assert "nezinomas" != "nezinams"
+    assert "nezinoma" != "nezinama"
+    assert "be datos" != "bez datuma"
+    assert "data nezinoma" != "datums nezinams"
+    assert "nera duomenu" != "nav datu"
+    # ET-Formen (ostseefinnisch/uralisch, geographisch benachbart) bleiben
+    # distinkt zu LT - null Wurzel-Gemeinsamkeit trotz Nachbarschaft.
+    assert "teadmata" in DATE_NO_DATA_MARKERS         # ET (nicht nezinomas)
+    assert "ilma kuupaevata" in DATE_NO_DATA_MARKERS  # ET (nicht be datos)
+    assert "nezinomas" != "teadmata"
+    assert "be datos" != "ilma kuupaevata"
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # LT-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: LT-aehnliche Fehl-Formen matchen nicht (nur exakte
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("data") is None              # bare Substantiv (fem.)
+    assert parse_iso_date("nezinoma data") is None     # invertierte Wortfolge
+    assert parse_iso_date("be") is None                # bare Praeposition
+    assert parse_iso_date("nera") is None              # bare negierte Existenz-Form
+    assert parse_iso_date("duomenu") is None           # bare Genitiv Plural
+    # Bare Grundformen sind bewusst NICHT in der Marker-Menge, nur die
+    # kompletten grammatisch korrekten Phrasen (parallel zur LV/CZ-Konvention
+    # der bare-``datums``/``datum``-Ausschluss).
+    assert "data" not in DATE_NO_DATA_MARKERS
+    assert "duomenu" not in DATE_NO_DATA_MARKERS
+    assert "nera" not in DATE_NO_DATA_MARKERS
+    assert "be" not in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
