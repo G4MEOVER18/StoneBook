@@ -80,6 +80,7 @@ class Statistik:
     by_erstellt_am_monat: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_wochentag: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_quartal: dict[str, int] = field(default_factory=dict)
+    by_erstellt_am_tertial: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_halbjahr: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahr: dict[str, int] = field(default_factory=dict)
     by_geaendert_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
@@ -1206,6 +1207,7 @@ class Statistik:
             "by_erstellt_am_monat": dict(self.by_erstellt_am_monat),
             "by_erstellt_am_wochentag": dict(self.by_erstellt_am_wochentag),
             "by_erstellt_am_quartal": dict(self.by_erstellt_am_quartal),
+            "by_erstellt_am_tertial": dict(self.by_erstellt_am_tertial),
             "by_erstellt_am_halbjahr": dict(self.by_erstellt_am_halbjahr),
             "by_geaendert_am_jahr": dict(self.by_geaendert_am_jahr),
             "by_geaendert_am_jahrzehnt": dict(self.by_geaendert_am_jahrzehnt),
@@ -2092,6 +2094,42 @@ def _count_erstellt_am_quartal(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY q ORDER BY q ASC"
     )
     return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_erstellt_am_tertial(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro ``erstellt_am``-Tertial (T1..T3), ueber alle Jahre aggregiert.
+
+    Spiegelt :func:`_count_funddatum_tertial` um die Erfassungs-Achse und sitzt
+    granular zwischen :func:`_count_erstellt_am_quartal` (3-Monats-Bloecke) und
+    :func:`_count_erstellt_am_halbjahr` (6-Monats-Bloecke): teilt das Kalenderjahr
+    in drei gleiche 4-Monats-Bloecke T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez.
+    Zeigt die typische Digitalisierungs-Kampagnen-Dreiteilung auf der Erfassungs-
+    Achse: T1-Winter-/Fruehjahrs-Indoor-Phase mit Tucson-Nachbearbeitung,
+    T2-Uebergangs-/Sommer-Phase mit reduzierter Erfassung waehrend der Feld-
+    Saison, T3-Herbst-/Winter-Auslauf mit Muenchen-Nachbereitung.
+
+    Labels ``T1``..``T3``, Reihenfolge chronologisch aufsteigend (T1 zuerst),
+    Tertiale ohne Treffer fehlen im Dict. Tertial wird aus dem Monatsteil per
+    ``((monat - 1) / 4) + 1`` abgeleitet, identisch zur Funddatum-Tertial-
+    Formel.
+
+    ``erstellt_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(erstellt_am, 6, 2)`` extrahiert den
+    Monatsteil. Substring-Praefix-Guards und ``BETWEEN 1 AND 12``-Guard sind
+    identisch zu :func:`_count_erstellt_am_monat` / :func:`_count_erstellt_am_quartal`
+    / :func:`_count_erstellt_am_halbjahr`, damit reine Jahres-Formen ohne
+    Monatsteil und pathologische Monats-Codes 00/13..99 automatisch herausfallen.
+    """
+    sql = (
+        "SELECT ((CAST(substr(erstellt_am, 6, 2) AS INTEGER) - 1) / 4 + 1) AS t, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE erstellt_am IS NOT NULL AND TRIM(erstellt_am) != '' "
+        "AND substr(erstellt_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(erstellt_am, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(erstellt_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY t ORDER BY t ASC"
+    )
+    return {f"T{r['t']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_erstellt_am_halbjahr(conn: sqlite3.Connection) -> dict[str, int]:
@@ -3876,6 +3914,16 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # kulminieren. Komplementaer zum erstellt_am_quartal_in-Filter (Listen-
     # Drill-down): hier die Verteilungs-Sicht ueber die vier Quartale.
     st.by_erstellt_am_quartal = _count_erstellt_am_quartal(conn)
+    # Erfassungs-Tertial-Histogramm (T1..T3, ueber alle Jahre aggregiert):
+    # spiegelt by_funddatum_tertial auf die Erfassungs-Achse und sitzt granular
+    # zwischen by_erstellt_am_quartal (3-Monats-Bloecke) und by_erstellt_am_halbjahr
+    # (6-Monats-Bloecke). Teilt das Kalenderjahr in drei gleiche 4-Monats-Bloecke
+    # (T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez) und zeigt die typische Digitalisierungs-
+    # Kampagnen-Dreiteilung: T1=Winter-/Fruehjahrs-Indoor-Phase mit Tucson-
+    # Nachbearbeitung, T2=Uebergangs-/Sommer-Phase mit reduzierter Erfassung
+    # waehrend der Feld-Saison, T3=Herbst-/Winter-Auslauf mit Muenchen-
+    # Nachbereitung. Reihenfolge T1->T3 chronologisch.
+    st.by_erstellt_am_tertial = _count_erstellt_am_tertial(conn)
     # Erfassungs-Halbjahres-Zaesur (H1/H2, ueber alle Jahre aggregiert):
     # spiegelt by_funddatum_halbjahr auf die Erfassungs-Achse und ergaenzt
     # by_erstellt_am_quartal um die noch groebere Zwei-Punkt-Aggregat-Achse.
