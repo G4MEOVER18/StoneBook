@@ -9038,6 +9038,122 @@ def test_parse_iso_date_fi_no_data_marker():
     assert "ilman paivamaara" not in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_et_no_data_marker():
+    """ET-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/DA/NO/SV/
+    FI-Achsen um Estnisch (ET). Sammler-Region: baltische Amber-/Bernstein-
+    Provinz (Tallinn-/Parnu-Kueste), Kurtna-Phosphorit-Revier, oberkambrisch-
+    ordovizische Klint-Kueste mit Trilobiten-Type-Localities, Kukersit-
+    Oelschiefer-Formation sowie Museum-Etiketten aus dem Eesti Loodusmuuseum
+    Tallinn und Tartu Uelikooli geoloogia muuseum. ET ist ostseefinnisch,
+    nah verwandt mit FI, aber mit eigenen Wortstaemmen fuer die No-Data-
+    Marker-Semantik (ET ``teadmata``/``kuupaev`` vs FI ``tuntematon``/
+    ``paivamaara``). ET-Marker werden in ASCII-Fallback-Form ohne Diakritika
+    ä/ö/õ/ü gefuehrt (analog zur FI-/SV-/CZ-/SK-/PL-/HU-/RO-Achse).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Grundform des Abessiv-Adverbials "unbekannt/nicht gewusst" (kanonische
+    # ET-Katalog-Etiketten-Nennform, kein Genus da ET wie FI kein grammati-
+    # sches Geschlecht kennt)
+    assert parse_iso_date("teadmata") is None
+    assert parse_iso_date("Teadmata") is None
+    assert parse_iso_date("TEADMATA") is None
+    # Praeposition-Abessiv-Phrase "ohne Datum" (ASCII-Fallback von "ilma
+    # kuupäevata"; die ET-Praeposition ``ilma`` verlangt Abessiv-Kasus-Endung
+    # ``-ta``, ostseefinnisches Aequivalent zur FI ``ilman + Partitiv``)
+    assert parse_iso_date("ilma kuupaevata") is None
+    assert parse_iso_date("Ilma Kuupaevata") is None
+    assert parse_iso_date("ILMA KUUPAEVATA") is None
+    # Invertierte ET-Prosa-Form (ASCII-Fallback von "kuupäev teadmata"; ET
+    # kein Genus, daher bleibt ``teadmata`` unveraendert - analog zur FI
+    # ``paivamaara tuntematon``)
+    assert parse_iso_date("kuupaev teadmata") is None
+    assert parse_iso_date("Kuupaev Teadmata") is None
+    assert parse_iso_date("KUUPAEV TEADMATA") is None
+    # Natuerlich-sprachliche ET-Katalog-Marker-Form "Daten fehlen" (Verb-
+    # Praedikat-Konstruktion, ET-Aequivalent zur HU ``nincs adat``/EN
+    # ``no data``)
+    assert parse_iso_date("andmed puuduvad") is None
+    assert parse_iso_date("Andmed Puuduvad") is None
+    assert parse_iso_date("ANDMED PUUDUVAD") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  teadmata  ") is None
+    assert parse_iso_date("  ilma kuupaevata  ") is None
+    assert parse_iso_date("  kuupaev teadmata  ") is None
+    assert parse_iso_date("  andmed puuduvad  ") is None
+    # Menge-Konsistenz: alle neuen ET-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("teadmata", "ilma kuupaevata", "kuupaev teadmata",
+                   "andmed puuduvad"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("teadmata", "ilma kuupaevata", "kuupaev teadmata",
+                   "andmed puuduvad"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die ET-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "ukendt" in DATE_NO_DATA_MARKERS
+    assert "ukjent" in DATE_NO_DATA_MARKERS
+    assert "okand" in DATE_NO_DATA_MARKERS
+    assert "tuntematon" in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: FI-Formen (ostseefinnisch, nah verwandt mit ET, aber
+    # eigene Wortstaemme) bleiben distinkt zu ET - keine Kollision durch
+    # Familien-Verwandschaft.
+    assert "tuntematon" in DATE_NO_DATA_MARKERS       # FI (nicht teadmata)
+    assert "ilman paivamaaraa" in DATE_NO_DATA_MARKERS # FI (nicht ilma kuupaevata)
+    # ET/FI sind lexikalisch disjunkt trotz gemeinsamer ostseefinnischer Wurzel
+    assert "teadmata" != "tuntematon"
+    assert "ilma kuupaevata" != "ilman paivamaaraa"
+    assert "kuupaev teadmata" != "paivamaara tuntematon"
+    # Regress-Anker: ET-Formen sind lexikalisch disjunkt zu allen Germanisch-
+    # /Romanisch-/Slawisch-Reihen (uralische Wurzel vs. Indo-Europaeische
+    # Wurzeln)
+    assert "teadmata" != "unknown"           # vs EN germanisch
+    assert "teadmata" != "unbekannt"         # vs DE germanisch
+    assert "teadmata" != "okand"             # vs SV germanisch
+    assert "teadmata" != "inconnu"           # vs FR romanisch
+    assert "teadmata" != "nieznany"          # vs PL slawisch
+    assert "teadmata" != "ismeretlen"        # vs HU ugrisch (andere Untergruppe)
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # ET-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: ET-aehnliche Fehl-Formen matchen nicht (nur exakte
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("teadmata kuupaev") is None  # invertierte Wortfolge (Adverbial vor Subst)
+    assert parse_iso_date("kuupaev") is None           # bare Substantiv
+    assert parse_iso_date("ilma") is None              # bare Praeposition
+    assert parse_iso_date("andmed") is None            # bare Substantiv
+    # Nominativ-Form ``kuupaev`` (ohne Abessiv-Endung ``-ata``) ist bewusst
+    # NICHT in der Marker-Menge, nur die grammatisch korrekte Praeposition-
+    # Abessiv-Form ``kuupaevata``.
+    assert "kuupaev" not in DATE_NO_DATA_MARKERS
+    assert "ilma kuupaev" not in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

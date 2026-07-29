@@ -1214,6 +1214,76 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # konventionalisiert).
         "tuntematon", "ei paivamaaraa", "ilman paivamaaraa",
         "paivamaara tuntematon",
+        # Estnisch (ET) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/
+        # RO/DA/NO/SV/FI. Sammler-Region der ET-Sprach-Achse umfasst die
+        # baltische Amber-/Bernstein-Provinz (Tallinn-/Parnu-Kuesten-Regionen
+        # mit historischer Bernstein-Verarbeitungs-Tradition der Hanse-
+        # Kaufmanns-Provenienzen), das Kurtna-Phosphorit-Revier (Nord-Estland,
+        # historisches Rohstoff-Vorkommen mit sedimentaeren Phosphorit-Lagern),
+        # das oberkambrisch-ordovizische Schichtstufen-Land der Nord-Estnischen
+        # Klint-Kueste (Type-Localities fuer zahlreiche Trilobiten-Fossilien und
+        # Kluft-Kalzit-/Fluorit-Konkretionen), Vaike-Maarja Dolomit-Vorkommen
+        # und Estonisches Oelschiefer-Revier (Kukersit-Formation mit organisch-
+        # reichen Sedimenten der Kukruse-Stufe) sowie Museum-Etiketten aus dem
+        # Eesti Loodusmuuseum (Estnisches Naturkunde-Museum Tallinn), Tartu
+        # Uelikooli geoloogia muuseum (Geologie-Museum der Universitaet Tartu)
+        # und Eesti Maapou muuseum. Geerbte Sammler-Notizen aus estnisch-
+        # sprachigen Bestaenden umfassen Baltendeutsche/estnisch gemischt-
+        # sprachige Vorkriegs-Kataloge, Tartuer/Tallinner Auktions-Etiketten
+        # und Feld-Notizen der Estnischen Geologischen Landesanstalt.
+        #
+        # ET ist uralisch (finno-ugrisch, Ostseefinnische Untergruppe direkt
+        # verwandt mit FI), lexikalisch nah verwandt mit FI aber mit eigenen
+        # Wortstaemmen fuer die No-Data-Marker-Semantik: ET ``teadmata``
+        # (aus Verb ``teadma`` "wissen" + Abessiv-Suffix ``-mata``) hat
+        # dieselbe morphologische Struktur wie FI ``tuntematon`` (privativ
+        # abgeleitet vom Wahrnehmungs-Verb), aber unterschiedliche Wortstaemme
+        # (ET ``tead-`` "wissen" vs FI ``tunt-`` "kennen"). ET ``kuupaev``
+        # (ASCII-Fallback von ``kuupäev`` - Kompositum aus ``kuu`` Mond/Monat
+        # und ``päev`` Tag) ist das ET-Aequivalent zu FI ``paivamaara`` mit
+        # analoger Kompositum-Bildung. Uralische Wurzeln unterscheiden sich
+        # von HU (ugrische Untergruppe, distinktere Divergenz nach ~4000 Jahren
+        # gemeinsamer proto-uralischer Trennung).
+        #
+        # ``teadmata`` (Grundform des Abessiv-Adverbials "unbekannt/nicht
+        # gewusst"; die ET ``-mata``-Form ist morphologisch das Aequivalent
+        # zur FI privativen ``-maton``-Adjektiv-Ableitung und funktioniert
+        # kasus-neutral, entspricht DE ``unbekannt``/EN ``unknown``/FI
+        # ``tuntematon``. Kein Genus/Kasus-Flag da ET wie FI kein grammatisches
+        # Geschlecht kennt und die Adverbial-Form kasus-neutral genutzt wird).
+        # ``ilma kuupaevata`` (ASCII-Fallback von ``ilma kuupäevata``:
+        # Praeposition ``ilma`` "ohne" + Abessiv-Singular ``kuupäevata`` -
+        # die ET Abessiv-Kasus-Endung ``-ta`` markiert das "ohne"-Verhaeltnis
+        # analog zur FI ``ilman + Partitiv``-Konstruktion. ET-Aequivalent
+        # zur FI ``ilman paivamaaraa``/DE ``ohne datum``/EN ``no date``/NL
+        # ``zonder datum``/SV ``utan datum``-Reihe der Praeposition-Phrase).
+        # ``kuupaev teadmata`` (ASCII-Fallback von ``kuupäev teadmata``:
+        # invertierte ET-Prosa-Form. ET-Aequivalent zur FI ``paivamaara
+        # tuntematon``/DE ``datum unbekannt``/SV ``datum okant``-Reihe der
+        # invertierten Datum-Adjektiv-Prosa-Form. Da ET wie FI kein
+        # grammatisches Geschlecht kennt, bleibt ``teadmata`` in der
+        # invertierten Form unveraendert). ``andmed puuduvad`` (natuerlich-
+        # sprachliche ET-Katalog-Marker-Form: ``andmed`` Nominativ Plural
+        # "Daten" + ``puuduvad`` 3. Pl. Praesens des Verbs ``puuduma``
+        # "fehlen". ET-Aequivalent zur HU ``nincs adat``/DE ``keine daten``/
+        # EN ``no data``-Reihe der generischen "Daten existieren nicht"-
+        # Aussage).
+        #
+        # Kollisionsfrei zu allen bestehenden Formen: ``teadmata`` startet
+        # mit ``t``, keine anderen T-startenden Marker in der Menge (FI
+        # ``tuntematon`` teilt nur den Anfangs-Buchstaben, ist aber
+        # lexikalisch disjunkt: ``tead-`` vs ``tunt-``). ``ilma kuupaevata``
+        # startet mit ``ilma``, teilt kein Prefix mit FI ``ilman paivamaaraa``
+        # (ET ``ilma`` ohne finales ``n``, FI ``ilman`` mit ``n`` - die
+        # unterschiedliche Praeposition-Form ist ostseefinnisch-typische
+        # Divergenz). ``kuupaev teadmata`` und ``andmed puuduvad`` sind
+        # ET-spezifisch ohne lexikalische Kollision zu anderen Reihen. Alle
+        # Marker sind lowercase und ohne Diakritika notiert (ET-Diakritika
+        # ä/ö/õ/ü werden im Sammler-Katalog-ASCII-Fallback der Windows-
+        # CP1257-/UTF-8-Notiz-Ketten regelmaessig zu a/o/o/u reduziert,
+        # analog zur FI-/SV-/CZ-/SK-/PL-/HU-/RO-Diakritika-Fallback-
+        # Konvention).
+        "teadmata", "ilma kuupaevata", "kuupaev teadmata", "andmed puuduvad",
     }
 )
 
