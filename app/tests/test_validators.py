@@ -9154,6 +9154,137 @@ def test_parse_iso_date_et_no_data_marker():
     assert "ilma kuupaev" not in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_lv_no_data_marker():
+    """LV-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/DA/NO/SV/
+    FI/ET-Achsen um Lettisch (LV). Sammler-Region: baltische Amber-/Bernstein-
+    Provinz (Kurland-/Kurzeme-Kueste), Devon-Kambrium der Rigaer-Bucht,
+    Vidzeme-Sandstein-Revier und geerbte Baltendeutsche/lettisch gemischt-
+    sprachige Bestand-Etiketten aus Riga/Jelgava/Ventspils-Vorkriegs-
+    Sammlungen, sowie Museum-Etiketten aus dem Latvijas Dabas muzejs und
+    dem Latvijas Universitates geologijas muzejs. LV ist baltisch (indo-
+    europaeisch), lexikalisch DEUTLICH distinkt zur benachbarten ET-Achse
+    (uralisch): LV ``nezinams`` (indo-europaeisch aus ``ne`` + ``zin-``
+    "wissen" + Adjektiv-Endung) hat NULL Wurzel-Gemeinsamkeit mit ET
+    ``teadmata``. LV-Marker werden in ASCII-Fallback-Form ohne Diakritika
+    ā/ē/ī/ū/š/ž/č gefuehrt (analog zur ET/FI/SV/CZ/SK/PL/HU/RO-Achse).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Mask. Adjektiv-Form "unbekannt" (LV hat grammatisches Geschlecht, mask.
+    # Nominativ-Endung ``-s`` am Adjektiv, ASCII-Fallback von ``nezināms``)
+    assert parse_iso_date("nezinams") is None
+    assert parse_iso_date("Nezinams") is None
+    assert parse_iso_date("NEZINAMS") is None
+    # Fem. Adjektiv-Form (LV-Adjektiv-Deklination mit -s/-a-Endung mask./fem.,
+    # analog zur PL ``nieznany``/``nieznana``, ES ``desconocido``/``desconocida``)
+    assert parse_iso_date("nezinama") is None
+    assert parse_iso_date("Nezinama") is None
+    assert parse_iso_date("NEZINAMA") is None
+    # Praeposition-Genitiv-Phrase "ohne Datum" (LV ``bez`` + Genitiv ``datuma``
+    # aus dem mask.-Nominativ ``datums``, parallel zur PL ``bez daty`` und
+    # CZ ``bez data``)
+    assert parse_iso_date("bez datuma") is None
+    assert parse_iso_date("Bez Datuma") is None
+    assert parse_iso_date("BEZ DATUMA") is None
+    # Invertierte LV-Prosa-Form (mask.-Substantiv ``datums`` + mask.-Adjektiv-
+    # Praedikat ``nezinams``, das LV-Wort fuer Datum ist maskulin analog zu
+    # DE/PL/CZ; ASCII-Fallback von ``datums nezināms``)
+    assert parse_iso_date("datums nezinams") is None
+    assert parse_iso_date("Datums Nezinams") is None
+    assert parse_iso_date("DATUMS NEZINAMS") is None
+    # Natuerlich-sprachliche LV-Katalog-Marker-Form "Daten sind nicht [vorhanden]"
+    # (``nav`` = negierte Existenz-Form ohne Kopula, + Genitiv Plural ``datu``
+    # aus ``dati`` "Daten"; LV-Aequivalent zur HU ``nincs adat``/EN ``no data``)
+    assert parse_iso_date("nav datu") is None
+    assert parse_iso_date("Nav Datu") is None
+    assert parse_iso_date("NAV DATU") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  nezinams  ") is None
+    assert parse_iso_date("  nezinama  ") is None
+    assert parse_iso_date("  bez datuma  ") is None
+    assert parse_iso_date("  datums nezinams  ") is None
+    assert parse_iso_date("  nav datu  ") is None
+    # Menge-Konsistenz: alle neuen LV-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("nezinams", "nezinama", "bez datuma", "datums nezinams",
+                   "nav datu"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("nezinams", "nezinama", "bez datuma", "datums nezinams",
+                   "nav datu"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die LV-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "ukendt" in DATE_NO_DATA_MARKERS
+    assert "ukjent" in DATE_NO_DATA_MARKERS
+    assert "okand" in DATE_NO_DATA_MARKERS
+    assert "tuntematon" in DATE_NO_DATA_MARKERS
+    assert "teadmata" in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: ET-Formen (baltisch benachbart, aber Uralisch statt Indo-
+    # Europaeisch) bleiben distinkt zu LV - null Wurzel-Gemeinsamkeit.
+    assert "teadmata" in DATE_NO_DATA_MARKERS         # ET (nicht nezinams)
+    assert "ilma kuupaevata" in DATE_NO_DATA_MARKERS  # ET (nicht bez datuma)
+    # ET/LV sind lexikalisch komplett disjunkt (unterschiedliche Sprachfamilien)
+    assert "nezinams" != "teadmata"
+    assert "bez datuma" != "ilma kuupaevata"
+    assert "datums nezinams" != "kuupaev teadmata"
+    assert "nav datu" != "andmed puuduvad"
+    # Regress-Anker: LV ``bez datuma`` teilt zwar den ``bez``-Praefix mit
+    # CZ ``bez data`` und PL ``bez daty`` (gemeinsame IE-Praeposition), aber
+    # die vollstaendigen Formen sind lexikalisch disjunkt (Genitiv-Endungen).
+    assert "bez datuma" != "bez data"     # vs CZ
+    assert "bez datuma" != "bez daty"     # vs PL
+    assert "bez data" in DATE_NO_DATA_MARKERS   # CZ bleibt unveraendert
+    assert "bez daty" in DATE_NO_DATA_MARKERS   # PL bleibt unveraendert
+    # Regress-Anker: LV ``nezinams`` teilt zwar den ``nezn-``/``nezin-``-
+    # Wortstamm mit CZ ``neznamy``/PL ``nieznany`` (gemeinsame slawisch-
+    # baltische IE-Wurzel), ist aber grammatisch eigenstaendig.
+    assert "nezinams" != "neznamy"        # vs CZ
+    assert "nezinams" != "nieznany"       # vs PL
+    assert "nezinama" != "neznama"        # vs SK-fem (existiert nicht so, aber Test)
+    assert "nezinama" != "nieznana"       # vs PL-fem
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # LV-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: LV-aehnliche Fehl-Formen matchen nicht (nur exakte
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("datums") is None            # bare Substantiv
+    assert parse_iso_date("nezinams datums") is None   # invertierte Wortfolge
+    assert parse_iso_date("bez") is None               # bare Praeposition
+    assert parse_iso_date("nav") is None               # bare negierte Existenz-Form
+    assert parse_iso_date("datu") is None              # bare Genitiv Plural
+    # Bare Grundformen sind bewusst NICHT in der Marker-Menge, nur die
+    # kompletten grammatisch korrekten Phrasen.
+    assert "datums" not in DATE_NO_DATA_MARKERS
+    assert "datu" not in DATE_NO_DATA_MARKERS
+    assert "nav" not in DATE_NO_DATA_MARKERS
+    assert "bez" not in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

@@ -1284,6 +1284,105 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # analog zur FI-/SV-/CZ-/SK-/PL-/HU-/RO-Diakritika-Fallback-
         # Konvention).
         "teadmata", "ilma kuupaevata", "kuupaev teadmata", "andmed puuduvad",
+        # Lettisch (LV) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/
+        # RO/DA/NO/SV/FI/ET. Sammler-Region der LV-Sprach-Achse umfasst die
+        # baltische Amber-/Bernstein-Provinz (Kurland-/Kurzeme-Kueste mit
+        # historischer Bernstein-Verarbeitung der Deutsch-Balten-Provenienz
+        # und der Liepaja-/Ventspils-Hafen-Sammlungen), das Devon-Kambrium-
+        # Schichtstufen-Land der Rigaer-Bucht (Type-Localities fuer Placodermi-
+        # Fische und marine Kalk-Fossilien der Salaspils-Formation), das
+        # Vidzeme-Sandstein-Revier mit Buntsandstein-/Sedimentaer-Fundstellen
+        # und geerbte Baltendeutsche Bestand-Etiketten aus Riga/Jelgava/
+        # Ventspils-Vorkriegs-Sammlungen. Museum-Etiketten aus dem Latvijas
+        # Dabas muzejs (Lettisches Naturkunde-Museum Riga), aus dem
+        # Latvijas Universitates geologijas muzejs (Universitaet Riga) und
+        # aus den geerbten Baltendeutsch-/lettisch gemischt-sprachigen
+        # Vorkriegs-Katalogen der Herder-Institut-Provenienz.
+        #
+        # LV ist Baltisch (Indo-Europaeisch, direkt verwandt mit LT
+        # Litauisch), lexikalisch DEUTLICH distinkt zur benachbarten ET-
+        # Sprach-Achse (ET ist uralisch/finno-ugrisch, siehe teadmata/
+        # kuupaev-Bemerkungen oben): LV ``nezinams`` (indo-europaeisch aus
+        # Negations-Praefix ``ne-`` + Verb-Stamm ``zin-`` "wissen" + mask.
+        # Adjektiv-Endung ``-ams``) hat NULL Wurzel-Gemeinsamkeit mit ET
+        # ``teadmata``, spiegelt aber die identische morphologische Struktur
+        # der Negations-Ableitung (dieselbe Form wie im PL ``nieznany``,
+        # RU ``neizvestnyj``, CZ ``neznamy``). Die mask./fem.-Trennung
+        # ``nezinams``/``nezinama`` folgt der LV-Adjektiv-Deklination mit
+        # grammatischem Geschlecht (identisch zur ES ``desconocido``/
+        # ``desconocida``, PT ``desconhecido``/``desconhecida``, IT
+        # ``sconosciuto``/``sconosciuta``, FR ``inconnu``/``inconnue``, PL
+        # ``nieznany``/``nieznana`` und im Kontrast zur ET/FI-genusfreien
+        # Reihe). ``datums`` (LV Standard-Nominativ des Datums-Wortes)
+        # verwendet die identische lexikalische Wurzel wie DE ``Datum``/
+        # EN ``date``/FR ``date``/IT ``data``/ES ``fecha``/PT ``data``/PL
+        # ``data``/CZ ``datum`` (indo-europaeisches Wanderwort ueber die
+        # lateinische Wurzel ``datum`` "gegeben").
+        #
+        # ``nezinams`` (mask. Adjektiv-Form fuer "unbekannt"; ASCII-Fallback
+        # von ``nezināms`` mit LV-Diakritika-Reduktion ā/ē/ī/ū -> a/e/i/u,
+        # analog zur ET/FI/SV/CZ/SK/PL/HU/RO-Diakritika-Fallback-Konvention
+        # der Sammler-Katalog-ASCII-Notation aus Windows-CP1257-/UTF-8-Notiz-
+        # Ketten). ``nezinama`` (fem. Adjektiv-Form; ASCII-Fallback von
+        # ``nezināma``; LV hat grammatisches Geschlecht mit -s/-a-Endung fuer
+        # mask./fem. bei Adjektiven). ``bez datuma`` (Standard-LV-Katalog-
+        # Konvention "ohne Datum", direktes LV-Pendant zur DE-``ohne datum``,
+        # FR-``sans date``, IT-``senza data``, ES-``sin fecha``, PT-``sem
+        # data``, NL-``zonder datum``, PL-``bez daty``, CZ-``bez data``, SK-
+        # ``bez datumu``, SL-``brez datuma``, HR-``bez datuma`` (identisch),
+        # RO-``fara data``, DA-``uden dato``, NO-``uten dato``, SV-``utan
+        # datum``, FI-``ilman paivamaaraa``, ET-``ilma kuupaevata``-Reihe
+        # der Museums-/Bibliothekars-Konventions-Form. Die LV-Praeposition
+        # ``bez`` = "ohne" verlangt Genitiv-Kasus ``datuma`` (LV-Genitiv-
+        # Singular des Standard-Nominativs ``datums`` mit ``-s`` -> ``-a``-
+        # Deklination), grammatikalisch parallel zur PL ``bez daty``
+        # (Praeposition ``bez`` + Genitiv ``daty``) und identisch zur CZ
+        # ``bez data`` (dort Nominativ ``datum`` -> Genitiv ``data``)).
+        # ``datums nezinams`` (invertierte LV-Prosa-Form; ASCII-Fallback von
+        # ``datums nezināms``: Nominativ Substantiv + mask.-Adjektiv-Prädikat.
+        # LV-Aequivalent zur DE ``datum unbekannt``, FR ``date inconnue``,
+        # IT ``data sconosciuta``/``data ignota``, ES ``fecha desconocida``,
+        # PT ``data desconhecida``, NL ``datum onbekend``, PL ``data
+        # nieznana``, CZ ``datum nezname``, SK ``datum neznamy``, SL ``datum
+        # neznan``, HU ``datum ismeretlen``, RO ``data necunoscuta``, DA
+        # ``dato ukendt``, NO ``dato ukjent``, SV ``datum okant``, FI
+        # ``paivamaara tuntematon``, ET ``kuupaev teadmata``-Reihe der
+        # invertierten Datum-Adjektiv-Prosa-Form. Die mask.-Form ``nezinams``
+        # bindet grammatikalisch an das mask.-Substantiv ``datums`` (das
+        # LV-Wort fuer Datum ist maskulin, analog zur DE/PL/CZ-mask.-Genus-
+        # Konvention und im Kontrast zur IT-``data`` fem.); die fem.-Form
+        # ``nezinama`` waere hier ungrammatisch). ``nav datu`` (natuerlich-
+        # sprachliche LV-Katalog-Marker-Form: ``nav`` 3. Sg./Pl. Praesens
+        # negierter Existenz-Form "ist/sind nicht [vorhanden]" + ``datu``
+        # Genitiv Plural des Nomens ``dati`` "Daten". LV-Aequivalent zur
+        # HU ``nincs adat``/EN ``no data``/DE ``keine daten``/NL ``geen
+        # gegevens``/ET ``andmed puuduvad``-Reihe der generischen "Daten
+        # existieren nicht"-Aussage. Die LV-Konstruktion ``nav`` + Genitiv
+        # ist die kanonische Existenz-Negation ohne Kopula, spiegelt die
+        # RU ``net dannych``-Konstruktion und ist grammatikalisch nicht
+        # ableitbar aus einer anderen Sprach-Reihe (LV-spezifisch).
+        #
+        # Kollisionsfrei zu allen bestehenden Formen: ``nezinams`` startet
+        # mit ``n``, teilt kein Prefix mit den anderen n-startenden Markern
+        # (``no data``, ``no date``, ``none``, ``na``, ``n.a.``, ``nav
+        # datu``, ``nieznany``, ``neznamy``, ``neznan``, ``necunoscut``,
+        # ``ne``); die spezifische ``neziná``-Sequenz ist LV-eindeutig.
+        # ``nezinama`` teilt Prefix ``nezina`` mit ``nezinams``, ist aber
+        # die eigenstaendige fem.-Form (analog zur ``nieznany``/``nieznana``,
+        # ``desconocido``/``desconocida``-Paar-Konvention). ``bez datuma``
+        # startet mit ``bez``, teilt Prefix mit CZ ``bez data`` und PL ``bez
+        # daty`` (die Baltisch-/Slawisch-Praeposition ``bez`` = "ohne" ist
+        # eine gemeinsame indo-europaeische Wurzel), aber die vollstaendigen
+        # Formen ``bez datuma``/``bez data``/``bez daty`` sind lexikalisch
+        # disjunkt (unterschiedliche Genitiv-Endungen ``-uma``/``-a``/``-y``
+        # der jeweiligen Sprach-Deklination). ``datums nezinams`` und
+        # ``nav datu`` sind LV-spezifisch ohne Kollision zu anderen Reihen.
+        # Alle Marker sind lowercase und ohne Diakritika notiert (LV-
+        # Diakritika ā/ē/ī/ū/š/ž/č/ķ/ģ/ļ/ņ werden im Sammler-Katalog-ASCII-
+        # Fallback der Windows-CP1257-/UTF-8-Notiz-Ketten regelmaessig zu
+        # a/e/i/u/s/z/c/k/g/l/n reduziert, analog zur ET/FI/SV/CZ/SK/PL/HU/
+        # RO-Diakritika-Fallback-Konvention).
+        "nezinams", "nezinama", "bez datuma", "datums nezinams", "nav datu",
     }
 )
 
