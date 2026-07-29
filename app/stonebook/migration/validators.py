@@ -953,6 +953,143 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # konventionalisiert).
         "ukjent", "ukjend", "uten dato", "utan dato",
         "dato ukjent", "dato ukjend",
+        # Schwedisch (SV) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/
+        # RO/DA/NO. Sammler-Region der SV-Sprach-Achse umfasst Laangban (Type-
+        # Locality fuer ueber 70 Mineralien der Mangan-Fe-Skarn-Provinz mit
+        # Braunit/Hausmannit/Hematit-Assoziation, weltweit einzigartige
+        # Kombination seltener Silikate wie Katoptrit/Chondrodit/Sonolith),
+        # Nordmark und Jakobsberg (Nachbar-Skarne der Laangban-Provinz mit
+        # weiteren Mn-Type-Localities), Ytterby-Pegmatit auf Resaroe bei
+        # Stockholm (namensgebend fuer vier chemische Elemente Yttrium/Terbium/
+        # Erbium/Ytterbium und mehrere Type-Locality-Mineralien Gadolinit/
+        # Yttrotantalit/Fergusonit), Kiruna und Malmberget (weltweit groesste
+        # Magnetit-Apatit-Erzkoerper unter Tagbau/Untertage-Abbau der LKAB),
+        # Falun (historisches Kupfer-Erz-Revier mit Chalkopyrit/Pyrit-Bestaende,
+        # UNESCO-Weltkulturerbe des skandinavischen Bergbaus), Bergslagen
+        # (Zentralschwedische Erzprovinz mit Fe-/Cu-/Ag-Bergbau seit dem
+        # Mittelalter) sowie Museum-Etiketten aus dem Naturhistoriska
+        # riksmuseet Stockholm (mit weltweit fuehrender Laangban-/Ytterby-
+        # Sammlung), Uppsala Universitets Mineralogiska Museum und dem
+        # Bergslagsmuseet Falun. Geerbte Sammler-Notizen aus der Kungliga
+        # Vetenskapsakademien (Koenigliche Schwedische Akademie der Wissen-
+        # schaften) mit SV-Etiketten aus der Vorkriegs-Aera und aus
+        # Auktions-/Sammler-Provenienzen der Stockholmer Mineralien-Boersen.
+        #
+        # SV ist skandinavisch (germanisch, nordische Untergruppe wie DA/NO)
+        # mit hoher gegenseitiger Verstaendlichkeit, teilt aber keine
+        # Marker-Wortstaemme mit DA/NO: ``okänd`` (schwedisch, aus germanisch
+        # ``kända`` "kennen" mit privativer ``o-``-Praefigierung) ist eigen-
+        # staendig gegenueber DA ``ukendt`` und NO ``ukjent``/``ukjend``
+        # (beide mit ``u-``-Praefix statt SV ``o-``-Praefix und mit dansk/
+        # norwegischem ``kende``-/``kjenne``-Wortstamm statt SV ``kända``).
+        # Substantiv ``datum`` (SV) unterscheidet sich lexikalisch von DA/NO
+        # ``dato`` und ist grammatisch neutrum (ett datum) - die Kongruenz-
+        # Form der invertierten Prosa-Marker verlangt daher die neutrale
+        # Adjektiv-Endung ``-t`` (``okänt``), waehrend die freistehende
+        # Adjektiv-Nennform in der SV-Woerterbuch-Konvention die utrum-Form
+        # ``okänd`` ist (Standard-Lemma-Eintrag; ``okänd`` und ``okänt``
+        # koexistieren im realen Katalog-Text je nach Genus des modifizierten
+        # Substantivs).
+        #
+        # ``okand`` (utrum-Adjektiv-Form fuer "unbekannt"; ASCII-Fallback der
+        # SV-Standard-Ortho ``okänd`` mit ä-Diakritikum. Im Sammler-Katalog-
+        # ASCII-Fallback der Windows-CP1252-/UTF-8-Notiz-Ketten wird die
+        # SV-Diakritika ä regelmaessig zu ``a`` reduziert, analog zur DE-
+        # Umlaut-Konvention ae/oe/ue und zur CZ-/SK-/PL-Diakritika-Fallback-
+        # Konvention. Kanonische SV-Adjektiv-Nennform, entspricht DE
+        # ``unbekannt``, EN ``unknown``, FR ``inconnu``, IT ``sconosciuto``,
+        # ES ``desconocido``, PT ``desconhecido``, NL ``onbekend``, PL
+        # ``nieznany``, CZ ``neznamy``, SL ``neznan``, SK ``neznamy``,
+        # HU ``ismeretlen``, RO ``necunoscut``, DA ``ukendt``, NO Bokmaal
+        # ``ukjent``/Nynorsk ``ukjend``). ``okant`` (neutr.-Adjektiv-Form
+        # fuer "unbekannt"; ASCII-Fallback von ``okänt``. Da das SV-Substantiv
+        # ``datum`` grammatisch neutrum ist, verlangt die Kongruenz-Regel
+        # die neutr.-Adjektiv-Endung ``-t`` fuer den Ausdruck ``datum okant``
+        # und die freistehende neutr.-Verwendung; spiegelt die Genus-Kongruenz-
+        # Struktur der Slawischen Sprachen mit mask./fem./neutr.-Trennung
+        # [CZ ``neznamy``/``neznama``/``nezname`` mit neutr. ``nezname`` fuer
+        # CZ neutr. ``datum``] und der DE-Genus-Konvention). ``inget datum``
+        # (Determinante-Phrase "kein Datum" - SV-Pendant zur DE-``kein
+        # datum``/EN-``no date``/NL-``geen datum``/DA-``ingen dato``-Reihe.
+        # SV ``inget`` ist die neutr.-Form der Determinante ``ingen`` mit
+        # obligatorischer neutr.-Endung ``-t`` fuer neutr. Substantive wie
+        # ``datum``; unterscheidet sich damit lexikalisch von DA ``ingen
+        # dato`` [DA ``dato`` ist utrum, DA-Determinante bleibt endungslos
+        # ``ingen``], wodurch die SV- und DA-Formen koexistieren als eigen-
+        # staendige Marker-Varianten). ``utan datum`` (Praeposition-Phrase
+        # "ohne Datum" - SV-Pendant zur DE-``ohne datum``/FR-``sans date``/
+        # IT-``senza data``/ES-``sin fecha``/PT-``sem data``/NL-``zonder
+        # datum``/PL-``bez daty``/CZ-``bez data``/SL-``brez datuma``/SK-
+        # ``bez datumu``/HU-``datum nelkul``/RO-``fara data``/DA-``uden
+        # dato``/NO-Bokmaal-``uten dato``/NO-Nynorsk-``utan dato``-Reihe der
+        # Museums-/Bibliothekars-Konventions-Form. SV-Praeposition ``utan``
+        # ist orthografisch identisch zur NO-Nynorsk-Praeposition ``utan``
+        # in ``utan dato``, aber die vollstaendige String-Form ``utan datum``
+        # unterscheidet sich lexikalisch durch das SV-``datum`` statt NO-
+        # ``dato`` von der NO-Form - beide koexistieren als eigenstaendige
+        # Marker). ``datum okant`` (invertierte SV-Prosa-Form; ASCII-Fallback
+        # von ``datum okänt``. Spiegelt die DE-``datum unbekannt``/FR-``date
+        # inconnue``/IT-``data sconosciuta``/ES-``fecha desconocida``/PT-
+        # ``data desconhecida``/NL-``datum onbekend``/PL-``data nieznana``/
+        # CZ-``datum nezname``/SL-``datum neznan``/SK-``datum neznamy``/HU-
+        # ``datum ismeretlen``/RO-``data necunoscuta``/DA-``dato ukendt``/
+        # NO-Bokmaal-``dato ukjent``/NO-Nynorsk-``dato ukjend``-Reihe mit
+        # sprach-spezifischer Kongruenz-Endung: das SV-Substantiv ``datum``
+        # ist neutrum wie das CZ-``datum`` und DE-``datum``, wodurch die
+        # neutr.-Adjektiv-Endung ``-t`` [``okant`` = neutr. Form] obliga-
+        # torisch wird - unterscheidet sich damit von den utrum-/mask.-
+        # Formen der DA/NO-Reihe mit endungslosem ``ukendt``/``ukjent``/
+        # ``ukjend`` [DA/NO ``dato`` ist utrum/masculine]). ``odaterat``
+        # (kompakte neutr.-Adjektiv-Form fuer "undatiert" - SV-Pendant zur
+        # DE-``undatiert``/HU-``keltezetlen``/RO-``nedatat``-Reihe der
+        # kompakten Museums-Etiketten-Standard-Form fuer "ohne Datum-Angabe";
+        # abgeleitet aus SV ``datera`` "datieren" mit dem privativen SV-
+        # Praefix ``o-`` und der Partizip-Perfekt-Endung ``-at`` fuer
+        # neutrale Substantive, spiegelt die Genus-Kongruenz-Regel mit
+        # ``ett datum``. Die utrum-Form ``odaterad`` ist lexikalisch die
+        # Standard-Woerterbuch-Nennform; da das modifizierte Substantiv
+        # ``datum`` neutrum ist, ist ``odaterat`` die korrekte Kongruenz-
+        # Form fuer den Ausdruck ``ett odaterat datum`` und wird in
+        # SV-Katalog-Etiketten der neutralen Datums-Feld-Notation verwendet).
+        #
+        # Bisher fielen alle SV-Bestaende mit diesen expliziten Markern in
+        # den silent-data-loss-Report als "invalid Datum, bitte pruefen",
+        # obwohl der User semantisch bewusst "kein Datum verfuegbar"
+        # markiert hatte. Der --ids-from-file-Import und die Migrations-
+        # Kette fuer Sammler-Notizen aus schwedisch-sprachigen Quellen
+        # (Laangban-Skarn-Provenienzen mit SV-Etiketten aus dem
+        # Naturhistoriska riksmuseet, Ytterby-Pegmatit-Sammler-Notizen mit
+        # Element-Namens-Herkunft-Kontext, Kiruna-/Malmberget-Magnetit-
+        # Bestaende, Falun-Kupfer-Erz-Katalog-Sammlungen aus dem
+        # Bergslagsmuseet, geerbte Kungliga-Vetenskapsakademien-Vorkriegs-
+        # Sammlungen) scheiterten mit stiller Datenverlust auf allen
+        # Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``okand``/``okant`` sind lexikalisch
+        # disjunkt zu DA ``ukendt`` (unterschiedliches Praefix o-/u- und
+        # unterschiedlicher Wortstamm kand/kend) und zu NO ``ukjent``/
+        # ``ukjend`` (unterschiedliches Praefix o-/u- und unterschiedlicher
+        # Konsonanten-Cluster ka/kj). ``inget datum`` unterscheidet sich
+        # von DA ``ingen dato`` durch Neutrum-Endung ``-t`` in der Deter-
+        # minante und durch das SV-``datum`` statt DA-``dato``. ``utan
+        # datum`` teilt zwar die Praeposition ``utan`` mit NO-Nynorsk
+        # ``utan dato``, unterscheidet sich aber lexikalisch durch das
+        # SV-``datum`` statt NO-``dato``. ``datum okant`` unterscheidet
+        # sich von der DA/NO-invertierten-Form ``dato ukendt``/``dato
+        # ukjent``/``dato ukjend`` durch beide Wort-Achsen (SV ``datum``/
+        # ``okant`` vs DA/NO ``dato``/``ukendt``/``ukjent``/``ukjend``).
+        # ``odaterat`` ist SV-spezifische Kompakt-Form und lexikalisch
+        # disjunkt zu allen anderen Sprach-Reihen (keine Kollisions-Wort
+        # in DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/RO/DA/NO). Alle Marker
+        # sind lowercase und ohne Diakritika notiert (SV-Diakritika
+        # ä/å/ö werden im Sammler-Katalog-ASCII-Fallback der Windows-
+        # CP1252-/UTF-8-Notiz-Ketten regelmaessig weggelassen; die Marker-
+        # Menge ist damit bewusst auf die ASCII-Grundform beschraenkt,
+        # analog zur CZ-/SK-/PL-/HU-/RO-Achse. Consumer .lower()t den
+        # Input vor dem Check, wie im Bestand konventionalisiert).
+        "okand", "okant", "inget datum", "utan datum",
+        "datum okant", "odaterat",
     }
 )
 

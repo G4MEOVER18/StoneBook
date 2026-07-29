@@ -8775,6 +8775,132 @@ def test_parse_iso_date_no_no_data_marker():
     assert parse_iso_date("utan") is None          # bare Praeposition (Nynorsk)
 
 
+def test_parse_iso_date_sv_no_data_marker():
+    """SV-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/DA/NO/
+    Bibliografie-Achsen um Schwedisch (SV). Sammler-Region: Laangban-Mangan-
+    Skarn-Provinz mit ueber 70 Type-Locality-Mineralien (Braunit/Hausmannit/
+    Katoptrit/Chondrodit/Sonolith), Ytterby-Pegmatit (Namens-Herkunft der vier
+    Elemente Y/Tb/Er/Yb sowie Gadolinit/Yttrotantalit/Fergusonit), Kiruna/
+    Malmberget (LKAB-Magnetit-Apatit-Erzkoerper), Falun (UNESCO-Kupfer-Erz-
+    Revier), Bergslagen-Erzprovinz sowie Museum-Etiketten aus Naturhistoriska
+    riksmuseet Stockholm, Uppsala Universitets Mineralogiska Museum und
+    Bergslagsmuseet Falun. SV ist skandinavisch wie DA/NO, teilt aber keine
+    Marker-Wortstaemme (DA ``ukendt``/NO ``ukjent``/``ukjend`` mit u-Praefix
+    vs SV ``okand`` mit o-Praefix; DA/NO Substantiv ``dato`` (utrum/mask.) vs
+    SV ``datum`` (neutrum) - die Genus-Unterschiede erfordern eigenstaendige
+    Kongruenz-Formen). Alle Marker werden in ASCII-Fallback-Form ohne
+    SV-Diakritika ä/å/ö gefuehrt (analog zur CZ-/SK-/PL-/HU-/RO-Achse).
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Utrum-Grundform (Adjektiv fuer "unbekannt", ASCII-Fallback von "okänd")
+    assert parse_iso_date("okand") is None
+    assert parse_iso_date("Okand") is None
+    assert parse_iso_date("OKAND") is None
+    # Neutrum-Grundform (ASCII-Fallback von "okänt" - da SV ``datum`` neutrum)
+    assert parse_iso_date("okant") is None
+    assert parse_iso_date("Okant") is None
+    assert parse_iso_date("OKANT") is None
+    # Determinante-Phrase "kein Datum" (neutr. Determinante "inget" fuer neutr. datum)
+    assert parse_iso_date("inget datum") is None
+    assert parse_iso_date("Inget Datum") is None
+    assert parse_iso_date("INGET DATUM") is None
+    # Praeposition-Phrase "ohne Datum" (SV "utan" + SV "datum")
+    assert parse_iso_date("utan datum") is None
+    assert parse_iso_date("Utan Datum") is None
+    assert parse_iso_date("UTAN DATUM") is None
+    # Invertierte SV-Prosa-Form (neutr.-Adjektiv-Endung wegen SV neutr. datum)
+    assert parse_iso_date("datum okant") is None
+    assert parse_iso_date("Datum Okant") is None
+    assert parse_iso_date("DATUM OKANT") is None
+    # Kompakte "undatiert"-Form (neutr. Partizip fuer ett datum)
+    assert parse_iso_date("odaterat") is None
+    assert parse_iso_date("Odaterat") is None
+    assert parse_iso_date("ODATERAT") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  okand  ") is None
+    assert parse_iso_date("  okant  ") is None
+    assert parse_iso_date("  inget datum  ") is None
+    assert parse_iso_date("  utan datum  ") is None
+    assert parse_iso_date("  datum okant  ") is None
+    assert parse_iso_date("  odaterat  ") is None
+    # Menge-Konsistenz: alle neuen SV-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("okand", "okant", "inget datum", "utan datum",
+                   "datum okant", "odaterat"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("okand", "okant", "inget datum", "utan datum",
+                   "datum okant", "odaterat"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die SV-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "ukendt" in DATE_NO_DATA_MARKERS
+    assert "ukjent" in DATE_NO_DATA_MARKERS
+    assert "ukjend" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: DA/NO-Formen bleiben distinkt zu SV (SV o-Praefix vs
+    # DA/NO u-Praefix, SV datum vs DA/NO dato)
+    assert "uden dato" in DATE_NO_DATA_MARKERS     # DA (nicht utan datum)
+    assert "uten dato" in DATE_NO_DATA_MARKERS     # NO Bokmaal (nicht utan datum)
+    assert "utan dato" in DATE_NO_DATA_MARKERS     # NO Nynorsk (nicht utan datum)
+    assert "ingen dato" in DATE_NO_DATA_MARKERS    # DA/NO (nicht inget datum)
+    assert "dato ukendt" in DATE_NO_DATA_MARKERS   # DA (nicht datum okant)
+    assert "dato ukjent" in DATE_NO_DATA_MARKERS   # NO Bokmaal
+    assert "dato ukjend" in DATE_NO_DATA_MARKERS   # NO Nynorsk
+    # Regress-Anker: SV-Formen sind lexikalisch disjunkt zu DA/NO (Praefix-
+    # und Substantiv-Achse trennen die Sprachen trotz Familien-Verwandschaft)
+    assert "okand" != "ukendt"
+    assert "okand" != "ukjent"
+    assert "okand" != "ukjend"
+    assert "utan datum" != "utan dato"    # SV-datum vs NO-Nynorsk-dato
+    assert "utan datum" != "uden dato"    # SV-datum vs DA-dato
+    assert "utan datum" != "uten dato"    # SV-datum vs NO-Bokmaal-dato
+    assert "inget datum" != "ingen dato"  # SV-inget/datum vs DA/NO-ingen/dato
+    assert "datum okant" != "dato ukendt"
+    assert "datum okant" != "dato ukjent"
+    assert "datum okant" != "dato ukjend"
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # SV-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: SV-aehnliche Fehl-Formen matchen nicht (nur exakte
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("okand datum") is None    # invertierte Wortfolge (utrum)
+    assert parse_iso_date("okant datum") is None    # invertierte Wortfolge (neutr.)
+    assert parse_iso_date("utan") is None           # bare Praeposition
+    assert parse_iso_date("datum") is None          # bare Substantiv (aber invalid)
+    assert parse_iso_date("inget") is None          # bare Determinante
+    assert parse_iso_date("odaterad") is None       # utrum-Form (faellt als invalid, nicht als Marker)
+    # Explizit: die utrum-Form ``odaterad`` ist bewusst NICHT in der Marker-
+    # Menge (nur neutr. ``odaterat`` fuer SV neutr. ``datum``); die utrum-
+    # Form faellt regulaer als "invalid" statt als "no data marker" durch.
+    assert "odaterad" not in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)
