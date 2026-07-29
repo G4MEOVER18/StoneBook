@@ -10264,6 +10264,81 @@ def test_parse_coordinates_himmelsrichtung_cz_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_lv_vollnamen():
+    """LV-Vollnamen der Himmelsrichtungen (lettisch, baltisch/indo-europaeisch).
+
+    Sammler-Notizen aus Kurland-/Kurzeme-Kueste (Amber-/Bernstein-Provinz mit
+    historischer Bernstein-Verarbeitung), Devon-Kambrium der Rigaer-Bucht
+    (Type-Localities fuer Placodermi-Fische und marine Kalk-Fossilien der
+    Salaspils-Formation), Vidzeme-Sandstein-Revier und geerbte Baltendeutsche
+    Bestand-Etiketten aus Riga/Jelgava/Ventspils-Vorkriegs-Sammlungen sowie
+    Museum-Etiketten aus dem Latvijas Dabas muzejs und Latvijas Universitates
+    geologijas muzejs. Neu sind alle vier LV-eigenstaendigen Wortstaemme
+    ``ziemeli`` (N, aus ``ziema`` "Winter"), ``dienvidi`` (S, aus ``diena``
+    "Tag" + ``vidus`` "Mitte" - die "Mittags-Sonne"-Richtung), ``austrumi``
+    (E, aus ``austrs`` "Sonnenaufgang"), ``rietumi`` (W, aus ``rieta``
+    "Sonnenuntergang") in ASCII-Fallback-Form ohne Diakritika (analog zur
+    ASCII-Fallback-Konvention der LV-Date-Marker-Achse mit ``nezinams``/
+    ``nezinama``). Vor dieser Erweiterung fielen alle LV-Formen still auf
+    die Fallback-Route, was aus einem typischen Kurland-Sammler-Etikett
+    ``"Ziemeli 56.9, Austrumi 24.1"`` (Rigaer-Bucht) silente ``(56.9, 24.1)``
+    als bare-Zahl-Paar liefert.
+    """
+    # Prefix-Form: LV-Sammler-Fundort-Notizen (Riga-/Kurland-Region als Standard)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    # Ventspils-Region (Kurland-Westkueste, Amber-/Bernstein-Provinz)
+    assert parse_coordinates("Ziemeli 57.4, Austrumi 21.6") == (57.4, 21.6)
+    # West-Halbkugel-Provenienz (hypothetisch, spiegelt CZ-Test-Struktur)
+    assert parse_coordinates("Ziemeli 56.9, Rietumi 24.1") == (56.9, -24.1)
+    # Sued-Halbkugel/West-Halbkugel (hypothetisch, spiegelt CZ-Test-Struktur)
+    assert parse_coordinates("Dienvidi 20.1, Rietumi 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``56.9° Ziemeli, 24.1° Austrumi``)
+    assert parse_coordinates("56.9° Ziemeli, 24.1° Austrumi") == (56.9, 24.1)
+    assert parse_coordinates("20.1° Dienvidi, 43.2° Rietumi") == (-20.1, -43.2)
+    # Case-insensitive
+    assert parse_coordinates("ZIEMELI 56.9, AUSTRUMI 24.1") == (56.9, 24.1)
+    assert parse_coordinates("ziemeli 56.9, austrumi 24.1") == (56.9, 24.1)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Ziemeli. 56.9, Austrumi. 24.1") == (56.9, 24.1)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Dienvidi 20.1, Lon: Rietumi 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Austrumi 24.1, Ziemeli 56.9") == (56.9, 24.1)
+    # Mixed-Sprache (LV-Marker mit DE/EN/ES/CZ auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Provenienzen vor,
+    # besonders bei Baltendeutschen Vorkriegs-Bestaenden mit DE-Marker
+    # und LV-Marker gemischt)
+    assert parse_coordinates("Ziemeli 56.9, East 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Ziemeli 56.9, Ost 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Ziemeli 56.9, Est 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Ziemeli 56.9, Vychod 24.1") == (56.9, 24.1)
+    # Wort-Grenzen: LV-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. Fundort-Feld mit Freitext, der solche Praefixe enthaelt,
+    # darf nicht als Direction fehl-normalisiert werden. (LV-Wortstaemme sind
+    # LV-spezifisch mit wenigen bis keinen Kollisions-Woertern in anderen
+    # Sprachen, aber der ``\b``-Wortgrenzen-Schutz ist strukturell wichtig.)
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-Direction-
+    # Formen bleiben unveraendert (die neuen LV-Alternativen im Regex duerfen
+    # die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    # Einzelbuchstaben bleiben unveraendert (LV-native Ein-Buchstaben-Marker
+    # Z/D/A/R werden bewusst NICHT unterstuetzt, da _is_lat_direction und
+    # _sign nur N/S/E/W/O kennen - die Vollnamen werden auf die kanonischen
+    # ISO-Direction-Letter gemappt)
+    assert parse_coordinates("N50.4 E12.9") == (50.4, 12.9)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace

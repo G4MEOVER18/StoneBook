@@ -6193,6 +6193,52 @@ _DIRECTION_WORD = re.compile(
     # startet) und zu ``ost(?:en)?`` (DE ``ost`` startet mit ``o``, ``zapad``
     # mit ``z`` - lexikalisch disjunkt).
     r"|sever|jih|vychod|zapad"
+    # Lettisch (LV) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/CZ. Sammler-Region
+    # der LV-Sprach-Achse umfasst die baltische Amber-/Bernstein-Provinz mit
+    # Kurland-/Kurzeme-Kueste (historische Bernstein-Verarbeitung der Deutsch-
+    # Balten-Provenienz), das Devon-Kambrium der Rigaer-Bucht (Type-Localities
+    # fuer Placodermi-Fische und marine Kalk-Fossilien der Salaspils-Formation),
+    # das Vidzeme-Sandstein-Revier und geerbte Baltendeutsche Bestand-Etiketten
+    # aus Riga/Jelgava/Ventspils-Vorkriegs-Sammlungen sowie Museum-Etiketten
+    # aus dem Latvijas Dabas muzejs und Latvijas Universitates geologijas
+    # muzejs. Alle vier Achsen mit LV-eigenstaendigen Wortstaemmen: ``ziemeli``
+    # (N, aus ``ziema`` "Winter"), ``dienvidi`` (S, aus ``diena`` "Tag" +
+    # ``vidus`` "Mitte" - die "Mittags-Sonne"-Richtung), ``austrumi`` (E, aus
+    # ``austrs`` "Sonnenaufgang"), ``rietumi`` (W, aus ``rieta`` "Sonnen-
+    # untergang"). ASCII-Fallback-Form ohne Diakritika (LV-Standard-Ortho
+    # ``ziemeļi``/``rietumi`` reduziert sich in Sammler-Katalog-ASCII-Notation
+    # der Windows-CP1257-/UTF-8-Notiz-Ketten regelmaessig zu ``ziemeli``/
+    # ``rietumi``, analog zur ASCII-Fallback-Konvention der LV-Date-Marker-
+    # Achse mit ``nezinams``/``nezinama``). Bisher fielen alle LV-Formen still
+    # auf die Fallback-Route, was aus einem typischen Kurland-Sammler-Etikett
+    # ``"Ziemeli 56.9, Austrumi 24.1"`` (Rigaer-Bucht, Nord-/Osthalbkugel)
+    # silente ``(56.9, 24.1)`` als bare-Zahl-Paar liefert. Kritisch bei
+    # Sued-Halbkugel-Provenienzen aus geerbten Kolonialbestaenden (rein
+    # hypothetisch fuer LV, aber die Vorzeichen-Semantik ist konsistent
+    # notwendig).
+    #
+    # Spiegelt die LV-Erweiterung in :data:`DATE_NO_DATA_MARKERS` (nezinams/
+    # nezinama/bez datuma/datums nezinams/nav datu) auf die Direction-Wort-
+    # Achse und schliesst die Baltisch-Sprach-Achse fuer Lettisch (LT-
+    # Litauisch folgt separat mit eigenstaendigen Wortstaemmen ``siaure``/
+    # ``pietus``/``rytai``/``vakarai``, die morphologisch komplett distinkt
+    # sind trotz gemeinsamer Ostbaltischer IE-Wurzel).
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``ziemeli`` matcht
+    # nicht innerhalb laengerer Woerter; kein Konflikt mit anderen Sprach-
+    # Reihen (Wortstamm ``ziem-`` ist LV/LT-baltisch-typisch, keine Kollision
+    # zu DE/EN/FR/IT/ES/PT/NL/CZ-Vokabular). ``dienvidi`` und ``austrumi``
+    # sind LV-spezifisch ohne Prefix-Kollision zu anderen Reihen (``austr-``
+    # als Praefix teilt es nicht mit den anderen Ost-Wortstaemmen ``east``/
+    # ``est``/``este``/``leste``/``oost``/``vychod``). ``rietumi`` startet
+    # mit ``r`` und teilt keinen Prefix mit den anderen West-Wortstaemmen
+    # ``west``/``ouest``/``ovest``/``oeste``/``zapad`` (LV-spezifische
+    # Bildung aus ``rieta`` "Sonnenuntergang"). Alle vier LV-Formen sind
+    # lexikalisch disjunkt zur CZ-Reihe (``sever``/``jih``/``vychod``/
+    # ``zapad``): CZ verwendet slawische Wurzeln, LV verwendet baltische
+    # Wurzeln, die gemeinsame IE-Grosswurzel ist zu tief fuer lexikalische
+    # Kollision.
+    r"|ziemeli|dienvidi|austrumi|rietumi"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6279,6 +6325,25 @@ _DIRECTION_LETTER: dict[str, str] = {
     # Spiegelt die CZ-Erweiterung in :data:`DATE_NO_DATA_MARKERS` auf die
     # Direction-Wort-Achse.
     "sever": "N", "jih": "S", "vychod": "E", "zapad": "W",
+    # LV-Vollformen der Himmelsrichtungen (lettisch, baltisch/indo-europaeisch)
+    # in ASCII-Fallback-Form ohne Diakritika: ``ziemeli`` (N, aus ``ziema``
+    # "Winter"), ``dienvidi`` (S, aus ``diena`` "Tag" + ``vidus`` "Mitte" -
+    # die "Mittags-Sonne"-Richtung), ``austrumi`` (E, aus ``austrs``
+    # "Sonnenaufgang"), ``rietumi`` (W, aus ``rieta`` "Sonnenuntergang").
+    # Sammler-Notizen aus Kurland-/Kurzeme-Kueste (Amber-/Bernstein-Provinz),
+    # Devon-Kambrium der Rigaer-Bucht, Vidzeme-Sandstein-Revier sowie
+    # Museums-Etiketten aus Latvijas Dabas muzejs und Latvijas Universitates
+    # geologijas muzejs. Auf LV-Landkarten sind die Ein-Buchstaben-Marker
+    # traditionell ``Z``/``D``/``A``/``R`` (baltisch-native Konvention) - der
+    # Lookup mappt aber auf die kanonischen ``N``/``S``/``E``/``W``-Letter,
+    # weil :func:`_is_lat_direction` und :func:`_sign` nur die Buchstaben
+    # ``N``/``S``/``E``/``W``/``O`` kennen und die native LV-Buchstaben-
+    # Konvention ``Z``/``D``/``A``/``R`` im weiteren Verlauf der Direction-
+    # Auswertung unbekannt waeren; die semantische Zuordnung Nord -> ``N``,
+    # Sued -> ``S``, Ost -> ``E`` und West -> ``W`` ist konsistent zu allen
+    # anderen Sprach-Reihen im Lookup. Spiegelt die LV-Erweiterung in
+    # :data:`DATE_NO_DATA_MARKERS` auf die Direction-Wort-Achse.
+    "ziemeli": "N", "dienvidi": "S", "austrumi": "E", "rietumi": "W",
 }
 
 
