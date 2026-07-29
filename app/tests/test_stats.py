@@ -1466,6 +1466,110 @@ def test_by_funddatum_quartal_leer(tmp_path):
     c.close()
 
 
+def test_by_funddatum_tertial_aus_seed_db(tmp_path):
+    """Tertial-Histogramm aggregiert ueber alle Jahre zu T1..T3.
+
+    Tertial wird aus dem Monatsteil per ``((monat - 1) / 4) + 1`` abgeleitet:
+    T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez. Reihenfolge T1->T3 aufsteigend
+    (chronologisch), Tertiale ohne Treffer fehlen im Dict. Sitzt granular
+    zwischen Quartal (3-Monats-Bloecke) und Halbjahr (6-Monats-Bloecke).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "tertial.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            # T1 (Jan..Apr): 3x - Winter-/Fruehjahrs-Indoor-Phase, Tucson-Show
+            ("OBJ_0001", "2024-01-15"),   # T1 (Jan-Rand)
+            ("OBJ_0002", "2023-02-20"),   # T1 (Feb, Tucson)
+            ("OBJ_0003", "2024-04-30"),   # T1 (Apr-Rand)
+            # T2 (Mai..Aug): 4x - Feld-Saison, Berg-Sommer, Sainte-Marie-Juni
+            ("OBJ_0004", "2024-05-01"),   # T2 (Mai-Rand)
+            ("OBJ_0005", "2020-06-15"),   # T2 (Sainte-Marie-aux-Mines)
+            ("OBJ_0006", "2021-07-10"),   # T2
+            ("OBJ_0007", "2022-08-31"),   # T2 (Aug-Rand)
+            # T3 (Sep..Dez): 2x - Herbst-/Winter-Auslauf, Muenchen-Show, Boersen-Dezember
+            ("OBJ_0008", "2023-11-05"),   # T3 (Muenchen)
+            ("OBJ_0009", "2024-12-25"),   # T3 (Boerse)
+            # Ausgeschlossene: leer/NULL/ungueltig/reine Jahresangabe
+            ("OBJ_0010", ""),
+            ("OBJ_0011", None),
+            ("OBJ_0012", "Fruehling"),
+            ("OBJ_0013", "2024"),          # ohne Monatsteil -> ignoriert
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Chronologisch aufsteigend nach Tertial, Tertiale ohne Treffer fehlen
+    assert list(st.by_funddatum_tertial.items()) == [
+        ("T1", 3), ("T2", 4), ("T3", 2),
+    ]
+    assert st.as_dict()["by_funddatum_tertial"] == {
+        "T1": 3, "T2": 4, "T3": 2,
+    }
+    c.close()
+
+
+def test_by_funddatum_tertial_ignoriert_unsinnige_monatsteile(tmp_path):
+    """Monat 00/13 (aus kaputten Importen) faellt aus dem Tertial-Histogramm.
+
+    Ohne den BETWEEN 1 AND 12-Guard wuerde Monat 00 als ``((0-1)/4)+1 = 0`` in
+    einen ``T0``-Bucket fallen und Monat 13 als ``((13-1)/4)+1 = 4`` in einen
+    ``T4``-Bucket - beide semantisch sinnlose Verzerrungen der Tertial-Statistik.
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "tertial_bad.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-00-15"),   # Monat 0 -> ignoriert
+            ("OBJ_0002", "2024-13-01"),   # Monat 13 -> ignoriert
+            ("OBJ_0003", "2024-07-01"),   # T2
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_tertial == {"T2": 1}
+    c.close()
+
+
+def test_by_funddatum_tertial_leer(tmp_path):
+    """Ohne gueltige Funddaten ist die Tertial-Verteilung leer."""
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "tertial_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.by_funddatum_tertial == {}
+    c.close()
+
+
+def test_by_funddatum_tertial_grenz_monate(tmp_path):
+    """Grenz-Monate Apr/Mai und Aug/Sep landen in den erwarteten Tertialen.
+
+    Bestaetigt die Tertial-Formel ``((monat - 1) / 4) + 1`` an den beiden
+    kritischen Grenzen: Monat 04 (Apr, letzter Monat T1), Monat 05 (Mai, erster
+    Monat T2), Monat 08 (Aug, letzter Monat T2), Monat 09 (Sep, erster Monat T3).
+    """
+    from stonebook.db.database import open_db
+
+    c = open_db(tmp_path / "tertial_grenzen.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum) VALUES (?, ?)",
+        [
+            ("OBJ_0001", "2024-04-30"),   # T1 (Apr-Rand)
+            ("OBJ_0002", "2024-05-01"),   # T2 (Mai-Rand)
+            ("OBJ_0003", "2024-08-31"),   # T2 (Aug-Rand)
+            ("OBJ_0004", "2024-09-01"),   # T3 (Sep-Rand)
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.by_funddatum_tertial == {"T1": 1, "T2": 2, "T3": 1}
+    c.close()
+
+
 def test_by_funddatum_halbjahr_aus_seed_db(tmp_path):
     """Halbjahres-Histogramm aggregiert ueber alle Jahre zu H1/H2.
 

@@ -73,6 +73,7 @@ class Statistik:
     by_funddatum_monat: dict[str, int] = field(default_factory=dict)
     by_funddatum_wochentag: dict[str, int] = field(default_factory=dict)
     by_funddatum_quartal: dict[str, int] = field(default_factory=dict)
+    by_funddatum_tertial: dict[str, int] = field(default_factory=dict)
     by_funddatum_halbjahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahr: dict[str, int] = field(default_factory=dict)
     by_erstellt_am_jahrzehnt: dict[str, int] = field(default_factory=dict)
@@ -1198,6 +1199,7 @@ class Statistik:
             "by_funddatum_monat": dict(self.by_funddatum_monat),
             "by_funddatum_wochentag": dict(self.by_funddatum_wochentag),
             "by_funddatum_quartal": dict(self.by_funddatum_quartal),
+            "by_funddatum_tertial": dict(self.by_funddatum_tertial),
             "by_funddatum_halbjahr": dict(self.by_funddatum_halbjahr),
             "by_erstellt_am_jahr": dict(self.by_erstellt_am_jahr),
             "by_erstellt_am_jahrzehnt": dict(self.by_erstellt_am_jahrzehnt),
@@ -1839,6 +1841,48 @@ def _count_funddatum_quartal(conn: sqlite3.Connection) -> dict[str, int]:
         "GROUP BY q ORDER BY q ASC"
     )
     return {f"Q{r['q']}": r["n"] for r in conn.execute(sql).fetchall()}
+
+
+def _count_funddatum_tertial(conn: sqlite3.Connection) -> dict[str, int]:
+    """Zaehlt Objekte pro Funddatum-Tertial (T1..T3), ueber alle Jahre aggregiert.
+
+    Sitzt granular zwischen der Quartals-Sicht (:func:`_count_funddatum_quartal`,
+    3-Monats-Bloecke) und der Halbjahres-Sicht (:func:`_count_funddatum_halbjahr`,
+    6-Monats-Bloecke) und teilt das Kalenderjahr in drei gleiche 4-Monats-
+    Bloecke: T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez. Die Tertial-Grenzen
+    entsprechen der Schul-/Semester-Trimester-Konvention im DE-CH-AT-Raum
+    (Ausbildungs-Trimester) und der klassischen Feld-Saison-Dreiteilung des
+    Sammlers: T1=Winter-/Fruehjahrs-Indoor-Phase mit Tucson-Show (Feb) und
+    Vorbereitung, T2=Feld-Saison mit Berg-Sommer/Alpin-Touren und Sainte-
+    Marie-aux-Mines (Juni), T3=Herbst-/Winter-Auslauf mit Muenchen-Show
+    (Okt/Nov) und Boersen-Dezember.
+
+    Label sind die Tertial-Kuerzel ``T1``..``T3``; Tertiale ohne Treffer
+    fehlen im Dict. Reihenfolge chronologisch aufsteigend (T1 zuerst, T3
+    zuletzt) - spiegelt die uebrige Reihenfolgen-Konvention der Zeit-
+    Histogramme.
+
+    Tertial wird aus dem Monatsteil per ``((monat - 1) / 4) + 1`` abgeleitet:
+    T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez - Ganzzahl-Division in SQLite ist
+    per Definition truncating, konsistent zum Python-Aequivalent
+    ``(m - 1) // 4 + 1``. Akzeptiert nur Funddaten in ISO-Form ``YYYY-MM-DD``/
+    ``YYYY-MM`` mit gueltigem Monatsteil 01-12; reine Jahresangaben (``"2024"``)
+    haben keinen Monatsteil und werden ignoriert (sonst wuerden sie als
+    "Monat 00" auf einen Default-Bucket fallen und die Tertial-Statistik
+    verzerren). Spiegelt damit die :func:`_count_funddatum_monat`-/
+    :func:`_count_funddatum_quartal`-/:func:`_count_funddatum_halbjahr`-
+    Konvention (nur strikte Formen mit gueltigem Monat 01-12 zaehlen).
+    """
+    sql = (
+        "SELECT ((CAST(substr(Funddatum, 6, 2) AS INTEGER) - 1) / 4 + 1) AS t, "
+        "       COUNT(*) AS n FROM objects "
+        "WHERE Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+        "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+        "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+        "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12 "
+        "GROUP BY t ORDER BY t ASC"
+    )
+    return {f"T{r['t']}": r["n"] for r in conn.execute(sql).fetchall()}
 
 
 def _count_funddatum_halbjahr(conn: sqlite3.Connection) -> dict[str, int]:
@@ -3782,6 +3826,14 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Zeit-Histogramme. Komplementaer zum funddatum_quartal_in-Filter
     # (Listen-Drill-down): hier die Verteilungs-Sicht ueber die vier Quartale.
     st.by_funddatum_quartal = _count_funddatum_quartal(conn)
+    # Funddatum-Tertial-Histogramm (T1..T3, ueber alle Jahre aggregiert):
+    # sitzt granular zwischen Quartals-Sicht (3-Monats-Bloecke) und Halbjahres-
+    # Sicht (6-Monats-Bloecke) und teilt das Kalenderjahr in drei gleiche
+    # 4-Monats-Bloecke (T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez). Die Tertial-
+    # Grenzen entsprechen der Feld-Saison-Dreiteilung des Sammlers: T1=Winter-/
+    # Fruehjahrs-Indoor-Phase (Tucson-Feb), T2=Feld-Saison (Berg-Sommer, Sainte-
+    # Marie-Juni), T3=Herbst-/Winter-Auslauf (Muenchen-Okt/Nov, Boersen-Dez).
+    st.by_funddatum_tertial = _count_funddatum_tertial(conn)
     # Funddatum-Halbjahr-Histogramm (H1/H2, ueber alle Jahre aggregiert):
     # ergaenzt die Quartals-Sicht um die noch groebere Zwei-Punkt-Aggregat-
     # Achse. Waehrend das Quartals-Histogramm die Boersen-/Kampagnen-Rhythmik
