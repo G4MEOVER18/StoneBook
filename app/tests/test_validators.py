@@ -8901,6 +8901,143 @@ def test_parse_iso_date_sv_no_data_marker():
     assert "odaterad" not in DATE_NO_DATA_MARKERS
 
 
+def test_parse_iso_date_fi_no_data_marker():
+    """FI-No-Data-Marker liefern None (nicht als silent-data-loss Fund gemeldet).
+
+    Ergaenzt die bestehenden DE/EN/FR/IT/ES/PT/NL/PL/CZ/SL/SK/HU/RO/DA/NO/
+    SV/Bibliografie-Achsen um Finnisch (FI). Sammler-Region: Ylaemaa-
+    Spektroliitti-Provinz (weltweit einzige Vorkommen des schillernden
+    Labradorit-Varietaet aus der Wiborg-Rapakivi-Provinz), Kemioe/Somero/
+    Luumaeki-Feldspat-/Beryll-/Turmalin-Pegmatite der Svekofennischen
+    Provinz, Siilinjaervi-Apatit-Karbonatit-Komplex (2.6 Ga alt), Outokumpu-
+    Cu-Zn-Co-Ni-Erz-Revier (Type-Locality der Outokumpu-Formation),
+    Kittilae/Lappland-Au-Vorkommen, Sokli-P-Nb-REE-Karbonatit sowie Museum-
+    Etiketten aus dem Luonnontieteellinen keskusmuseo (LUOMUS Helsinki mit
+    fuehrender Ylaemaa-Sammlung), Geologian tutkimuskeskus (GTK Espoo) und
+    Suomen kivimuseo (Hyvinkaeae). FI ist uralisch (finno-ugrisch),
+    lexikalisch und morphologisch vollstaendig disjunkt von allen bereits
+    abgedeckten Indo-Europaeischen Sprach-Achsen sowie vom ugro-finnischen
+    HU (das trotz Familien-Verwandschaft eigene Wortstaemme fuehrt: HU
+    ``ismeretlen``/``nincs datum``/``datum nelkul``/``datum ismeretlen``
+    teilen keine Wortstaemme mit FI ``tuntematon``/``ei paivamaaraa``/
+    ``ilman paivamaaraa``/``paivamaara tuntematon``). FI-Marker werden in
+    ASCII-Fallback-Form ohne Diakritika ä/ö gefuehrt (analog zur SV-/CZ-/
+    SK-/PL-/HU-/RO-Achse); die FI-Verneinungs-Kasus-Rektion mit Partitiv
+    (``paivamaaraa`` als Partitiv-Singular von ``paivamaara``) ist das
+    einzige struktur-Aequivalent zur Determinante-Phrase der Indo-
+    Europaeischen Sprachen.
+
+    Alle Varianten liefern None (nicht "invalid Datum"), und der Marker-Check
+    ist case-insensitive (parse_iso_date .lower()t den Input vor dem Check).
+    """
+    # Grundform des Adjektivs "unbekannt" (uninflected Nominativ, kanonische
+    # FI-Katalog-Etiketten-Nennform, kein Genus da FI kein grammatisches
+    # Geschlecht kennt)
+    assert parse_iso_date("tuntematon") is None
+    assert parse_iso_date("Tuntematon") is None
+    assert parse_iso_date("TUNTEMATON") is None
+    # Verneinungs-Partitiv-Phrase "kein Datum" (ASCII-Fallback von
+    # "ei päivämäärää"; Partitiv der Negation ist FI-Struktur-Aequivalent
+    # zur Determinante-Phrase der Indo-Europaeischen Sprachen)
+    assert parse_iso_date("ei paivamaaraa") is None
+    assert parse_iso_date("Ei Paivamaaraa") is None
+    assert parse_iso_date("EI PAIVAMAARAA") is None
+    # Praeposition-Partitiv-Phrase "ohne Datum" (ASCII-Fallback von
+    # "ilman päivämäärää"; ``ilman`` ist eine der wenigen FI-Praepositionen
+    # mit Partitiv-Rektion)
+    assert parse_iso_date("ilman paivamaaraa") is None
+    assert parse_iso_date("Ilman Paivamaaraa") is None
+    assert parse_iso_date("ILMAN PAIVAMAARAA") is None
+    # Invertierte FI-Prosa-Form (ASCII-Fallback von "päivämäärä tuntematon";
+    # FI kein Genus, daher bleibt ``tuntematon`` unveraendert - anders als
+    # SV neutr. ``okant`` fuer neutr. datum)
+    assert parse_iso_date("paivamaara tuntematon") is None
+    assert parse_iso_date("Paivamaara Tuntematon") is None
+    assert parse_iso_date("PAIVAMAARA TUNTEMATON") is None
+    # Whitespace-Toleranz (parse_iso_date strippt vor dem Marker-Check)
+    assert parse_iso_date("  tuntematon  ") is None
+    assert parse_iso_date("  ei paivamaaraa  ") is None
+    assert parse_iso_date("  ilman paivamaaraa  ") is None
+    assert parse_iso_date("  paivamaara tuntematon  ") is None
+    # Menge-Konsistenz: alle neuen FI-Marker sind sichtbar fuer Consumer wie
+    # csv_loaders.find_rows_with_invalid_funddatum.
+    from stonebook.migration.validators import DATE_NO_DATA_MARKERS
+    for marker in ("tuntematon", "ei paivamaaraa", "ilman paivamaaraa",
+                   "paivamaara tuntematon"):
+        assert marker in DATE_NO_DATA_MARKERS
+    # Alle neuen Marker sind lowercase (Marker-Check erfolgt via .lower())
+    for marker in ("tuntematon", "ei paivamaaraa", "ilman paivamaaraa",
+                   "paivamaara tuntematon"):
+        assert marker == marker.lower()
+    # Regress-Anker: bestehende Sprach-Achsen bleiben unveraendert (die FI-
+    # Ergaenzung darf keine vorhandenen Sprach-Reihen verdraengen).
+    assert "k.a." in DATE_NO_DATA_MARKERS
+    assert "unbekannt" in DATE_NO_DATA_MARKERS
+    assert "unknown" in DATE_NO_DATA_MARKERS
+    assert "inconnu" in DATE_NO_DATA_MARKERS
+    assert "sconosciuto" in DATE_NO_DATA_MARKERS
+    assert "desconocido" in DATE_NO_DATA_MARKERS
+    assert "desconhecido" in DATE_NO_DATA_MARKERS
+    assert "onbekend" in DATE_NO_DATA_MARKERS
+    assert "nieznany" in DATE_NO_DATA_MARKERS
+    assert "neznamy" in DATE_NO_DATA_MARKERS
+    assert "neznan" in DATE_NO_DATA_MARKERS
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS
+    assert "necunoscut" in DATE_NO_DATA_MARKERS
+    assert "ukendt" in DATE_NO_DATA_MARKERS
+    assert "ukjent" in DATE_NO_DATA_MARKERS
+    assert "ukjend" in DATE_NO_DATA_MARKERS
+    assert "okand" in DATE_NO_DATA_MARKERS
+    assert "okant" in DATE_NO_DATA_MARKERS
+    assert "odaterat" in DATE_NO_DATA_MARKERS
+    assert "n.d." in DATE_NO_DATA_MARKERS
+    assert "ohne datum" in DATE_NO_DATA_MARKERS
+    # Regress-Anker: HU-Formen (ugro-finnisch, gleiche Familie wie FI, aber
+    # eigene Wortstaemme) bleiben distinkt zu FI - keine Kollision durch
+    # Familien-Verwandschaft.
+    assert "ismeretlen" in DATE_NO_DATA_MARKERS       # HU (nicht tuntematon)
+    assert "datum nelkul" in DATE_NO_DATA_MARKERS     # HU (nicht ilman paivamaaraa)
+    assert "datum ismeretlen" in DATE_NO_DATA_MARKERS # HU (nicht paivamaara tuntematon)
+    # Regress-Anker: FI-Formen sind lexikalisch disjunkt zu HU (ugro-finnische
+    # Familien-Verwandschaft trennt die Sprachen trotz gemeinsamer Wurzel)
+    assert "tuntematon" != "ismeretlen"
+    assert "ei paivamaaraa" != "nincs datum"
+    assert "ilman paivamaaraa" != "datum nelkul"
+    assert "paivamaara tuntematon" != "datum ismeretlen"
+    # Regress-Anker: FI-Formen sind lexikalisch disjunkt zu allen Germanisch-
+    # /Romanisch-/Slawisch-Reihen (uralische Wurzel ``tunt-``/``paiva``/
+    # ``maara`` vs. Indo-Europaeische Wurzeln)
+    assert "tuntematon" != "unknown"          # vs EN germanisch
+    assert "tuntematon" != "unbekannt"        # vs DE germanisch
+    assert "tuntematon" != "okand"            # vs SV germanisch
+    assert "tuntematon" != "inconnu"          # vs FR romanisch
+    assert "tuntematon" != "nieznany"         # vs PL slawisch
+    # Regress-Anker: gueltige Datums-Formen bleiben unveraendert (die neuen
+    # FI-Marker triggern nicht auf ISO-Datums-Strings oder DE-Datums-Formen).
+    assert parse_iso_date("2024-06-13") == "2024-06-13"
+    assert parse_iso_date("13.06.2024") == "2024-06-13"
+    assert parse_iso_date("2024") == "2024-01-01"
+    # Regress-Anker: echte Fehl-Eingaben bleiben None als "invalid".
+    assert parse_iso_date("Sommer 84") is None
+    assert parse_iso_date("32.13.2024") is None
+    # Regress-Anker: FI-aehnliche Fehl-Formen matchen nicht (nur exakte
+    # Marker-Formen sind No-Data-Marker, aehnliche Prosa faellt normal auf
+    # None als invalid).
+    assert parse_iso_date("tuntematon paivamaara") is None  # invertierte Wortfolge (Adj vor Subst statt danach)
+    assert parse_iso_date("paivamaara") is None             # bare Substantiv
+    assert parse_iso_date("ei") is None                     # bare Verneinungs-Partikel
+    assert parse_iso_date("ilman") is None                  # bare Praeposition
+    assert parse_iso_date("ei tuntematon") is None          # Verneinung + Adjektiv (unsinnig)
+    # Regress-Anker: Nominativ-Form ``paivamaara`` (ohne Partitiv-Endung
+    # -aa) ist bewusst NICHT in der Marker-Menge, nur die grammatisch
+    # korrekte Verneinungs-/Praeposition-Partitiv-Form ``paivamaaraa`` -
+    # die Nominativ-Form ohne Verneinung/Praeposition ist grammatisch nicht
+    # als "no data"-Marker interpretierbar (bare Nominativ eines Substantivs).
+    assert "paivamaara" not in DATE_NO_DATA_MARKERS
+    assert "ei paivamaara" not in DATE_NO_DATA_MARKERS
+    assert "ilman paivamaara" not in DATE_NO_DATA_MARKERS
+
+
 def test_parse_coordinates_decimal():
     assert parse_coordinates("46.5, 7.5") == (46.5, 7.5)
     assert parse_coordinates("46.5;7.5") == (46.5, 7.5)

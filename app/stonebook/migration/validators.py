@@ -1090,6 +1090,130 @@ DATE_NO_DATA_MARKERS: frozenset[str] = frozenset(
         # Input vor dem Check, wie im Bestand konventionalisiert).
         "okand", "okant", "inget datum", "utan datum",
         "datum okant", "odaterat",
+        # Finnisch (FI) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/PL/CZ/SK/SL/HU/
+        # RO/DA/NO/SV. Sammler-Region der FI-Sprach-Achse umfasst Ylaemaa
+        # (Type-Locality fuer Spektroliitti/Spectrolite - schillerndes
+        # Labradorit-Varietaet der Wiborg-Rapakivi-Provinz, das seit den
+        # 1940ern kommerziell zu Schmuck-Cabochons verarbeitet wird und in
+        # keinem anderen Vorkommen der Welt in dieser Qualitaet auftritt),
+        # Kemioe/Somero/Luumaeki (Feldspat-/Beryll-/Turmalin-Pegmatite der
+        # suedfinnischen Svekofennischen Provinz), Siilinjaervi (Apatit-
+        # Karbonatit-Komplex, weltweit einer der aeltesten Karbonatite mit
+        # 2.6 Ga Alter), Outokumpu (historisches Cu-Zn-Co-Ni-Erz-Revier der
+        # namensgebenden Outokumpu-Formation mit Serpentinit-/Talk-/Skarn-
+        # Assoziation und Type-Locality fuer Outokumpiit), Kittilae/Lappland
+        # (Au-Vorkommen der zentral-lapplaendischen Gruenstein-Zone),
+        # Sokli-Karbonatit-Komplex (P-/Nb-/REE-Anreicherungs-Provinz in
+        # Ostfinnland) sowie Museum-Etiketten aus dem Luonnontieteellinen
+        # keskusmuseo (Finnisches Naturkunde-Zentralmuseum Helsinki, LUOMUS)
+        # mit weltweit fuehrender Ylaemaa-Spektroliitti-Sammlung, dem
+        # Geologian tutkimuskeskus (GTK, Finnischer Geologischer Dienst
+        # Espoo mit Sammler-Referenz-Sammlung finnischer Type-Localities)
+        # und dem Suomen kivimuseo (Finnisches Steinmuseum Hyvinkaeae mit
+        # Fokus auf Rapakivi-Provinz und Wiborg-Batholithen). Geerbte
+        # Sammler-Notizen aus finnisch-sprachigen Bestaenden umfassen
+        # Kaufbelege der Kivikerho-Sammler-Vereine, Auktions-Etiketten der
+        # Helsinki-/Turku-Mineralien-Boersen und Feld-Notizen aus GTK-
+        # Kartierungs-Kampagnen mit FI-Beschriftung der Fundstellen.
+        #
+        # FI ist uralisch (finno-ugrisch), lexikalisch und morphologisch
+        # vollstaendig disjunkt von allen bereits abgedeckten Indo-
+        # Europaeischen Sprachen (Germanisch DE/EN/NL/DA/NO/SV, Romanisch
+        # FR/IT/ES/PT/RO, Slawisch PL/CZ/SK/SL, mit Ausnahme des
+        # ugro-finnischen HU, das aber trotz Familien-Verwandschaft eigene
+        # Wortstaemme fuehrt: HU ``ismeretlen``/``nincs datum``/``datum
+        # nelkul``/``datum ismeretlen`` teilen keine Marker-Wortstaemme
+        # mit FI ``tuntematon``/``ei paivamaaraa``/``ilman paivamaaraa``/
+        # ``paivamaara tuntematon``). Finnisch verwendet fuer "no date"-
+        # Semantik die Kasus-System-Kombination aus Verneinungs-Partikel
+        # ``ei`` mit Partitiv (``paivamaaraa`` ist der Partitiv-Singular
+        # des Grund-Substantivs ``paivamaara``, da das negierte finnische
+        # Substantiv immer im Partitiv steht - Kasus-Rektion der
+        # Negation-Verb-Konstruktion) und aus der Praeposition ``ilman``,
+        # die ebenfalls Partitiv verlangt. Das Substantiv ``paivamaara``
+        # ist ein Kompositum aus ``paiva`` (Tag) und ``maara`` (Menge/Zahl)
+        # - typische finnische Kompositum-Struktur ohne Bindestrich, im
+        # Sammler-Katalog verbreitet als Zusammenschreibung. Adjektiv
+        # ``tuntematon`` (aus Verb ``tuntea`` "kennen" mit privativem
+        # Suffix ``-maton``/-mattoman/-matonta) ist morphologisch analog
+        # zum EN ``unknown``, DE ``unbekannt``, SV ``okand`` - eine
+        # privative Ableitung vom Wahrnehmungs-/Erkennungs-Verb - aber
+        # der Wortstamm ist uralisch (finno-ugrische Wurzel ``tunt-``,
+        # nicht germanisch/lateinisch).
+        #
+        # ``tuntematon`` (Grundform des Adjektivs "unbekannt"; uninflected
+        # Nominativ, in Katalog-Etiketten die Standard-Nennform. Kanonische
+        # FI-Adjektiv-Grundform, entspricht DE ``unbekannt``, EN ``unknown``,
+        # FR ``inconnu``, IT ``sconosciuto``, ES ``desconocido``, PT
+        # ``desconhecido``, NL ``onbekend``, PL ``nieznany``, CZ ``neznamy``,
+        # SL ``neznan``, SK ``neznamy``, HU ``ismeretlen``, RO ``necunoscut``,
+        # DA ``ukendt``, NO Bokmaal ``ukjent``/Nynorsk ``ukjend``, SV
+        # ``okand``; kein Genus/Kasus-Flag da FI kein grammatisches
+        # Geschlecht kennt und die Grundform kasus-neutral genutzt wird).
+        # ``ei paivamaaraa`` (ASCII-Fallback von ``ei päivämäärää``:
+        # Verneinungs-Partikel ``ei`` + Partitiv-Singular des Kompositums
+        # ``päivämäärä`` (paiva "Tag" + maara "Menge"). Die FI-Diakritika
+        # ä/ö werden im Sammler-Katalog-ASCII-Fallback der Windows-
+        # CP1252-/UTF-8-Notiz-Ketten regelmaessig zu a/o reduziert, analog
+        # zur SV-/CZ-/SK-/PL-/HU-/RO-Diakritika-Fallback-Konvention. FI-
+        # Aequivalent zur DE ``kein datum``/EN ``no date``/NL ``geen
+        # datum``/DA ``ingen dato``/SV ``inget datum``-Reihe der
+        # Verneinungs-/Determinante-Phrase. Der Partitiv der Negation ist
+        # das einzige finnische Struktur-Aequivalent zur Determinante-
+        # Phrase der Indo-Europaeischen Sprachen). ``ilman paivamaaraa``
+        # (ASCII-Fallback von ``ilman päivämäärää``: Praeposition ``ilman``
+        # "ohne" + Partitiv-Singular. FI-Aequivalent zur DE ``ohne datum``/
+        # FR ``sans date``/IT ``senza data``/ES ``sin fecha``/PT ``sem
+        # data``/NL ``zonder datum``/DA ``uden dato``/NO Bokmaal ``uten
+        # dato``/Nynorsk ``utan dato``/SV ``utan datum``-Reihe der
+        # Praeposition-Phrase. FI ``ilman`` ist eine der wenigen finnischen
+        # Praepositionen (Finnisch praeferiert Post-Positionen und Kasus-
+        # Endungen), die Partitiv-Rektion tragen). ``paivamaara tuntematon``
+        # (ASCII-Fallback von ``päivämäärä tuntematon``: invertierte
+        # FI-Prosa-Form. FI-Aequivalent zur DE ``datum unbekannt``/FR
+        # ``date inconnue``/IT ``data sconosciuta``/ES ``fecha desconocida``/
+        # PT ``data desconhecida``/NL ``datum onbekend``/PL ``data
+        # nieznana``/CZ ``datum nezname``/SL ``datum neznan``/SK ``datum
+        # neznamy``/HU ``datum ismeretlen``/RO ``data necunoscuta``/DA
+        # ``dato ukendt``/NO ``dato ukjent``/``dato ukjend``/SV ``datum
+        # okant``-Reihe der invertierten Datum-Adjektiv-Prosa-Form. Da
+        # FI kein grammatisches Geschlecht kennt, bleibt ``tuntematon`` in
+        # der invertierten Form unveraendert - im Gegensatz zu SV, das
+        # neutr. ``okant`` fuer neutr. ``datum`` verlangt).
+        #
+        # Bisher fielen alle FI-Bestaende mit diesen expliziten Markern
+        # in den silent-data-loss-Report als "invalid Datum, bitte
+        # pruefen", obwohl der User semantisch bewusst "kein Datum
+        # verfuegbar" markiert hatte. Der --ids-from-file-Import und die
+        # Migrations-Kette fuer Sammler-Notizen aus finnisch-sprachigen
+        # Quellen (Ylaemaa-Spektroliitti-Sammler-Notizen aus der Wiborg-
+        # Rapakivi-Provinz, Kemioe-/Somero-/Luumaeki-Pegmatit-Sammlungen
+        # der Kivikerho-Sammler-Vereine, Siilinjaervi-Apatit-Karbonatit-
+        # Bestaende, Outokumpu-Cu-Zn-Co-Sammler-Kataloge, geerbte LUOMUS-
+        # /GTK-Vorkriegs-Etiketten mit FI-Datums-Feld-Notation) scheiterten
+        # mit stiller Datenverlust auf allen Datums-Feldern.
+        #
+        # Kollisionsfrei zu allen bestehenden Datums-Formen und zu den
+        # uebrigen Marker-Varianten: ``tuntematon`` startet mit ``t``,
+        # keine anderen T-startenden Marker in der Menge (kein DE ``t``-
+        # /EN ``t``-/FR ``t``-/IT ``t``-/ES ``t``-/PT ``t``-/NL ``t``-/
+        # PL ``t``-/CZ ``t``-/SK ``t``-/SL ``t``-/HU ``t``-/RO ``t``-/
+        # DA ``t``-/NO ``t``-/SV ``t``-Marker); als uralische Wurzel
+        # ``tunt-`` lexikalisch disjunkt zu allen Indo-Europaeischen
+        # ``unknown``-Aequivalenten. ``ei paivamaaraa`` startet mit
+        # Verneinungs-Partikel ``ei``, keine Kollision zu bestehenden
+        # Markern (kein ``ei``-startender Marker; die HU-Verneinungs-Form
+        # ``nincs datum`` startet mit ``n``, nicht mit ``ei``). ``ilman
+        # paivamaaraa`` startet mit ``ilman``, keine Kollision (kein ``il``-
+        # startender Marker). ``paivamaara tuntematon`` startet mit
+        # ``paivamaara``, keine Kollision (kein ``p``-startender Marker in
+        # der Menge - ``pas de date`` ist FR und ist mit ``pas`` disjunkt
+        # zu FI ``paivamaara``). Alle Marker sind lowercase und ohne
+        # Diakritika notiert (analog zur SV-/CZ-/SK-/PL-/HU-/RO-Achse;
+        # Consumer .lower()t den Input vor dem Check, wie im Bestand
+        # konventionalisiert).
+        "tuntematon", "ei paivamaaraa", "ilman paivamaaraa",
+        "paivamaara tuntematon",
     }
 )
 
