@@ -9357,6 +9357,81 @@ def test_parse_coordinates_himmelsrichtung_nl_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_cz_vollnamen():
+    """CZ-Vollnamen der Himmelsrichtungen (tschechisch, verbreitet in Sammler-
+    Notizen aus der Boehmischen Masse: Jachymov Uran-Type-Locality, Pribram
+    Silber-/Blei-/Uran-Revier, Krusne hory/Erzgebirge-Suedseite mit Zinnwald-
+    Cinovec, Ceskomoravska vrchovina mit Turmalin-/Beryll-Pegmatiten Dolni
+    Bory/Rozna, Slavkovsky les Sn-W-Revier - sowie Museums-Etiketten aus
+    Narodni muzeum Praha und mindat.cz-Datenbank-Exporten mit CZ-Direction-
+    Beschriftung der Fundstelle).
+
+    Neu sind alle vier CZ-eigenstaendigen Wortstaemme ``sever`` (N), ``jih``
+    (S), ``vychod`` (E), ``zapad`` (W) in ASCII-Fallback-Form ohne Diakritika
+    (analog zur ASCII-Fallback-Konvention der CZ-Date-Marker-Achse mit
+    ``neznamy``/``nezname``). Vor dieser Erweiterung fielen alle CZ-Formen
+    still auf die Fallback-Route (kein Direction-Marker erkannt, generische
+    Zahl-Paar-Extraktion nimmt die Reihenfolge ohne Vorzeichen-Information),
+    was aus einem typischen Jachymov-Sammler-Etikett ``"Sever 50.4, Vychod
+    12.9"`` silente ``(50.4, 12.9)`` als bare-Zahl-Paar liefert. Kritisch
+    bei Erzgebirge-Fundstellen westlich des Prager Bezugs-Meridians mit
+    ``"Sever 50.4, Zapad 12.9"``: ohne Direction-Marker haette der bare
+    Zahl-Wert positive Vorzeichen bekommen, obwohl der Sammler explizit die
+    West-Halbkugel kodiert hat.
+    """
+    # Prefix-Form: CZ-Sammler-Fundort-Notizen (Jachymov-Region als Standard)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    # Pribram-Region (Silber-/Uran-Revier, sued-westlich von Prag)
+    assert parse_coordinates("Sever 49.7, Vychod 14.0") == (49.7, 14.0)
+    # Erzgebirge-Fundstellen westlich des Prager Bezugs-Meridians
+    assert parse_coordinates("Sever 50.4, Zapad 12.9") == (50.4, -12.9)
+    # Sued-Halbkugel/West-Halbkugel (rein hypothetisch, spiegelt die
+    # Kongruenz-Struktur der NL-Antillen-Test-Faelle)
+    assert parse_coordinates("Jih 20.1, Zapad 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``50.4° Sever, 12.9° Vychod``)
+    assert parse_coordinates("50.4° Sever, 12.9° Vychod") == (50.4, 12.9)
+    assert parse_coordinates("20.1° Jih, 43.2° Zapad") == (-20.1, -43.2)
+    # Case-insensitive
+    assert parse_coordinates("SEVER 50.4, VYCHOD 12.9") == (50.4, 12.9)
+    assert parse_coordinates("sever 50.4, vychod 12.9") == (50.4, 12.9)
+    # Mit trailing Punkt nach Kurzform (``Sever.``/``Vychod.`` aus Katalog-Abkuerzung)
+    assert parse_coordinates("Sever. 50.4, Vychod. 12.9") == (50.4, 12.9)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Jih 20.1, Lon: Zapad 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Vychod 12.9, Sever 50.4") == (50.4, 12.9)
+    # Mixed-Sprache (CZ-Marker mit DE/EN/ES auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Provenienzen vor)
+    assert parse_coordinates("Sever 50.4, East 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Sever 50.4, Ost 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Sever 50.4, Est 12.9") == (50.4, 12.9)
+    # Wort-Grenzen: CZ-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. Fundort-Feld mit Freitext, der solche Praefixe enthaelt,
+    # darf nicht als Direction fehl-normalisiert werden.
+    # ``sever`` in EN ``several``/``severe``/``severed``: kein Match wegen
+    # nachfolgender Wort-Zeichen.
+    assert parse_coordinates("several 50.4, severe 12.9") is None
+    assert parse_coordinates("severed 50.4, severity 12.9") is None
+    # ``jih`` isoliert - keine Kollisions-Woerter in DE/EN/FR/IT/ES/PT/NL-
+    # Vokabular; bare ``jih`` ohne Coord-Kontext bleibt unrealistisch.
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-Direction-Formen
+    # bleiben unveraendert (die neuen CZ-Alternativen im Regex duerfen die
+    # existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    # Einzelbuchstaben bleiben unveraendert
+    assert parse_coordinates("N50.4 E12.9") == (50.4, 12.9)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace

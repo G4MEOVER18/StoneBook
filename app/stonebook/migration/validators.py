@@ -5477,6 +5477,47 @@ _DIRECTION_WORD = re.compile(
     # gegen ``o``, dann ``s`` gegen ``o`` - fails, backtrackt), sodass die
     # spezifischere ``oost(?:en)?``-Alternative uebernimmt.
     r"|noord(?:en)?|zuid(?:en)?|oost(?:en)?"
+    # Tschechisch (CZ) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL. Sammler-Region
+    # der CZ-Sprach-Achse umfasst die weltweit bedeutenden Fundstellen der
+    # Boehmischen Masse (Jachymov mit den Uran-/Sekundaer-Uran-Type-Locality-
+    # Mineralien, Pribram mit Galenit/Pyrargyrit/Proustit/Silber und Uran,
+    # Krusne hory/Erzgebirge-Suedseite mit Zinnwald-Cinovec fuer Zinnwaldit/
+    # Kassiterit, Ceskomoravska vrchovina mit Turmalin-/Beryll-Pegmatiten
+    # Dolni Bory/Rozna/Vlastejovice, Slavkovsky les/Kaiserwald mit Horni
+    # Slavkov/Schlaggenwald Sn-W-Revier) sowie geerbte Sammlungs-Etiketten
+    # aus dem Narodni muzeum Praha, der Ceska geologicka sluzba, dem
+    # Moravske zemske muzeum Brno und aus tschechisch-sprachigen Sammlungs-
+    # Datenbanken (mindat.cz) mit CZ-Direction-Beschriftungen der Fund-
+    # stelle. Alle vier Achsen mit CZ-eigenstaendigen Wortstaemmen: ``sever``
+    # (N), ``jih`` (S), ``vychod`` (E), ``zapad`` (W). ASCII-Fallback-Form
+    # ohne Diakritika (CZ-Standard-Ortho ``východ``/``západ`` reduziert sich
+    # in Sammler-Katalog-ASCII-Notation der Windows-CP1250-/UTF-8-Notiz-
+    # Ketten regelmaessig zu ``vychod``/``zapad``, analog zur ASCII-Fallback-
+    # Konvention der CZ-Date-Marker-Achse mit ``neznamy``/``nezname``).
+    # Bisher fielen alle CZ-Direction-Formen still auf die Fallback-Route
+    # (kein Direction-Marker erkannt, generische Zahl-Paar-Extraktion nimmt
+    # die Reihenfolge ohne Vorzeichen-Information), was aus einem typischen
+    # Jachymov-Sammler-Etikett ``"Sever 50.4, Vychod 12.9"`` (Boehmische
+    # Masse, Nordhalbkugel/Osthalbkugel) silente ``(50.4, 12.9)`` als
+    # bare-Zahl-Paar liefert. Kritischer bei einem Erzgebirge-Grenzfall-
+    # Etikett aus deutscher Sammler-Notiz mit CZ-Ortho ``"Sever 50.4, Zapad
+    # 12.9"`` (falls die Fundstelle westlich des Prager Bezugs-Meridians
+    # liegt): ohne Direction-Marker haette der bare Zahl-Wert positive
+    # Vorzeichen bekommen, obwohl der Sammler explizit die West-Halbkugel
+    # kodiert hat. Spiegelt die CZ-Erweiterung in :data:`DATE_NO_DATA_MARKERS`
+    # (neznamy/neznama/nezname/bez data/neuvedeno/datum nezname) auf die
+    # Direction-Wort-Achse.
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``sever`` matcht nicht
+    # in EN ``several``/``severe``/``severed`` (der folgende Buchstabe ist
+    # Wort-Zeichen, keine Wort-Grenze); ``jih`` hat keine Kollisions-Wort in
+    # DE/EN/FR/IT/ES/PT/NL-Vokabular; ``vychod`` und ``zapad`` sind CZ-
+    # spezifisch ohne Kollision zu anderen Sprach-Reihen. Kollisionsfrei zu
+    # ``est`` (FR/IT ``est`` wird an der Wort-Grenze nach ``t`` von der
+    # CZ-``vychod``-Alternative uebernommen, da ``vy`` nicht mit ``est``
+    # startet) und zu ``ost(?:en)?`` (DE ``ost`` startet mit ``o``, ``zapad``
+    # mit ``z`` - lexikalisch disjunkt).
+    r"|sever|jih|vychod|zapad"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -5547,6 +5588,22 @@ _DIRECTION_LETTER: dict[str, str] = {
     # ``zuid`` und ``zuiden`` sind die NL/BE-Vollformen fuer Sued.
     # Spiegelt die ``oost``/``oosten``-Erweiterung auf die Sued-Achse.
     "zuid": "S", "zuiden": "S",
+    # CZ-Vollformen der Himmelsrichtungen (tschechisch) in ASCII-Fallback-
+    # Form ohne Diakritika: ``sever`` (N), ``jih`` (S), ``vychod`` (E),
+    # ``zapad`` (W). Sammler-Notizen aus Boehmischer Masse (Jachymov,
+    # Pribram, Krusne hory), Museums-Etiketten aus Narodni muzeum Praha
+    # und aus mindat.cz-Datenbank-Exporten mit CZ-Direction-Beschriftung
+    # der Fundstelle. Auf CZ-Landkarten ist der Ein-Buchstaben-Marker
+    # traditionell ``V`` (statt EN-``E``) fuer Ost - der Lookup mappt aber
+    # auf die kanonische ``E``-Letter, weil :func:`_is_lat_direction` und
+    # :func:`_sign` nur die Buchstaben ``N``/``S``/``E``/``W``/``O`` kennen
+    # und die native CZ-Buchstaben-Konvention ``V`` (fuer ``vychod``) und
+    # ``Z`` (fuer ``zapad``) im weiteren Verlauf der Direction-Auswertung
+    # unbekannt waeren; die semantische Zuordnung Ost -> ``E`` und West ->
+    # ``W`` ist konsistent zu allen anderen Sprach-Reihen im Lookup.
+    # Spiegelt die CZ-Erweiterung in :data:`DATE_NO_DATA_MARKERS` auf die
+    # Direction-Wort-Achse.
+    "sever": "N", "jih": "S", "vychod": "E", "zapad": "W",
 }
 
 
