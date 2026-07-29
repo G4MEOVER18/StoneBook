@@ -6306,6 +6306,97 @@ _DIRECTION_WORD = re.compile(
     # FR/IT/ES/PT/NL/CZ/LV-West-Wortstaemmen ``west``/``ouest``/``ovest``/
     # ``oeste``/``zapad``/``rietumi``).
     r"|siaure|pietus|rytai|vakarai"
+    # Polnisch (PL) - Aequivalente zu DE/EN/FR/IT/ES/PT/NL/CZ/LV/LT. Sammler-
+    # Region der PL-Sprach-Achse umfasst Niederschlesien mit den Sudeten
+    # (Sowiegebirge, Riesengebirge/Karkonosze, Eulengebirge - historische
+    # Fundstellen fuer Bergkristall, Amethyst, Achat, Chalzedon, Chrysopras
+    # sowie Silber-/Blei-/Zink-Erze aus dem Kupfer-Revier Lubin/Glogow/
+    # Polkowice), Kleinpolen (Malopolska mit den UNESCO-Salzminen Wieliczka
+    # und Bochnia mit ihren Halit-Kristallen), Oberschlesien (Bytom/Chorzow
+    # Zink-/Blei-Bergwerke, Galmei-Fundstellen), Heilig-Kreuz-Gebirge (Gory
+    # Swietokrzyskie mit Baryt/Fluorit/Kalzit-Adern), Karpaten-Vorland
+    # (mineralische Solequellen, Gips-/Anhydrit-Fundstellen); geerbte
+    # Sammlungs-Kataloge aus historischen Grenzregionen mit gemischter DE-/
+    # PL-Sprach-Provenienz (Oberschlesien, Ostpreussen, Pommern - polnisch-
+    # sprachige Etiketten auf urspruenglich deutschen Bestaenden aus Vorkriegs-
+    # Sammlungen), Museum-Etiketten aus Muzeum Geologiczne Polskiej Akademii
+    # Nauk (Krakow), Muzeum Ziemi PAN (Warschau), Muzeum Mineralogiczne
+    # Uniwersytetu Wroclawskiego und aus Auktions-/Sammler-Provenienzen
+    # aus Warschau/Krakau/Danzig-Bestand.
+    #
+    # Alle vier Achsen mit PL-eigenstaendigen Wortstaemmen: ``polnoc`` (N,
+    # aus PL-``polnoc`` = "Mitternacht" - die "Mitternachts"-Richtung, direkte
+    # semantische Parallele zur DE-Bildungs-Etymologie von ``Nord`` aus dem
+    # gemeinsamen germanischen ``*ner-``/``*nurþa-`` fuer die "linke/dunkle"
+    # Seite, aber slawisch-eigenstaendige Wort-Bildung), ``poludnie`` (S, aus
+    # PL-``poludnie`` = "Mittag" - die "Mittags-Sonne"-Richtung, parallel zur
+    # LV-``dienvidi``/LT-``pietus``-Etymologie mit "Mittags"-Bezug, aber
+    # slawisch-eigenstaendige Wort-Bildung), ``wschod`` (E, aus PL-``wschod``
+    # = "Sonnenaufgang"/"Aufgang" - die "Sonnenaufgang"-Richtung parallel zur
+    # LV-``austrumi``/LT-``rytai``-Etymologie, aber slawisch-eigenstaendige
+    # Wort-Bildung), ``zachod`` (W, aus PL-``zachod`` = "Sonnenuntergang" -
+    # die "Sonnenuntergang"-Richtung parallel zur LV-``rietumi``/LT-``vakarai``-
+    # Etymologie, aber slawisch-eigenstaendige Wort-Bildung).
+    #
+    # ASCII-Fallback-Form ohne Diakritika (PL-Standard-Ortho ``polnoc``/
+    # ``poludnie``/``wschod``/``zachod`` verwendet native Diakritika ``północ``/
+    # ``południe``/``wschód``/``zachód`` mit dem Barred-L ``ł`` U+0142 und
+    # dem O-Akut ``ó`` U+00F3; in Sammler-Katalog-ASCII-Notation der Windows-
+    # CP1250-/CP852-/UTF-8-Notiz-Ketten reduziert sich das regelmaessig zu
+    # ``polnoc``/``poludnie``/``wschod``/``zachod``, analog zur ASCII-Fallback-
+    # Konvention der PL-Date-Marker-Achse mit ``nieznany``/``nieznana`` und
+    # zur CZ-Direction-Achse mit ``vychod``/``zapad``). Bisher fielen alle
+    # PL-Direction-Formen still auf die Fallback-Route (kein Direction-Marker
+    # erkannt, generische Zahl-Paar-Extraktion nimmt die Reihenfolge ohne
+    # Vorzeichen-Information), was aus einem typischen Sudeten-Sammler-Etikett
+    # ``"Polnoc 50.8, Wschod 16.3"`` (Karkonosze/Riesengebirge, Nord-/Osthalb-
+    # kugel) silente ``(50.8, 16.3)`` als bare-Zahl-Paar liefert. Kritisch bei
+    # Wieliczka-/Bochnia-Salzmine-Etikett aus DE-sprachiger Sammler-Notiz mit
+    # PL-Ortho ``"Polnoc 49.9, Zachod 20.1"`` (falls die Fundstelle westlich
+    # des Prager Bezugs-Meridians liegt): ohne Direction-Marker haette der
+    # bare Zahl-Wert positive Vorzeichen bekommen, obwohl der Sammler explizit
+    # die West-Halbkugel kodiert hat. Spiegelt die PL-Erweiterung in
+    # :data:`DATE_NO_DATA_MARKERS` (nieznany/nieznana/brak daty/bez daty/
+    # data nieznana) auf die Direction-Wort-Achse und schliesst damit die
+    # West-Slawische-Sprach-Achse (PL + CZ) analog zur bereits abgeschlossenen
+    # Baltisch-Sprach-Achse (LV + LT) und zur NL/BE-Direction-Achse.
+    #
+    # PL/CZ Direction-Formen sind trotz gemeinsamer West-Slawischer IE-Wurzel
+    # lexikalisch KOMPLETT disjunkt: CZ ``sever`` (aus urslav.``*severъ``
+    # "kalt/Nordwind") vs PL ``polnoc`` (aus urslav.``*polnoktь`` "Mitter-
+    # nacht" - komplett andere Etymologie), CZ ``jih`` (aus urslav.``*jugъ``
+    # "warm/Sued") vs PL ``poludnie`` (aus urslav.``*poludьne`` "Mittag" -
+    # semantisch parallel zur "Sonne-Mittag"-Metonymie aber morphologisch
+    # unabhaengig), CZ ``vychod`` vs PL ``wschod`` (beide aus urslav.``*vъxodъ``
+    # "Aufgang"/"Sonnenaufgang" - naheste Verwandtschaft aber trotzdem
+    # ortho-lexikalisch disjunkt: CZ-Praefix ``vy-`` mit U-Laut vs PL-Praefix
+    # ``wsch-`` mit W-Laut und SCH-Cluster), CZ ``zapad`` vs PL ``zachod``
+    # (beide aus urslav.``*zapadъ`` "Untergang" - naheste Verwandtschaft aber
+    # trotzdem ortho-lexikalisch disjunkt: CZ ``zapad`` mit P-Laut vs PL
+    # ``zachod`` mit CH-Cluster). Diese ortho-lexikalische Divergenz ist
+    # typisch fuer die spaete West-Slawische Trennung (~1000 n. Chr.) und
+    # macht die Marker PL/CZ auf der Direction-Wort-Achse trotz teilweise
+    # semantisch identischer Etymologie lexikalisch komplett unterscheidbar.
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``polnoc`` matcht nicht
+    # innerhalb laengerer Woerter (``polnocny`` "noerdlich" - der folgende
+    # Buchstabe ist Wort-Zeichen, keine Wort-Grenze); keine Kollision zu DE/
+    # EN/FR/IT/ES/PT/NL/CZ/LV/LT-Vokabular (der Wortstamm ``polnoc-`` ist
+    # PL-spezifisch, das lat.``polnoc``-artige Wort existiert in keiner
+    # anderen Sprach-Reihe des Regex). ``poludnie`` matcht nicht innerhalb
+    # laengerer Woerter (``poludniowy`` "suedlich"); ``poludnie`` als PL-Wort
+    # ist auch die Bezeichnung fuer "Mittag" (Wortfeld ``poludnie`` "Mittag/
+    # Sued" ist PL-nativ mehrdeutig, aber der Coord-Parser verlangt tight
+    # direction + number couple, sodass die Freitext-Mittag-Bedeutung ausser-
+    # halb von Koordinaten-Notation kein Falsch-Match erzeugt - parallele
+    # Semantik-Mehrdeutigkeit wie LT ``pietus``). ``wschod`` matcht nicht
+    # innerhalb laengerer Woerter (``wschodni`` "oestlich", ``wschodzic`` "auf-
+    # gehen" - der folgende Buchstabe ist Wort-Zeichen, keine Wort-Grenze);
+    # keine Kollision zu CZ ``vychod`` (unterschiedlicher Praefix wsch- vs
+    # vy-). ``zachod`` matcht nicht innerhalb laengerer Woerter (``zachodni``
+    # "westlich", ``zachodzic`` "eintreten/passieren/untergehen"); keine
+    # Kollision zu CZ ``zapad`` (unterschiedliches Wort-Ende chod vs pad).
+    r"|polnoc|poludnie|wschod|zachod"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6427,6 +6518,25 @@ _DIRECTION_LETTER: dict[str, str] = {
     # LT-Erweiterung in :data:`DATE_NO_DATA_MARKERS` auf die Direction-Wort-
     # Achse und schliesst die vollstaendige Baltisch-Sprach-Achse (LV+LT).
     "siaure": "N", "pietus": "S", "rytai": "E", "vakarai": "W",
+    # PL-Vollformen der Himmelsrichtungen (polnisch, west-slawisch/indo-
+    # europaeisch) in ASCII-Fallback-Form ohne Diakritika: ``polnoc`` (N, aus
+    # urslav.``*polnoktь`` "Mitternacht"), ``poludnie`` (S, aus urslav.
+    # ``*poludьne`` "Mittag"), ``wschod`` (E, aus urslav.``*vъxodъ`` "Sonnen-
+    # aufgang"), ``zachod`` (W, aus urslav.``*zapadъ`` "Sonnenuntergang").
+    # Sammler-Notizen aus Niederschlesien/Sudeten (Karkonosze/Riesengebirge,
+    # Sowiegebirge, Eulengebirge - Bergkristall/Amethyst/Achat-Fundstellen),
+    # Kleinpolen (UNESCO-Salzminen Wieliczka/Bochnia), Oberschlesien (Bytom/
+    # Chorzow Zink-/Blei-Reviere), Heilig-Kreuz-Gebirge (Gory Swietokrzyskie)
+    # sowie Museums-Etiketten aus Muzeum Geologiczne Polskiej Akademii Nauk
+    # Krakow, Muzeum Ziemi PAN Warschau und Muzeum Mineralogiczne Uniwersytetu
+    # Wroclawskiego. Auf PL-Landkarten sind die Ein-Buchstaben-Marker
+    # traditionell ``Pn``/``Pd``/``W`` (Wsch)/``Z`` (Zach) (slawisch-native
+    # Konvention) - der Lookup mappt aber auf die kanonischen ``N``/``S``/
+    # ``E``/``W``-Letter (analog zur CZ/LV/LT-Achse). Spiegelt die PL-
+    # Erweiterung in :data:`DATE_NO_DATA_MARKERS` auf die Direction-Wort-
+    # Achse und schliesst die vollstaendige West-Slawische-Sprach-Achse
+    # (PL+CZ) analog zur bereits abgeschlossenen Baltisch-Sprach-Achse (LV+LT).
+    "polnoc": "N", "poludnie": "S", "wschod": "E", "zachod": "W",
 }
 
 

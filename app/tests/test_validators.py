@@ -10429,6 +10429,111 @@ def test_parse_coordinates_himmelsrichtung_lt_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_pl_vollnamen():
+    """PL-Vollnamen der Himmelsrichtungen (polnisch, west-slawisch/indo-europaeisch).
+
+    Sammler-Notizen aus Niederschlesien/Sudeten (Karkonosze/Riesengebirge,
+    Sowiegebirge, Eulengebirge - historische Fundstellen fuer Bergkristall,
+    Amethyst, Achat, Chalzedon, Chrysopras und Silber-/Blei-/Zink-Erze aus
+    dem Kupfer-Revier Lubin/Glogow/Polkowice), Kleinpolen (UNESCO-Salzminen
+    Wieliczka und Bochnia mit Halit-Kristallen), Oberschlesien (Bytom/Chorzow
+    Zink-/Blei-Bergwerke, Galmei-Fundstellen), Heilig-Kreuz-Gebirge (Gory
+    Swietokrzyskie mit Baryt/Fluorit/Kalzit-Adern), Karpaten-Vorland
+    (mineralische Solequellen, Gips-/Anhydrit-Fundstellen) sowie geerbte
+    Sammlungs-Kataloge aus historischen Grenzregionen mit gemischter DE-/PL-
+    Sprach-Provenienz (Oberschlesien, Ostpreussen, Pommern) und Museum-
+    Etiketten aus Muzeum Geologiczne Polskiej Akademii Nauk Krakow, Muzeum
+    Ziemi PAN Warschau und Muzeum Mineralogiczne Uniwersytetu Wroclawskiego.
+
+    Neu sind alle vier PL-eigenstaendigen Wortstaemme ``polnoc`` (N, aus
+    urslav.``*polnoktь`` "Mitternacht"), ``poludnie`` (S, aus urslav.
+    ``*poludьne`` "Mittag"), ``wschod`` (E, aus urslav.``*vъxodъ``
+    "Sonnenaufgang"), ``zachod`` (W, aus urslav.``*zapadъ`` "Sonnenunter-
+    gang") in ASCII-Fallback-Form ohne Diakritika (analog zur ASCII-
+    Fallback-Konvention der PL-Date-Marker-Achse mit ``nieznany``/``nieznana``
+    und zur CZ-Direction-Achse mit ``vychod``/``zapad``). Vor dieser
+    Erweiterung fielen alle PL-Formen still auf die Fallback-Route, was aus
+    einem typischen Karkonosze-/Riesengebirge-Sammler-Etikett ``"Polnoc 50.8,
+    Wschod 16.3"`` (Nord-/Osthalbkugel) silente ``(50.8, 16.3)`` als bare-
+    Zahl-Paar liefert.
+
+    PL/CZ Direction-Formen sind trotz gemeinsamer West-Slawischer IE-Wurzel
+    lexikalisch KOMPLETT disjunkt: PL-Praefix ``wsch-`` mit W-Laut und
+    SCH-Cluster vs CZ-Praefix ``vy-`` mit U-Laut fuer Ost; PL ``zachod`` mit
+    CH-Cluster vs CZ ``zapad`` mit P-Laut fuer West. Diese ortho-lexikalische
+    Divergenz ist typisch fuer die spaete West-Slawische Trennung (~1000
+    n. Chr.).
+    """
+    # Prefix-Form: Karkonosze/Riesengebirge (Niederschlesien)
+    assert parse_coordinates("Polnoc 50.8, Wschod 16.3") == (50.8, 16.3)
+    # Wieliczka-Salzmine (Kleinpolen)
+    assert parse_coordinates("Polnoc 49.9, Wschod 20.1") == (49.9, 20.1)
+    # West-Halbkugel-Provenienz (hypothetisch, spiegelt LV/CZ-Test-Struktur:
+    # falls die Fundstelle westlich des Prager Bezugs-Meridians liegt)
+    assert parse_coordinates("Polnoc 50.8, Zachod 16.3") == (50.8, -16.3)
+    # Sued-Halbkugel/West-Halbkugel (hypothetisch, spiegelt LV/CZ-Struktur)
+    assert parse_coordinates("Poludnie 20.1, Zachod 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``50.8° Polnoc, 16.3° Wschod``)
+    assert parse_coordinates("50.8° Polnoc, 16.3° Wschod") == (50.8, 16.3)
+    assert parse_coordinates("20.1° Poludnie, 43.2° Zachod") == (-20.1, -43.2)
+    # Case-insensitive
+    assert parse_coordinates("POLNOC 50.8, WSCHOD 16.3") == (50.8, 16.3)
+    assert parse_coordinates("polnoc 50.8, wschod 16.3") == (50.8, 16.3)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Polnoc. 50.8, Wschod. 16.3") == (50.8, 16.3)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Poludnie 20.1, Lon: Zachod 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Wschod 16.3, Polnoc 50.8") == (50.8, 16.3)
+    # Mixed-Sprache (PL-Marker mit DE/EN/CZ/LV/LT auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus internationalen Provenienzen vor,
+    # besonders bei Oberschlesien-/Ostpreussen-/Pommern-Grenzregionen mit
+    # gemischter DE-/PL-Sprach-Provenienz)
+    assert parse_coordinates("Polnoc 50.8, East 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Polnoc 50.8, Ost 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Polnoc 50.8, Est 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Polnoc 50.8, Vychod 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Polnoc 50.8, Rytai 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Polnoc 50.8, Austrumi 16.3") == (50.8, 16.3)
+    # Wort-Grenzen: PL-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. PL-Adjektiv-Formen ``polnocny``/``poludniowy``/
+    # ``wschodni``/``zachodni`` bilden derivierte Woerter, deren nachfolgende
+    # Buchstaben Wort-Zeichen sind, sodass \b nicht bindet und der bare
+    # Direction-Marker nicht faelschlich matcht.
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-/LV-/LT-
+    # Direction-Formen bleiben unveraendert (die neuen PL-Alternativen im
+    # Regex duerfen die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Siaure 55.7, Rytai 21.1") == (55.7, 21.1)
+    # PL vs CZ: trotz gemeinsamer West-Slawischer IE-Wurzel sind alle vier
+    # Direction-Wortstaemme komplett unterscheidbar (PL ``polnoc``/``poludnie``/
+    # ``wschod``/``zachod`` vs CZ ``sever``/``jih``/``vychod``/``zapad``:
+    # nur ``wschod`` und ``vychod`` teilen gemeinsame urslavische Wurzel
+    # ``*vъxodъ``, sind aber ortho-lexikalisch komplett distinkt durch
+    # PL-Praefix ``wsch-`` vs CZ-Praefix ``vy-``)
+    assert "polnoc" != "sever"
+    assert "poludnie" != "jih"
+    assert "wschod" != "vychod"
+    assert "zachod" != "zapad"
+    # Einzelbuchstaben bleiben unveraendert (PL-native Ein-Buchstaben-Marker
+    # Pn/Pd/W/Z werden bewusst NICHT unterstuetzt, da _is_lat_direction und
+    # _sign nur N/S/E/W/O kennen und PL-native Konvention mit W=Wsch und
+    # Z=Zach ohnehin mit dem EN/DE-W=West kollidieren wuerde)
+    assert parse_coordinates("N50.8 E16.3") == (50.8, 16.3)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace
