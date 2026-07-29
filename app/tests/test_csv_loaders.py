@@ -882,6 +882,83 @@ def test_normalize_id_englische_specimen_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_probe_nummer_praefix():
+    """Wissenschaftliche Probennummer ``Probe-Nr.`` / ``Probennummer`` - Bergakademie-/
+    Uni-Sammlungs-Standard. Waehrend ``Inv.-Nr.`` die Museums-Inventar-Position,
+    ``Kat.-Nr.`` den Katalog-Eintrag, ``Fund-Nr.`` das Sammel-Ereignis und ``Slg.-Nr.``
+    den privaten Sammlungs-Zaehler identifiziert, referenziert ``Probe-Nr.`` den
+    wissenschaftlichen Probe-Datensatz (Duennschliff-Bezug, EDX-Analyt) - Standard-
+    Praefix in petrographischen Sammlungen an DE-sprachigen Universitaeten (TU Berg-
+    akademie Freiberg, ETH Zuerich, RWTH Aachen, Uni Wien, LMU Muenchen) und in Fach-
+    Literatur (Chemie der Erde, European Journal of Mineralogy). DE-Pendant zum EN-
+    ``Spec.``-Praefix. Bisher fielen alle Probe-Nr.-Formen still auf None. Regex-
+    Erweiterung ``Probe(?:n)?`` deckt Kurz- (``Probe``) und Fugen-n-Form (``Proben``)
+    ab; die Fugen-n-Erweiterung ist notwendig fuer ``Probennummer`` sowie fuer die
+    Bindestrich-Form ``Proben-Nr.``. Der obligatorische ``N(?:umme)?r``-Marker
+    verhindert Kompositum-Falsch-Positives (Probennahme, Probenname, Probenmaterial).
+    """
+    # Standard-Formen mit unterschiedlichen Trenner-Kombinationen
+    assert normalize_id("Probe-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Probe. Nr. 43") == "OBJ_0043"
+    assert normalize_id("Probe Nr. 43") == "OBJ_0043"
+    assert normalize_id("Probe-Nr 43") == "OBJ_0043"
+    assert normalize_id("ProbeNr 43") == "OBJ_0043"
+    assert normalize_id("ProbeNr43") == "OBJ_0043"
+    assert normalize_id("Probe.Nr.43") == "OBJ_0043"
+    # Fugen-n-Form: Kompositum ``Probennummer`` und Bindestrich-Form ``Proben-Nr.``
+    assert normalize_id("Probennummer 43") == "OBJ_0043"
+    assert normalize_id("Probennummer43") == "OBJ_0043"
+    assert normalize_id("Proben-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Proben-Nr 43") == "OBJ_0043"
+    assert normalize_id("Proben Nr. 43") == "OBJ_0043"
+    assert normalize_id("Proben. Nr. 43") == "OBJ_0043"
+    assert normalize_id("ProbenNr 43") == "OBJ_0043"
+    # Ausgeschriebene ``Nummer``-Form
+    assert normalize_id("Probe. Nummer 43") == "OBJ_0043"
+    assert normalize_id("Probe Nummer 43") == "OBJ_0043"
+    assert normalize_id("Probe-Nummer 43") == "OBJ_0043"
+    # Case-Insensitivitaet
+    assert normalize_id("probe-nr 7") == "OBJ_0007"
+    assert normalize_id("PROBE-NR. 001") == "OBJ_0001"
+    assert normalize_id("probennummer 7") == "OBJ_0007"
+    assert normalize_id("PROBENNUMMER 43") == "OBJ_0043"
+    # Ungueltig: ohne Nummer-Marker, Suffix-Ballast, oder Probe-Kompositum-Woerter
+    assert normalize_id("Probe 43") is None            # ohne Nr/Nummer nicht eindeutig
+    assert normalize_id("Proben 43") is None
+    assert normalize_id("Probe-Nr. 43X") is None       # Suffix-Ballast
+    assert normalize_id("Probennahme 43") is None      # Sampling-Vorgang, kein Nr-Marker
+    assert normalize_id("Probenname 43") is None       # Bezeichnung der Probe
+    assert normalize_id("Probenmaterial 43") is None
+    assert normalize_id("Probenkoerper 43") is None
+    assert normalize_id("Probenraum 43") is None
+    assert normalize_id("Probelauf 43") is None        # nicht-verwandtes Wort
+    assert normalize_id("Probezeit 43") is None
+    assert normalize_id("Probealarm 43") is None
+    assert normalize_id("Probe-Nr 43 44") is None      # Doppel-Zahl
+    # Regressionsschutz: bestehende Formen bleiben gueltig
+    assert normalize_id("OBJ-001") == "OBJ_0001"
+    assert normalize_id("Nr. 43") == "OBJ_0043"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Nummer 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Inventarnummer 43") == "OBJ_0043"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Katalognummer 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fundnummer 43") == "OBJ_0043"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Sammlungsnummer 43") == "OBJ_0043"
+    assert normalize_id("Cat. No. 43") == "OBJ_0043"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Reg. No. 43") == "OBJ_0043"
+    assert normalize_id("Field No. 43") == "OBJ_0043"
+    assert normalize_id("Coll. No. 43") == "OBJ_0043"
+    assert normalize_id("Spec. No. 43") == "OBJ_0043"
+    assert normalize_id("Objekt 7") == "OBJ_0007"
+    assert normalize_id("Objekt-Nr. 43") == "OBJ_0043"
+    assert normalize_id("#43") == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)

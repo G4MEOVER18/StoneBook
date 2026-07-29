@@ -159,6 +159,43 @@ _PATTERNS = [
     # Woerter des Sammler-Vokabulars (``Fundort``, ``Fundstelle``, ``Fundgebiet``,
     # ``Fundstaette``, ``Fundament``, ``Fundamental``, ``Fundus``).
     re.compile(r"^Fund\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
+    # Wissenschaftliche Probennummer: ``Probe-Nr. 43`` / ``Probe. Nr. 43`` /
+    # ``ProbeNr 43`` / ``Probennummer 43`` / ``Proben-Nr. 43`` / ``Probe-Nummer 43``.
+    # Standard-Praefix in petrographischen/mineralogischen Sammlungen an DE-sprachigen
+    # Universitaeten und Bergakademien (TU Bergakademie Freiberg, ETH Zuerich, RWTH
+    # Aachen, Uni Wien Institut fuer Mineralogie und Kristallographie, Uni Muenchen LMU
+    # Mineralogische Staatssammlung) sowie in der wissenschaftlichen Fach-Literatur
+    # (Chemie der Erde, European Journal of Mineralogy mit ``Probe-Nr.``-Referenz-Notation
+    # in Modal-Analyse-Berichten und Duennschliff-Beschreibungen). Waehrend ``Inv.-Nr.``
+    # die Museums-Inventar-Position, ``Kat.-Nr.`` den logischen Katalog-Eintrag,
+    # ``Fund-Nr.`` das Sammel-Ereignis und ``Slg.-Nr.`` den privaten Sammlungs-Zaehler
+    # identifiziert, referenziert ``Probe-Nr.`` den wissenschaftlichen Probe-Datensatz
+    # (Duennschliff-Nummer, EDX-Analyse-Bezug, geochemisches Analyt); die Achsen
+    # koexistieren auf Objekten, die aus Wissenschafts-/Industrie-Bestaenden in private
+    # Sammlungen wandern (Hochschul-Restposten, Deakzessionierungen aus Uni-Sammlungen,
+    # Lehr-Sammlungs-Duplikate). ``Probe-Nr.`` ist das DE-Pendant zum EN-``Spec.``-
+    # Praefix (Zeile weiter unten, ``Specimen No.``) auf der wissenschaftlichen Achse -
+    # waehrend ``Spec.`` in der anglo-amerikanischen Sammlungs-Datenbank-Konvention
+    # das identifizierte Sammlungs-Stueck referenziert, bezeichnet ``Probe-Nr.`` in der
+    # DE-sprachigen Bergakademie-/Uni-Konvention den analysierten Probe-Datensatz
+    # (Handstueck-Probe, Duennschliff-Probe, gemessenes Analyt). Bisher fielen alle
+    # Probe-Nr.-Formen still auf None, weil das Regex-Set keinen ``Probe``-startenden
+    # Praefix kannte. Regex spiegelt die Inv-/Kat-/Fund-Regex strukturell:
+    # ``Probe(?:n)?`` deckt Kurz- (``Probe``) und Kompositum-Fugen-Form (``Proben``) ab -
+    # die Fugen-n-Erweiterung ist notwendig fuer die grammatikalisch korrekte
+    # Kompositum-Bildung ``Probennummer`` (Nominativ-Plural als Fugen-Element bei
+    # Feminina der schwachen Deklination) sowie fuer die verkuerzte Bindestrich-Form
+    # ``Proben-Nr.``. Optionaler Punkt (``Probe.`` vs. ``Probe``), beliebige
+    # Trenner-Kombination [-.\s]*, obligatorischer ``N(?:umme)?r``-Marker als
+    # Disambiguierungs-Klammer. Der Nr-Marker verhindert falsche Positives fuer bare
+    # ``Probe 43`` (mehrdeutig zu "das ist die 43. Probe") und fuer Probe-startende
+    # Kompositum-Woerter (``Probennahme`` = Sampling-Vorgang, ``Probenname`` = Bezeichnung
+    # der Probe, ``Probenmaterial``, ``Probenkoerper``, ``Probenpraeparation``,
+    # ``Probenraum``) sowie fuer nicht-verwandte Woerter (``Probelauf``, ``Probezeit``,
+    # ``Probealarm``). Kollisionsfrei zu allen anderen Praefix-Formen (``Probe`` startet
+    # mit ``P``, lexikalisch disjunkt zu OBJ/Objekt/Object/Nr/Inv/Kat/Cat/Fund/Slg/
+    # Sammlung/No/Acc/Reg/Field/Coll/Spec/#).
+    re.compile(r"^Probe(?:n)?\.?[-.\s]*N(?:umme)?r\.?\s*(\d+)$", re.IGNORECASE),
     # Englische Katalog-Nummer: ``Cat. No. 43`` / ``Cat No 43`` / ``CatNo43`` /
     # ``Cat-No. 43`` / ``Catalog Number 43`` / ``Catalogue No. 43``. Englisches Pendant
     # zur DE-``Kat.-Nr.``-Regex (be56257): Standard-Praefix auf EN-sprachigen Museums-
