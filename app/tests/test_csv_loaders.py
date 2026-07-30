@@ -6784,6 +6784,109 @@ def test_parse_range_leading_currency_prefix_mmk_myanmar_kyat():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_clp_chilenischer_peso():
+    """``CLP`` (Chilenischer Peso, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer chilenische Kupfer-/Nitrat-/Zeolith-Sammler.
+
+    Chile ist eine der weltweit fuehrenden Sammler-Quellen fuer Kupfer-
+    Sekundaerminerale, Sulfat-/Chlorid-Type-Localities und Zeolithe: die
+    Chuquicamata-Kupfermine (Antofagasta-Region, weltgroesste Tagebau-
+    Kupfermine, Type-Locality fuer Chuquicamatit, Sammler-Quelle fuer
+    Atacamit, Antlerit, Krohnkit, Natrochalcit, Kroehnkit-Assoziationen
+    in Ausblueh-Krusten), die El-Teniente-Kupfermine (Region O'Higgins,
+    weltgroesste unterirdische Kupfermine, Sammler-Quelle fuer
+    Chalkopyrit-/Bornit-/Molybdenit-Kristalle), die Escondida-Kupfermine
+    (Antofagasta-Region), die Atacama-Wueste (Type-Locality fuer Atacamit,
+    Chalkantit und diverse Nitrat-Minerale wie Chile-Salpeter/Nitratin,
+    Darapskit, Humberstonit), die El-Salvador-Mine (Region Atacama,
+    Sammler-Quelle fuer Kupfer-Chloride), Andacollo (Region Coquimbo,
+    Kupfer-/Gold-Revier mit Chrysokoll-/Malachit-/Azurit-Stufen), die
+    Cerro-Bonete-/Cerro-Overo-Vulkan-Regionen (Zeolith-/Analcim-
+    Assoziationen) und die Chanarcillo-/Tres-Puntas-Silber-Distrikte
+    (historische Silber-Sammler-Quelle des 19. Jahrhunderts). Die
+    Handels-Konvention der chilenischen Mineralien-Haendler auf dem
+    Feria-Vecinal-Sonntagsmarkt in Santiago, in Direkt-Verkaeufen an
+    der Universidad-Catolica-del-Norte-Mineralien-Sammlung in
+    Antofagasta, in Region-Chile-Verkaufsstellen der Sociedad-Nacional-
+    de-Mineria und in Tucson-/Muenchen-/Sainte-Marie-aux-Mines-Auktions-
+    Katalogen mit chilenischen Ausstellern ist die CLP-Preisstellung mit
+    USD-Umrechnungs-Hinweis (``CLP 950000 (~USD 1000)`` als Standard-
+    Notation der Santiago-Mineralien-Boersen).
+
+    Bisher fielen alle Formen mit ``CLP``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/COP/MMK vor
+    deren Aufnahme in die Vokabel-Liste): ``CLP 1000000 ± 100000`` ->
+    ``(1000000, 1000000)`` via inverted-range-Kollaps (Toleranz
+    verloren); ``CLP 500000(20000)`` -> ``(500000, 20000)`` (semantisch
+    falscher Range statt (480000, 520000)). Kollisionsfrei zu Fremd-
+    woertern: ``CLP`` ist keine EN-/DE-Wort-Sequenz (der Buchstaben-
+    Cluster ``CLP`` existiert in keinem gaengigen Vokabular als
+    Wort-Anfang), sodass die ``\\b``-Wortgrenze hinter dem Code
+    ausschliesslich den ISO-Code-Praefix matcht. Case-Insensitiv
+    spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect ``Clp`` mit
+    Capitalize-First-Word und lowercase ``clp`` aus Konsolen-Tools ohne
+    Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("CLP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CLP 1000000 ± 100000") == pytest.approx((900000.0, 1100000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("CLP 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("CLP 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. CLP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CLP ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~CLP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa CLP 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("CLP 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CLP 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("clp 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Clp 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ClP 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("CLP 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("CLP 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("CLP 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CLP 950000 ± 100000 (Chuquicamata)") == pytest.approx((850000.0, 1050000.0))
+    assert csv_loaders.parse_range("CLP 100(2) [El Teniente]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit CLP-Praefix.
+    assert csv_loaders.parse_range("CLP > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens CLP 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("CLP 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("CLP 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("CLP 500 to 1000") == (500.0, 1000.0)
+    # CLP OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("CLP") == (None, None)
+    assert csv_loaders.parse_range("CLP ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MXN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
