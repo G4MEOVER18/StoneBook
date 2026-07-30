@@ -7203,6 +7203,115 @@ def test_parse_range_leading_currency_prefix_bob_bolivianischer_boliviano():
     assert csv_loaders.parse_range("LKR 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_idr_indonesische_rupiah():
+    """``IDR`` (Indonesische Rupiah, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer indonesische Schwefel-/Kupfer-/Zinn-/Diamant-Sammler.
+
+    Indonesien ist eine der weltweit bedeutendsten Bergbau-/Vulkan-Nationen
+    und liefert Sammler-Material aus mehreren einzigartigen Type-Localities:
+    Kawah Ijen im Ost-Java (weltweit dominante Sammler-Quelle fuer gediegen-
+    Schwefel-Kristalle in leuchtend gelber Prisma-Form, gefoerdert im
+    aktiven Solfatar-Krater mit blauen Schwefel-Flammen, klassisches
+    Schauobjekt in Vulkan-Mineralien-Sammlungen und in Museums-Praesentationen
+    des Rijksmuseum van Geologie Leiden aus der niederlaendisch-ostindischen
+    Kolonial-Zeit), Grasberg/Ertsberg im Papua-Hochland (weltweit
+    zweitgroesste Gold-Mine und drittgroesste Kupfer-Mine mit klassischem
+    Kupfer-/Gold-Skarn-Material, Sammler-Quelle fuer Chalkopyrit-/
+    Bornit-Aggregate, Molybdaenit-Rosetten und Enargit-Kristalle), die
+    Bangka-/Belitung-Zinn-Inseln (historisch weltweit dominante Zinn-
+    Foerderregion mit Cassiterit-Seifen-Material, Sammler-Quelle fuer
+    Cassiterit-Nadel-Kristalle, Wolframit-Aggregate und die klassischen
+    Bangka-Zinn-Barren-Reliquien der Billiton-Handelsgesellschaft aus
+    der niederlaendisch-ostindischen Zeit), das Cempaka-Diamant-Feld in
+    Sued-Kalimantan (klassische Sammler-Quelle fuer Alluvial-Diamanten
+    in Fluss-Seifen-Ablagerungen mit Beikorn aus Zirkon/Korund/Granat),
+    Halmahera/Sulawesi (Nickel-Laterit-Vorkommen mit Garnierit-Aggregaten),
+    die Merapi-/Krakatau-/Tambora-Vulkane (Basalt-/Andesit-/Obsidian-
+    Sammler-Material, klassische Handstuecke der historischen Krakatau-
+    1883-Eruption und der Tambora-1815-Eruption), Trenggalek in Ost-
+    Java (Baryt-/Fluorit-Vorkommen), Sulawesi-Ophiolith-Guertel (Chromit-
+    /Pentlandit-Vorkommen) sowie geerbte Sammlungs-Kataloge aus der
+    niederlaendisch-ostindischen Kolonial-Provenienz (Bataviaasch
+    Genootschap van Kunsten en Wetenschappen mit indonesischen
+    Vulkan-/Mineralien-Sammlungen aus dem 18./19. Jahrhundert und
+    Museum-Etiketten aus dem Museum Nasional Jakarta und Museum
+    Geologi Bandung). Die indonesische Bergbau-Sammler-Handels-
+    Konvention in Direkt-Verkaeufen aus den Kawah-Ijen-Sulfataren, in
+    Jakarta-Kramat-Raya-Mineraliengeschaeften, in Yogyakarta-Malioboro-
+    Souvenir-Basaren und in Tucson-/Muenchen-/Bangkok-/Chanthaburi-
+    Auktions-Katalogen mit indonesischen Ausstellern ist die IDR-
+    Preisstellung mit USD-Umrechnungs-Hinweis (``IDR 15000000 (~USD
+    1000)`` als Standard-Notation, die IDR ist wie die VND eine sehr
+    kleine Sued-Ost-Asien-Waehrungs-Einheit mit ~15.000 IDR/USD-
+    Wechselkurs, sodass typische Sammler-Handstueck-Preise im sieben-
+    bis achtstelligen IDR-Bereich liegen).
+
+    Bisher fielen alle Formen mit ``IDR``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/
+    COP/MMK/CLP/ISK/LKR/BOB vor deren Aufnahme in die Vokabel-Liste):
+    ``IDR 15000000 ± 1500000`` -> ``(15000000, 15000000)`` via
+    inverted-range-Kollaps (Toleranz verloren); ``IDR 500000(20000)``
+    -> ``(500000, 20000)`` (semantisch falscher Range statt (480000,
+    520000)). Kollisionsfrei zu Fremdwoertern: ``IDR`` ist keine EN-/
+    DE-Wort-Sequenz (der Buchstaben-Cluster ``IDR`` existiert in keinem
+    gaengigen Vokabular als Wort-Anfang), und die ``\\b``-Wortgrenze
+    hinter dem Code matcht ausschliesslich den ISO-Code-Praefix. Case-
+    Insensitiv spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect
+    ``Idr`` mit Capitalize-First-Word und lowercase ``idr`` aus
+    Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 15000000 ± 1500000") == pytest.approx((13500000.0, 16500000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("IDR 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("IDR 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa IDR 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("IDR 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("idr 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Idr 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IdR 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("IDR 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("IDR 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("IDR 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 15000000 ± 1500000 (Kawah Ijen)") == pytest.approx((13500000.0, 16500000.0))
+    assert csv_loaders.parse_range("IDR 100(2) [Grasberg]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit IDR-Praefix.
+    assert csv_loaders.parse_range("IDR > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens IDR 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("IDR 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("IDR 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("IDR 500 to 1000") == (500.0, 1000.0)
+    # IDR OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("IDR") == (None, None)
+    assert csv_loaders.parse_range("IDR ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("THB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("SGD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
