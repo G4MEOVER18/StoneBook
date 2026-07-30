@@ -7410,6 +7410,122 @@ def test_parse_range_leading_currency_prefix_kes_kenianischer_schilling():
     assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_mga_malagassischer_ariary():
+    """``MGA`` (Malagassischer Ariary, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer madagassische Turmalin-/Beryll-/Rosenquarz-/
+    Labradorit-/Cölestin-/Saphir-Sammler.
+
+    Madagaskar zaehlt zu den weltweit bedeutendsten Sammler-Herkunfts-
+    Regionen und liefert Material aus einer einzigartigen Dichte an
+    Type-Localities und klassischen Fundstellen: Antsirabe/Betafo-
+    Pegmatit-Region im zentralen Hochland (weltweit dominante Sammler-
+    Quelle fuer Rosenquarz-Sterne, hellblaue Aquamarine, Morganit-/
+    Heliodor-Beryll, mehrfarbige Elbait-Turmalin-Kristalle in dm-Groesse
+    und Petalit-/Pollucit-Alkali-Feldspaete), Ilakaka-Sakaraha-Sapphir-
+    Alluvium in Sued-Madagaskar (seit 1998 weltweit dominante Sapphir-
+    Quelle mit dem klassischen padparadscha-orange-rosa Farbspektrum,
+    beliefert die Bangkok-/Chanthaburi-Schleiferei-Cluster mit
+    industrieller Rohware), Mahajanga-Region an der Nordwest-Kueste
+    (weltweit klassische Sammler-Quelle fuer Cölestin-Geoden mit blauen
+    Prismen im Kalkstein-Muttergestein, Sammler-Referenz-Material fuer
+    die Cölestin-Praesentation in Naturkunde-Museen), Andranondambo-
+    Sapphir-Fundstelle in Sued-Madagaskar (klassische kobaltblaue
+    Sapphir-Kristalle), Bekily-Granat-Region (Rhodolith-/Pyrop-
+    Almandin-Granat und der klassische farbwechselnde Bekily-Alexandrit-
+    aehnliche Granat), Ambatondrazaka in der Ost-Provinz (Rhodizit-Type-
+    Locality mit tetraedrischen Kristallen, weltweit Sammler-Referenz),
+    Anjanabonoina-Pegmatit in der Region Antsirabe (Liddicoatit-Turmalin-
+    Type-Locality mit farbzonierten dreieckigen Basalschnitten, klassisches
+    Sammler-Handstueck-Material), Malakialina-Pegmatit-Region (Beryll-
+    Aquamarin-/Turmalin-Material), Ampandrandava-Phlogopit-Vorkommen im
+    Sued-Osten (klassische Phlogopit-Buecher aus Karbonatit-Muttergestein),
+    Ambatofinandrahana-Region (klassisches Amazonit-Alkali-Feldspat-
+    Material und Uranpechblende-/Torbernit-Vorkommen aus dem historischen
+    franzoesischen Kolonial-Uran-Bergbau) sowie geerbte Sammlungs-Kataloge
+    aus der franzoesischen Kolonial-Provenienz (Museum National d'Histoire
+    Naturelle Paris mit madagassischen Referenz-Sammlungen aus dem
+    Alfred-Lacroix-Bestand und aus den Sammlungen des Service Geologique
+    de Madagascar aus der Kolonial-Zeit vor 1960) und aus modernen
+    Museums-Etiketten des Institut et Musee de la Geologie Antananarivo.
+    Die madagassische Bergbau-Sammler-Handels-Konvention in Direkt-
+    Verkaeufen aus den Antsirabe-Sammler-Genossenschaften, in
+    Antananarivo-Analakely-Mineraliengeschaeften, in Sainte-Marie-aux-
+    Mines-/Tucson-/Muenchen-Auktions-Katalogen mit madagassischen
+    Ausstellern (Madagascar Minerals, Ambatondrazaka Rhodizite Mining
+    als etablierte Haendler-Namen aus der Antsirabe-Pegmatit-Tradition)
+    ist die MGA-Preisstellung mit EUR-/USD-Umrechnungs-Hinweis
+    (``MGA 5000000 (~EUR 1000)`` als Standard-Notation, die MGA ist eine
+    sehr kleine Waehrungs-Einheit mit ~5000 MGA/USD-Wechselkurs, sodass
+    typische Sammler-Handstueck-Preise im sieben-stelligen MGA-Bereich
+    liegen).
+
+    Bisher fielen alle Formen mit ``MGA``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/
+    COP/MMK/CLP/ISK/LKR/BOB/IDR/KES vor deren Aufnahme in die Vokabel-
+    Liste): ``MGA 5000000 ± 500000`` -> ``(5000000, 5000000)`` via
+    inverted-range-Kollaps (Toleranz verloren); ``MGA 500(20)`` ->
+    ``(500, 20)`` (semantisch falscher Range statt (480, 520)).
+    Kollisionsfrei zu Fremdwoertern: ``MGA`` ist keine gaengige EN-/DE-
+    Wort-Sequenz; der Buchstaben-Cluster ``mga`` existiert in keinem
+    gaengigen Vokabular als Wort-Anfang, und die ``\\b``-Wortgrenze
+    hinter dem Code matcht ausschliesslich den ISO-Code-Praefix. Case-
+    Insensitiv spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect
+    ``Mga`` mit Capitalize-First-Word und lowercase ``mga`` aus
+    Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 5000000 ± 500000") == pytest.approx((4500000.0, 5500000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("MGA 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("MGA 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa MGA 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("MGA 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("mga 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Mga 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MgA 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("MGA 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("MGA 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("MGA 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 5000000 ± 500000 (Antsirabe)") == pytest.approx((4500000.0, 5500000.0))
+    assert csv_loaders.parse_range("MGA 100(2) [Ilakaka]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit MGA-Praefix.
+    assert csv_loaders.parse_range("MGA > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens MGA 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("MGA 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("MGA 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("MGA 500 to 1000") == (500.0, 1000.0)
+    # MGA OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("MGA") == (None, None)
+    assert csv_loaders.parse_range("MGA ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
