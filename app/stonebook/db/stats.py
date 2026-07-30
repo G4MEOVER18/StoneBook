@@ -172,6 +172,7 @@ class Statistik:
     wert_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_quartal: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_funddatum_tertial: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_funddatum_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
@@ -207,6 +208,7 @@ class Statistik:
     gewicht_pro_funddatum_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_quartal: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_funddatum_tertial: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_funddatum_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_erstellt_am_jahrzehnt: list[tuple[str, float]] = field(default_factory=list)
@@ -1413,6 +1415,9 @@ class Statistik:
             "wert_pro_funddatum_quartal": [
                 (q, round(w, 2)) for q, w in self.wert_pro_funddatum_quartal
             ],
+            "wert_pro_funddatum_tertial": [
+                (t, round(w, 2)) for t, w in self.wert_pro_funddatum_tertial
+            ],
             "wert_pro_funddatum_halbjahr": [
                 (h, round(w, 2)) for h, w in self.wert_pro_funddatum_halbjahr
             ],
@@ -1517,6 +1522,9 @@ class Statistik:
             ],
             "gewicht_pro_funddatum_quartal": [
                 (q, round(g, 2)) for q, g in self.gewicht_pro_funddatum_quartal
+            ],
+            "gewicht_pro_funddatum_tertial": [
+                (t, round(g, 2)) for t, g in self.gewicht_pro_funddatum_tertial
             ],
             "gewicht_pro_funddatum_halbjahr": [
                 (h, round(g, 2)) for h, g in self.gewicht_pro_funddatum_halbjahr
@@ -3046,6 +3054,50 @@ def _sum_by_funddatum_quartal(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, q ASC"
     )
     return [(f"Q{r['q']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_funddatum_tertial(conn: sqlite3.Connection, value_sql: str,
+                              extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach Funddatum-Tertial (T1..T3).
+
+    Sitzt granular zwischen :func:`_sum_by_funddatum_quartal` (Q1..Q4,
+    3-Monats-Bloecke) und :func:`_sum_by_funddatum_halbjahr` (H1/H2,
+    6-Monats-Bloecke) und teilt das Kalenderjahr in drei gleiche
+    4-Monats-Bloecke: T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez. Pendant zu
+    :func:`_count_funddatum_tertial` (Anzahl) und spiegelt die Sammler-
+    Feld-Saison-Dreiteilung (T1=Winter-/Fruehjahrs-Indoor-Phase mit Tucson-
+    Show, T2=Feld-Saison mit Alpin-Touren und Sainte-Marie, T3=Herbst-/
+    Winter-Auslauf mit Muenchen-Show) auf die Wert-/Gewicht-Ertrags-Achse.
+
+    Tertial wird aus dem Monatsteil per ``((monat - 1) / 4) + 1`` abgeleitet -
+    Ganzzahl-Division in SQLite ist truncating, konsistent zum Python-
+    Aequivalent ``(m - 1) // 4 + 1`` und zur :func:`_count_funddatum_tertial`-
+    Konvention. Akzeptiert nur Funddaten in ISO-Form ``YYYY-MM-DD``/
+    ``YYYY-MM`` mit gueltigem Monatsteil 01-12; reine Jahresangaben
+    (``"2024"``) haben keinen Monatsteil und werden ignoriert (sonst
+    wuerden sie als "Monat 00" auf einen Default-Bucket fallen und die
+    Tertial-Statistik verzerren). Spiegelt damit die
+    :func:`_sum_by_funddatum_monat`-/:func:`_sum_by_funddatum_quartal`-/
+    :func:`_sum_by_funddatum_halbjahr`-Konvention.
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach Tertial-
+    Nummer (T1 zuerst). Ohne Limit, weil maximal drei Tertial-Buckets
+    vorkommen koennen - die Ausgabe wird nie laenger.
+    """
+    where = ("Funddatum IS NOT NULL AND TRIM(Funddatum) != '' "
+             "AND substr(Funddatum, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(Funddatum, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(Funddatum, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(substr(Funddatum, 6, 2) AS INTEGER) - 1) / 4 + 1) AS t, "
+        f"       SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY t HAVING w > 0 "
+        f"ORDER BY w DESC, t ASC"
+    )
+    return [(f"T{r['t']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_funddatum_halbjahr(conn: sqlite3.Connection, value_sql: str,
@@ -5890,6 +5942,19 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Quartale. Ohne Limit, weil max. 4 Quartals-Buckets moeglich sind.
     st.wert_pro_funddatum_quartal = _sum_by_funddatum_quartal(conn, wert_sql)
     st.gewicht_pro_funddatum_quartal = _sum_by_funddatum_quartal(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Tertial-Ertrag: welches Kalender-Tertial (T1..T3) bringt ueber alle Jahre
+    # aggregiert den meisten Wert bzw. das meiste Gewicht? Sitzt granular
+    # zwischen der Quartals-Sicht (Q1..Q4, 3-Monats-Bloecke) und der Halbjahres-
+    # Sicht (H1/H2, 6-Monats-Bloecke) und teilt das Kalenderjahr in drei gleiche
+    # 4-Monats-Bloecke: T1=Jan..Apr (Winter-/Fruehjahrs-Indoor-Phase mit Tucson-
+    # Show), T2=Mai..Aug (Feld-Saison mit Alpin-Touren und Sainte-Marie-aux-
+    # Mines), T3=Sep..Dez (Herbst-/Winter-Auslauf mit Muenchen-Show und Boersen-
+    # Dezember). Komplementaer zu by_funddatum_tertial (Anzahl - Feld-Saison-
+    # Rhythmik) und zu wert_/gewicht_pro_funddatum_quartal (feinere Quartals-
+    # Ergiebigkeit). Ohne Limit, weil max. 3 Tertial-Buckets moeglich sind.
+    st.wert_pro_funddatum_tertial = _sum_by_funddatum_tertial(conn, wert_sql)
+    st.gewicht_pro_funddatum_tertial = _sum_by_funddatum_tertial(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Halbjahres-Ertrag: welches Kalender-Halbjahr (H1/H2) bringt ueber alle Jahre
     # aggregiert den meisten Wert bzw. das meiste Gewicht? Komplementaer zu

@@ -3291,6 +3291,148 @@ def test_gewicht_pro_funddatum_halbjahr_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_funddatum_tertial_aus_seed_db(tmp_path):
+    """Wertsumme pro Funddatum-Tertial (T1..T3); absteigend nach Summe.
+
+    Sitzt granular zwischen _sum_by_funddatum_quartal (Q1..Q4, 3-Monats-
+    Bloecke) und _sum_by_funddatum_halbjahr (H1/H2, 6-Monats-Bloecke) und
+    teilt das Kalenderjahr in drei gleiche 4-Monats-Bloecke: T1=Jan..Apr
+    (Tucson-Show-Phase), T2=Mai..Aug (Feld-Saison mit Alpin-Touren und
+    Sainte-Marie), T3=Sep..Dez (Muenchen-Show und Boersen-Dezember).
+    Spiegelt die Sammler-Feld-Saison-Dreiteilung auf die Wert-Ertrags-Achse.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpft.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # T1 (Jan..Apr): Tucson-Show hochwertig -- 500 + 300 = 800
+            ("OBJ_0001", "2024-02-15", 500.0, None),  # T1 (Tucson)
+            ("OBJ_0002", "2023-04-30", 300.0, None),  # T1 (April-Rand)
+            # T2 (Mai..Aug): Feld-Saison, viele Kleinstuecke -- 200 + 60 + 100 = 360
+            ("OBJ_0003", "2024-05-01", 200.0, None),  # T2 (Mai-Rand)
+            ("OBJ_0004", "2020-07-15", 60.0, None),   # T2 (Feld)
+            ("OBJ_0005", "2024-08-31", 100.0, None),  # T2 (August-Rand)
+            # T3 (Sep..Dez): Muenchen-Show -- 250 + 400 = 650
+            ("OBJ_0006", "2023-10-31", 250.0, None),  # T3 (Muenchen)
+            ("OBJ_0007", "2024-09-30", 200.0, 200.0), # T3 (Sep, doppelter Wert)
+            # Ohne Wert -> raus
+            ("OBJ_0008", "2024-06-15", None, None),
+            # Ohne gueltiges Funddatum / Monatsteil -> ignoriert
+            ("OBJ_0009", "", 999.0, None),
+            ("OBJ_0010", "2024", 999.0, None),
+            ("OBJ_0011", "2024-00-15", 999.0, None),
+            ("OBJ_0012", "2024-13-01", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: T1 (800), T3 (650), T2 (360)
+    assert st.wert_pro_funddatum_tertial == [
+        ("T1", 800.0),
+        ("T3", 650.0),
+        ("T2", 360.0),
+    ]
+    assert st.as_dict()["wert_pro_funddatum_tertial"] == [
+        ("T1", 800.0), ("T3", 650.0), ("T2", 360.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_funddatum_tertial_leer(tmp_path):
+    """Ohne CHF-Werte oder gueltige Funddaten: leere Tertial-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpft_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_tertial == []
+    c.close()
+
+
+def test_wert_pro_funddatum_tertial_tie_break_tertial_nummer(tmp_path):
+    """Bei Gleichstand der Summe entscheidet die Tertial-Nummer aufsteigend.
+
+    Sichert die deterministische Sortierung ab: bei identischer Summe kommt
+    T1 vor T2 vor T3 (nicht die Insertion- oder Hash-Reihenfolge), damit
+    das "bestes Tertial"-Ranking stabil bleibt und gleichwertige Tertiale
+    chronologisch hintereinander stehen. Spiegelt den Tie-Break der Quartals-
+    und Halbjahres-Wert-Sicht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpft_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            # Alle drei Tertiale mit identischer Summe 100.0
+            ("OBJ_0001", "2024-10-01", 100.0),  # T3
+            ("OBJ_0002", "2024-06-01", 100.0),  # T2
+            ("OBJ_0003", "2024-02-01", 100.0),  # T1
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_funddatum_tertial == [
+        ("T1", 100.0),
+        ("T2", 100.0),
+        ("T3", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_tertial_aus_seed_db(tmp_path):
+    """Gewichtsumme pro Funddatum-Tertial (T1..T3); 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Tertial-Achse: waehrend die
+    Wert-Spitze auf einem hochwertigen T1-Tucson-Auktions-Tertial liegen
+    kann, kann die Gewicht-Spitze auf dem T2-Feld-Saison-Tertial mit vielen
+    schweren Handstuecken liegen - genau der Vergleich, den das Tertial-
+    Paar sichtbar macht.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpft.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, Funddatum, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # T2 (Mai..Aug): Feld-Saison, schwere Handstuecke: 800 + 400 + 200 = 1400
+            ("OBJ_0001", "2024-07-16", 800.0),  # T2
+            ("OBJ_0002", "2024-06-23", 400.0),  # T2
+            ("OBJ_0003", "2024-08-01", 200.0),  # T2
+            # T1 (Jan..Apr): Boerse, kleine Stuecke: 100 + 50 = 150
+            ("OBJ_0004", "2024-02-15", 100.0),  # T1
+            ("OBJ_0005", "2024-03-01", 50.0),   # T1
+            # T3: Muenchen-Show: 300
+            ("OBJ_0006", "2024-10-31", 300.0),  # T3
+            # NULL/0 -> raus
+            ("OBJ_0007", "2024-04-14", None),
+            ("OBJ_0008", "2024-06-13", 0.0),
+            # Ignoriert (nicht-strikt / kaputter Monat)
+            ("OBJ_0009", "2024", 999.0),
+            ("OBJ_0010", "2024-13-01", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: T2 (1400), T3 (300), T1 (150)
+    assert st.gewicht_pro_funddatum_tertial == [
+        ("T2", 1400.0),
+        ("T3", 300.0),
+        ("T1", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_funddatum_tertial"] == [
+        ("T2", 1400.0), ("T3", 300.0), ("T1", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_funddatum_tertial_leer(tmp_path):
+    """Ohne Gewicht: leere Tertial-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpft_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_funddatum_tertial == []
+    c.close()
+
+
 def test_wert_pro_erstellt_am_wochentag_aus_seed_db(tmp_path):
     """Wertsumme pro erstellt_am-Wochentag ueber alle Wochen; absteigend nach Summe.
 
