@@ -3693,6 +3693,137 @@ def test_gewicht_pro_erstellt_am_quartal_leer(tmp_path):
     c.close()
 
 
+def test_wert_pro_erstellt_am_tertial_aus_seed_db(tmp_path):
+    """Wertsumme pro erstellt_am-Tertial (T1..T3); absteigend nach Summe.
+
+    Spiegelt _sum_by_funddatum_tertial auf die Erfassungs-Achse und sitzt
+    granular zwischen _sum_by_erstellt_am_quartal (Q1..Q4, 3-Monats-Bloecke)
+    und _sum_by_erstellt_am_halbjahr (H1/H2, 6-Monats-Bloecke). Teilt das
+    Kalenderjahr in drei gleiche 4-Monats-Bloecke T1=Jan..Apr, T2=Mai..Aug,
+    T3=Sep..Dez und beziffert die Digitalisierungs-Ergiebigkeit ueber die
+    Tertial-Dreiteilung.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpet.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Wert_CHF_roh, Wert_CHF_poliert) "
+        "VALUES (?,?,?,?)",
+        [
+            # T1 (Jan..Apr): Tucson-Nachbereitung hochwertig -- 500 + 300 = 800
+            ("OBJ_0001", "2024-02-15 10:00:00", 500.0, None),  # T1
+            ("OBJ_0002", "2023-04-30 09:00:00", 300.0, None),  # T1 (April-Rand)
+            # T2 (Mai..Aug): reduzierte Erfassung waehrend Feld-Saison
+            #   200 + 60 + 100 = 360
+            ("OBJ_0003", "2024-05-01 10:00:00", 200.0, None),  # T2 (Mai-Rand)
+            ("OBJ_0004", "2020-07-15 11:00:00", 60.0, None),   # T2
+            ("OBJ_0005", "2024-08-31 14:00:00", 100.0, None),  # T2 (August-Rand)
+            # T3 (Sep..Dez): Muenchen-Nachbereitung: 250 + 400 = 650
+            ("OBJ_0006", "2023-10-31 12:00:00", 250.0, None),  # T3
+            ("OBJ_0007", "2024-09-30 08:00:00", 200.0, 200.0), # T3 (Sep-Rand, doppelter Wert)
+            # Ohne Wert -> raus
+            ("OBJ_0008", "2024-06-15 10:00:00", None, None),
+            # Ohne gueltiges erstellt_am / Monatsteil -> ignoriert
+            ("OBJ_0009", "", 999.0, None),
+            ("OBJ_0010", "2024", 999.0, None),
+            ("OBJ_0011", "2024-00-15 10:00:00", 999.0, None),
+            ("OBJ_0012", "2024-13-01 10:00:00", 999.0, None),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: T1 (800), T3 (650), T2 (360)
+    assert st.wert_pro_erstellt_am_tertial == [
+        ("T1", 800.0),
+        ("T3", 650.0),
+        ("T2", 360.0),
+    ]
+    assert st.as_dict()["wert_pro_erstellt_am_tertial"] == [
+        ("T1", 800.0), ("T3", 650.0), ("T2", 360.0),
+    ]
+    c.close()
+
+
+def test_wert_pro_erstellt_am_tertial_leer(tmp_path):
+    """Ohne CHF-Werte oder gueltiges erstellt_am: leere Tertial-Wert-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpet_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.wert_pro_erstellt_am_tertial == []
+    c.close()
+
+
+def test_wert_pro_erstellt_am_tertial_tie_break_tertial_nummer(tmp_path):
+    """Bei gleicher Summe sortiert der Tie-Break aufsteigend nach Tertial-Nummer."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "wpet_tie.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Wert_CHF_roh) VALUES (?, ?, ?)",
+        [
+            ("OBJ_0001", "2024-10-01 10:00:00", 100.0),  # T3
+            ("OBJ_0002", "2024-06-01 10:00:00", 100.0),  # T2
+            ("OBJ_0003", "2024-02-01 10:00:00", 100.0),  # T1
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    assert st.wert_pro_erstellt_am_tertial == [
+        ("T1", 100.0),
+        ("T2", 100.0),
+        ("T3", 100.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_erstellt_am_tertial_aus_seed_db(tmp_path):
+    """Gewichtsumme pro erstellt_am-Tertial (T1..T3); 0/NULL ignoriert.
+
+    Zeigt die Wert/Gewicht-Entkopplung auf der Erfassungs-Tertial-Achse:
+    waehrend die Wert-Spitze auf einem T1-Tucson-Nachbereitungs-Tertial
+    liegen kann, kann die Gewicht-Spitze auf einem T3-Herbst-/Winter-
+    Nachbereitungs-Tertial mit schweren Feld-Handstueck-Katalogisierungen
+    liegen.
+    """
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpet.sqlite3")
+    c.executemany(
+        "INSERT INTO objects (obj_id, erstellt_am, Gewicht_g) VALUES (?, ?, ?)",
+        [
+            # T3 (Sep..Dez): schwere Nachbereitung: 800 + 400 = 1200
+            ("OBJ_0001", "2024-10-15 10:00:00", 800.0),
+            ("OBJ_0002", "2024-11-20 09:00:00", 400.0),
+            # T1 (Jan..Apr): kleine Winter-Indoor-Stuecke: 100 + 50 = 150
+            ("OBJ_0003", "2024-02-15 10:00:00", 100.0),
+            ("OBJ_0004", "2024-03-01 10:00:00", 50.0),
+            # NULL/0 -> raus
+            ("OBJ_0005", "2024-04-15 10:00:00", None),
+            ("OBJ_0006", "2024-05-15 10:00:00", 0.0),
+            # Ignoriert (nicht-strikt/ohne Monatsteil)
+            ("OBJ_0007", "2024", 999.0),
+            ("OBJ_0008", "2024-13-01 10:00:00", 999.0),
+        ],
+    )
+    c.commit()
+    st = compute_statistics(c)
+    # Sortierung absteigend nach Summe: T3 (1200), T1 (150)
+    assert st.gewicht_pro_erstellt_am_tertial == [
+        ("T3", 1200.0),
+        ("T1", 150.0),
+    ]
+    assert st.as_dict()["gewicht_pro_erstellt_am_tertial"] == [
+        ("T3", 1200.0), ("T1", 150.0),
+    ]
+    c.close()
+
+
+def test_gewicht_pro_erstellt_am_tertial_leer(tmp_path):
+    """Ohne Gewicht: leere Tertial-Gewicht-Liste."""
+    from stonebook.db.database import open_db
+    c = open_db(tmp_path / "gpet_leer.sqlite3")
+    st = compute_statistics(c)
+    assert st.gewicht_pro_erstellt_am_tertial == []
+    c.close()
+
+
 def test_wert_pro_erstellt_am_halbjahr_aus_seed_db(tmp_path):
     """Wertsumme pro erstellt_am-Halbjahr (H1/H2); absteigend nach Summe.
 
