@@ -959,6 +959,120 @@ def test_normalize_id_probe_nummer_praefix():
     assert normalize_id("#43") == "OBJ_0043"
 
 
+def test_normalize_id_ziffer_null_liefert_none_konsistent_ueber_int_und_string_pfad():
+    """Ziffer 0 in JEDER Praefix-Form liefert None - spiegelt den int-Zweig-Reject.
+
+    Objekt-IDs sind 1-basiert (OBJ_0001 ist die kleinste vergebene ID); es
+    existiert kein OBJ_0000-Datensatz in der DB. Der int-Zweig von
+    :func:`normalize_id` reflektiert diese Konvention seit jeher mit
+    ``return f"OBJ_{raw:04d}" if raw > 0 else None`` und liefert konsistent
+    None fuer ``normalize_id(0)`` / ``normalize_id(-3)``.
+
+    Der String-Zweig fiel bisher still auf ``OBJ_0000`` durch, sobald die
+    Ziffer 0 in irgendeiner Praefix-Form vorkam - ``normalize_id("0")`` /
+    ``normalize_id("OBJ-0")`` / ``normalize_id("Nr. 0")`` / ``normalize_id
+    ("Objekt 0")`` / ``normalize_id("Objekt-Nr. 0")`` / ``normalize_id
+    ("Inv.-Nr. 0")`` / ``normalize_id("Kat.-Nr. 0")`` / ``normalize_id
+    ("Fund-Nr. 0")`` / ``normalize_id("Slg.-Nr. 0")`` / ``normalize_id
+    ("Probe-Nr. 0")`` / ``normalize_id("Cat. No. 0")`` / ``normalize_id
+    ("Acc. No. 0")`` / ``normalize_id("Reg. No. 0")`` / ``normalize_id
+    ("Field No. 0")`` / ``normalize_id("Coll. No. 0")`` / ``normalize_id
+    ("Spec. No. 0")`` etc. lieferten alle ``OBJ_0000`` (kein existenter
+    Datensatz), obwohl der int-Aufruf mit demselben semantischen Inhalt
+    None liefert. Silente Inkonsistenz zwischen den beiden Aufruf-Pfaden
+    derselben Funktion, die im ``--ids-from-file``-Workflow (String-Zeilen
+    einer Text-Datei) und im migrate.py-Workflow (String-Zellen aus CSV)
+    den Aufrufer zu einer nicht-existenten ID leitete.
+
+    Der Guard sitzt zentral im Rueckgabe-Pfad von :func:`normalize_id`
+    (``if num <= 0: return None``), nicht in jedem einzelnen Regex - alle
+    Patterns behalten ihre generische ``(\\d+)``-Capture-Group und werden
+    konsistent durch den zentralen 1-basierten Reject validiert.
+    """
+    # Bare-Digit-Form (die letzte _PATTERNS-Alternative, reine Zahl)
+    assert normalize_id("0") is None
+    assert normalize_id("00") is None
+    assert normalize_id("000") is None
+    assert normalize_id("0000") is None
+    assert normalize_id(" 0 ") is None                # Whitespace-Strip greift, dann Null-Reject
+    # OBJ-Praefix mit Ziffer 0
+    assert normalize_id("OBJ-0") is None
+    assert normalize_id("OBJ_0") is None
+    assert normalize_id("OBJ0") is None
+    assert normalize_id("OBJ 0") is None
+    assert normalize_id("OBJ.0") is None
+    assert normalize_id("OBJ-0000") is None
+    assert normalize_id("obj-0") is None              # Case-insensitiv
+    # DE-Langform ``Objekt``, EN-Langform ``Object``, DE-Kompositum ``Objekt-Nr.``
+    assert normalize_id("Objekt 0") is None
+    assert normalize_id("Object 0") is None
+    assert normalize_id("Objekt-Nr. 0") is None
+    assert normalize_id("Objektnummer 0") is None
+    # Nummerierungs-Praefixe DE (Nr./Nummer) und international (No./N°/Nº/№)
+    assert normalize_id("Nr. 0") is None
+    assert normalize_id("Nr 0") is None
+    assert normalize_id("Nummer 0") is None
+    assert normalize_id("No. 0") is None
+    assert normalize_id("No 0") is None
+    assert normalize_id("N° 0") is None
+    assert normalize_id("Nº 0") is None
+    assert normalize_id("№ 0") is None
+    # Museums-/Sammler-/Wissenschafts-Praefixe (Inv/Kat/Fund/Slg/Probe DE, Cat/Acc/Reg/Field/Coll/Spec EN)
+    assert normalize_id("Inv.-Nr. 0") is None
+    assert normalize_id("Inventarnummer 0") is None
+    assert normalize_id("Kat.-Nr. 0") is None
+    assert normalize_id("Katalognummer 0") is None
+    assert normalize_id("Fund-Nr. 0") is None
+    assert normalize_id("Fundnummer 0") is None
+    assert normalize_id("Slg.-Nr. 0") is None
+    assert normalize_id("Sammlungsnummer 0") is None
+    assert normalize_id("Probe-Nr. 0") is None
+    assert normalize_id("Probennummer 0") is None
+    assert normalize_id("Cat. No. 0") is None
+    assert normalize_id("Catalog Number 0") is None
+    assert normalize_id("Catalogue No. 0") is None
+    assert normalize_id("Acc. No. 0") is None
+    assert normalize_id("Accession Number 0") is None
+    assert normalize_id("Reg. No. 0") is None
+    assert normalize_id("Registration Number 0") is None
+    assert normalize_id("Field No. 0") is None
+    assert normalize_id("Field Number 0") is None
+    assert normalize_id("Coll. No. 0") is None
+    assert normalize_id("Collection Number 0") is None
+    assert normalize_id("Spec. No. 0") is None
+    assert normalize_id("Specimen Number 0") is None
+    # Hash-Praefix
+    assert normalize_id("#0") is None
+    assert normalize_id("# 0") is None
+    # int-Zweig-Regress: bestehender Reject bleibt unveraendert
+    assert normalize_id(0) is None
+    assert normalize_id(-3) is None
+    # Positive Werte bleiben unveraendert gueltig (kein Regress der ID-Erkennung)
+    assert normalize_id("1") == "OBJ_0001"
+    assert normalize_id("43") == "OBJ_0043"
+    assert normalize_id("OBJ-1") == "OBJ_0001"
+    assert normalize_id("OBJ 43") == "OBJ_0043"
+    assert normalize_id("Objekt 1") == "OBJ_0001"
+    assert normalize_id("Object 7") == "OBJ_0007"
+    assert normalize_id("Objekt-Nr. 1") == "OBJ_0001"
+    assert normalize_id("Nr. 1") == "OBJ_0001"
+    assert normalize_id("No. 43") == "OBJ_0043"
+    assert normalize_id("Inv.-Nr. 1") == "OBJ_0001"
+    assert normalize_id("Kat.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Fund-Nr. 1") == "OBJ_0001"
+    assert normalize_id("Slg.-Nr. 43") == "OBJ_0043"
+    assert normalize_id("Probe-Nr. 1") == "OBJ_0001"
+    assert normalize_id("Cat. No. 1") == "OBJ_0001"
+    assert normalize_id("Acc. No. 43") == "OBJ_0043"
+    assert normalize_id("Reg. No. 1") == "OBJ_0001"
+    assert normalize_id("Field No. 43") == "OBJ_0043"
+    assert normalize_id("Coll. No. 1") == "OBJ_0001"
+    assert normalize_id("Spec. No. 43") == "OBJ_0043"
+    assert normalize_id("#43") == "OBJ_0043"
+    assert normalize_id(1) == "OBJ_0001"
+    assert normalize_id(43) == "OBJ_0043"
+
+
 def test_parse_range():
     assert csv_loaders.parse_range("6.5–7") == (6.5, 7.0)
     assert csv_loaders.parse_range("6.5-7.0") == (6.5, 7.0)

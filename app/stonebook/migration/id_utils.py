@@ -411,7 +411,36 @@ def normalize_id(raw) -> str | None:
     for pat in _PATTERNS:
         m = pat.match(text)
         if m:
-            return f"OBJ_{int(m.group(1)):04d}"
+            # Symmetrisch zum int-Zweig oben: Objekt-IDs sind 1-basiert
+            # (OBJ_0001 ist die kleinste vergebene ID), sodass die Ziffer 0
+            # in jeder Praefix-Form (``0``, ``OBJ-0``, ``Nr. 0``, ``Objekt 0``,
+            # ``Objekt-Nr. 0``, ``Inv.-Nr. 0``, ``Kat.-Nr. 0``, ``Fund-Nr. 0``,
+            # ``Slg.-Nr. 0``, ``Probe-Nr. 0``, ``Cat. No. 0``, ``Acc. No. 0``,
+            # ``Reg. No. 0``, ``Field No. 0``, ``Coll. No. 0``, ``Spec. No. 0``,
+            # ``#0`` etc.) semantisch keinen gueltigen Datensatz benennen kann.
+            # Bisher fielen alle String-Formen mit Ziffer 0 still auf
+            # ``OBJ_0000`` durch (kein DB-Eintrag existiert), waehrend
+            # ``normalize_id(0)`` (int-Zweig) korrekt None lieferte - eine
+            # silente Inkonsistenz zwischen den beiden Aufruf-Pfaden.
+            # Der <= 0-Reject spiegelt die ``raw > 0``-Bedingung des int-Zweigs
+            # auf die String-Achse: eine ID-Zelle mit Ziffer 0 aus einer
+            # CSV-Quelle (Excel-Zahlformat exportiert einen unbelegten Zaehler-
+            # Wert als ``0``) oder ein User-Tippfehler ``OBJ-0`` in einer
+            # --ids-from-file-Liste erzeugt jetzt konsistent None (der Aufrufer
+            # bildet das auf die "Ungueltige Objekt-ID"-Fehlermeldung ab) statt
+            # eines Verweises auf einen nicht-existierenden ``OBJ_0000``-
+            # Datensatz. Die ``(\d+)``-Capture-Groups aller _PATTERNS bleiben
+            # unveraendert - der Guard sitzt bewusst im Rueckgabe-Pfad, nicht
+            # in jedem einzelnen Regex, damit alle Patterns dieselbe 1-basierte
+            # ID-Konvention einhalten ohne Duplikation der ``[1-9]\d*``-
+            # Alternative in jeder Ziffern-Position und ohne die etablierte
+            # Regex-Struktur (OBJ-/Objekt-/Object-/Nr-/Inv-/Kat-/Slg-/Fund-/
+            # Probe-/Cat-/Acc-/Reg-/Field-/Coll-/Spec-/No-/#-Praefixe plus
+            # bare-Digit-Alternative) zu aendern.
+            num = int(m.group(1))
+            if num <= 0:
+                return None
+            return f"OBJ_{num:04d}"
     return None
 
 
