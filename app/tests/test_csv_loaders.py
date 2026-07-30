@@ -7102,6 +7102,107 @@ def test_parse_range_leading_currency_prefix_lkr_srilanka_rupee():
     assert csv_loaders.parse_range("ISK 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_bob_bolivianischer_boliviano():
+    """``BOB`` (Bolivianischer Boliviano, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer bolivianische Silber-/Zinn-/Phosphophyllit-Sammler.
+
+    Bolivien ist eine der historisch bedeutendsten Bergbau-Nationen der Welt
+    und liefert Sammler-Material aus mehreren weltweit einzigartigen
+    Type-Localities: Cerro Rico de Potosi (weltweit groesstes historisches
+    Silber-Vorkommen mit ueber 45.000 Tonnen gefoerderten Feinsilbers seit
+    1545, Sammler-Quelle fuer Akanthit/Argentit-Kristalle, gediegen Silber-
+    Draht in Calcit-Matrix, Pyrargyrit-/Proustit-Rubinsilber, Hutchinsonit-
+    Nadeln, Andorit-Kristalle als Type-Locality-Material), Llallagua/Siglo
+    XX / Uncia im Potosi-Departement (weltweit dominante Sammler-Quelle fuer
+    das begehrte Phosphophyllit in kristallklarer blaugruener Prisma-
+    Zwillings-Form aus der Salvadora-/Ayopaya-Mine, Cassiterit-Kristalle,
+    Sphalerit-Cleiophan, Vivianit-Rosetten), Colavi bei Potosi (klassische
+    Sammler-Quelle fuer orange-rote Crocoit-Prismen, neben Tasmanien die
+    zweitbeste Weltfundstelle), Chorolque im Suedwesten Boliviens
+    (Cassiterit-Nadel-Kristalle in Turmalin-Matrix, klassisches
+    Sammler-Handstueck des Bergakademie-Kanons), Machacamarca/Oruro
+    (Vivianit-Rosetten und Ludlamit-Kristalle), Cochabamba-Departement mit
+    dem Salvador-Mine-Bereich (Wavellit-/Fluorapatit-Vorkommen), Mina
+    Aguas Calientes/Bolivar (Wolframit-Kristalle, Ferberit) sowie die
+    Lithium-/Halit-Foerderung im Salar de Uyuni (Uyuni-Halit-Kuben als
+    Sammler-Material). Die bolivianische Bergbau-Sammler-Handels-Konvention
+    in Direkt-Verkaeufen aus den Cooperativas Mineras Potosi/Oruro, in
+    La-Paz-Sagarnaga-Mineraliengeschaeften und in Tucson-/Muenchen-/
+    Denver-Auktions-Katalogen mit bolivianischen Ausstellern ist die
+    BOB-Preisstellung mit USD-Umrechnungs-Hinweis (``BOB 3500 (~USD
+    500)`` als Standard-Notation, die BOB ist wie die PEN eine kleine
+    Sued-Amerika-Waehrungs-Einheit mit ~7 BOB/USD-Wechselkurs, sodass
+    typische Sammler-Handstueck-Preise im drei- bis vierstelligen BOB-
+    Bereich liegen).
+
+    Bisher fielen alle Formen mit ``BOB``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/
+    COP/MMK/CLP/ISK/LKR vor deren Aufnahme in die Vokabel-Liste): ``BOB
+    3500 ± 350`` -> ``(3500, 3500)`` via inverted-range-Kollaps
+    (Toleranz verloren); ``BOB 5000(200)`` -> ``(5000, 200)``
+    (semantisch falscher Range statt (4800, 5200)). Kollisionsfrei
+    zu Fremdwoertern: ``BOB`` matcht als isolierte ISO-Code-Sequenz mit
+    ``\\b``-Wortgrenze hinter dem Code - EN-Wort ``bob`` (Kurzform des
+    Vornamens Robert, umgangssprachlich fuer Shilling-Muenze, oder
+    "auf und ab wippen") scheitert am nachfolgenden Zahlen-Kontext
+    (der Praefix-Strip laeuft nur wenn eine Zahl folgt, spiegelt die
+    Kollisions-Absicherung fuer ``PEN``/``pen``). Case-Insensitiv
+    spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect ``Bob`` mit
+    Capitalize-First-Word und lowercase ``bob`` aus Konsolen-Tools ohne
+    Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 3500 ± 350") == pytest.approx((3150.0, 3850.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("BOB 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("BOB 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa BOB 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("BOB 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("bob 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Bob 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BoB 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("BOB 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("BOB 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("BOB 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 3500 ± 350 (Potosi)") == pytest.approx((3150.0, 3850.0))
+    assert csv_loaders.parse_range("BOB 100(2) [Llallagua]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit BOB-Praefix.
+    assert csv_loaders.parse_range("BOB > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens BOB 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("BOB 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("BOB 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("BOB 500 to 1000") == (500.0, 1000.0)
+    # BOB OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("BOB") == (None, None)
+    assert csv_loaders.parse_range("BOB ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("COP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CLP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BRL 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("LKR 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
