@@ -6887,6 +6887,115 @@ def test_parse_range_leading_currency_prefix_clp_chilenischer_peso():
     assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
 
 
+def test_parse_range_leading_currency_prefix_isk_islaendische_krone():
+    """``ISK`` (Islaendische Krone, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer islaendische Zeolith-/Basalt-Sammler.
+
+    Island ist eine der weltweit ergiebigsten Sammler-Quellen fuer
+    Zeolithe in Basalt-Blasen und Mandelstein-Amygdaloiden: die
+    Berufjord-/Teigarhorn-Fundstellen (Ost-Island, Type-Locality fuer
+    Heulandit-Ca, Sammler-Quelle fuer Stilbit/Desmin, Chabasit,
+    Skolezit, Mesolit, Thomsonit, Analcim, Apophyllit auf klassischem
+    Basalt-Muttergestein und in Achat-/Chalzedon-Geoden), die
+    Reydarfjordur-/Faskrudsfjordur-Fjorde (Ost-Island, Sammler-Quelle
+    fuer Gyrolit, Okenit, Levyn, Gmelinit und weitere seltene Zeolithe),
+    die Djupivogur-/Streitishvarf-Kueste (Ost-Island, Sammler-Quelle
+    fuer Achat-Knollen mit Zeolith-Fuellung), die Helgustadir-Mine
+    (Reydarfjordur, historische Type-Locality fuer Doppelspat-Kalzit /
+    "Island-Spat" mit optisch reinen Rhomboeder-Kristallen bis 30 cm),
+    die Vatnajoekull-Gletscher-Randregion (Sammler-Quelle fuer
+    subglaziale Palagonit-Tuff-Assoziationen mit Zeolith-Ueberzuegen),
+    die Reykjanes-Halbinsel (aktive geothermale Systeme mit Schwefel-/
+    Realgar-/Auripigment-Sublimaten) und die Namafjall-/Krafla-
+    Solfataren (Nord-Island, Sammler-Quelle fuer gediegen Schwefel-
+    Kristalle in gelben Krusten). Die Handels-Konvention der
+    islaendischen Mineralien-Haendler auf dem Kolaportid-
+    Wochenendmarkt in Reykjavik, in Direkt-Verkaeufen an das
+    Islenska-natturusongusagn-Naturkundemuseum (Petrurun ihre
+    Steinsammlung in Reykjavik) und in Sainte-Marie-aux-Mines-/
+    Muenchen-/Tucson-Auktions-Katalogen mit islaendischen Ausstellern
+    ist die ISK-Preisstellung mit EUR-Umrechnungs-Hinweis (``ISK 140000
+    (~EUR 1000)`` als Standard-Notation der Reykjavik-Mineralien-
+    Boersen; die ISK ist die kleinste Nordische Waehrungs-Einheit mit
+    ~140 ISK/EUR-Wechselkurs, sodass typische Handstueck-Preise im
+    fuenfstelligen ISK-Bereich liegen).
+
+    Bisher fielen alle Formen mit ``ISK``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/
+    COP/MMK/CLP vor deren Aufnahme in die Vokabel-Liste): ``ISK 140000
+    ± 14000`` -> ``(140000, 140000)`` via inverted-range-Kollaps
+    (Toleranz verloren); ``ISK 500000(20000)`` -> ``(500000, 20000)``
+    (semantisch falscher Range statt (480000, 520000)). Kollisionsfrei
+    zu Fremdwoertern: ``ISK`` ist keine EN-/DE-Wort-Sequenz (der
+    Buchstaben-Cluster ``ISK`` existiert in keinem gaengigen Vokabular
+    als Wort-Anfang - EN ``ask``/``risk`` bzw. DE ``Risiko`` teilen
+    zwar den ``sk``-Cluster, aber die ``\\b``-Wortgrenze vor ``ISK``
+    verlangt den Wort-Anfang, sodass Suffix-``sk``-Formen nicht matchen),
+    sodass die ``\\b``-Wortgrenze hinter dem Code ausschliesslich den
+    ISO-Code-Praefix matcht. Case-Insensitiv spiegelt die uebrige
+    Vokabel-Liste (Excel-Autocorrect ``Isk`` mit Capitalize-First-Word
+    und lowercase ``isk`` aus Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("ISK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ISK 140000 ± 14000") == pytest.approx((126000.0, 154000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("ISK 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ISK 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. ISK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ISK ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~ISK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa ISK 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("ISK 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ISK 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("isk 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Isk 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IsK 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("ISK 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ISK 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("ISK 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ISK 140000 ± 14000 (Teigarhorn)") == pytest.approx((126000.0, 154000.0))
+    assert csv_loaders.parse_range("ISK 100(2) [Berufjord]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit ISK-Praefix.
+    assert csv_loaders.parse_range("ISK > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens ISK 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("ISK 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("ISK 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("ISK 500 to 1000") == (500.0, 1000.0)
+    # ISK OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("ISK") == (None, None)
+    assert csv_loaders.parse_range("ISK ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("SEK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NOK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DKK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("CLP 500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Waehrungs-Symbole und Compound-$-Prefixe bleiben
+    # unveraendert.
+    assert csv_loaders.parse_range("$500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("HK$500 ± 50") == pytest.approx((450.0, 550.0))
+    # Regress-Anker: Werte OHNE Waehrungs-Praefix bleiben unveraendert.
+    assert csv_loaders.parse_range("500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("2.65(5)") == pytest.approx((2.60, 2.70))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
