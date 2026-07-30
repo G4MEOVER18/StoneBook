@@ -7312,6 +7312,104 @@ def test_parse_range_leading_currency_prefix_idr_indonesische_rupiah():
     assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_kes_kenianischer_schilling():
+    """``KES`` (Kenianischer Schilling, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer kenianische Tsavorit-/Rubin-/Turmalin-Sammler.
+
+    Kenia ist neben Tansania (TZS, bereits in der Vokabel-Liste) die zweite
+    ostafrikanische Sammler-Quelle mit weltweit einzigartigen Type-Localities:
+    die Taita-Hills-Region (Tsavorit-Type-Locality, John-Saul-Mine im
+    Kambanga-Berg mit dem klassischen intensiv-gruenen Grossular-Vanadium-
+    Granat, weltweit Sammler-Referenz-Material fuer die Bewertung der
+    Tsavorit-Qualitaet), die Baringo-Region (Rubin- und Sapphir-Fundstellen
+    im Rift-Valley mit klassischem alluvialem Sammler-Material), Kuranze/
+    Mgama-Ridge in den Taita Hills (weitere Tsavorit-Vorkommen mit
+    Sammler-Kristall-Qualitaet), die Kwale-Region an der Suedkueste
+    (Turmalin-/Beryll-Aquamarin-Vorkommen), Migori-Distrikt in
+    Nyanza-Provinz (historisches Gold-Sulfid-Revier mit Pyrit-/
+    Chalkopyrit-Assoziationen), Machakos-Distrikt (Kyanit-/Sillimanit-
+    Vorkommen in metamorphen Serien), West-Pokot-County (Rubin-
+    Vorkommen aus 2009 entdeckten Fundstellen mit modernem Sammler-
+    Material) sowie geerbte Sammlungs-Kataloge aus der britisch-
+    ostafrikanischen Kolonial-Provenienz (Sammlungen der East African
+    Wildlife Society und geologische Referenz-Bestaende des National
+    Museums of Kenya Nairobi). Die kenianische Bergbau-Sammler-Handels-
+    Konvention in Direkt-Verkaeufen aus den Taita-Hills-Sammler-
+    Genossenschaften, in Nairobi-Biashara-Street-Mineraliengeschaeften,
+    in Mombasa-Old-Town-Souvenir-Basaren und in Tucson-/Muenchen-/
+    Sainte-Marie-aux-Mines-Auktions-Katalogen mit kenianischen
+    Ausstellern (Tsavorite USA Ltd., Bridges Tsavorite als etablierte
+    Haendler-Namen aus der John-Saul-Mine-Tradition) ist die KES-
+    Preisstellung mit USD-Umrechnungs-Hinweis (``KES 50000 (~USD 400)``
+    als Standard-Notation, die KES ist wie die TZS eine ostafrikanische
+    Schilling-Waehrung mit ~130 KES/USD-Wechselkurs).
+
+    Bisher fielen alle Formen mit ``KES``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei TZS/BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/PEN/
+    COP/MMK/CLP/ISK/LKR/BOB/IDR vor deren Aufnahme in die Vokabel-
+    Liste): ``KES 50000 ± 5000`` -> ``(50000, 50000)`` via inverted-
+    range-Kollaps (Toleranz verloren); ``KES 500(20)`` -> ``(500, 20)``
+    (semantisch falscher Range statt (480, 520)). Kollisionsfrei zu
+    Fremdwoertern: ``KES`` ist keine gaengige EN-/DE-Wort-Sequenz;
+    ``keys`` (EN-Plural von ``key``) unterscheidet sich lexikalisch
+    durch das trailing ``s`` nach ``ey``-Vokal (nicht ``es``), und die
+    ``\\b``-Wortgrenze hinter dem Code matcht ausschliesslich den ISO-
+    Code-Praefix. Case-Insensitiv spiegelt die uebrige Vokabel-Liste
+    (Excel-Autocorrect ``Kes`` mit Capitalize-First-Word und lowercase
+    ``kes`` aus Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 50000 ± 5000") == pytest.approx((45000.0, 55000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("KES 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("KES 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa KES 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("KES 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("kes 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Kes 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KeS 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("KES 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("KES 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("KES 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 50000 ± 5000 (Taita Hills)") == pytest.approx((45000.0, 55000.0))
+    assert csv_loaders.parse_range("KES 100(2) [John Saul Mine]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit KES-Praefix.
+    assert csv_loaders.parse_range("KES > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens KES 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("KES 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("KES 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("KES 500 to 1000") == (500.0, 1000.0)
+    # KES OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("KES") == (None, None)
+    assert csv_loaders.parse_range("KES ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
