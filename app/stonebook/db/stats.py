@@ -186,6 +186,7 @@ class Statistik:
     wert_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_quartal: list[tuple[str, float]] = field(default_factory=list)
+    wert_pro_geaendert_am_tertial: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_geaendert_am_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     wert_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
@@ -223,6 +224,7 @@ class Statistik:
     gewicht_pro_geaendert_am_monat: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_wochentag: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_quartal: list[tuple[str, float]] = field(default_factory=list)
+    gewicht_pro_geaendert_am_tertial: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_geaendert_am_halbjahr: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_global: list[tuple[str, float]] = field(default_factory=list)
     gewicht_pro_seltenheit_fundort: list[tuple[str, float]] = field(default_factory=list)
@@ -1459,6 +1461,9 @@ class Statistik:
             "wert_pro_geaendert_am_quartal": [
                 (q, round(w, 2)) for q, w in self.wert_pro_geaendert_am_quartal
             ],
+            "wert_pro_geaendert_am_tertial": [
+                (t, round(w, 2)) for t, w in self.wert_pro_geaendert_am_tertial
+            ],
             "wert_pro_geaendert_am_halbjahr": [
                 (h, round(w, 2)) for h, w in self.wert_pro_geaendert_am_halbjahr
             ],
@@ -1569,6 +1574,9 @@ class Statistik:
             ],
             "gewicht_pro_geaendert_am_quartal": [
                 (q, round(g, 2)) for q, g in self.gewicht_pro_geaendert_am_quartal
+            ],
+            "gewicht_pro_geaendert_am_tertial": [
+                (t, round(g, 2)) for t, g in self.gewicht_pro_geaendert_am_tertial
             ],
             "gewicht_pro_geaendert_am_halbjahr": [
                 (h, round(g, 2)) for h, g in self.gewicht_pro_geaendert_am_halbjahr
@@ -3709,6 +3717,56 @@ def _sum_by_geaendert_am_quartal(conn: sqlite3.Connection, value_sql: str,
         f"ORDER BY w DESC, q ASC"
     )
     return [(f"Q{r['q']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
+
+
+def _sum_by_geaendert_am_tertial(conn: sqlite3.Connection, value_sql: str,
+                                 extra_where: str = "") -> list[tuple[str, float]]:
+    """Aggregiert ``SUM(value_sql)`` gruppiert nach ``geaendert_am``-Tertial (T1..T3).
+
+    Sitzt granular zwischen :func:`_sum_by_geaendert_am_quartal` (Q1..Q4,
+    3-Monats-Bloecke) und :func:`_sum_by_geaendert_am_halbjahr` (H1/H2,
+    6-Monats-Bloecke) und teilt das Kalenderjahr in drei gleiche
+    4-Monats-Bloecke: T1=Jan..Apr, T2=Mai..Aug, T3=Sep..Dez. Spiegelt
+    :func:`_sum_by_erstellt_am_tertial` auf die Aenderungs-Achse und
+    schliesst die Tertial-Sum-Reihe auf der dritten Zeit-Achse (Fund/
+    Erfassung/Aenderung). Bei nie-aktualisierten Alt-Eintraegen konvergiert
+    die Pflege-Tertial-Spitze auf die Erfassungs-Tertial-Spitze
+    (``geaendert_am == erstellt_am`` im ``repository._now()``-Pfad als
+    identische Strings); bei aktiv nachgepflegten Stuecken driftet sie in
+    das aktuelle Pflege-Tertial ab und beziffert damit den wertlichen/
+    gewichtmaessigen Schwerpunkt der letzten Datenpflege-Kampagnen-
+    Dreiteilung. Komplementaer zu :func:`_count_geaendert_am_tertial`
+    (Anzahl - Pflege-Kampagnen-Dreiteilung) und :func:`_sum_by_geaendert_am_monat`
+    (Pflege-Saison auf feinerer Monats-Achse).
+
+    Tertial wird aus dem Monatsteil per ``((monat - 1) / 4) + 1`` abgeleitet -
+    Ganzzahl-Division in SQLite ist truncating, konsistent zum Python-
+    Aequivalent ``(m - 1) // 4 + 1`` und zur :func:`_count_geaendert_am_tertial`-
+    Konvention. ``geaendert_am`` hat im repository._now()-Pfad das Format
+    ``YYYY-MM-DD HH:MM:SS``; ``substr(geaendert_am, 6, 2)`` extrahiert den
+    Monatsteil. Akzeptiert nur Eintraege mit vierstelligem Jahres-Praefix
+    und gueltigem Monatsteil 01..12 (defensive Behandlung historischer
+    Imports mit kaputten Stempeln; spiegelt :func:`_sum_by_geaendert_am_monat`
+    und :func:`_sum_by_geaendert_am_quartal`).
+
+    Sortierung absteigend nach Summe; Tie-Break aufsteigend nach Tertial-
+    Nummer (T1 zuerst). Ohne Limit, weil maximal drei Tertial-Buckets
+    vorkommen koennen - die Ausgabe wird nie laenger.
+    """
+    where = ("geaendert_am IS NOT NULL AND TRIM(geaendert_am) != '' "
+             "AND substr(geaendert_am, 1, 4) GLOB '[0-9][0-9][0-9][0-9]' "
+             "AND substr(geaendert_am, 6, 2) GLOB '[0-1][0-9]' "
+             "AND CAST(substr(geaendert_am, 6, 2) AS INTEGER) BETWEEN 1 AND 12")
+    if extra_where:
+        where = f"{where} AND {extra_where}"
+    sql = (
+        f"SELECT ((CAST(substr(geaendert_am, 6, 2) AS INTEGER) - 1) / 4 + 1) AS t, "
+        f"       SUM({value_sql}) AS w "
+        f"FROM objects WHERE {where} "
+        f"GROUP BY t HAVING w > 0 "
+        f"ORDER BY w DESC, t ASC"
+    )
+    return [(f"T{r['t']}", float(r["w"])) for r in conn.execute(sql).fetchall()]
 
 
 def _sum_by_geaendert_am_halbjahr(conn: sqlite3.Connection, value_sql: str,
@@ -6105,6 +6163,24 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     # Monats-Achse). Ohne Limit, weil max. 4 Quartals-Buckets moeglich sind.
     st.wert_pro_geaendert_am_quartal = _sum_by_geaendert_am_quartal(conn, wert_sql)
     st.gewicht_pro_geaendert_am_quartal = _sum_by_geaendert_am_quartal(
+        conn, "Gewicht_g", extra_where=gewicht_where)
+    # Aenderungs-Tertial-Ergiebigkeit: spiegelt wert_/gewicht_pro_erstellt_am_
+    # tertial auf die Pflege-Achse und schliesst die Tertial-Sum-Reihe auf der
+    # dritten Zeit-Achse (Fund/Erfassung/Aenderung). Sitzt granular zwischen
+    # der Quartals-Sicht (Q1..Q4, 3-Monats-Bloecke) und der Halbjahres-Sicht
+    # (H1/H2, 6-Monats-Bloecke) und teilt das Kalenderjahr in drei gleiche
+    # 4-Monats-Bloecke T1=Jan..Apr (Winter-Indoor-Pflege mit hochwertigen
+    # Nachbearbeitungen), T2=Mai..Aug (Uebergangs-/Sommer-Phase mit reduzierter
+    # Nachpflege waehrend der Feld-Saison), T3=Sep..Dez (Herbst-/Winter-Pflege
+    # mit schweren Feld-Nachbereitungen). Bei nie-aktualisierten Alt-
+    # Eintraegen konvergiert die Pflege-Tertial-Spitze auf die Erfassungs-
+    # Tertial-Spitze; bei aktiv nachgepflegten Stuecken driftet sie in das
+    # aktuelle Pflege-Tertial ab. Komplementaer zu by_geaendert_am_tertial
+    # (Anzahl - Pflege-Kampagnen-Dreiteilung) und zu wert_/gewicht_pro_
+    # geaendert_am_quartal (feinere Quartals-Ergiebigkeit). Ohne Limit,
+    # weil max. 3 Tertial-Buckets moeglich sind.
+    st.wert_pro_geaendert_am_tertial = _sum_by_geaendert_am_tertial(conn, wert_sql)
+    st.gewicht_pro_geaendert_am_tertial = _sum_by_geaendert_am_tertial(
         conn, "Gewicht_g", extra_where=gewicht_where)
     # Aenderungs-Halbjahres-Ergiebigkeit: spiegelt wert_/gewicht_pro_erstellt_am_
     # halbjahr auf die Pflege-Achse und ergaenzt wert_/gewicht_pro_geaendert_am_
