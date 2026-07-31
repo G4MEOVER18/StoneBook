@@ -6469,6 +6469,108 @@ _DIRECTION_WORD = re.compile(
     # Buchstabe ist Wort-Zeichen, keine Wort-Grenze); keine Kollision zu
     # CZ ``zapad``/PL ``zachod`` (unterschiedliche Konsonanten -h-/-p-/-ch-).
     r"|jug|vzhod|zahod"
+    # Estnisch (EE) - erste Finno-Ugrische Sprach-Achse (parallel zu Finnisch,
+    # Ungarisch), lexikalisch komplett distinkt zu allen bisher unterstuetzten
+    # indo-europaeischen Wortstaemmen (Germanisch, Romanisch, Slawisch,
+    # Baltisch). Symmetrische Erweiterung zur bereits vorhandenen EE-Achse
+    # in :data:`DATE_NO_DATA_MARKERS` (``teadmata``, ``ilma kuupaevata``,
+    # ``kuupaev teadmata``, ``andmed puuduvad``). Sammler-Region der EE-
+    # Sprach-Achse umfasst die weltweit bedeutenden Silur-/Ordoviz-Kalke
+    # der Baltisch-Skandinavischen Klint-Kueste mit Type-Localities fuer
+    # Trilobiten (Asaphidae, Illaenidae), Cephalopoden (Endoceras), Brachio-
+    # poden und Bryozoen (Vasalemma-Kalk, Kunda-Formation, Osmussaar-Diktyo-
+    # nema-Argillit), die Kunda-Phosphorit-Fundstellen mit den weltbekannten
+    # Placodermi-Fisch-Fossilien (Estonaspis, Actinolepis), die Devon-
+    # Sandstein-Devon-Serie Sueostestlands (Piusa-Sandstein-Grotten mit
+    # Baustein-Konventions-Steinbruch), die kambrischen Blauton-/Alaunschiefer-
+    # Vorkommen der Ostkueste, Nordestland-Oelschiefer-Revier (Kukersit-
+    # Type-Locality mit Kukersit-Ölschiefer der Kukruse-Formation, industriell
+    # abgebaut seit 1918, mineralogisch klassifiziert als bituminoeser
+    # Karbonat-Ton-Schiefer), Piusa-Sandhoehlen, Hiiumaa-/Saaremaa-Impakt-
+    # Krater (Neugrund-Krater mit Ediacara-Impaktit-Bruchstuecken, Kaali-
+    # Krater-Feld mit Meteoriten-Fragmenten und Impaktglaesern), Ordovizium-
+    # Kalke Nord-Estlands mit historischer Bau-Steinbruch-Konvention.
+    # Geerbte Sammlungs-Kataloge aus deutsch-baltischer Provenienz (Deutsch-
+    # Balten-Aristokratie mit Universitaets-Tartu/Dorpat-Bestand aus der
+    # KuK/Zaristisch-Russischen Kolonial-Zeit, Baltendeutsche Bestand-
+    # Etiketten aus Reval/Tallinn-Vorkriegs-Sammlungen), Museum-Etiketten
+    # aus dem Eesti Loodusmuuseum Tallinn (Naturhistorisches Museum
+    # Estlands mit weltweit fuehrender Silur-/Ordoviz-Sammlung), dem TalTech
+    # Institute of Geology Museum (Technische Universitaet Tallinn), dem
+    # University of Tartu Museum of Geology sowie aus estnisch-sprachigen
+    # Sammlungs-Datenbanken.
+    #
+    # Alle vier Achsen mit EE-eigenstaendigen Wortstaemmen: ``pohi`` (N,
+    # aus ``pohi`` "Nord/Boden" - EE-Wortstamm ohne Wurzel-Verwandtschaft
+    # zu den indo-europaeischen Nord-Woertern; die semantische Doppel-
+    # bedeutung "Boden/Grund" ist in Freitext theoretisch mehrdeutig,
+    # kollidiert aber nicht im Coord-Kontext), ``pohja`` (N-Genitiv, aus
+    # ``pohja`` "des Nordens/Grund-" - die genitiv-basierte Compass-
+    # Form-Konvention wird in Sammler-Etiketten als "Pohja 59.4, Ida 24.7"
+    # verwendet, weil das EE-Genitiv attributiv wirkt wie das DE-adjektivische
+    # "Nord-" in "Nordbreite", spiegelt die DE-``norden``/NL-``noorden``-
+    # Doppelform-Konvention mit Nominativ + Adverbial-Genitiv), ``louna``
+    # (S, aus ``louna`` "Sued/Mittag" - EE-Wortstamm mit semantischer
+    # Parallele zur PL-``poludnie``/LT-``pietus``/LV-``dienvidi``-
+    # "Mittags-Sonne"-Etymologie aber morphologisch komplett unabhaengig
+    # als Finno-Ugrische Wurzel), ``ida`` (E, aus ``ida`` "Ost" - EE-
+    # Wortstamm mit Ur-Finno-Ugrischer Wurzel und Verwandtschaft zum
+    # Finnischen ``ita`` "Ost"; die kurze Wort-Form ist wegen ``\b``-Wort-
+    # grenzen kollisionsfrei zu EN-``Idaho``/US-Staat, DE-Name
+    # ``Ida``/Weibl.-Vorname/griech.-Berg-Name im Coord-Kontext ohne
+    # nachfolgende Zahl-Struktur, und im Coord-Kontext MIT Zahl-Struktur
+    # ist die Freitext-Bedeutung "one-way ticket" ES ``ida``/PT ``ida``
+    # semantisch unmoeglich; der Coord-Parser verlangt tight direction +
+    # number couple), ``laane`` (W, aus ``laane`` "West" - EE-Wortstamm mit
+    # Verwandtschaft zum Finnischen ``lansi`` "West"; kein Wort-Kollisions-
+    # Kandidat in EN/DE/FR/IT/ES/PT/NL/CZ/LV/LT/PL/SL-Vokabular).
+    #
+    # ASCII-Fallback-Form ohne Diakritika (EE-Standard-Ortho ``põhi``/
+    # ``põhja``/``lõuna``/``lääne`` verwendet native Diakritika ``õ`` U+00F5
+    # und ``ä`` U+00E4; in Sammler-Katalog-ASCII-Notation der Windows-CP1257-
+    # /UTF-8-Notiz-Ketten reduziert sich das regelmaessig zu ``pohi``/
+    # ``pohja``/``louna``/``laane``, analog zur ASCII-Fallback-Konvention
+    # der LV-Direction-Achse mit ``ziemeli``/``rietumi`` und der EE-Date-
+    # Marker-Achse mit ``teadmata``/``ilma kuupaevata``). Bisher fielen alle
+    # EE-Direction-Formen still auf die Fallback-Route (kein Direction-Marker
+    # erkannt, generische Zahl-Paar-Extraktion nimmt die Reihenfolge ohne
+    # Vorzeichen-Information), was aus einem typischen Tallinn-Silur-Kalk-
+    # Sammler-Etikett ``"Pohja 59.4, Ida 24.7"`` silente ``(59.4, 24.7)`` als
+    # bare-Zahl-Paar liefert - semantisch identisch, aber ohne Vorzeichen-
+    # Sicherung fuer Sued-/West-Halbkugel-Varianten. Spiegelt die EE-
+    # Erweiterung in :data:`DATE_NO_DATA_MARKERS` auf die Direction-Wort-
+    # Achse und oeffnet die Finno-Ugrische-Sprach-Achse (EE) als erste
+    # Non-Indo-Europaeische Sprach-Familie (Finnisch/Ungarisch folgen
+    # separat mit eigenstaendigen Wortstaemmen).
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``pohi`` matcht nicht
+    # innerhalb laengerer Woerter (EE ``pohilinn`` "Hauptstadt", ``pohitee``
+    # "Hauptstrasse"; der folgende Buchstabe ist Wort-Zeichen, keine Wort-
+    # Grenze). ``pohja`` matcht nicht in ``pohjalik`` "gruendlich"/``pohja-
+    # ees`` "grundstuecks-"; kein Konflikt zu anderen Sprach-Reihen (Wortstamm
+    # ``pohj-`` ist EE-Finno-Ugrisch-spezifisch, keine Kollision zu ES
+    # ``poj-``/PT ``poj-``/DE-Wortschatz). ``louna`` matcht nicht innerhalb
+    # laengerer Woerter (EE ``lounane`` "suedlich"/``lounapoolne`` "sued-
+    # licher"); kein Konflikt zu anderen Sprach-Reihen. ``ida`` matcht nicht
+    # innerhalb laengerer Woerter (EN ``Idaho``/``idea``/``ideal``/``idle``,
+    # DE Name ``Idaho``, ES/PT ``idade``/``idade``, IT ``ideale``, FR
+    # ``idealisme`` - alle mit nachfolgendem Wort-Zeichen ausserhalb der
+    # ``\b``-Grenze); keine Prefix-Kollision zu ES/PT ``ida`` "Hinweg" als
+    # bare Wort-Form (dort ist ``\b`` beidseitig, aber der Coord-Parser
+    # verlangt tight direction + number couple, sodass die Freitext-
+    # "Hinweg"-Bedeutung ausserhalb von Koordinaten-Notation kein Falsch-
+    # Match erzeugt - parallele Semantik-Mehrdeutigkeit wie SL ``jug``
+    # "Krug"/EN ``jug``). ``laane`` matcht nicht innerhalb laengerer Woerter
+    # (EE ``laanemaa`` "Westland"/``laanerannik`` "Westkueste"); kein
+    # Konflikt zu anderen Sprach-Reihen (Wortstamm ``laan-`` ist EE-Finno-
+    # Ugrisch-spezifisch, keine Kollision zu EN ``lane``/DE ``Laan``/NL
+    # ``laan`` "Allee/Gang", weil letztere nur mit einem ``a`` beginnen
+    # und die EE-Form die obligatorische Doppelvokal-Struktur ``aa`` hat).
+    # Alle vier EE-Formen sind lexikalisch disjunkt zu allen bisher unter-
+    # stuetzten indo-europaeischen Sprach-Reihen; die Finno-Ugrische Ur-
+    # Wurzel ist zu tief fuer lexikalische Kollision zu Germanisch/
+    # Romanisch/Slawisch/Baltisch.
+    r"|pohi|pohja|louna|ida|laane"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6630,6 +6732,34 @@ _DIRECTION_LETTER: dict[str, str] = {
     # (neznan/neznana/brez datuma/datum neznan/ni datuma, 66837ba) auf die
     # Direction-Wort-Achse und schliesst die Sued-Slawische-Sprach-Achse.
     "jug": "S", "vzhod": "E", "zahod": "W",
+    # EE-Vollformen der Himmelsrichtungen (estnisch, finno-ugrisch - erste
+    # Non-Indo-Europaeische Sprach-Familie im Regex) in ASCII-Fallback-Form
+    # ohne Diakritika: ``pohi`` (N, aus ``pohi`` "Nord/Boden", Nominativ),
+    # ``pohja`` (N, Genitiv-Form "des Nordens", die typische attributive
+    # Compass-Form in Sammler-Etiketten - spiegelt die DE-``norden``/NL-
+    # ``noorden``-Doppelform-Konvention mit Nominativ + adverbialer/genitivi-
+    # scher Zusatz-Form), ``louna`` (S, aus ``louna`` "Sued/Mittag"),
+    # ``ida`` (E, aus ``ida`` "Ost"), ``laane`` (W, aus ``laane`` "West").
+    # Sammler-Notizen aus baltisch-skandinavischer Klint-Kueste (Silur-/
+    # Ordoviz-Kalke mit Trilobiten/Cephalopoden-Type-Localities), Kunda-
+    # Phosphorit-Fundstellen mit Placodermi-Fisch-Fossilien, Kukersit-
+    # Oelschiefer-Revier Nord-Estlands, Piusa-Sandstein-Grotten, Kaali-
+    # /Neugrund-Impaktkraeter mit Meteoriten-Fragmenten, Ordovizium-
+    # Baustein-Steinbruch-Konvention Nord-Estlands sowie Museum-Etiketten
+    # aus Eesti Loodusmuuseum Tallinn (mit weltweit fuehrender Silur-/
+    # Ordoviz-Sammlung), TalTech Institute of Geology Museum und University
+    # of Tartu Museum of Geology. Auf EE-Landkarten ist der Ein-Buchstaben-
+    # Marker traditionell ``P``/``L``/``I``/``L`` (baltisch-finnisch-native
+    # Konvention - mit ``L`` doppelt fuer Louna/Laane, was in der Karten-
+    # Praxis durch Kontext disambiguiert wird) - der Lookup mappt aber auf
+    # die kanonischen ``N``/``S``/``E``/``W``-Letter (analog zur CZ/PL/LV/
+    # LT/SL-Achse), weil :func:`_is_lat_direction` und :func:`_sign` nur
+    # die Buchstaben ``N``/``S``/``E``/``W``/``O`` kennen und die native
+    # EE-Buchstaben-Konvention im weiteren Verlauf der Direction-Auswertung
+    # unbekannt waeren. Spiegelt die EE-Erweiterung in :data:`DATE_NO_DATA_MARKERS`
+    # (teadmata/ilma kuupaevata/kuupaev teadmata/andmed puuduvad) auf die
+    # Direction-Wort-Achse und oeffnet die Finno-Ugrische-Sprach-Achse.
+    "pohi": "N", "pohja": "N", "louna": "S", "ida": "E", "laane": "W",
 }
 
 

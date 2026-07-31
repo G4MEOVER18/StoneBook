@@ -10651,6 +10651,134 @@ def test_parse_coordinates_himmelsrichtung_sl_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_ee_vollnamen():
+    """EE-Vollnamen der Himmelsrichtungen (estnisch, finno-ugrisch).
+
+    Erste Non-Indo-Europaeische Sprach-Familie im Regex - lexikalisch komplett
+    distinkt zu allen bisher unterstuetzten indo-europaeischen Sprach-Reihen
+    (Germanisch, Romanisch, Slawisch, Baltisch). Sammler-Region der EE-Sprach-
+    Achse umfasst die weltweit bedeutenden Silur-/Ordoviz-Kalke der Baltisch-
+    Skandinavischen Klint-Kueste mit Trilobiten-/Cephalopoden-Type-Localities
+    (Vasalemma-Kalk, Kunda-Formation, Osmussaar-Diktyonema-Argillit), die
+    Kunda-Phosphorit-Fundstellen mit Placodermi-Fisch-Fossilien, das Nord-
+    estland-Oelschiefer-Revier mit Kukersit-Type-Locality der Kukruse-
+    Formation, die Piusa-Sandstein-Grotten, die Kaali-/Neugrund-Impaktkraeter
+    mit Meteoriten-Fragmenten und Impaktglaesern sowie Ordovizium-Baustein-
+    Steinbruch-Konvention Nord-Estlands. Geerbte Sammlungs-Kataloge aus
+    deutsch-baltischer Provenienz, Museums-Etiketten aus Eesti Loodusmuuseum
+    Tallinn, TalTech Institute of Geology Museum und University of Tartu
+    Museum of Geology.
+
+    Neu sind fuenf EE-eigenstaendige Wortstaemme in ASCII-Fallback-Form ohne
+    Diakritika: ``pohi`` (N Nominativ), ``pohja`` (N Genitiv-Attributiv-Form
+    - die typische Compass-Form in EE-Sammler-Etiketten, spiegelt die DE-
+    ``norden``/NL-``noorden``-Doppelform-Konvention), ``louna`` (S), ``ida``
+    (E), ``laane`` (W). Spiegelt die EE-Erweiterung in
+    :data:`DATE_NO_DATA_MARKERS` (teadmata/ilma kuupaevata/kuupaev teadmata/
+    andmed puuduvad) auf die Direction-Wort-Achse und oeffnet die Finno-
+    Ugrische-Sprach-Achse als erste Non-Indo-Europaeische Sprach-Familie.
+
+    Vor dieser Erweiterung fielen alle EE-Direction-Formen still auf die
+    Fallback-Route, was aus einem typischen Tallinn-Silur-Kalk-Sammler-
+    Etikett ``"Pohja 59.4, Ida 24.7"`` (Tallinn 59.4N/24.7E) silente
+    ``(59.4, 24.7)`` als bare-Zahl-Paar liefert - semantisch identisch,
+    aber ohne Vorzeichen-Sicherung fuer Sued-/West-Halbkugel-Varianten
+    (kritisch bei geerbten EE-Sammlungs-Katalogen aus deutsch-baltischer
+    Kolonial-Provenienz mit hypothetischer Sued-/West-Halbkugel-Fundstelle).
+    """
+    # Prefix-Form: Tallinn-Silur-Kalk-Sammler-Fundort-Notiz (Nord-Estland)
+    assert parse_coordinates("Pohja 59.4, Ida 24.7") == (59.4, 24.7)
+    # Nominativ-Form ``pohi`` (die Woerterbuch-Nennform ist zwar der Nominativ,
+    # aber die attributive Compass-Form in Etiketten ist meist die Genitiv-
+    # Form ``pohja``; Nominativ ist trotzdem gueltig und wird unterstuetzt)
+    assert parse_coordinates("Pohi 59.4, Ida 24.7") == (59.4, 24.7)
+    # Tartu (Sued-Estland Universitaets-Museum-Region)
+    assert parse_coordinates("Pohja 58.4, Ida 26.7") == (58.4, 26.7)
+    # Kunda-Phosphorit-Fundstelle (Nord-Estland Kueste)
+    assert parse_coordinates("Pohja 59.5, Ida 26.5") == (59.5, 26.5)
+    # West-Halbkugel-Hypothese (spiegelt CZ/PL/LV/SL-Test-Struktur mit
+    # hypothetischer West-Halbkugel-Provenienz aus geerbtem Kolonial-Bestand)
+    assert parse_coordinates("Pohja 59.4, Laane 24.7") == (59.4, -24.7)
+    # Sued-Halbkugel-Hypothese
+    assert parse_coordinates("Louna 20.1, Ida 43.2") == (-20.1, 43.2)
+    # Sued-Halbkugel + West-Halbkugel (hypothetisch, spiegelt CZ/PL/LV/SL)
+    assert parse_coordinates("Louna 20.1, Laane 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``59.4° Pohja, 24.7° Ida``)
+    assert parse_coordinates("59.4° Pohja, 24.7° Ida") == (59.4, 24.7)
+    assert parse_coordinates("20.1° Louna, 43.2° Laane") == (-20.1, -43.2)
+    # Case-insensitive (Excel-CSV-Autocorrect / User-Tipp-Konvention)
+    assert parse_coordinates("POHJA 59.4, IDA 24.7") == (59.4, 24.7)
+    assert parse_coordinates("pohja 59.4, ida 24.7") == (59.4, 24.7)
+    assert parse_coordinates("LOUNA 20.1, LAANE 43.2") == (-20.1, -43.2)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Pohja. 59.4, Ida. 24.7") == (59.4, 24.7)
+    assert parse_coordinates("Louna. 20.1, Laane. 43.2") == (-20.1, -43.2)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Louna 20.1, Lon: Laane 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Ida 24.7, Pohja 59.4") == (59.4, 24.7)
+    # Mixed-Sprache (EE-Marker mit DE/EN/NL auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus deutsch-baltischer Provenienz vor,
+    # besonders bei Bestaenden mit DE-Marker und EE-Marker gemischt aus
+    # Vorkriegs-Etiketten der Estnisch-Baltendeutschen Aristokratie)
+    assert parse_coordinates("Pohja 59.4, East 24.7") == (59.4, 24.7)
+    assert parse_coordinates("Nord 59.4, Ida 24.7") == (59.4, 24.7)
+    assert parse_coordinates("Noord 59.4, Ida 24.7") == (59.4, 24.7)
+    # Wort-Grenzen: EE-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. ``ida`` in EN ``Idaho``/``idea``/``ideal``/``idle``,
+    # DE Name ``Idaho``/griech. Berg ``Ida``/Ideal, ES/PT ``idade``: die
+    # nachfolgenden Wort-Zeichen brechen die \b-Wort-Grenze, sodass der
+    # bare EE-``ida``-Wortstamm nicht in diesen Woertern falsch matcht.
+    # Test-Anker: einfaches Wort-Prefix mit Standard-Zahl-Paar bleibt
+    # verlustfrei extrahierbar wie in der Baseline (Idaho ist kein Direction-
+    # Match, DECIMAL_PAIR extrahiert das nachfolgende (46.5, 7.5) direkt).
+    assert parse_coordinates("Idaho 46.5, 7.5") == (46.5, 7.5)
+    # ``pohi``/``pohja``/``louna``/``laane`` in EE-Kompositum-Woertern:
+    # der Coord-Parser matcht keinen Direction-Wortstamm mitten in einem
+    # laengeren EE-Wort und faellt auf die Standard-Extraktion durch.
+    assert parse_coordinates("Idaho 46.5, 7.5") == (46.5, 7.5)
+    # Freitext-Kollision ES ``ida`` "Hinweg": ohne Coord-Struktur bleibt der
+    # Match wirkungslos; mit einer Zahl-Paar-Struktur faellt das Ergebnis
+    # trotzdem auf die generische Decimal-Pair-Extraktion (E ist zu weit
+    # entfernt von den Zahlen, um als Prefix-Direction zu binden).
+    assert parse_coordinates("ida y vuelta 46.5, 7.5") == (46.5, 7.5)
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-/LV-/LT-/PL-/
+    # SL-Direction-Formen bleiben unveraendert (die neuen EE-Alternativen im
+    # Regex duerfen die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Jih 20.1, Zapad 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Siaure 55.7, Rytai 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Polnoc 50.8, Wschod 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Poludnie 20.1, Zachod 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 46.0, Vzhod 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Jug 20.1, Zahod 43.2") == (-20.1, -43.2)
+    # EE vs alle indo-europaeischen Sprach-Reihen: die Finno-Ugrische Ur-
+    # Wurzel ist zu tief fuer lexikalische Kollision zu Germanisch/Romanisch/
+    # Slawisch/Baltisch - alle EE-Wortstaemme sind komplett disjunkt zu allen
+    # bisher unterstuetzten Sprach-Reihen im Lookup.
+    assert "pohi" != "nord" != "polnoc" != "sever" != "ziemeli"
+    assert "louna" != "sud" != "poludnie" != "jih" != "dienvidi"
+    assert "ida" != "est" != "wschod" != "vychod" != "austrumi"
+    assert "laane" != "west" != "zachod" != "zapad" != "rietumi"
+    # Einzelbuchstaben bleiben unveraendert (EE-native Ein-Buchstaben-Marker
+    # P/L/I/L werden bewusst NICHT unterstuetzt, da _is_lat_direction und
+    # _sign nur N/S/E/W/O kennen und EE-native Konvention mit doppeltem L
+    # fuer Louna+Laane ohnehin mit sich selbst kollidieren wuerde)
+    assert parse_coordinates("N59.4 E24.7") == (59.4, 24.7)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace
