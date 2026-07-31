@@ -10779,6 +10779,137 @@ def test_parse_coordinates_himmelsrichtung_ee_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_fi_vollnamen():
+    """FI-Vollnamen der Himmelsrichtungen (finnisch, finno-ugrisch).
+
+    Zweite Finno-Ugrische Sprach-Achse nach EE (Estnisch) - schliesst die
+    Finno-Ugrische-Sprach-Achse (FI+EE) auf der Direction-Wort-Achse analog
+    zur bereits abgeschlossenen West-Slawischen-Sprach-Achse (PL+CZ) und
+    Baltisch-Sprach-Achse (LV+LT). Sammler-Region der FI-Sprach-Achse umfasst
+    die weltbekannten Rapakivi-Granit-Massive Suedfinnlands (Wiborg-/
+    Ahvenisto-/Onas-Massive mit Rapakivi-Type-Locality), das Ylaemaa-
+    Spektrolith-Revier (Type-Locality fuer den irisierenden Labradorit-
+    "Spektrolith" mit Play-of-Color-Effekt seit 1940 abgebaut), die
+    Outokumpu-/Pyhaesalmi-Sulfid-Erzlagerstaetten mit Type-Locality-
+    Mineralien (Kotulskit, Sudburyit, Pentlandit-Vererzungen), die
+    Petsamo-/Pechenga-Nickel-Provinz, die Kemi-Chromit-Lagerstaette
+    (europaeisch groesste Chromit-Ressource), die Sokli-Karbonatit-
+    Intrusion (Kola-Karbonatit-Provinz mit Rare-Earth-Mineralien) und
+    die Nunnanlahti-Speckstein-Bruchsteine. Geerbte Sammlungs-Kataloge
+    aus der Suomen Geologinen Tutkimuslaitos (GTK), dem Luonnontieteellinen
+    keskusmuseo LUOMUS (Helsinki) und aus finnisch-sprachigen Sammler-
+    Etiketten aus Ylaemaa-Spektrolith-Direktverkaeufen.
+
+    Neu sind vier FI-eigenstaendige Wortstaemme in ASCII-Fallback-Form
+    ohne Diakritika: ``pohjoinen`` (N, Nominativ mit FI-``-nen``-Nominali-
+    sierungs-Suffix, verwandt zu EE ``pohi``/``pohja`` ueber die Ur-Finno-
+    Ugrische Wurzel ``*poηe``), ``etela`` (S, ASCII-Fallback von FI ``etelä``
+    mit A-Umlaut), ``ita`` (E, ASCII-Fallback von FI ``itä``, verwandt zu
+    EE ``ida`` mit Konsonanten-Reflex t vs d), ``lansi`` (W, ASCII-Fallback
+    von FI ``länsi``, verwandt zu EE ``laane`` mit Sibilant-vs-Nasal-
+    Endung). Spiegelt die FI-Erweiterung in :data:`DATE_NO_DATA_MARKERS`
+    (ei tiedossa/tuntematon/paivamaara tuntematon/ei paivamaaraa) auf die
+    Direction-Wort-Achse.
+
+    Vor dieser Erweiterung fielen alle FI-Direction-Formen still auf die
+    Fallback-Route (kein Direction-Marker erkannt, generische Zahl-Paar-
+    Extraktion nimmt die Reihenfolge ohne Vorzeichen-Information), was aus
+    einem typischen Ylaemaa-Spektrolith-Sammler-Etikett ``"Pohjoinen 60.7,
+    Ita 27.5"`` (Ylaemaa 60.7N/27.5E) silente ``(60.7, 27.5)`` als bare-
+    Zahl-Paar liefert - semantisch identisch, aber ohne Vorzeichen-
+    Sicherung fuer Sued-/West-Halbkugel-Varianten.
+    """
+    # Prefix-Form: Ylaemaa-Spektrolith-Sammler-Fundort-Notiz (Suedost-Finnland)
+    assert parse_coordinates("Pohjoinen 60.7, Ita 27.5") == (60.7, 27.5)
+    # Helsinki (finnische Hauptstadt, GTK-/LUOMUS-Museum-Region)
+    assert parse_coordinates("Pohjoinen 60.2, Ita 24.9") == (60.2, 24.9)
+    # Outokumpu-Sulfid-Erzlagerstaette (Ost-Finnland, Cu-Co-Zn-Vererzung)
+    assert parse_coordinates("Pohjoinen 62.7, Ita 29.1") == (62.7, 29.1)
+    # Kemi-Chromit-Lagerstaette (Nord-Finnland, Kola-nahe Fundregion)
+    assert parse_coordinates("Pohjoinen 65.7, Ita 24.6") == (65.7, 24.6)
+    # West-Halbkugel-Hypothese (spiegelt CZ/PL/LV/SL/EE-Test-Struktur mit
+    # hypothetischer West-Halbkugel-Provenienz aus geerbtem Kolonial-Bestand)
+    assert parse_coordinates("Pohjoinen 60.7, Lansi 27.5") == (60.7, -27.5)
+    # Sued-Halbkugel-Hypothese
+    assert parse_coordinates("Etela 20.1, Ita 43.2") == (-20.1, 43.2)
+    # Sued-Halbkugel + West-Halbkugel (hypothetisch)
+    assert parse_coordinates("Etela 20.1, Lansi 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form (``60.7° Pohjoinen, 27.5° Ita``)
+    assert parse_coordinates("60.7° Pohjoinen, 27.5° Ita") == (60.7, 27.5)
+    assert parse_coordinates("20.1° Etela, 43.2° Lansi") == (-20.1, -43.2)
+    # Case-insensitive (Excel-CSV-Autocorrect / User-Tipp-Konvention)
+    assert parse_coordinates("POHJOINEN 60.7, ITA 27.5") == (60.7, 27.5)
+    assert parse_coordinates("pohjoinen 60.7, ita 27.5") == (60.7, 27.5)
+    assert parse_coordinates("ETELA 20.1, LANSI 43.2") == (-20.1, -43.2)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Pohjoinen. 60.7, Ita. 27.5") == (60.7, 27.5)
+    assert parse_coordinates("Etela. 20.1, Lansi. 43.2") == (-20.1, -43.2)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Etela 20.1, Lon: Lansi 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern wird korrekt sortiert
+    assert parse_coordinates("Ita 27.5, Pohjoinen 60.7") == (60.7, 27.5)
+    # Mixed-Sprache (FI-Marker mit DE/EN/NL/EE auf anderer Achse - kommt in
+    # geerbten Sammlungs-Notizen aus finnisch-schwedisch-deutscher gemischter
+    # Provenienz vor, besonders im Ylaemaa-/Outokumpu-Kontext mit inter-
+    # nationaler Sammler-Kommunikation)
+    assert parse_coordinates("Pohjoinen 60.7, East 27.5") == (60.7, 27.5)
+    assert parse_coordinates("Nord 60.7, Ita 27.5") == (60.7, 27.5)
+    assert parse_coordinates("Noord 60.7, Ita 27.5") == (60.7, 27.5)
+    # Mixed FI+EE (beide Finno-Ugrisch - kein Konflikt, unabhaengige Achsen)
+    assert parse_coordinates("Pohjoinen 60.7, Ida 27.5") == (60.7, 27.5)
+    assert parse_coordinates("Pohja 60.7, Ita 27.5") == (60.7, 27.5)
+    # Wort-Grenzen: FI-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. ``ita`` in EN ``italy``/``italian``/``italic``, DE
+    # ``italien``, IT ``italia``, ES/PT ``italiano``: die nachfolgenden Wort-
+    # Zeichen brechen die \b-Wort-Grenze, sodass der bare FI-``ita``-
+    # Wortstamm nicht in diesen Woertern falsch matcht. Test-Anker: einfaches
+    # Wort-Prefix mit Standard-Zahl-Paar bleibt verlustfrei extrahierbar wie
+    # in der Baseline (Italy ist kein Direction-Match, DECIMAL_PAIR
+    # extrahiert das nachfolgende (46.5, 7.5) direkt).
+    assert parse_coordinates("Italy 46.5, 7.5") == (46.5, 7.5)
+    # ``pohjoinen``/``etela``/``lansi`` in FI-Kompositum-Woertern: der
+    # Coord-Parser matcht keinen Direction-Wortstamm mitten in einem
+    # laengeren FI-Wort und faellt auf die Standard-Extraktion durch.
+    assert parse_coordinates("Pohjoismaat 46.5, 7.5") == (46.5, 7.5)
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-/LV-/LT-/PL-/
+    # SL-/EE-Direction-Formen bleiben unveraendert (die neuen FI-Alternativen
+    # im Regex duerfen die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Jih 20.1, Zapad 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Siaure 55.7, Rytai 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Polnoc 50.8, Wschod 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Poludnie 20.1, Zachod 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 46.0, Vzhod 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Jug 20.1, Zahod 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Pohja 59.4, Ida 24.7") == (59.4, 24.7)
+    assert parse_coordinates("Louna 20.1, Laane 43.2") == (-20.1, -43.2)
+    # FI vs EE: gemeinsame Finno-Ugrische Ur-Wurzel aber ortho-lexikalisch
+    # klar disjunkt (FI-``-nen``-Suffix, FI ``t`` vs EE ``d`` in ita/ida,
+    # FI ``ns`` vs EE ``aan`` in lansi/laane).
+    assert "pohjoinen" != "pohi" != "pohja"
+    assert "etela" != "louna"
+    assert "ita" != "ida"
+    assert "lansi" != "laane"
+    # Einzelbuchstaben bleiben unveraendert (FI-native Ein-Buchstaben-Marker
+    # P/E/I/L werden bewusst NICHT unterstuetzt, da _is_lat_direction und
+    # _sign nur N/S/E/W/O kennen und FI-native Konvention mit doppeltem
+    # Buchstaben-Ambiguity ``E``=Etela/``I``=Ita/``L``=Lansi ohnehin mit
+    # sich selbst kollidieren wuerde)
+    assert parse_coordinates("N60.7 E27.5") == (60.7, 27.5)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace

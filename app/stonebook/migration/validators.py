@@ -6571,6 +6571,107 @@ _DIRECTION_WORD = re.compile(
     # Wurzel ist zu tief fuer lexikalische Kollision zu Germanisch/
     # Romanisch/Slawisch/Baltisch.
     r"|pohi|pohja|louna|ida|laane"
+    # Finnisch (FI) - zweite Finno-Ugrische Sprach-Achse nach EE (Estnisch),
+    # innerhalb der Finno-Ugrischen Familie eng verwandt (Ur-Finnisch ~1000
+    # v. Chr. Trennung), lexikalisch aber ortho-morphologisch klar distinkt.
+    # Sammler-Region der FI-Sprach-Achse umfasst die weltbekannten Rapakivi-
+    # Granit-Massive Suedfinnlands (Wiborg-/Viborg-Massiv mit Rapakivi-
+    # Type-Locality, Ahvenisto-/Onas-Massive), das Ylaemaa-Spektrolith-
+    # Revier (Type-Locality fuer den irisierenden Labradorit-"Spektrolith"
+    # mit Play-of-Color-Effekt seit 1940 abgebaut), die Outokumpu-/Pyhaesalmi-
+    # Sulfid-Erzlagerstaetten mit Type-Locality-Mineralien (Kotulskit, Sudburyit,
+    # Pentlandit-Vererzungen), die Kola-nahe Petsamo-/Pechenga-Nickel-Provinz,
+    # die Loppi-Ilmenit-/Rutil-Fundstellen, die Kemi-Chromit-Lagerstaette
+    # (europaeisch groesste Chromit-Ressource), die Sokli-Karbonatit-Intrusion
+    # (Kola-Karbonatit-Provinz mit Rare-Earth-Mineralien) und die Nunnanlahti-
+    # Speckstein-Bruchsteine. Geerbte Sammlungs-Kataloge aus der Suomen
+    # Geologinen Tutkimuslaitos (GTK), dem Luonnontieteellinen keskusmuseo
+    # LUOMUS (Helsinki), dem Suomen kansallismuseo, den finnisch-sprachigen
+    # Sammler-Etiketten aus Ylaemaa-Spektrolith-Direktverkaeufen und aus
+    # bibliografischen Referenzen (Bulletin of the Geological Society of
+    # Finland). Alle vier Achsen mit FI-eigenstaendigen Wortstaemmen:
+    # ``pohjoinen`` (N, Nominativ - EE-``pohi``/``pohja``-Verwandt aus der
+    # gemeinsamen Ur-Finno-Ugrischen Wurzel ``*poηe`` "Nord/Boden/Grund", aber
+    # FI-Wort-Bildung mit ``-nen``-Nominalisierungs-Suffix vs EE-``pohi``-
+    # Nomen-Nacktform - keine ortho-lexikalische Kollision, weil FI die
+    # ``-nen``-Endung zwingt und die EE-Kurzform ``pohi``/``pohja`` an der
+    # ``\b``-Grenze nach ``i``/``a`` bricht wenn die naechste Position ein
+    # Wort-Zeichen ist, was bei FI-``pohjoinen`` durch das nachfolgende ``j``
+    # der Fall ist), ``etela`` (S, ASCII-Fallback von FI ``etelä`` mit A-Umlaut,
+    # rein Finno-Ugrische Wurzel ohne Verwandtschaft zu EE-``louna``, LT/LV/
+    # PL/SL-Sued-Wortstaemmen oder DE-``sued``/EN-``south``), ``ita`` (E,
+    # ASCII-Fallback von FI ``itä`` mit A-Umlaut, EE-``ida``-Verwandt aus der
+    # gemeinsamen Ur-Finno-Ugrischen Wurzel ``*iδä`` "Ost/Morgen", aber ortho-
+    # lexikalisch klar disjunkt: FI-Konsonant ``t`` vs EE-Konsonant ``d`` - die
+    # Trennung reflektiert den Balto-Finno-Ugrischen Konsonanten-Wandel
+    # ``*δ`` -> ``t`` in FI vs ``*δ`` -> ``d`` in EE), ``lansi`` (W, ASCII-
+    # Fallback von FI ``länsi`` mit A-Umlaut, EE-``laane``-Verwandt aus der
+    # gemeinsamen Ur-Finno-Ugrischen Wurzel ``*länte`` "West/Abend", aber
+    # ortho-lexikalisch klar disjunkt: FI-Sibilant ``s`` vs EE-Doppelvokal
+    # ``aa`` mit ``e``-Endung - die Trennung reflektiert den Ur-Finnischen
+    # Sibilanten-Wandel ``*nt`` -> ``ns`` in FI vs ``*nt`` -> Assimilation
+    # zu ``nn`` und weiter zu ``aan`` in EE).
+    #
+    # ASCII-Fallback-Form ohne Diakritika (FI-Standard-Ortho ``etelä``/``itä``/
+    # ``länsi`` verwendet natives ``ä`` U+00E4; in Sammler-Katalog-ASCII-
+    # Notation der Windows-CP1252-/CP850-/UTF-8-Notiz-Ketten reduziert sich
+    # das regelmaessig zu ``etela``/``ita``/``lansi``, analog zur ASCII-
+    # Fallback-Konvention der EE-Direction-Achse mit ``louna``/``laane`` und
+    # der FI-Date-Marker-Achse mit ``ei tiedossa``/``tuntematon``/``paivamaara
+    # tuntematon``/``ei paivamaaraa`` in :data:`DATE_NO_DATA_MARKERS`).
+    # ``pohjoinen`` enthaelt keine Diakritika und braucht keinen Fallback.
+    # Bisher fielen alle FI-Direction-Formen still auf die Fallback-Route
+    # (kein Direction-Marker erkannt, generische Zahl-Paar-Extraktion nimmt
+    # die Reihenfolge ohne Vorzeichen-Information), was aus einem typischen
+    # Ylaemaa-Spektrolith-Sammler-Etikett ``"Pohjoinen 60.7, Ita 27.5"``
+    # (Ylaemaa 60.7N/27.5E) silente ``(60.7, 27.5)`` als bare-Zahl-Paar
+    # liefert - semantisch identisch, aber ohne Vorzeichen-Sicherung fuer
+    # Sued-/West-Halbkugel-Varianten (kritisch bei geerbten FI-Sammlungs-
+    # Katalogen mit hypothetischer Sued-/West-Halbkugel-Fundstelle).
+    #
+    # Spiegelt die FI-Erweiterung in :data:`DATE_NO_DATA_MARKERS` (ei
+    # tiedossa/tuntematon/paivamaara tuntematon/ei paivamaaraa) auf die
+    # Direction-Wort-Achse und schliesst damit die Finno-Ugrische-Sprach-
+    # Achse (FI+EE) auf der Direction-Wort-Achse analog zur bereits
+    # abgeschlossenen West-Slawischen-Sprach-Achse (PL+CZ) und Baltisch-
+    # Sprach-Achse (LV+LT).
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``pohjoinen`` matcht
+    # nicht innerhalb laengerer Woerter (FI ``pohjoismaat`` "die Nordischen
+    # Laender" hat andere Endung; kein Konflikt zu EE ``pohi``/``pohja``
+    # weil die FI-``-nen``-Endung morphologisch spezifisch ist und der Regex-
+    # Engine die laengste Alternative bevorzugt wenn sie an der Wort-Grenze
+    # matcht). ``etela`` matcht nicht innerhalb laengerer Woerter (FI
+    # ``etelainen`` "suedlich"/``etelapuolella`` "auf der Suedseite" - der
+    # folgende Buchstabe ist Wort-Zeichen, keine Wort-Grenze); kein Konflikt
+    # zu Latin ``et`` "und" (unterschiedliche Wortlaenge und -struktur); kein
+    # Konflikt zu anderen indo-europaeischen Sprach-Reihen (Wortstamm
+    # ``etel-`` ist FI-Finno-Ugrisch-spezifisch). ``ita`` matcht nicht
+    # innerhalb laengerer Woerter (EN ``italy``/``italian``/``italic``, DE
+    # ``italien``, IT ``italia``, ES/PT ``italiano``, alle mit nachfolgendem
+    # Wort-Zeichen ausserhalb der ``\b``-Grenze); freitextliche Latin-
+    # Kollision ``ita`` "so, thus" ist als eigenstaendiges Wort theoretisch
+    # moeglich, aber der Coord-Parser verlangt tight direction + number
+    # couple, sodass die Latin-Freitext-Bedeutung ausserhalb von Koordinaten-
+    # Notation kein Falsch-Match erzeugt (parallele Semantik-Mehrdeutigkeit
+    # wie SL ``jug`` "Krug"/EN ``jug`` und wie EE ``ida``/ES/PT ``ida``
+    # "Hinweg"); kein ortho-lexikalischer Konflikt zu EE ``ida`` (unter-
+    # schiedlicher Konsonant t vs d im gemeinsamen Ur-Finno-Ugrischen Wurzel-
+    # Reflex). ``lansi`` matcht nicht innerhalb laengerer Woerter (FI
+    # ``lansipuolella`` "auf der Westseite"/``lansinen`` "westlich"); kein
+    # Konflikt zu EN ``lansing`` (US-Stadt Michigan-Hauptstadt - matcht
+    # nicht wegen ``\b``-Grenze nach ``i``); kein ortho-lexikalischer
+    # Konflikt zu EE ``laane`` (unterschiedliche Wort-Endungen und Vokal-
+    # Muster: FI ``lansi`` mit einfachem A + Sibilant vs EE ``laane`` mit
+    # Doppelvokal aa + Nasal-Endung); kein Konflikt zu anderen indo-
+    # europaeischen Sprach-Reihen (Wortstamm ``lans-`` ist FI-Finno-Ugrisch-
+    # spezifisch, keine Kollision zu DE/EN/FR/IT/ES/PT/NL/CZ/LV/LT/PL/SL/EE-
+    # West-Wortstaemmen). Alle vier FI-Formen sind ortho-lexikalisch disjunkt
+    # zur EE-Reihe trotz gemeinsamer Finno-Ugrischer Ur-Wurzel; die Trennung
+    # reflektiert die Ur-Finnische-vs-Ur-Estnische Trennung (~1000 v. Chr.)
+    # mit unterschiedlichen Konsonanten- und Vokal-Reflexen der gemeinsamen
+    # Ur-Wurzeln.
+    r"|pohjoinen|etela|ita|lansi"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6760,6 +6861,38 @@ _DIRECTION_LETTER: dict[str, str] = {
     # (teadmata/ilma kuupaevata/kuupaev teadmata/andmed puuduvad) auf die
     # Direction-Wort-Achse und oeffnet die Finno-Ugrische-Sprach-Achse.
     "pohi": "N", "pohja": "N", "louna": "S", "ida": "E", "laane": "W",
+    # FI-Vollformen der Himmelsrichtungen (finnisch, finno-ugrisch - zweite
+    # Non-Indo-Europaeische Sprach-Familie nach EE-Estnisch) in ASCII-Fallback-
+    # Form ohne Diakritika: ``pohjoinen`` (N, Nominativ mit FI-``-nen``-
+    # Nominalisierungs-Suffix, verwandt zu EE ``pohi``/``pohja`` ueber die Ur-
+    # Finno-Ugrische Wurzel ``*poηe`` "Nord/Boden/Grund"), ``etela`` (S, ASCII-
+    # Fallback von FI ``etelä`` mit A-Umlaut, rein Finno-Ugrisch ohne indo-
+    # europaeische Kollision), ``ita`` (E, ASCII-Fallback von FI ``itä``,
+    # verwandt zu EE ``ida`` mit Konsonanten-Reflex t vs d im gemeinsamen
+    # Ur-Finno-Ugrischen Wurzel-Erbe ``*iδä`` "Ost/Morgen"), ``lansi`` (W,
+    # ASCII-Fallback von FI ``länsi``, verwandt zu EE ``laane`` mit unter-
+    # schiedlicher Sibilant-vs-Nasal-Endung im gemeinsamen Ur-Finno-Ugrischen
+    # Wurzel-Erbe ``*länte`` "West/Abend"). Sammler-Notizen aus den Rapakivi-
+    # Granit-Massiven Suedfinnlands (Wiborg-/Ahvenisto-/Onas-Massive), dem
+    # Ylaemaa-Spektrolith-Revier mit Labradorit-Type-Locality-Material, den
+    # Outokumpu-/Pyhaesalmi-Sulfid-Erzlagerstaetten, der Petsamo-/Pechenga-
+    # Nickel-Provinz, der Kemi-Chromit-Lagerstaette, der Sokli-Karbonatit-
+    # Intrusion (Rare-Earth-Mineralien) und den Nunnanlahti-Speckstein-Bruch-
+    # steinen sowie Museums-Etiketten aus Luonnontieteellinen keskusmuseo
+    # LUOMUS Helsinki, der Suomen Geologinen Tutkimuslaitos (GTK) und den
+    # finnisch-sprachigen Ylaemaa-Spektrolith-Direktverkaeufer-Etiketten. Auf
+    # FI-Landkarten sind die Ein-Buchstaben-Marker traditionell ``P``/``E``/
+    # ``I``/``L`` (finno-ugrisch-native Konvention) - der Lookup mappt aber
+    # auf die kanonischen ``N``/``S``/``E``/``W``-Letter (analog zur EE/CZ/
+    # PL/LV/LT/SL-Achse), weil :func:`_is_lat_direction` und :func:`_sign`
+    # nur die Buchstaben ``N``/``S``/``E``/``W``/``O`` kennen und die native
+    # FI-Buchstaben-Konvention im weiteren Verlauf der Direction-Auswertung
+    # unbekannt waeren. Spiegelt die FI-Erweiterung in
+    # :data:`DATE_NO_DATA_MARKERS` (ei tiedossa/tuntematon/paivamaara
+    # tuntematon/ei paivamaaraa) auf die Direction-Wort-Achse und schliesst
+    # damit die Finno-Ugrische-Sprach-Achse (FI+EE) auf der Direction-Wort-
+    # Achse.
+    "pohjoinen": "N", "etela": "S", "ita": "E", "lansi": "W",
 }
 
 
