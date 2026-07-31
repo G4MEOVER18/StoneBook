@@ -7526,6 +7526,90 @@ def test_parse_range_leading_currency_prefix_mga_malagassischer_ariary():
     assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_nad_namibia_dollar():
+    """``NAD`` (Namibia-Dollar, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer namibische Tsumeb-Sammler.
+
+    Tsumeb (Otavi-Bergland, Nord-Namibia) zaehlt zu den fuenf beruehmtesten
+    Mineralfundstellen der Welt und ist Type-Locality fuer >70 Mineralien
+    (Tsumcorit, Ludlockit, Otavit, Stottit, Mottramit, u.v.a.). Sammler-
+    Referenzmaterial: Dioptas (leuchtgruene Prismen), Mimetit (klare
+    orange-gelbe Kristalle), Azurit-/Malachit-Pseudomorphosen, Willemit
+    (unter UV), Wulfenit, Cerussit, gediegen-Kupfer/-Silber. Weitere
+    namibische Sammler-Regionen: Rossing/Namib-Wueste (Uraninit, gruener
+    Turmalin, Aquamarin aus den Erongo-Bergen), Karibib/Klein Spitzkoppe
+    (Rauchquarz-Zepter, Aquamarin, Schoerl-Turmalin), Uis (Kassiterit,
+    Beryll), Neu Schwaben/Namib Lead Mine, Kombat Mine.
+    Handels-Konvention: NAD-Preise in Direkt-Verkaeufen aus Windhoek/
+    Swakopmund-Sammlergeschaeften und in geerbten Sammlungs-Etiketten
+    aus der deutschen und suedafrikanischen Kolonial-Provenienz. Der NAD
+    ist per Currency-Board 1:1 an den ZAR gebunden, wird in Etiketten
+    aber als eigenstaendiger Code gefuehrt.
+
+    Bisher fielen alle Formen mit ``NAD``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei allen anderen Regional-Waehrungen vor deren
+    Aufnahme in die Vokabel-Liste): ``NAD 500 ± 50`` -> ``(500, 500)``
+    via inverted-range-Kollaps (Toleranz verloren); ``NAD 500(20)`` ->
+    ``(500, 20)`` (semantisch falscher Range statt (480, 520)).
+    Kollisionsfrei zu Fremdwoertern: ``NAD`` ist keine gaengige EN-/DE-
+    Wort-Sequenz; die ``\\b``-Wortgrenze hinter dem Code matcht
+    ausschliesslich den ISO-Code-Praefix. Case-Insensitiv spiegelt die
+    uebrige Vokabel-Liste (Excel-Autocorrect ``Nad`` mit Capitalize-
+    First-Word und lowercase ``nad`` aus Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 12500 ± 1250") == pytest.approx((11250.0, 13750.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("NAD 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("NAD 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa NAD 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("NAD 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("nad 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Nad 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NaD 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("NAD 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("NAD 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("NAD 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 12500 ± 1250 (Tsumeb)") == pytest.approx((11250.0, 13750.0))
+    assert csv_loaders.parse_range("NAD 100(2) [Erongo]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit NAD-Praefix.
+    assert csv_loaders.parse_range("NAD > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens NAD 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("NAD 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("NAD 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("NAD 500 to 1000") == (500.0, 1000.0)
+    # NAD OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("NAD") == (None, None)
+    assert csv_loaders.parse_range("NAD ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ZAR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
