@@ -10910,6 +10910,115 @@ def test_parse_coordinates_himmelsrichtung_fi_vollnamen():
     assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
 
 
+def test_parse_coordinates_himmelsrichtung_sv_vollnamen():
+    """SV-Vollnamen der Himmelsrichtungen (schwedisch, nord-germanisch).
+
+    Oeffnet die Nord-Germanische-Sprach-Achse (SV/DA/NO haben ueberlappende
+    Wortstaemme, mit ``syd`` als gemeinsamer Nordisch-Form) auf der Direction-
+    Wort-Achse analog zur bereits abgeschlossenen West-Slawischen (PL+CZ),
+    Baltisch (LV+LT) und Finno-Ugrischen Sprach-Achse (FI+EE). Sammler-Region
+    der SV-Sprach-Achse umfasst Laangban/Nordmark/Persberg (Wermland Mn-
+    Silikat-/Arsenat-Type-Localities), Boliden (Vaesterbotten Au-/As-Erz),
+    Kiruna/Malmberget (Norrbotten Fe-Apatit), Sala-Silbergrube (Vaestmanland)
+    und Bastnaes (Type-Locality der Cerit-/Bastnaesit-REE-Familie).
+
+    Neu sind fuenf SV-Wortstaemme in ASCII-Fallback-Form ohne Diakritika:
+    ``norr`` (N, aus urgerm. ``*nurþra-``), ``syd`` (S, Nordisch-gemeinsame
+    Form auch in DA/NO), ``soder`` (S, ASCII-Fallback von SV ``söder``),
+    ``oster`` (E, ASCII-Fallback von SV ``öster``), ``vaster`` (W, ASCII-
+    Fallback von SV ``väster``). Spiegelt die SV-Erweiterung in
+    :data:`DATE_NO_DATA_MARKERS` (okand/okant/inget datum/utan datum/
+    datum okant/odaterat) auf die Direction-Wort-Achse.
+    """
+    # Prefix-Form: Stockholm-Region (Naturhistoriska riksmuseet)
+    assert parse_coordinates("Norr 59.3, Oster 18.1") == (59.3, 18.1)
+    # Kiruna (Norrbotten Fe-Apatit-Vorkommen)
+    assert parse_coordinates("Norr 67.9, Oster 20.2") == (67.9, 20.2)
+    # Laangban (Wermland, Mn-Silikat-Type-Locality)
+    assert parse_coordinates("Norr 59.9, Oster 14.3") == (59.9, 14.3)
+    # Boliden (Vaesterbotten Au-/As-Revier)
+    assert parse_coordinates("Norr 64.9, Oster 20.4") == (64.9, 20.4)
+    # Nordisch-gemeinsame ``syd``-Form fuer Sued-Halbkugel-Hypothese
+    assert parse_coordinates("Syd 20.1, Oster 43.2") == (-20.1, 43.2)
+    # Standard-Substantivform ``soder`` fuer Sued
+    assert parse_coordinates("Soder 20.1, Oster 43.2") == (-20.1, 43.2)
+    # West-Halbkugel-Hypothese mit ``vaster``
+    assert parse_coordinates("Norr 59.3, Vaster 18.1") == (59.3, -18.1)
+    # Sued + West kombiniert
+    assert parse_coordinates("Syd 20.1, Vaster 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Soder 20.1, Vaster 43.2") == (-20.1, -43.2)
+    # Decimal-Suffix-Form
+    assert parse_coordinates("59.3° Norr, 18.1° Oster") == (59.3, 18.1)
+    assert parse_coordinates("20.1° Syd, 43.2° Vaster") == (-20.1, -43.2)
+    # Case-insensitive (Excel-CSV-Autocorrect / User-Tipp-Konvention)
+    assert parse_coordinates("NORR 59.3, OSTER 18.1") == (59.3, 18.1)
+    assert parse_coordinates("norr 59.3, oster 18.1") == (59.3, 18.1)
+    assert parse_coordinates("SYD 20.1, VASTER 43.2") == (-20.1, -43.2)
+    # Mit trailing Punkt nach Kurzform (aus Katalog-Abkuerzung)
+    assert parse_coordinates("Norr. 59.3, Oster. 18.1") == (59.3, 18.1)
+    assert parse_coordinates("Syd. 20.1, Vaster. 43.2") == (-20.1, -43.2)
+    # Mit Labels kombiniert (erst Labels strippen, dann Richtung normalisieren)
+    assert parse_coordinates("Lat: Syd 20.1, Lon: Vaster 43.2") == (-20.1, -43.2)
+    # Reihenfolge lon-vor-lat mit expliziten Richtungs-Markern
+    assert parse_coordinates("Oster 18.1, Norr 59.3") == (59.3, 18.1)
+    # Mixed-Sprache (SV mit DE/EN/NL auf anderer Achse - gemischte Sammler-
+    # Notizen aus deutsch-schwedischer oder englisch-schwedischer Provenienz)
+    assert parse_coordinates("Norr 59.3, East 18.1") == (59.3, 18.1)
+    assert parse_coordinates("Nord 59.3, Oster 18.1") == (59.3, 18.1)
+    assert parse_coordinates("Noord 59.3, Oster 18.1") == (59.3, 18.1)
+    # Wort-Grenzen: SV-Direction-Worte duerfen nicht innerhalb laengerer
+    # Woerter matchen. ``norr`` in schwedischen Ortsnamen (Norrkoping,
+    # Norrland, Norrbotten) und in EN "narrow"/"narrower" (kein Match wegen
+    # Startbuchstabe): die nachfolgenden Wort-Zeichen brechen die \b-Grenze,
+    # sodass der bare SV-Wortstamm nicht falsch matcht.
+    assert parse_coordinates("Norrkoping 46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Norrland 46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Norrbotten 46.5, 7.5") == (46.5, 7.5)
+    # ``syd`` in Sydney/sydost/sydvast (Nordische Kompass-Kombinationen)
+    assert parse_coordinates("Sydney 46.5, 7.5") == (46.5, 7.5)
+    # ``soder`` in Sodermalm/Sodermanland (Stockholm-Region)
+    assert parse_coordinates("Sodermalm 46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sodermanland 46.5, 7.5") == (46.5, 7.5)
+    # ``oster`` in DE ``Ostern`` (Easter)/``Osterreich`` (Austria)/``Osterei``
+    # und in EN ``poster``/``roster``/``coaster``: das nachfolgende Wort-Zeichen
+    # (Ostern: n, Osterreich: r, Osterei: e) bricht die \b-Grenze am Ende;
+    # poster/roster/coaster starten mit p/r/c und haben keinen \b vor "oster"
+    assert parse_coordinates("Ostern 46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Osterreich 46.5, 7.5") == (46.5, 7.5)
+    assert parse_coordinates("poster 46.5, 7.5") == (46.5, 7.5)
+    # ``vaster`` in Vasteras/Vastergotland/Vastermalm (schwedische Ortsnamen)
+    assert parse_coordinates("Vasteras 59.6, 16.6") == (59.6, 16.6)
+    assert parse_coordinates("Vastergotland 46.5, 7.5") == (46.5, 7.5)
+    # Regress-Anker: bestehende DE-/EN-/FR-/IT-/ES-/PT-/NL-/CZ-/LV-/LT-/PL-/
+    # SL-/EE-/FI-Direction-Formen bleiben unveraendert (die neuen SV-Alter-
+    # nativen im Regex duerfen die existierenden Wortstaemme nicht schlucken).
+    assert parse_coordinates("Nord 46.5, Ost 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Sued 46.5, West 7.5") == (-46.5, -7.5)
+    assert parse_coordinates("North 46.5, East 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Est 7.5") == (46.5, 7.5)
+    assert parse_coordinates("Nord 46.5, Ovest 7.5") == (46.5, -7.5)
+    assert parse_coordinates("Norte 37.2, Este 2.4") == (37.2, 2.4)
+    assert parse_coordinates("Sur 37.2, Oeste 2.4") == (-37.2, -2.4)
+    assert parse_coordinates("Sul 20.1, Leste 43.2") == (-20.1, 43.2)
+    assert parse_coordinates("Noord 52.3, Oost 4.9") == (52.3, 4.9)
+    assert parse_coordinates("Zuid 20.1, West 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 50.4, Vychod 12.9") == (50.4, 12.9)
+    assert parse_coordinates("Jih 20.1, Zapad 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Ziemeli 56.9, Austrumi 24.1") == (56.9, 24.1)
+    assert parse_coordinates("Siaure 55.7, Rytai 21.1") == (55.7, 21.1)
+    assert parse_coordinates("Polnoc 50.8, Wschod 16.3") == (50.8, 16.3)
+    assert parse_coordinates("Poludnie 20.1, Zachod 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Sever 46.0, Vzhod 14.0") == (46.0, 14.0)
+    assert parse_coordinates("Jug 20.1, Zahod 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Pohja 59.4, Ida 24.7") == (59.4, 24.7)
+    assert parse_coordinates("Louna 20.1, Laane 43.2") == (-20.1, -43.2)
+    assert parse_coordinates("Pohjoinen 60.7, Ita 27.5") == (60.7, 27.5)
+    assert parse_coordinates("Etela 20.1, Lansi 43.2") == (-20.1, -43.2)
+    # Einzelbuchstaben bleiben unveraendert
+    assert parse_coordinates("N59.3 E18.1") == (59.3, 18.1)
+    assert parse_coordinates("S20.1 W43.2") == (-20.1, -43.2)
+
+
 def test_parse_coordinates_compact_suffix_ohne_separator():
     """Compact-Form ohne Separator: '46.5N7.5E' (GPS-Online-Tools, Hand-Notizen)."""
     # Reine Suffix-Form ohne Whitespace

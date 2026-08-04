@@ -6672,6 +6672,45 @@ _DIRECTION_WORD = re.compile(
     # mit unterschiedlichen Konsonanten- und Vokal-Reflexen der gemeinsamen
     # Ur-Wurzeln.
     r"|pohjoinen|etela|ita|lansi"
+    # Schwedisch (SV) - germanisch/nord-germanisch. Sammler-Region der SV-
+    # Sprach-Achse umfasst Laangban (Wermland, Type-Locality fuer >60
+    # Mangan-Silikat- und Arsenat-Mineralien), Nordmark, Persberg, Boliden
+    # (Vaesterbotten, historisches Au-/As-Erz-Revier), Kiruna/Malmberget
+    # (Norrbotten, Fe-Apatit-Vorkommen), Sala-Silbergrube (Vaestmanland),
+    # Bastnaes (Type-Locality fuer die Cerit-/Bastnaesit-Familie und den
+    # Namensgeber der REE-Mineralien Cerium/Lanthan) sowie Museums-
+    # Etiketten aus dem Naturhistoriska riksmuseet Stockholm und dem
+    # Geologiska museet Uppsala. Die SV-Direction-Wortstaemme sind
+    # nord-germanisch und teilweise lexikalisch disjunkt zu den bereits
+    # abgedeckten west-germanischen DE-/EN-/NL-Formen: ``norr`` (N, aus
+    # urgerm. ``*nurþra-`` "Nord" mit sekundaerem R-Umlaut auf den
+    # Kompaktvokal - SV-eigenstaendige Kurzform ohne DE-``en``-Nomen-
+    # Endung oder EN-``th``-Reflex), ``syd`` (S, Nordisch-gemeinsame
+    # Form auch in DA/NO, aus urgerm. ``*sunþa-`` mit N-Assimilation zu
+    # d - lexikalisch disjunkt zu DE-``sued``/EN-``south`` durch den
+    # nordischen Wandel ``nþ`` -> ``dd`` -> ``d``), ``soder`` (S, ASCII-
+    # Fallback von SV ``söder`` mit O-Umlaut - Standard-Substantivform
+    # der Sued-Richtung), ``oster`` (E, ASCII-Fallback von SV ``öster``
+    # mit O-Umlaut - lexikalisch disjunkt zu DE-``ost``/EN-``east``
+    # durch die SV-typische ``-er``-Adverbial-Endung, die aus dem urgerm.
+    # ``*austra-`` "Ost" durch nordische R-Metathese entstanden ist),
+    # ``vaster`` (W, ASCII-Fallback von SV ``väster`` mit A-Umlaut -
+    # analog zu ``oster``/``öster`` mit R-Endung, lexikalisch disjunkt
+    # zu DE-``west``/EN-``west``). Spiegelt die SV-Erweiterung in
+    # :data:`DATE_NO_DATA_MARKERS` (okand/okant/inget datum/utan datum/
+    # datum okant/odaterat) auf die Direction-Wort-Achse.
+    #
+    # Kollisions-Schutz durch die ``\b``-Wortgrenzen: ``norr`` matcht
+    # nicht in ``Norrkoping``/``Norrland``/``Norrbotten`` (der folgende
+    # Buchstabe ist Wort-Zeichen, keine Wort-Grenze); ``syd`` matcht
+    # nicht in ``Sydney``/``sydost``/``sydvast`` (dito); ``soder`` matcht
+    # nicht in ``Sodermalm``/``Sodermanland`` (dito); ``oster`` matcht
+    # nicht in EN ``poster``/``roster``/``coaster`` (kein \b-Boundary am
+    # Wortanfang) und nicht in DE ``Ostern``/``Osterreich``/``Osterei``
+    # (das nachfolgende Wort-Zeichen bricht die \b-Grenze am Ende);
+    # ``vaster`` matcht nicht in ``Vasteras``/``Vastergotland``/
+    # ``Vastermalm`` (dito).
+    r"|norr|syd|soder|oster|vaster"
     r")\b\.?",
     re.IGNORECASE,
 )
@@ -6893,6 +6932,30 @@ _DIRECTION_LETTER: dict[str, str] = {
     # damit die Finno-Ugrische-Sprach-Achse (FI+EE) auf der Direction-Wort-
     # Achse.
     "pohjoinen": "N", "etela": "S", "ita": "E", "lansi": "W",
+    # SV-Vollformen der Himmelsrichtungen (schwedisch, nord-germanisch)
+    # in ASCII-Fallback-Form ohne Diakritika: ``norr`` (N), ``syd`` (S,
+    # Nordisch-gemeinsam auch in DA/NO), ``soder`` (S, ASCII von SV
+    # ``söder`` mit O-Umlaut - Standard-Substantivform), ``oster`` (E,
+    # ASCII von SV ``öster``), ``vaster`` (W, ASCII von SV ``väster``).
+    # Sammler-Notizen aus Laangban/Nordmark/Persberg (Wermland Mn-
+    # Silikat-/Arsenat-Type-Localities), Boliden (Vaesterbotten Au-/
+    # As-Erz), Kiruna/Malmberget (Norrbotten Fe-Apatit), Sala-Silbergrube
+    # (Vaestmanland), Bastnaes (Type-Locality der Cerit-/Bastnaesit-
+    # Familie) sowie Museums-Etiketten aus Naturhistoriska riksmuseet
+    # Stockholm und Geologiska museet Uppsala. Auf SV-Landkarten ist der
+    # Ein-Buchstaben-Marker traditionell ``N``/``S``/``O``/``V`` (das
+    # ``V`` fuer ``vaster`` konfligiert mit dem CZ-``V`` fuer ``vychod``
+    # = E, aber nur auf der Landkarten-Ein-Buchstaben-Konvention, nicht
+    # im Wortstamm) - der Lookup mappt auf die kanonischen ``N``/``S``/
+    # ``E``/``W``-Letter (analog zur CZ/PL/LV/LT/SL/EE/FI-Achse), weil
+    # :func:`_is_lat_direction` und :func:`_sign` nur die Buchstaben
+    # ``N``/``S``/``E``/``W``/``O`` kennen und die native SV-Buchstaben-
+    # Konvention ``V`` fuer West im weiteren Verlauf der Direction-
+    # Auswertung mit CZ-``V`` fuer Ost kollidieren wuerde. Spiegelt die
+    # SV-Erweiterung in :data:`DATE_NO_DATA_MARKERS` (okand/okant/inget
+    # datum/utan datum/datum okant/odaterat) auf die Direction-Wort-
+    # Achse und oeffnet die Nord-Germanische-Sprach-Achse.
+    "norr": "N", "syd": "S", "soder": "S", "oster": "E", "vaster": "W",
 }
 
 
