@@ -7696,6 +7696,78 @@ def test_parse_range_leading_currency_prefix_etb_ethiopian_birr():
     assert csv_loaders.parse_range("ZAR 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_ars_argentinischer_peso():
+    """``ARS`` (Argentinischer Peso, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer argentinische Rhodochrosit-/Pegmatit-Sammler.
+
+    Argentinien ist Herkunft der weltweit ikonischen Capillitas-/Catamarca-
+    Rhodochrosit-Stalaktiten (Nationalstein Argentiniens seit 1994, Type-
+    Locality-Klassiker mit rosa Band-Schnitten) sowie der Sierra-de-Cordoba-
+    Pegmatit-Provinz (Beryll/Turmalin/Spodumen) und der Puna-de-Atacama-
+    Boratlagerstaetten (Ulexit/Hydroborocalcit). Sammler-Handels-Konvention
+    in Direkt-Verkaeufen aus Buenos-Aires-Mineralien-Boersen und in geerbten
+    Sammlungs-Etiketten aus dem Museo Argentino de Ciencias Naturales.
+
+    Bisher fielen alle Formen mit ``ARS``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei den anderen Regional-Waehrungen vor deren Aufnahme in die
+    Vokabel-Liste): ``ARS 50000 ± 5000`` -> ``(50000, 50000)`` via
+    inverted-range-Kollaps (Toleranz verloren); ``ARS 500(20)`` ->
+    ``(500, 20)`` (semantisch falscher Range statt (480, 520)).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty.
+    assert csv_loaders.parse_range("ARS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS 50000 ± 5000") == pytest.approx((45000.0, 55000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("ARS 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ARS 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen.
+    assert csv_loaders.parse_range("ca. ARS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~ARS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa ARS 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("ARS 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase.
+    assert csv_loaders.parse_range("ars 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Ars 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ArS 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("ARS 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("ARS 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("ARS 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS 50000 ± 5000 (Capillitas)") == pytest.approx((45000.0, 55000.0))
+    assert csv_loaders.parse_range("ARS 100(2) [Catamarca]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit ARS-Praefix.
+    assert csv_loaders.parse_range("ARS > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens ARS 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("ARS 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("ARS 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("ARS 500 to 1000") == (500.0, 1000.0)
+    # ARS OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("ARS") == (None, None)
+    assert csv_loaders.parse_range("ARS ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ETB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("PEN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MMK 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("IDR 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
