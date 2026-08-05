@@ -6,7 +6,26 @@ from pathlib import Path
 
 from stonebook.db.repository import ImageRepo
 
-IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".heic"}
+# ``.webp`` ergaenzt die klassischen Raster-Formate (jpg/jpeg/png/bmp/tif/tiff)
+# und das iOS-Kamera-Native ``.heic`` um das Google-VP8L/VP8-Format, das seit
+# Android 4.2.1 (2013) systemseitig als Default-Screenshot-Format schreibt und
+# in den letzten Jahren zum de-facto-Standard fuer Web-Bilder (WhatsApp-Media-
+# Cache, Web-Referenz-Bilder aus mindat.org/mineralienatlas.de/gemdat.org,
+# Discord-/Signal-Bild-Uploads) geworden ist. Pillow unterstuetzt WebP nativ
+# seit Version 5.0 (2018, siehe libwebp-Wrapper), sodass der EXIF-/Groessen-
+# Loader in ``_exif_and_size`` das Format ohne zusaetzliche Abhaengigkeit
+# oeffnen kann. Bisher fielen alle ``.webp``-Bilder im Objekt-Ordner still
+# durch das Suffix-Filter (``f.suffix.lower() not in IMG_EXT`` in
+# :func:`index_images` und im ``NewObjectWizard._collect_images``), sodass ein
+# Sammler, der Referenz-Screenshots von Mineralienatlas oder Foto-Aufnahmen
+# vom Android-Handy per WhatsApp-Backup direkt in den Objekt-Ordner kopierte,
+# die Bilder in der DB-Index-Ansicht nicht sah - und via Galerie-Filter
+# (``*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.heic``) auch keine Moeglichkeit
+# hatte, sie per "Bilder hinzufuegen"-Dialog anzuhaengen. Symmetrisch zur
+# HEIC-Achse (iOS-Kamera-Default seit iOS 11), damit die App die beiden
+# aktuell dominierenden Smartphone-Kamera-Formate der jeweiligen Plattform-
+# Familie abdeckt.
+IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".heic", ".webp"}
 
 _FOLDER_TO_CATEGORY = {
     "übersicht": "Uebersicht",

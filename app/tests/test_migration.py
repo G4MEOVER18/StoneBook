@@ -83,6 +83,80 @@ def test_folder_category_mapping():
     assert folder_category("├£bersicht") == "Uebersicht"
 
 
+def test_img_ext_deckt_webp_ab():
+    """``.webp`` gehoert zu den erkannten Raster-Formaten des Index-Filters.
+
+    Google-VP8L/VP8-Format, systemseitiger Default-Screenshot-Format-Setz auf
+    Android seit 4.2.1 (2013) und de-facto-Standard fuer WhatsApp-Media-Cache,
+    Discord-/Signal-Uploads und Web-Referenz-Bilder aus mindat.org /
+    mineralienatlas.de / gemdat.org. Ergaenzt symmetrisch zur bereits
+    vorhandenen HEIC-Achse (iOS-Kamera-Default seit iOS 11) die Suffix-Menge
+    des Index-Filters um das Google-Plattform-Pendant, damit ein Sammler, der
+    Referenz-Screenshots oder Handy-Fotos per WhatsApp-Backup direkt in den
+    Objekt-Ordner kopiert, die Bilder in der DB-Index-Ansicht sehen kann
+    (statt still durch das Suffix-Filter zu fallen).
+
+    Case-Insensitivitaet ist bereits durch die ``f.suffix.lower()``-
+    Normalisierung in :func:`index_images` und im ``NewObjectWizard``
+    garantiert (die Menge selbst enthaelt nur lowercase Suffixes, spiegelt
+    die uebrigen Eintraege). Anker-Test: die bisherigen Suffixes bleiben
+    unveraendert (jpg/jpeg/png/bmp/tif/tiff/heic).
+    """
+    from stonebook.migration.image_indexer import IMG_EXT
+    assert ".webp" in IMG_EXT
+    for existing in (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".heic"):
+        assert existing in IMG_EXT
+
+
+def test_index_images_findet_webp_datei(tmp_path):
+    """End-to-End: ein ``.webp``-Bild im Objekt-Ordner landet in der images-Tabelle.
+
+    Deckt den echten Index-Pfad (``index_images`` mit ``Path.rglob``,
+    Kategorie-Zuordnung aus dem Unterordner-Namen, EXIF-/Groessen-Read via
+    Pillow) und stellt sicher, dass die Suffix-Menge-Erweiterung nicht nur
+    lokal wirkt, sondern das Bild bis in die DB durchgereicht wird. Ein
+    parallel angelegtes ``.jpg`` im gleichen Kategorie-Ordner verankert die
+    Regress-Symmetrie: beide Formate werden gefunden, beide bekommen die
+    gleiche Kategorie und einen SHA256-Hash.
+    """
+    from PIL import Image
+
+    from stonebook.db.database import open_db
+    from stonebook.db.repository import ImageRepo, ObjectRepo
+    from stonebook.migration.image_indexer import index_images
+
+    root = tmp_path
+    (root / "meta").mkdir()
+    obj_dir = root / "objects" / "OBJ_0001" / "Kamera"
+    obj_dir.mkdir(parents=True)
+    Image.new("RGB", (20, 10), color=(255, 0, 0)).save(obj_dir / "test.webp")
+    Image.new("RGB", (20, 10), color=(0, 255, 0)).save(obj_dir / "anker.jpg")
+
+    db_file = tmp_path / "stonebook.sqlite3"
+    conn = open_db(db_file)
+    try:
+        objects = ObjectRepo(conn)
+        objects.create("OBJ_0001", Name="Test")
+        images = ImageRepo(conn)
+        n = index_images(root, images, known_ids={"OBJ_0001"},
+                         alias_map={}, log=lambda *_: None)
+        assert n == 2
+        rows = conn.execute(
+            "SELECT dateiname, kategorie, sha256, breite_px, hoehe_px "
+            "FROM images WHERE obj_id = 'OBJ_0001' ORDER BY dateiname").fetchall()
+        namen = [r["dateiname"] for r in rows]
+        assert namen == ["anker.jpg", "test.webp"]
+        for r in rows:
+            assert r["kategorie"] == "Kamera"
+            # Pillow konnte das Format oeffnen und Groessen auslesen
+            assert r["breite_px"] == 20
+            assert r["hoehe_px"] == 10
+            # SHA256 hex-String, 64 Zeichen
+            assert len(r["sha256"]) == 64
+    finally:
+        conn.close()
+
+
 def test_platzhalter_status(migrated):
     conn, _ = migrated
     row = conn.execute("SELECT status FROM objects WHERE obj_id = 'OBJ_0500'").fetchone()
