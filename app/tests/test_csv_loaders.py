@@ -7906,6 +7906,116 @@ def test_parse_range_leading_currency_prefix_dop_dominikanischer_peso():
     assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_ngn_nigerianischer_naira():
+    """``NGN`` (Nigerianischer Naira, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer nigerianische Turmalin-/Aquamarin-/Saphir-/
+    Tantalit-Sammler.
+
+    Nigeria zaehlt zu den weltweit relevanten Sammler-Herkunfts-Regionen
+    fuer Pegmatit-Material: Oyo-State-Pegmatit-Guertel (Ogbomosho/Ibadan-
+    Region mit klassischem gruenen/blauen/rosa Elbait-Turmalin, teils in
+    dm-Groesse, sowie Rubellit-Kristallen mit tiefroter Farbe, seit den
+    1990ern eine der weltweit fuehrenden Turmalin-Sammler-Quellen), Kaduna-
+    State (Rubin und blauer Saphir aus alluvialen Fundstellen der Kaduna-
+    River-Ebene und der Jos-Plateau-Randregion), Nasarawa-State (Tantalit-/
+    Columbit-Vorkommen und Aquamarin-/Heliodor-Beryll aus Pegmatit-
+    Gaengen), Plateau-State (das historische Jos-Plateau-Zinn-Revier mit
+    Kassiterit-/Wolframit-Alluvium und Xenotim-/Monazit-Nebenprodukten),
+    Kogi-State (Saphir-/Aquamarin-Pegmatite), Cross-River-State (Aquamarin/
+    Turmalin/Topas) und die Osun-State-Talk-/Serpentin-Vorkommen sowie die
+    Zamfara-State-Gold-Alluvium-Region. Die nigerianische Turmalin-Region
+    ist seit der Ilorin-Turmalin-Entdeckung Ende der 1990er einer der
+    globalen Standard-Handelsplaetze der Turmalin-Sammler-Welt.
+
+    Erste West-Afrika-Achse in der Sammler-Regional-Waehrungs-Reihe: NGN
+    ergaenzt die bereits abgedeckte Ost-Afrika-/Madagassische Reihe (TZS-
+    Tansania fuer Merelani-Tansanit / Umba-Rubin, KES-Kenia fuer Taita-
+    Hills-Tsavorit / John-Saul-Mine, MGA-Madagaskar fuer Antsirabe-
+    Turmalin / Ilakaka-Sapphir) sowie die suedafrikanisch-namibische Achse
+    (ZAR / NAD fuer Tsumeb-Dioptas / Rossing-Aquamarin) und die aegyptisch-
+    aethiopisch-marokkanische MENA-Reihe (EGP / ETB / MAD) um die West-
+    afrikanische Pegmatit-Guertel-Region der Ilorin-Ogbomosho-Turmalin-
+    Fundstellen.
+
+    Handels-Konvention: NGN-Preise in Direkt-Verkaeufen aus Lagos-/
+    Ibadan-/Jos-Haendlern (Ilorin-Turmalin-Boersen, Jos-Mineralien-
+    Maerkte), in Auktions-Katalogen aus englisch-sprachigen west-
+    afrikanischen Aufkaeufer-Ketten (Nigerian Mineral Traders Association-
+    Bestand, geerbte britische Kolonial-Provenienzen des Geological
+    Survey of Nigeria) und in Museums-Etiketten des Natural History
+    Museum University of Ibadan sowie des Nigerian Institute of Mining
+    and Geosciences Jos.
+
+    Bisher fielen alle Formen mit ``NGN``-Praefix UND Uncertainty-
+    Struktur still auf die Fallback-Zahl-Extraktion durch (identischer
+    Bug-Effekt wie bei BRL/MXN/PLN/CZK/HUF/RUB/BGN/RON/UAH/PKR/TZS/PEN/
+    COP/MMK/CLP/ISK/LKR/BOB/IDR/KES/MGA/NAD/ETB/ARS/EGP/DOP vor deren
+    Aufnahme in die Vokabel-Liste): ``NGN 500 ± 50`` -> ``(500, 500)`` via
+    inverted-range-Kollaps (Toleranz verloren); ``NGN 500(20)`` ->
+    ``(500, 20)`` (semantisch falscher Range statt (480, 520)).
+    Kollisionsfrei zu Fremdwoertern: ``NGN`` ist keine gaengige EN-/DE-
+    Wort-Sequenz; der Buchstaben-Cluster ``ngn`` existiert in keinem
+    gaengigen Vokabular als Wort-Anfang, und die ``\\b``-Wortgrenze
+    hinter dem Code matcht ausschliesslich den ISO-Code-Praefix. Case-
+    Insensitiv spiegelt die uebrige Vokabel-Liste (Excel-Autocorrect
+    ``Ngn`` mit Capitalize-First-Word und lowercase ``ngn`` aus
+    Konsolen-Tools ohne Caps-Lock).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty. Der Praefix wird gestrippt,
+    # die publizierte Toleranz laeuft in den _PLUS_MINUS_UNCERTAINTY-Zweig.
+    assert csv_loaders.parse_range("NGN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NGN 150000 ± 15000") == pytest.approx((135000.0, 165000.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("NGN 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("NGN 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen (Rekursion loest die Verkettung transparent auf).
+    assert csv_loaders.parse_range("ca. NGN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NGN ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~NGN 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa NGN 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("NGN 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NGN 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase-
+    # Notation aus Konsolen-Tools ohne Caps-Lock.
+    assert csv_loaders.parse_range("ngn 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Ngn 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NgN 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("NGN 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("NGN 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("NGN 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NGN 150000 ± 15000 (Ogbomosho)") == pytest.approx((135000.0, 165000.0))
+    assert csv_loaders.parse_range("NGN 100(2) [Jos Plateau]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit NGN-Praefix.
+    assert csv_loaders.parse_range("NGN > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens NGN 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("NGN 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("NGN 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("NGN 500 to 1000") == (500.0, 1000.0)
+    # NGN OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("NGN") == (None, None)
+    assert csv_loaders.parse_range("NGN ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DOP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EGP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ETB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
