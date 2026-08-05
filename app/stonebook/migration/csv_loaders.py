@@ -959,6 +959,43 @@ _HAS_RANGE_TAIL = re.compile(
     re.IGNORECASE,
 )
 
+# Trailing-Vergleichs-Suffix am String-Ende: spiegelt :data:`_COMPARISON_WORD_LOWER`/
+# :data:`_COMPARISON_WORD_UPPER` auf die Suffix-Achse. In EN- und DE-Sammler-
+# Notizen und Auktions-/Katalog-Texten steht die Ein-Seiten-Semantik oft NACH
+# dem Wert (``500 or more``, ``500 oder mehr``, ``100 und mehr``, ``5 or above``,
+# ``500 upwards``) statt davor (``at least 500``, ``mindestens 500``); ohne
+# Strip fielen alle Formen still auf die Fallback-Zahl-Extraktion durch und
+# lieferten Punkt-Range (500, 500) statt der publizierten offenen Grenze -
+# identischer silent-data-loss-Effekt wie bei den Leading-Vergleichs-Markern
+# vor deren Aufnahme in :data:`_COMPARISON_WORD_LOWER`/:data:`_COMPARISON_WORD_UPPER`.
+# Trailing-Satzzeichen ``[.,;:!?]?`` wie bei :data:`_APPROX_VALUE_SUFFIX`
+# zugelassen (Marker + Zeilen-End-Punkt aus Excel-Autocomplete, Marker +
+# Notiz-Komma). Case-insensitiv. Der ``\s+``-Anker links vom Marker
+# unterscheidet ``5 or more`` (Trailing-Comparison) von Composita, in denen
+# ``or``/``and`` Teil eines Wortes ist (``for``/``foreground``/``handled``).
+_TRAILING_COMPARISON_LOWER = re.compile(
+    r"\s+(?:"
+    r"or\s+(?:more|above|higher|greater|up)|"
+    r"and\s+(?:more|above|higher|up)|"
+    r"upwards|"
+    r"oder\s+(?:mehr|dar(?:ü|ue|u)ber|h(?:ö|oe|o)her)|"
+    r"und\s+(?:mehr|dar(?:ü|ue|u)ber|h(?:ö|oe|o)her)|"
+    r"aufw(?:ä|ae|a)rts"
+    r")\s*[.,;:!?]?\s*$",
+    re.IGNORECASE,
+)
+_TRAILING_COMPARISON_UPPER = re.compile(
+    r"\s+(?:"
+    r"or\s+(?:less|below|lower|fewer|down)|"
+    r"and\s+(?:less|below|lower|down)|"
+    r"downwards|"
+    r"oder\s+(?:weniger|darunter|niedriger|geringer)|"
+    r"und\s+(?:weniger|darunter|niedriger|geringer)|"
+    r"abw(?:ä|ae|a)rts"
+    r")\s*[.,;:!?]?\s*$",
+    re.IGNORECASE,
+)
+
 # Wissenschaftliche Unsicherheits-Notation "N ± M" (Mittelwert plus/minus Toleranz).
 # In Mineralogie-Tabellen und -Publikationen der Standard-Weg, Messgenauigkeit zu
 # notieren: ``Dichte 2.65 ± 0.05`` = "Wert 2.65, Toleranz 0.05, Range [2.60, 2.70]".
@@ -2327,6 +2364,27 @@ def parse_range(text) -> tuple[float | None, float | None]:
     word_hi = _COMPARISON_WORD_UPPER.match(s)
     if word_hi:
         rest = s[word_hi.end():].strip()
+        if rest:
+            _inner_lo, inner_hi = parse_range(rest)
+            return None, inner_hi
+    # Trailing-Vergleichs-Suffix: die Suffix-Achse zu den bereits abgedeckten
+    # Leading-Wort-Vergleichs-Markern. ``500 or more`` -> (500, None) statt
+    # (500, 500); ``500 oder weniger`` -> (None, 500). Marker wird gestrippt,
+    # Rest via parse_range rekursiv geparst, und das Ergebnis auf eine offene
+    # Bereichs-Grenze abgebildet - spiegelt strukturell die Bind-Semantik der
+    # Leading-Zweige (untere Grenze aus lo, obere Grenze aus hi). Siehe
+    # :data:`_TRAILING_COMPARISON_LOWER`/:data:`_TRAILING_COMPARISON_UPPER`
+    # fuer Details zur Marker-Menge, Kollisions-Schutz und Trailing-
+    # Satzzeichen-Konvention.
+    trail_lo = _TRAILING_COMPARISON_LOWER.search(s)
+    if trail_lo:
+        rest = s[:trail_lo.start()].strip()
+        if rest:
+            inner_lo, _inner_hi = parse_range(rest)
+            return inner_lo, None
+    trail_hi = _TRAILING_COMPARISON_UPPER.search(s)
+    if trail_hi:
+        rest = s[:trail_hi.start()].strip()
         if rest:
             _inner_lo, inner_hi = parse_range(rest)
             return None, inner_hi

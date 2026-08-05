@@ -5868,6 +5868,98 @@ def test_parse_range_range_starter_wort_dual_use():
     assert csv_loaders.parse_range("at most 5") == (None, 5.0)
 
 
+def test_parse_range_trailing_vergleichs_suffix():
+    """Trailing-Vergleichs-Suffix am Wert-Ende wird als offene Range-Grenze
+    geparst - Suffix-Achse zu den bereits abgedeckten Leading-Wort-Vergleichs-
+    Markern aus :func:`test_parse_range_einseitige_wort_vergleichs_grenze`.
+
+    Sammler-Notizen, Auktions-/Katalog-Texte und geerbte EN-/DE-Bestaende
+    setzen die Ein-Seiten-Semantik oft NACH dem Wert - "500 or more" statt
+    "at least 500", "500 oder mehr" statt "mindestens 500", "5 upwards" statt
+    "from 5". Bisher fielen alle Trailing-Formen still auf die Fallback-Zahl-
+    Extraktion durch: der Wort-Marker wurde als Freitext gelesen und der
+    nackte Wert als Punkt-Range (500, 500) geliefert - die publizierte
+    Ein-Seiten-Semantik ging stille verloren und die Migration schrieb
+    Wert_min UND Wert_max gleich statt der korrekten Ein-Seiten-Setzung mit
+    NULL an der gegenueberliegenden Grenze. Symmetrischer Bugfix zur
+    Leading-Wort-Vergleichs-Grenze-Erweiterung.
+    """
+    # Untere Grenze (>=): EN-Formen mappen auf (Wert, None).
+    assert csv_loaders.parse_range("500 or more") == (500.0, None)
+    assert csv_loaders.parse_range("500 or above") == (500.0, None)
+    assert csv_loaders.parse_range("500 or higher") == (500.0, None)
+    assert csv_loaders.parse_range("500 or greater") == (500.0, None)
+    assert csv_loaders.parse_range("500 or up") == (500.0, None)
+    assert csv_loaders.parse_range("500 and up") == (500.0, None)
+    assert csv_loaders.parse_range("500 and more") == (500.0, None)
+    assert csv_loaders.parse_range("500 and above") == (500.0, None)
+    assert csv_loaders.parse_range("500 upwards") == (500.0, None)
+    # Untere Grenze (>=): DE-Formen mappen auf (Wert, None).
+    assert csv_loaders.parse_range("500 oder mehr") == (500.0, None)
+    assert csv_loaders.parse_range("500 und mehr") == (500.0, None)
+    assert csv_loaders.parse_range("500 oder darüber") == (500.0, None)
+    assert csv_loaders.parse_range("500 oder darueber") == (500.0, None)
+    assert csv_loaders.parse_range("500 oder höher") == (500.0, None)
+    assert csv_loaders.parse_range("500 oder hoeher") == (500.0, None)
+    assert csv_loaders.parse_range("500 aufwärts") == (500.0, None)
+    assert csv_loaders.parse_range("500 aufwaerts") == (500.0, None)
+    # Obere Grenze (<=): EN-Formen mappen auf (None, Wert).
+    assert csv_loaders.parse_range("500 or less") == (None, 500.0)
+    assert csv_loaders.parse_range("500 or below") == (None, 500.0)
+    assert csv_loaders.parse_range("500 or lower") == (None, 500.0)
+    assert csv_loaders.parse_range("500 or fewer") == (None, 500.0)
+    assert csv_loaders.parse_range("500 or down") == (None, 500.0)
+    assert csv_loaders.parse_range("500 and down") == (None, 500.0)
+    assert csv_loaders.parse_range("500 and less") == (None, 500.0)
+    assert csv_loaders.parse_range("500 and below") == (None, 500.0)
+    assert csv_loaders.parse_range("500 downwards") == (None, 500.0)
+    # Obere Grenze (<=): DE-Formen mappen auf (None, Wert).
+    assert csv_loaders.parse_range("500 oder weniger") == (None, 500.0)
+    assert csv_loaders.parse_range("500 und weniger") == (None, 500.0)
+    assert csv_loaders.parse_range("500 oder darunter") == (None, 500.0)
+    assert csv_loaders.parse_range("500 oder niedriger") == (None, 500.0)
+    assert csv_loaders.parse_range("500 oder geringer") == (None, 500.0)
+    assert csv_loaders.parse_range("500 abwärts") == (None, 500.0)
+    assert csv_loaders.parse_range("500 abwaerts") == (None, 500.0)
+    # Case-Insensitivitaet (Excel-Autocorrect, Fliesstext-Titel):
+    assert csv_loaders.parse_range("500 OR MORE") == (500.0, None)
+    assert csv_loaders.parse_range("500 Oder Mehr") == (500.0, None)
+    assert csv_loaders.parse_range("500 OR LESS") == (None, 500.0)
+    # Trailing-Satzzeichen (Excel-Autocomplete, Notiz-Komma) wird toleriert:
+    assert csv_loaders.parse_range("500 or more.") == (500.0, None)
+    assert csv_loaders.parse_range("500 or more,") == (500.0, None)
+    assert csv_loaders.parse_range("500 or less!") == (None, 500.0)
+    # Dezimal-Zahlen und DE-Komma-Locale:
+    assert csv_loaders.parse_range("2.65 or more") == (2.65, None)
+    assert csv_loaders.parse_range("2,65 oder mehr") == (2.65, None)
+    # Kombination mit Waehrungs-Praefix (Auktions-Katalog-Notation):
+    assert csv_loaders.parse_range("CHF 500 or more") == (500.0, None)
+    assert csv_loaders.parse_range("$500 or more") == (500.0, None)
+    assert csv_loaders.parse_range("EUR 500 or less") == (None, 500.0)
+    # Kombination mit Approx-Praefix / Trailing-Approx-Suffix:
+    assert csv_loaders.parse_range("ca. 500 or more") == (500.0, None)
+    assert csv_loaders.parse_range("etwa 500 oder mehr") == (500.0, None)
+    assert csv_loaders.parse_range("500 or more, ca.") == (500.0, None)
+    # Range mit Trailing-Comparison: bindet an die kollabierten Grenzen des
+    # rekursiv geparsten Rests (symmetrisch zur Leading-Semantik):
+    assert csv_loaders.parse_range("500-1000 or more") == (500.0, None)
+    assert csv_loaders.parse_range("500-1000 or less") == (None, 1000.0)
+    # Kollisions-Schutz: Marker NUR am String-Ende. Zwischen zwei Zahlen
+    # bleibt "or"/"and" als Freitext bzw. Range-Separator.
+    assert csv_loaders.parse_range("500 or 1000") == (500.0, 1000.0)
+    # Kollisions-Schutz: kein Match ohne Whitespace vor dem Marker
+    # (``for morning``/``foreground``/``handled`` enthalten ``or``/``and``
+    # in einem Wort und werden korrekt NICHT als Vergleichs-Suffix
+    # interpretiert). Der Wert bleibt Punkt-Range.
+    assert csv_loaders.parse_range("500 for morning") == (500.0, 500.0)
+    # Regress-Anker: Bestandsverhalten unveraendert - reine Zahlen liefern
+    # Punkt-Range, Bereiche echte Ranges, Currency-Suffix bleibt ohne
+    # Comparison-Marker unangetastet.
+    assert csv_loaders.parse_range("500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500 CHF") == (500.0, 500.0)
+    assert csv_loaders.parse_range("500-1000") == (500.0, 1000.0)
+
+
 def test_parse_range_leading_currency_prefix_mit_uncertainty():
     """Leading-Waehrungs-Prefix am Wert-Anfang (ISO-4217-Codes CHF/USD/EUR/GBP/JPY/...
     und Waehrungs-Symbole ``$``/``€``/``£``/``¥``/... plus Compound-``$``-Prefixe
