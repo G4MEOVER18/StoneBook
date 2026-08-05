@@ -7768,6 +7768,78 @@ def test_parse_range_leading_currency_prefix_ars_argentinischer_peso():
     assert csv_loaders.parse_range("BOB 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_egp_egyptian_pound():
+    """``EGP`` (Egyptian Pound, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer aegyptische Sammler (Ostwueste-Beryll, Sinai-
+    Tuerkis/Malachit, Aswan-Granit, Bahariya-Fe-Oxid).
+
+    Aegypten ist historisch (Kleopatra-Smaragde aus Wadi Sikait/Zabara/
+    Jebel Sikait der Ostwueste, pharaonische Tuerkis-Bergwerke von
+    Serabit el-Khadim auf dem Sinai) und aktuell eine relevante Sammler-
+    Herkunftsregion: Aswan (rosa Aswan-Granit), Bahariya-Oase (Fe-Oxid-
+    /Haematit-Konkretionen), St.-Katherine-Sinai (Chrysokoll/Malachit/
+    Azurit). Sammler-Handels-Konvention: EGP-Preise in Direkt-Verkaeufen
+    aus Kairo-Bazaar-Haendlern (Khan el-Khalili) und in geerbten Etiketten
+    aus britisch-/franzoesisch-aegyptologischer Kolonial-Provenienz.
+
+    Bisher fielen alle Formen mit ``EGP``-Praefix UND Uncertainty-Struktur
+    still auf die Fallback-Zahl-Extraktion durch (identischer Bug-Effekt
+    wie bei allen uebrigen Regional-Waehrungen vor deren Aufnahme in die
+    Vokabel-Liste): ``EGP 500 ± 50`` -> ``(500, 500)`` via inverted-range-
+    Kollaps (Toleranz verloren); ``EGP 500(20)`` -> ``(500, 20)``
+    (semantisch falscher Range statt (480, 520)).
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty.
+    assert csv_loaders.parse_range("EGP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EGP 15000 ± 1500") == pytest.approx((13500.0, 16500.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("EGP 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("EGP 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen.
+    assert csv_loaders.parse_range("ca. EGP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EGP ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~EGP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa EGP 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("EGP 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EGP 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase.
+    assert csv_loaders.parse_range("egp 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Egp 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EgP 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("EGP 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("EGP 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("EGP 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EGP 15000 ± 1500 (Wadi Sikait)") == pytest.approx((13500.0, 16500.0))
+    assert csv_loaders.parse_range("EGP 100(2) [Sinai]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit EGP-Praefix.
+    assert csv_loaders.parse_range("EGP > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens EGP 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("EGP 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("EGP 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("EGP 500 to 1000") == (500.0, 1000.0)
+    # EGP OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("EGP") == (None, None)
+    assert csv_loaders.parse_range("EGP ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ETB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 

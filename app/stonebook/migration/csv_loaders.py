@@ -557,6 +557,33 @@ _APPROX_VALUE_PREFIX = re.compile(
 # uebrige Vokabel-Liste (Excel-Autocorrect ``Cop`` mit Capitalize-First-
 # Word und lowercase ``cop`` aus Konsolen-Tools).
 #
+# ``EGP`` (Egyptian Pound, ISO-4217) ergaenzt die Regional-Waehrungs-Vokabel
+# um die Nord-Ost-Afrika-/MENA-Achse neben ``ETB`` (Aethiopien) und ``MAD``
+# (Marokko). Aegypten ist historisch und aktuell eine wichtige Sammler-
+# Herkunftsregion: die Ostwueste (Wadi Sikait/Zabara/Jebel Sikait als die
+# antiken "Smaragd-Minen der Kleopatra", historisch fuehrende Beryll-
+# Vorkommen des roemischen Reiches), die Sinai-Halbinsel (Serabit el-Khadim
+# mit den historischen Tuerkis-Bergwerken der Pharaonen und Malachit-
+# /Chrysokoll-Assoziationen), Aswan (der klassische rosa Aswan-Granit und
+# Beryll aus dem oestlichen Wuestenrand), die Bahariya-Oase (Fe-Oxid-/
+# Haematit-Konkretionen und die klassischen Bahariya-Fossilien) und die
+# St.-Katherine-Region auf dem Sinai (Kupfer-Sekundaerminerale
+# Chrysokoll/Malachit/Azurit). Sammler-Handels-Konvention: EGP-Preise
+# in Direkt-Verkaeufen aus Kairo-Bazaar-Haendlern (Khan el-Khalili) und
+# aus geerbten Sammlungs-Etiketten aus britischer/franzoesischer Kolonial-
+# /Aegyptologen-Provenienz (Petrie-Museum-Nachlaesse, Museum-of-Egyptian-
+# Antiquities-Bestand). Bisher fielen alle Formen mit ``EGP``-Praefix UND
+# Uncertainty-Struktur still auf die Fallback-Zahl-Extraktion durch
+# (identischer Bug-Effekt wie bei allen uebrigen Regional-Waehrungen vor
+# deren Aufnahme in die Vokabel-Liste): ``EGP 500 ± 50`` -> ``(500, 500)``
+# via inverted-range-Kollaps (Toleranz verloren); ``EGP 500(20)`` ->
+# ``(500, 20)`` (semantisch falscher Range statt (480, 520)). Kollisions-
+# frei zu Fremdwoertern: ``EGP`` ist keine gaengige EN-/DE-Wort-Sequenz;
+# die ``\b``-Wortgrenze hinter dem Code matcht ausschliesslich den ISO-
+# Code-Praefix. Case-Insensitiv spiegelt die uebrige Vokabel-Liste
+# (Excel-Autocorrect ``Egp`` mit Capitalize-First-Word und lowercase
+# ``egp`` aus Konsolen-Tools ohne Caps-Lock).
+#
 # ``PEN`` (Peruvian Sol, ISO-4217) ergaenzt die Regional-Waehrungs-Vokabel
 # um die zweite Andes-Region-Achse neben ``BRL`` (Brasilien) und ``MXN``
 # (Mexiko) und um eine der wichtigsten Mineralien-Sammler-Herkunftslaender
@@ -599,7 +626,7 @@ _LEADING_CURRENCY_PREFIX = re.compile(
     r"^\s*(?:"
     r"(?:CHF|EUR|USD|GBP|JPY|CAD|AUD|NZD|SEK|NOK|DKK"
     r"|PLN|CZK|HUF|RUB|BGN|CNY|HKD|SGD|INR|AED|ILS|ZAR"
-    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR|TZS|PEN|COP|MMK|CLP|ISK|LKR|BOB|IDR|KES|MGA|NAD|ETB|ARS)\b"
+    r"|BRL|MXN|TRY|THB|KRW|MAD|RON|UAH|PKR|TZS|PEN|COP|MMK|CLP|ISK|LKR|BOB|IDR|KES|MGA|NAD|ETB|ARS|EGP)\b"
     r"|(?:HK|US|NZ|AU|CA|SG|NT)\$"
     r"|[$€£¥¢₹₩₽₺₪₣₦₫₴₵]"
     r")\s*",
