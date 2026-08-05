@@ -108,6 +108,95 @@ def test_img_ext_deckt_webp_ab():
         assert existing in IMG_EXT
 
 
+def test_img_ext_deckt_jfif_ab():
+    """``.jfif`` gehoert zu den erkannten Raster-Formaten des Index-Filters.
+
+    JFIF-JPEG-Alias-Suffix (JPEG File Interchange Format 1.02, ISO/IEC
+    10918-5), das Microsoft Edge/Internet Explorer seit Windows 10 im
+    "Bild speichern unter..."-Dialog schreibt, wenn die Quell-URL keine
+    explizite Datei-Endung enthaelt (typischer Fall bei CMS-basierten
+    Foto-Katalogen: mindat.org/photo/1234567, mineralienatlas.de/lexikon/
+    ...?showall=1&image=..., macrocrystal.com/gallery/... - der Server
+    liefert Content-Type: image/jpeg ohne .jpg im Pfad, Edge fallback-
+    waehlt die JFIF-Standard-Endung statt .jpg). Der Datei-Inhalt ist
+    reines JPEG; Pillow oeffnet ``.jfif`` transparent ueber den JPEG-
+    Decoder, sodass der EXIF-/Groessen-Loader in ``_exif_and_size`` das
+    Format ohne zusaetzliche Abhaengigkeit oeffnen kann.
+
+    Bisher fielen alle ``.jfif``-Referenz-Bilder still durch das Suffix-
+    Filter (``f.suffix.lower() not in IMG_EXT``), sodass ein Sammler, der
+    via Windows-Edge Vergleichs-Fotos von mindat.org in den Objekt-Ordner
+    speicherte, die Bilder in der DB-Index-Ansicht nicht sah - der Bug ist
+    doppelt aergerlich, weil die Datei bei manuellem Umbenennen von
+    ``.jfif`` auf ``.jpg`` sofort funktioniert (identischer Bit-Inhalt).
+    Spiegelt strukturell die WebP-Aufnahme (Browser-/Web-Save-Format ohne
+    Kamera-Provenienz) auf die JPEG-Achse und schliesst die Windows-Edge-
+    JPEG-Save-Konvention symmetrisch zur bereits abgedeckten Android-
+    WhatsApp-WebP-Save-Konvention.
+
+    Case-Insensitivitaet ist bereits durch die ``f.suffix.lower()``-
+    Normalisierung in :func:`index_images` und im ``NewObjectWizard``
+    garantiert (die Menge selbst enthaelt nur lowercase Suffixes, spiegelt
+    die uebrigen Eintraege). Anker-Test: die bisherigen Suffixes bleiben
+    unveraendert (jpg/jpeg/png/bmp/tif/tiff/heic/webp).
+    """
+    from stonebook.migration.image_indexer import IMG_EXT
+    assert ".jfif" in IMG_EXT
+    for existing in (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".heic", ".webp"):
+        assert existing in IMG_EXT
+
+
+def test_index_images_findet_jfif_datei(tmp_path):
+    """End-to-End: ein ``.jfif``-Bild im Objekt-Ordner landet in der images-Tabelle.
+
+    Deckt den echten Index-Pfad (``index_images`` mit ``Path.rglob``,
+    Kategorie-Zuordnung aus dem Unterordner-Namen, EXIF-/Groessen-Read via
+    Pillow) und stellt sicher, dass die Suffix-Menge-Erweiterung nicht nur
+    lokal wirkt, sondern das Bild bis in die DB durchgereicht wird. Ein
+    parallel angelegtes ``.jpg`` im gleichen Kategorie-Ordner verankert die
+    Regress-Symmetrie: beide Formate werden gefunden, beide bekommen die
+    gleiche Kategorie und einen SHA256-Hash. Pillow schreibt die ``.jfif``-
+    Datei mit dem JPEG-Encoder (``Image.save(..., "JPEG")``), spiegelt damit
+    exakt die Windows-Edge-Save-Konvention (JFIF-Endung, JPEG-Bytes im Innern).
+    """
+    from PIL import Image
+
+    from stonebook.db.database import open_db
+    from stonebook.db.repository import ImageRepo, ObjectRepo
+    from stonebook.migration.image_indexer import index_images
+
+    root = tmp_path
+    (root / "meta").mkdir()
+    obj_dir = root / "objects" / "OBJ_0001" / "Kamera"
+    obj_dir.mkdir(parents=True)
+    Image.new("RGB", (20, 10), color=(255, 0, 0)).save(obj_dir / "edge.jfif", "JPEG")
+    Image.new("RGB", (20, 10), color=(0, 255, 0)).save(obj_dir / "anker.jpg")
+
+    db_file = tmp_path / "stonebook.sqlite3"
+    conn = open_db(db_file)
+    try:
+        objects = ObjectRepo(conn)
+        objects.create("OBJ_0001", Name="Test")
+        images = ImageRepo(conn)
+        n = index_images(root, images, known_ids={"OBJ_0001"},
+                         alias_map={}, log=lambda *_: None)
+        assert n == 2
+        rows = conn.execute(
+            "SELECT dateiname, kategorie, sha256, breite_px, hoehe_px "
+            "FROM images WHERE obj_id = 'OBJ_0001' ORDER BY dateiname").fetchall()
+        namen = [r["dateiname"] for r in rows]
+        assert namen == ["anker.jpg", "edge.jfif"]
+        for r in rows:
+            assert r["kategorie"] == "Kamera"
+            # Pillow konnte das Format oeffnen und Groessen auslesen
+            assert r["breite_px"] == 20
+            assert r["hoehe_px"] == 10
+            # SHA256 hex-String, 64 Zeichen
+            assert len(r["sha256"]) == 64
+    finally:
+        conn.close()
+
+
 def test_index_images_findet_webp_datei(tmp_path):
     """End-to-End: ein ``.webp``-Bild im Objekt-Ordner landet in der images-Tabelle.
 

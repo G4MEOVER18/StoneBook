@@ -25,7 +25,29 @@ from stonebook.db.repository import ImageRepo
 # HEIC-Achse (iOS-Kamera-Default seit iOS 11), damit die App die beiden
 # aktuell dominierenden Smartphone-Kamera-Formate der jeweiligen Plattform-
 # Familie abdeckt.
-IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".heic", ".webp"}
+#
+# ``.jfif`` ist das JFIF-JPEG-Alias-Suffix, das Microsoft Edge/Internet Explorer
+# seit Windows 10 im "Bild speichern unter..."-Dialog schreibt, wenn die
+# Quell-URL keine explizite Datei-Endung enthaelt (typischer Fall bei
+# CMS-basierten Foto-Katalogen: mindat.org/photo/1234567, mineralienatlas.de/
+# lexikon/index.php/Mineral?showall=1&image=..., macrocrystal.com/gallery/... -
+# der Server liefert Content-Type: image/jpeg ohne .jpg im Pfad, Edge fallback-
+# waehlt die JFIF-Standard-Endung statt .jpg). Der Datei-Inhalt ist reines
+# JPEG (JPEG File Interchange Format 1.02, ISO/IEC 10918-5); Pillow oeffnet
+# ``.jfif`` transparent ueber den JPEG-Decoder und liefert Format=JPEG,
+# Groessen und EXIF wie bei ``.jpg``. Bisher fielen alle ``.jfif``-Referenz-
+# Bilder still durch das Suffix-Filter, sodass ein Sammler, der via Windows-
+# Edge Vergleichs-Fotos von mindat.org in den Objekt-Ordner speicherte, die
+# Bilder in der DB-Index-Ansicht nicht sah - und via Galerie-Filter auch keine
+# Moeglichkeit hatte, sie per "Bilder hinzufuegen"-Dialog anzuhaengen. Der
+# Bug ist doppelt aergerlich, weil die Datei bei manuellem Umbenennen von
+# ``.jfif`` auf ``.jpg`` sofort funktioniert (identischer Bit-Inhalt), was
+# den still verlorenen Fall zu einem "ich habs doch gerade gespeichert, warum
+# ist es nicht da"-Support-Fall macht. Spiegelt strukturell die WebP-Aufnahme
+# (Browser-/Web-Save-Format ohne Kamera-Provenienz) auf die JPEG-Achse und
+# schliesst die Windows-Edge-JPEG-Save-Konvention symmetrisch zur bereits
+# abgedeckten Android-WhatsApp-WebP-Save-Konvention.
+IMG_EXT = {".jpg", ".jpeg", ".jfif", ".png", ".bmp", ".tif", ".tiff", ".heic", ".webp"}
 
 _FOLDER_TO_CATEGORY = {
     "übersicht": "Uebersicht",

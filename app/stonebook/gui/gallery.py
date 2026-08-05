@@ -158,7 +158,7 @@ class GalleryWidget(QWidget):
             return
         files, _ = QFileDialog.getOpenFileNames(
             self, "Bilder hinzufügen", "",
-            "Bilder (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.heic *.webp)")
+            "Bilder (*.jpg *.jpeg *.jfif *.png *.bmp *.tif *.tiff *.heic *.webp)")
         if not files:
             return
         label = self.cat_combo.currentText()
