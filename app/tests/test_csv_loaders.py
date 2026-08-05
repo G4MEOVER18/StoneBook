@@ -7840,6 +7840,72 @@ def test_parse_range_leading_currency_prefix_egp_egyptian_pound():
     assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
 
 
+def test_parse_range_leading_currency_prefix_dop_dominikanischer_peso():
+    """``DOP`` (Dominikanischer Peso, ISO 4217) als Leading-Waehrungs-Praefix -
+    Regional-Waehrung fuer dominikanische Sammler (Larimar-Pektolith,
+    Dominikanischer Bernstein).
+
+    Die Dominikanische Republik ist Herkunft von zwei weltweit ikonischen
+    Sammler-Materialien: Larimar (blauer Pektolith, Type-Locality Los
+    Chupaderos / Barahona-Provinz, einzige bekannte gem-quality Cu-haltige
+    Pektolith-Vorkommen) und Dominikanischem Bernstein (Cordillera
+    Septentrional / EI Valle-Minen, Miocene ~15-20 Ma, weltweit fuehrend
+    fuer Insekten-Inklusionen). Sammler-Handels-Konvention: DOP-Preise
+    in Direkt-Verkaeufen aus Santo-Domingo-/Puerto-Plata-Haendlern und
+    in Etiketten aus Larimar-/Bernstein-Fach-Katalogen.
+    """
+    # ISO-4217-Code + ±-Langform-Uncertainty.
+    assert csv_loaders.parse_range("DOP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DOP 15000 ± 1500") == pytest.approx((13500.0, 16500.0))
+    # IUCr-Kompakt-Uncertainty ``N(M)`` mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("DOP 5.5(3)") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("DOP 100(2)") == pytest.approx((98.0, 102.0))
+    # Kombination Approx-Praefix + Waehrungs-Praefix + Uncertainty in
+    # beiden Reihenfolgen.
+    assert csv_loaders.parse_range("ca. DOP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DOP ca. 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("~DOP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("circa DOP 5.5(3)") == pytest.approx((5.2, 5.8))
+    # Kombination Leading-Waehrung + Uncertainty + Trailing-Approx-Marker.
+    assert csv_loaders.parse_range("DOP 500 ± 50, ca.") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DOP 500 ± 50 geschaetzt") == pytest.approx((450.0, 550.0))
+    # Case-Insensitivitaet: Excel-Autocorrect-Capitalize und lowercase.
+    assert csv_loaders.parse_range("dop 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("Dop 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DoP 500 ± 50") == pytest.approx((450.0, 550.0))
+    # DE-Komma-Dezimal-Locale mit Leading-Waehrungs-Marker.
+    assert csv_loaders.parse_range("DOP 5,5 ± 0,3") == pytest.approx((5.2, 5.8))
+    assert csv_loaders.parse_range("DOP 2,65(5)") == pytest.approx((2.60, 2.70))
+    # Praefix + Uncertainty + Trailing-Einheit / Trailing-Klammer-
+    # Annotation (Fundort).
+    assert csv_loaders.parse_range("DOP 500 ± 50 pro Stufe") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("DOP 15000 ± 1500 (Los Chupaderos)") == pytest.approx((13500.0, 16500.0))
+    assert csv_loaders.parse_range("DOP 100(2) [Barahona]") == pytest.approx((98.0, 102.0))
+    # Vergleichs-Marker und mindestens/hoechstens-Formen mit DOP-Praefix.
+    assert csv_loaders.parse_range("DOP > 500") == (500.0, None)
+    assert csv_loaders.parse_range("mindestens DOP 500") == (500.0, None)
+    # Regress-Anker: Waehrungs-Praefix ohne Uncertainty bleibt rueckwaerts-
+    # kompatibel (reine Zahl-Extraktion nach Strip).
+    assert csv_loaders.parse_range("DOP 500") == (500.0, 500.0)
+    assert csv_loaders.parse_range("DOP 500-1000") == (500.0, 1000.0)
+    assert csv_loaders.parse_range("DOP 500 to 1000") == (500.0, 1000.0)
+    # DOP OHNE folgende Zahl faellt still auf (None, None) - spiegelt die
+    # Konvention der uebrigen Waehrungs-Praefixe.
+    assert csv_loaders.parse_range("DOP") == (None, None)
+    assert csv_loaders.parse_range("DOP ") == (None, None)
+    # Regress-Anker: bestehende Regional-Waehrungen bleiben unveraendert
+    # (der neue Code ergaenzt die Vokabel-Liste, ersetzt sie nicht).
+    assert csv_loaders.parse_range("CHF 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ARS 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("EGP 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("ETB 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("NAD 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("MGA 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("KES 500 ± 50") == pytest.approx((450.0, 550.0))
+    assert csv_loaders.parse_range("TZS 500 ± 50") == pytest.approx((450.0, 550.0))
+
+
 def test_read_ids_from_file_leerdatei_und_nur_kommentare_liefern_leere_liste(tmp_path):
     """Leere Datei / nur Kommentare -> [] (kein Fehler, aber auch keine IDs).
 
