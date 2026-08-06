@@ -33,6 +33,7 @@ class Statistik:
     objekte_mit_spaltbarkeit: int = 0
     objekte_mit_bruch: int = 0
     objekte_mit_beste_verwendung: int = 0
+    objekte_mit_farbe: int = 0
     objekte_mit_fundort: int = 0
     objekte_mit_koordinaten: int = 0
     objekte_mit_farbe: int = 0
@@ -808,6 +809,44 @@ class Statistik:
         return self._quote(self.objekte_mit_beste_verwendung)
 
     @property
+    def quote_mit_farbe_prozent(self) -> float | None:
+        # Coverage-Quote fuer Farbe_beobachtet (am Stueck beobachtete Eigenfarbe
+        # als Freitext-Notation: "milchig-weiss mit blaeulichem Schimmer",
+        # "honiggelb", "schwarz mit Pyrit-Einschluessen"). Spiegelt die
+        # Coverage-Reihe der optischen Enum-Diagnose-Achsen (Glanz/Transparenz)
+        # auf die Eigenfarben-Achse - waehrend Glanz die Oberflaechen-Reflexion
+        # und Transparenz die Lichtdurchlaessigkeit beschreiben, beziffert Farbe
+        # die spektrale Eigenfarbe des Stuecks, die fuer die visuelle Erst-
+        # Identifikation oft der wichtigste Pruefparameter ueberhaupt ist
+        # (Malachit-gruen, Lapislazuli-blau, Schwefelgelb, Hematit-rot - alle
+        # via Farbe sofort eingrenzbar). Komplementaer zu den Enum-Diagnose-
+        # Quoten (Magnetismus/Glanz/Transparenz/Spaltbarkeit/Bruch - kurze
+        # Enum-Skalen) auf der Freitext-Achse: Farbe-Vielfalt laesst sich
+        # mineralogisch nicht sinnvoll in 5-7 Enum-Werte zerlegen (jede Mineral-
+        # Familie hat eigenes Farb-Spektrum, das mit Lichtbedingungen und
+        # Verwitterung variiert), deshalb bleibt das Feld bewusst frei. Spiegelt
+        # auf die Frei-Achsen-Block die strukturierte Enum-Coverage-Reihe -
+        # nach Beste_Verwendung (letzte Enum-Achse, schliesst die strukturierte
+        # Reihe ab) folgt die Freitext-Coverage-Reihe (Farbe als visuelle
+        # Identifikations-Achse, dann Fundort als geografische Provenienz-
+        # Achse, dann Notizen als unstrukturierte Sonstiges-Achse). Aus
+        # Datenpflege-Sicht ein zentraler Indikator, weil Farbe der erste
+        # Beobachtungs-Schritt bei der Mineral-Bestimmung ist und ohne Farbe-
+        # Eintrag der ganze visuelle Pruefblock fehlt - Strichfarbe, Glanz und
+        # Transparenz greifen erst sinnvoll, wenn die Eigenfarbe als Referenz-
+        # Punkt steht. Komplementaer zu by_mineral/by_varietaet (mineralogische
+        # Klassifizierung) und quote_mit_glanz/quote_mit_transparenz (optische
+        # Enum-Diagnose): hier die Coverage-Sicht auf die Eigenfarbe-Achse.
+        # Niedriger Wert ist typisch in Migration-Restbestaenden aus alten
+        # CSV-Quellen, die Farbe nicht als separates Feld fuehrten (in der
+        # v1-CSV gibt es zwar eine ``Farbe``-Spalte, aber bei vielen historischen
+        # Eintraegen blieb sie leer, weil der Sammler die Farbe als
+        # offensichtlich annahm: "Quarz ist halt klar"). Whitespace zaehlt wie
+        # leer (spiegelt die has_farbe-Filter-Konvention der uebrigen Freitext-
+        # Coverage-Quoten Fundort/Notizen).
+        return self._quote(self.objekte_mit_farbe)
+
+    @property
     def quote_mit_fundort_prozent(self) -> float | None:
         # Coverage-Quote fuer Fundort (Fundort-Dokumentation) symmetrisch zu
         # Bildern/Funddatum/Wert/Gewicht/KI-Analyse/Mineral. Fundort ist die
@@ -1164,6 +1203,7 @@ class Statistik:
             "objekte_mit_bruch": self.objekte_mit_bruch,
             "objekte_mit_beste_verwendung": self.objekte_mit_beste_verwendung,
             "objekte_mit_transparenz": self.objekte_mit_transparenz,
+            "objekte_mit_farbe": self.objekte_mit_farbe,
             "objekte_mit_fundort": self.objekte_mit_fundort,
             "objekte_mit_koordinaten": self.objekte_mit_koordinaten,
             "objekte_mit_farbe": self.objekte_mit_farbe,
@@ -1665,6 +1705,7 @@ class Statistik:
                 self.quote_mit_bruch_prozent),
             "quote_mit_beste_verwendung_prozent": _round_or_none(
                 self.quote_mit_beste_verwendung_prozent),
+            "quote_mit_farbe_prozent": _round_or_none(self.quote_mit_farbe_prozent),
             "quote_mit_fundort_prozent": _round_or_none(self.quote_mit_fundort_prozent),
             "quote_mit_koordinaten_prozent": _round_or_none(
                 self.quote_mit_koordinaten_prozent),
@@ -4504,6 +4545,30 @@ def compute_statistics(conn: sqlite3.Connection, top_fundorte: int = 10,
     st.objekte_mit_beste_verwendung = conn.execute(
         "SELECT COUNT(*) FROM objects "
         "WHERE Beste_Verwendung IS NOT NULL AND TRIM(Beste_Verwendung) != ''"
+    ).fetchone()[0]
+    # objekte_mit_farbe: Anzahl Objekte mit dokumentierter Eigenfarbe
+    # (Farbe_beobachtet als Freitext-Notation der visuellen Erst-Identifikations-
+    # Achse). Spiegelt objekte_mit_glanz/objekte_mit_transparenz auf die
+    # Eigenfarben-Achse - waehrend Glanz die Oberflaechen-Reflexion und
+    # Transparenz die Lichtdurchlaessigkeit als kurze Enum-Skalen abdecken,
+    # ist Farbe das Freitext-Aequivalent fuer die spektrale Eigenfarbe des
+    # Stuecks. Die Farb-Vielfalt mineralogischer Stuecke laesst sich nicht
+    # sinnvoll in eine Enum-Skala mit fester Wertemenge zerlegen, weil jede
+    # Mineral-Familie ihr eigenes Farb-Spektrum hat (Malachit-gruen vs. Lapis-
+    # blau vs. Hematit-rot - alle unter dem gleichen "metallisch"-Glanz)
+    # und Lichtbedingungen/Verwitterung das Erscheinungsbild zusaetzlich
+    # verschieben; deshalb bleibt das Feld bewusst frei. Aus Datenpflege-Sicht
+    # ein zentraler Indikator, weil Farbe der erste Beobachtungs-Schritt bei
+    # der Mineral-Bestimmung ist und ohne Farbe-Eintrag der ganze visuelle
+    # Pruefblock (Glanz/Transparenz/Strichfarbe) ohne Eigenfarben-Referenz-
+    # punkt bleibt. Whitespace zaehlt wie leer, spiegelt has_farbe-/has_fundort-/
+    # has_notizen-Filter-Konvention der Freitext-Coverage-Quoten. by_kategorie/
+    # by_mineral zaehlen distinkte Klassifizierungs-Werte (Streuung); diese
+    # Kennzahl zaehlt Objekte mit irgendeiner Eigenfarben-Notation (Coverage) -
+    # komplementaer zur Streuungs-Sicht der Mineral-Familien.
+    st.objekte_mit_farbe = conn.execute(
+        "SELECT COUNT(*) FROM objects "
+        "WHERE Farbe_beobachtet IS NOT NULL AND TRIM(Farbe_beobachtet) != ''"
     ).fetchone()[0]
     # objekte_mit_fundort: Anzahl Objekte mit dokumentiertem Fundort (geografische
     # Provenienz). Spiegelt objekte_mit_funddatum/objekte_mit_mineral auf die
