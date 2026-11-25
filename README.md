@@ -2,6 +2,8 @@
 
 # 🪨 StoneBook V3
 
+[![CI](https://github.com/G4MEOVER18/StoneBook/actions/workflows/python-lint.yml/badge.svg)](https://github.com/G4MEOVER18/StoneBook/actions/workflows/python-lint.yml)
+
 **Offline-Verwaltung für eine Gesteins- & Mineraliensammlung — mit KI-gestützter Bestimmung**
 
 [![Plattform](https://img.shields.io/badge/Plattform-Windows%2011-0078D6?logo=windows)](#)
